@@ -1,19 +1,14 @@
-# :earth_americas: GDP dashboard template
+# Bentley Bot: Fiscal Budget Dashboard
 
-A simple Streamlit app showing the GDP of different countries in the world.
+This is a Streamlit-based web application that:
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gdp-dashboard-template.streamlit.app/)
+- Ingests 36 months of personal and small-business income/expense data from Google Sheets.
+- Syncs bank and billing transactions via QuickBooks API (or alternative financial aggregators).
+- Stores and transforms data in MySQL (self-hosted or Silobase BaaS) using Airbyte.
+- Orchestrates notifications and AI workflows with n8n.
+- Presents an interactive dashboard with charts for spending categories (Shopping, Bank Fees, Miscellaneous, etc.) and upcoming-bill email alerts.
+- Embeds a chatbot for macro-economic forecasts, US demographic comparisons, and global scenario analysis.
 
-### How to run it on your own machine
+# Process Flow Image
 
-1. Install the requirements
-
-   ```
-   $ pip install -r requirements.txt
-   ```
-
-2. Run the app
-
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+![FBB_Process_Flow-FBB](https://github.com/user-attachments/assets/e2f6667d-1d81-4742-bf27-a479b2898fb9)

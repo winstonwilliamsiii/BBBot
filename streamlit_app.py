@@ -149,7 +149,6 @@ for i, country in enumerate(selected_countries):
             delta=growth,
             delta_color=delta_color
         )
-        import streamlit as st
 
 st.set_page_config(
     page_title="Bentley Budget Bot",

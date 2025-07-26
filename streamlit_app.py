@@ -25,8 +25,8 @@ def get_gdp_data():
     DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
     raw_gdp_df = pd.read_csv(DATA_FILENAME)
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+    MIN_YEAR = 2017
+    MAX_YEAR = 2025
 
     # The data above has columns like:
     # - Country Name
@@ -64,10 +64,10 @@ gdp_df = get_gdp_data()
 
 # Set the title that appears at the top of the page.
 '''
-# :earth_americas: GDP dashboard
+# :earth_americas: Bentley Budget Bot
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
+Ideal Dashboard tool for High Earners Not Yet Wealth "HENRYs." As you'll
+notice, the data only goes to 2017, and datapoints for certain years are often missing.
 But it's otherwise a great (and did I mention _free_?) source of data.
 '''
 
@@ -90,7 +90,7 @@ if not len(countries):
     st.warning("Select at least one country")
 
 selected_countries = st.multiselect(
-    'Which countries would you like to view?',
+    'Which cost would you like to view?',
     countries,
     ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='GDP dashboard',
+    page_title='Bentley Budget Bot',
     page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
 )
 
@@ -149,3 +149,48 @@ for i, country in enumerate(selected_countries):
             delta=growth,
             delta_color=delta_color
         )
+        import streamlit as st
+
+st.set_page_config(
+    page_title="Bentley Budget Bot",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.markdown("""
+    <style>
+        :root {
+            --primary-color: #6A0DAD;
+            --secondary-color: #228B22;
+            --background-color: #2F4F4F;
+            --accent-color: #E6FFED;
+            --text-color: #1C1C1C;
+            --subtext-color: #AA82C5;
+            --highlight-color: #FFD700;
+            --border-color: #C0C0C0;
+        }
+
+        .block-container {
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        h1, h2, h3 {
+            color: var(--primary-color);
+        }
+
+        .stButton > button {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .stDataFrame, .stTable {
+            border-color: var(--border-color);
+        }
+
+        .metric {
+            color: var(--highlight-color);
+        }
+    </style>
+""", unsafe_allow_html=True)
+

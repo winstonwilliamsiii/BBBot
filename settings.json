@@ -1,0 +1,12 @@
+{
+    "jira-plugin.workingProject": "",
+    "cSpell.words": [
+        "Airbyte",
+        "isin",
+        "Selectbox",
+        "Silobase"
+    ],
+    "sqltools.connections": [],
+    "sqltools.useNodeRuntime": true,
+    "sqltools.autoConnectTo": []
+}

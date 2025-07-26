@@ -45,9 +45,15 @@ def get_gdp_data():
     # - GDP
     #
     # So let's pivot all those year-columns into two: Year and GDP
+    # Find which year columns actually exist in the data
+    available_years = [
+        str(y) for y in range(MIN_YEAR, MAX_YEAR + 1)
+        if str(y) in raw_gdp_df.columns
+    ]
+
     gdp_df = raw_gdp_df.melt(
         ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
+        available_years,
         'Year',
         'GDP',
     )

@@ -1,3 +1,6 @@
+#- Pulls data from MySQL or via webhook endpoint
+#- Renders budget visualizations, annotations
+
 on:
   push:
     branches: [ main ]

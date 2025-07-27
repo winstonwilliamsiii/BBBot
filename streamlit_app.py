@@ -195,7 +195,19 @@ st.markdown("""
         }
 
         .metric {
-            color: var(--highlight-color);
+            color: var(--text-color);
+        }
+
+        .stMetric > div > div {
+            color: var(--text-color) !important;
+        }
+
+        .stMetric label {
+            color: var(--text-color) !important;
+        }
+
+        .stMetric [data-testid="metric-value"] {
+            color: var(--text-color) !important;
         }
     </style>
 """, unsafe_allow_html=True)

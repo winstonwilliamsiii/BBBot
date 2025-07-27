@@ -169,7 +169,7 @@ st.markdown("""
             --secondary-color: #228B22;
             --background-color: #2F4F4F;
             --accent-color: #E6FFED;
-            --text-color: #1C1C1C;
+            --text-color: #E0E0E0;        /* Changed from #1C1C1C to light grey */
             --subtext-color: #AA82C5;
             --highlight-color: #FFD700;
             --border-color: #C0C0C0;
@@ -191,6 +191,7 @@ st.markdown("""
 
         .stDataFrame, .stTable {
             border-color: var(--border-color);
+            color: var(--text-color); /* Ensure table text is light grey */
         }
 
         .metric {

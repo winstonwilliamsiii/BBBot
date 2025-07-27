@@ -11,4 +11,5 @@ This is a Streamlit-based web application that:
 
 # Process Flow Image
 
-C:\Users\winst\Downloads\FBB_Process_Flow-FBB.jpg
+https://app.diagrams.net/#G1puqYkLeP-SrmQ8khMA-ualIAiFyEnBJj#%7B%22pageId%22%3A%22V-6in7jooW1nca1V13b-%22%7D
+<img width="460" height="373" alt="image" src="https://github.com/user-attachments/assets/433b4e08-945b-4ec0-b9f9-9a7b8085e602" />

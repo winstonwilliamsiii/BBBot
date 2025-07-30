@@ -73,9 +73,9 @@ gdp_df = get_gdp_data()
 # :earth_americas: Bentley Budget Bot
 
 Ideal Dashboard tool for High Earners Not Yet Wealthy "HENRYs." As you'll
-notice, the data only goes to 2017, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+
+notice, the data only goes to 2025 and datapoints for certain years are often missing.
+But it's otherwise a great (and did I mention _free_?) source of financial tool'''
 
 # Add some spacing
 ''

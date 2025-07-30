@@ -173,6 +173,7 @@ st.markdown("""
             --subtext-color: #AA82C5;
             --highlight-color: #FFD700;
             --border-color: #C0C0C0;
+            --off-white: #F8F8FF;         /* Added off-white color */
         }
 
         .block-container {
@@ -195,19 +196,23 @@ st.markdown("""
         }
 
         .metric {
-            color: var(--text-color);
+            color: var(--off-white);
         }
 
         .stMetric > div > div {
-            color: var(--text-color) !important;
+            color: var(--off-white) !important;
         }
 
         .stMetric label {
-            color: var(--text-color) !important;
+            color: var(--off-white) !important;
         }
 
         .stMetric [data-testid="metric-value"] {
-            color: var(--text-color) !important;
+            color: var(--off-white) !important;
+        }
+
+        .stMetric [data-testid="metric-delta"] {
+            color: var(--off-white) !important;
         }
     </style>
 """, unsafe_allow_html=True)

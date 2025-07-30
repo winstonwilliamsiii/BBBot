@@ -115,6 +115,11 @@ st.header('GDP over time', divider='gray')
 
 ''
 
+st.markdown(
+    "<span style='color:#F8F8FF; font-size:1.2em;'>GDP over time</span>",
+    unsafe_allow_html=True
+)
+
 st.line_chart(
     filtered_gdp_df,
     x='Year',
@@ -132,6 +137,11 @@ last_year = gdp_df[gdp_df['Year'] == to_year]
 st.header(f'GDP in {to_year}', divider='gray')
 
 ''
+
+st.markdown(
+    f"<span style='color:#F8F8FF; font-size:1.2em;'>GDP in {to_year}</span>",
+    unsafe_allow_html=True
+)
 
 cols = st.columns(4)
 

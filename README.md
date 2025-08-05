@@ -9,6 +9,7 @@ This is a Streamlit-based web application that:
 - Presents an interactive dashboard with charts for spending categories (Shopping, Bank Fees, Miscellaneous, etc.) and upcoming-bill email alerts.
 - Embeds a chatbot for macro-economic forecasts, US demographic comparisons, and global scenario analysis.
 
+<<<<<<< HEAD
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -223,6 +224,10 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - Streamlit for the web framework
 - Docker for containerization
 - MySQL for the database system
+
+---
+
+**Live Demo**: [bbbot305.streamlit.app](https://bbbot305.streamlit.app)
 
 ---
 

@@ -12,6 +12,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
 
+
 @st.cache_data
 def get_gdp_data():
     """Grab GDP data from a CSV file.
@@ -63,6 +64,7 @@ def get_gdp_data():
 
     return gdp_df
 
+
 gdp_df = get_gdp_data()
 
 # -----------------------------------------------------------------------------
@@ -73,7 +75,8 @@ gdp_df = get_gdp_data()
 # :earth_americas: Bentley Budget Bot
 
 Ideal Dashboard tool for High Earners Not Yet Wealthy "HENRYs." As you'll
-notice, the data only goes to 2017, and datapoints for certain years are often missing.
+notice, the data only goes to 2017, and datapoints for certain years
+are often missing.
 But it's otherwise a great (and did I mention _free_?) source of data.
 '''
 
@@ -162,14 +165,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
-    <style>
+css = '''    <style>
         :root {
             --primary-color: #6A0DAD;
             --secondary-color: #228B22;
             --background-color: #2F4F4F;
             --accent-color: #E6FFED;
-            --text-color: #E0E0E0;        /* Changed from #1C1C1C to light grey */
+            --text-color: #E0E0E0;
             --subtext-color: #AA82C5;
             --highlight-color: #FFD700;
             --border-color: #C0C0C0;
@@ -191,12 +193,14 @@ st.markdown("""
 
         .stDataFrame, .stTable {
             border-color: var(--border-color);
-            color: var(--text-color); /* Ensure table text is light grey */
+            color: var(--text-color);
         }
 
         .metric {
             color: var(--highlight-color);
         }
     </style>
-""", unsafe_allow_html=True)
+'''
+st.markdown(css, unsafe_allow_html=True)
+
 

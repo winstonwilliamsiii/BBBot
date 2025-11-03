@@ -1,7 +1,10 @@
+"""A Streamlit dashboard to display Yahoo Finance portfolio data."""
+
+from datetime import date, timedelta
+
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-from datetime import date, timedelta
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
@@ -9,7 +12,7 @@ st.set_page_config(
     page_icon=':chart_with_upwards_trend:',
     layout="wide",
     initial_sidebar_state="expanded"
-)
+) 
 
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
@@ -20,7 +23,7 @@ def get_yfinance_data(tickers, start_date, end_date):
 
     This uses caching to avoid having to read the file every time. If we were
     reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
+    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d').
     """
     # yfinance returns a wide-format dataframe, so we'll process it.
     raw_df = yf.download(tickers, start=start_date, end=end_date)
@@ -32,7 +35,8 @@ def get_yfinance_data(tickers, start_date, end_date):
     close_prices = raw_df['Close']
 
     # Melt the dataframe to have Ticker, Date, and Price
-    long_df = close_prices.reset_index().melt(id_vars='Date', var_name='Ticker', value_name='Price')
+    long_df = close_prices.reset_index().melt(
+        id_vars='Date', var_name='Ticker', value_name='Price')
     long_df['Date'] = pd.to_datetime(long_df['Date'])
 
     return long_df
@@ -61,14 +65,17 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Set the title that appears at the top of the page.
-st.markdown(f"""
-    <h1 style='text-align: center; color: {COLOR_SCHEME['text']}; 
+st.markdown(
+    f"""
+    <h1 style='text-align: center; color: {COLOR_SCHEME['text']};
     margin-bottom: 1rem; font-size: 3rem;'>
     Bentley Dashboard
     </h1>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
-st.markdown("<p style='text-align: center;'>An ideal dashboard tool for viewing your financial portfolios.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>An ideal dashboard tool for viewing your financial portfolios.</p>", unsafe_allow_html=True) # pylint: disable=line-too-long
 
 # Add some spacing
 st.write("")
@@ -108,10 +115,10 @@ portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
 filtered_df = portfolio_data.copy()
 
 # Calculate daily percentage change
-filtered_df['Daily Change %'] = filtered_df.groupby('Ticker')['Price'].pct_change() * 100
+filtered_df['Daily Change %'] = filtered_df.groupby('Ticker')['Price'].pct_change() * 100 # pylint: disable=line-too-long
 
 
-st.header('Portfolio Performance Over Time', divider='blue')
+st.header('Portfolio Performance Over Time', divider='blue') 
 
 st.line_chart(
     filtered_df,
@@ -123,7 +130,7 @@ st.line_chart(
 st.write("")
 st.write("")
 
-st.header(f'Metrics for {to_date.strftime("%Y-%m-%d")}', divider='blue')
+st.header(f'Metrics for {to_date.strftime("%Y-%m-%d")}', divider='blue') 
 
 cols = st.columns(4)
 
@@ -154,4 +161,4 @@ st.write("")
 st.write("")
 
 st.header("Raw Portfolio Data", divider='blue')
-st.dataframe(filtered_df, use_container_width=True)
+st.dataframe(filtered_df, use_container_width=True) 

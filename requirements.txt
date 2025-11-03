@@ -2,3 +2,7 @@ streamlit
 pandas
 plotly
 sqlalchemy
+ yfinance
+requests
+beautifulsoup4
+lxml

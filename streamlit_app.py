@@ -1,206 +1,326 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except Exception:
+    yf = None
+    YFINANCE_AVAILABLE = False
+from datetime import date, timedelta
+import re
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='Bentley Budget Bot',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+from frontend.utils.styling import (
+    apply_custom_styling,
+    create_custom_card,
+    create_metric_card,
+    add_footer,
 )
-
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+from frontend.styles.colors import COLOR_SCHEME
+from frontend.utils.yahoo import fetch_portfolio_list, fetch_portfolio_tickers
 
 
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def get_yfinance_data(tickers, start_date, end_date):
+    """Grab Yahoo Finance data (close prices) and return a long dataframe.
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
+    This is defensive: yfinance returns different column shapes depending on
+    whether a single ticker or multiple tickers are requested. We normalize
+    the result to a DataFrame of close prices with tickers as columns.
     """
+    if not tickers:
+        return pd.DataFrame()
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+    try:
+        if not YFINANCE_AVAILABLE:
+            st.error("The 'yfinance' package is not installed. Please install it (`pip install yfinance`) to fetch live data.")
+            return pd.DataFrame()
 
-    MIN_YEAR = 2017
-    MAX_YEAR = 2025
+        # yfinance (and Yahoo) can be flaky with a large list of tickers.
+        # To be robust, download in batches and concatenate results.
+        def _chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    # Find which year columns actually exist in the data
-    available_years = [
-        str(y) for y in range(MIN_YEAR, MAX_YEAR + 1)
-        if str(y) in raw_gdp_df.columns
-    ]
+        # choose a conservative batch size; this can be tuned
+        batch_size = 8
+        if isinstance(tickers, (list, tuple)) and len(tickers) > batch_size:
+            frames = []
+            for chunk in _chunks(list(tickers), batch_size):
+                try:
+                    part = yf.download(chunk, start=start_date, end=end_date, threads=True, progress=False)
+                except Exception as e:
+                    st.warning(f"yfinance chunk download failed for {chunk}: {e}")
+                    continue
+                if part is not None and not part.empty:
+                    frames.append(part)
+            if not frames:
+                raw_df = pd.DataFrame()
+            else:
+                # align frames by index/columns carefully by concatenating along columns
+                raw_df = pd.concat(frames, axis=1)
+        else:
+            raw_df = yf.download(tickers, start=start_date, end=end_date, threads=True, progress=False)
+    except Exception as e:
+        # Return empty dataframe on network / yfinance errors; caller can warn.
+        st.error(f"Failed to download data from yfinance: {e}")
+        return pd.DataFrame()
 
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        available_years,
-        'Year',
-        'GDP',
+    if raw_df is None or raw_df.empty:
+        return pd.DataFrame()
+
+    # Try to extract Close prices robustly.
+    close_prices = None
+    try:
+        # Common case: raw_df has top-level 'Close'
+        close_prices = raw_df['Close']
+    except Exception:
+        # If columns are MultiIndex like (Ticker, OHLCV) or (OHLCV, Ticker)
+        # attempt to locate columns whose name or tuple contains 'Close'
+        if isinstance(raw_df.columns, pd.MultiIndex):
+            # Find tuples where any level equals 'Close'
+            close_cols = [col for col in raw_df.columns if 'Close' in col]
+            if close_cols:
+                close_prices = raw_df.loc[:, close_cols]
+                # If close_cols are tuples like (ticker, 'Close') or ('Close', ticker)
+                # normalize column names to ticker symbols when possible
+                new_cols = []
+                for c in close_cols:
+                    if isinstance(c, tuple):
+                        # prefer element that looks like a ticker (short, uppercase)
+                        ticker_guess = None
+                        for element in c:
+                            if isinstance(element, str) and element.isupper() and len(element) <= 6:
+                                ticker_guess = element
+                                break
+                        new_cols.append(ticker_guess or str(c))
+                    else:
+                        new_cols.append(str(c))
+                close_prices.columns = new_cols
+        else:
+            # Try to find any columns with 'Close' in their name (e.g., 'Adj Close')
+            filtered = raw_df.filter(regex='Close')
+            if not filtered.empty:
+                close_prices = filtered
+
+    if close_prices is None or close_prices.empty:
+        return pd.DataFrame()
+
+    # If Series (single ticker), convert to DataFrame
+    if isinstance(close_prices, pd.Series):
+        col_name = None
+        if isinstance(tickers, (list, tuple)) and len(tickers) == 1:
+            col_name = tickers[0]
+        else:
+            col_name = close_prices.name or 'Price'
+        close_prices = close_prices.to_frame(name=col_name)
+
+    # At this point close_prices should be a DataFrame with Date index
+    df_long = close_prices.reset_index().melt(id_vars='Date', var_name='Ticker', value_name='Price')
+    df_long['Date'] = pd.to_datetime(df_long['Date'])
+    return df_long
+
+
+def main():
+    # Set page config first (Streamlit requires this before other writes)
+    st.set_page_config(
+        page_title="BBBot",
+        page_icon="🤖",
+        layout="wide",
+        initial_sidebar_state="expanded",
     )
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    # Apply custom styling (CSS)
+    apply_custom_styling()
 
-    return gdp_df
+    # Main title with custom styling
+    st.markdown(f"""
+    <h1 style='text-align: center; color: {COLOR_SCHEME['text']}; 
+    margin-bottom: 2rem; font-size: 3rem;'>
+    🤖 BBBot Dashboard
+    </h1>
+    """, unsafe_allow_html=True)
 
+    st.markdown("<p style='text-align: center;'>An ideal dashboard tool for viewing your financial portfolios.</p>", unsafe_allow_html=True)
 
-gdp_df = get_gdp_data()
+    # Sidebar controls
+    st.sidebar.header("Portfolio Selection")
+    # default tickers (fallback)
+    default_portfolio_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA']
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+    # Allow user to enter a Yahoo Finance portfolio root page (public portfolios)
+    yahoo_root = st.sidebar.text_input(
+        "Yahoo portfolios page URL",
+        value="https://finance.yahoo.com/portfolio",
+        help="Enter a Yahoo Finance portfolio page (for example: https://finance.yahoo.com/portfolio)",
+    )
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: Bentley Budget Bot
+    @st.cache_data
+    def _cached_fetch(url: str):
+        return fetch_portfolio_list(url)
 
-Ideal Dashboard tool for High Earners Not Yet Wealthy "HENRYs." As you'll
-notice, the data only goes to 2017, and datapoints for certain years
-are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+    portfolios = []
+    if yahoo_root:
+        portfolios = _cached_fetch(yahoo_root)
 
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which cost would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
+    if portfolios:
+        # map display names
+        names = [p["name"] for p in portfolios]
+        selected_portfolio_idx = st.sidebar.selectbox(
+            "Choose a Yahoo portfolio:",
+            options=list(range(len(names))),
+            format_func=lambda i: names[i],
         )
+        selected_portfolio = portfolios[selected_portfolio_idx]
+        st.sidebar.markdown(f"**Selected:** [{selected_portfolio['name']}]({selected_portfolio['url']})")
 
-st.set_page_config(
-    page_title="Bentley Budget Bot",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+        # Try to fetch tickers from the selected portfolio and use them as the
+        # available portfolio_tickers for the multiselect below.
+        @st.cache_data
+        def _cached_fetch_holdings(url: str):
+            try:
+                return fetch_portfolio_tickers(url)
+            except Exception:
+                return []
 
-css = '''    <style>
-        :root {
-            --primary-color: #6A0DAD;
-            --secondary-color: #228B22;
-            --background-color: #2F4F4F;
-            --accent-color: #E6FFED;
-            --text-color: #E0E0E0;
-            --subtext-color: #AA82C5;
-            --highlight-color: #FFD700;
-            --border-color: #C0C0C0;
-        }
+        fetched_tickers = _cached_fetch_holdings(selected_portfolio["url"])
+        if fetched_tickers:
+            portfolio_tickers = fetched_tickers
+            st.sidebar.success(f"Loaded {len(fetched_tickers)} tickers from portfolio")
+        else:
+            portfolio_tickers = default_portfolio_tickers
+            st.sidebar.info("Could not extract holdings from selected portfolio; using default tickers.")
+    else:
+        st.sidebar.info("No portfolios found on the provided URL. Enter a different Yahoo portfolio page or ensure the page is public.")
+        portfolio_tickers = default_portfolio_tickers
+        # Provide fallback inputs: allow user to paste tickers or upload a CSV
+        pasted = st.sidebar.text_area("Paste tickers (comma or whitespace separated)", value="")
+        uploaded = st.sidebar.file_uploader("Or upload a CSV/ TXT with tickers (one per line)", type=["csv", "txt"])
+        if uploaded is not None:
+            try:
+                content = uploaded.read().decode('utf-8')
+                lines = [ln.strip() for ln in content.replace(',','\n').splitlines() if ln.strip()]
+                if lines:
+                    portfolio_tickers = lines
+                    st.sidebar.success(f"Loaded {len(lines)} tickers from uploaded file")
+            except Exception:
+                st.sidebar.error("Failed to read uploaded file; please ensure it's plain text or CSV with tickers.")
+        elif pasted:
+            parsed = [t.strip().upper() for t in re.split(r"[\s,]+", pasted) if t.strip()]
+            if parsed:
+                portfolio_tickers = parsed
+                st.sidebar.success(f"Loaded {len(parsed)} tickers from paste")
+    # default selection: if we loaded fetched tickers, select them; otherwise pick a few defaults
+    default_selection = portfolio_tickers if (portfolio_tickers and portfolio_tickers != default_portfolio_tickers) else ['AAPL', 'MSFT', 'GOOGL']
 
-        .block-container {
-            background-color: var(--background-color);
-            color: var(--text-color);
-        }
+    selected_tickers = st.sidebar.multiselect(
+        'Which stocks would you like to view?',
+        portfolio_tickers,
+        default_selection
+    )
 
-        h1, h2, h3 {
-            color: var(--primary-color);
-        }
+    # Optional: give user a way to validate tickers via yfinance (best-effort)
+    if st.sidebar.button("Validate selected tickers"):
+        if not YFINANCE_AVAILABLE:
+            st.sidebar.error("yfinance not installed; cannot validate tickers.")
+        else:
+            invalid = []
+            valid = []
+            max_check = 20
+            to_check = selected_tickers[:max_check]
+            progress = st.sidebar.progress(0)
+            for i, sym in enumerate(to_check):
+                try:
+                    t = yf.Ticker(sym)
+                    info = t.info
+                    # heuristic: valid if info contains a longName or regularMarketPrice
+                    if info and (info.get('longName') or info.get('regularMarketPrice') is not None):
+                        valid.append(sym)
+                    else:
+                        invalid.append(sym)
+                except Exception:
+                    invalid.append(sym)
+                progress.progress(int((i + 1) / len(to_check) * 100))
+            progress.empty()
+            st.sidebar.write(f"Valid: {valid}")
+            if invalid:
+                st.sidebar.warning(f"Possibly invalid or not-found tickers (first {max_check} checked): {invalid}")
 
-        .stButton > button {
-            background-color: var(--secondary-color);
-            color: white;
-        }
+    today = date.today()
+    five_years_ago = today - timedelta(days=5 * 365)
 
-        .stDataFrame, .stTable {
-            border-color: var(--border-color);
-            color: var(--text-color);
-        }
+    from_date, to_date = st.sidebar.date_input(
+        "Select date range:",
+        value=[five_years_ago, today],
+        min_value=date(2000, 1, 1),
+        max_value=today,
+    )
 
-        .metric {
-            color: var(--highlight-color);
-        }
-    </style>
-'''
-st.markdown(css, unsafe_allow_html=True)
+    if not selected_tickers:
+        st.warning("Please select at least one ticker from the sidebar.")
+        st.stop()
+
+    if from_date > to_date:
+        st.error("Error: Start date must be before end date.")
+        st.stop()
+
+    # Example top-level metric cards (demo)
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        create_metric_card("Active Users", "1,234", "+12%")
+
+    with col2:
+        create_metric_card("Messages Today", "5,678", "+8%")
+
+    with col3:
+        create_metric_card("Response Time", "0.8s", "-15%")
+
+    # Bot status card
+    create_custom_card(
+        "Bot Status",
+        "All systems operational. Bot is responding normally to user queries.",
+    )
+
+    # Fetch portfolio data
+    portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
+    if portfolio_data.empty:
+        st.warning("No data returned for the selected tickers / date range.")
+    else:
+        df = portfolio_data.copy()
+        df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
+
+        st.header('Portfolio Performance Over Time')
+        st.line_chart(df, x='Date', y='Price', color='Ticker')
+
+        st.write("")
+        # Format as: Month Day, Year (month spelled out)
+        st.header(f"Metrics for {to_date.strftime('%B')} {to_date.day}, {to_date.year}")
+
+        # Use metric cards per ticker (in columns)
+        cols = st.columns(min(4, len(selected_tickers)))
+        for i, ticker in enumerate(selected_tickers):
+            col = cols[i % len(cols)]
+            with col:
+                ticker_data = df[df['Ticker'] == ticker]
+                if not ticker_data.empty:
+                    first_price = ticker_data['Price'].iloc[0]
+                    last_price = ticker_data['Price'].iloc[-1]
+                    if pd.notna(first_price) and first_price > 0:
+                        growth_pct = ((last_price - first_price) / first_price) * 100
+                        delta = f'{growth_pct:.2f}%'
+                    else:
+                        delta = 'n/a'
+                    create_metric_card(f'{ticker} Price', f'${last_price:,.2f}', delta)
+                else:
+                    create_metric_card(f'{ticker} Price', 'N/A', 'N/A')
+
+        st.write("")
+        st.header("Raw Portfolio Data")
+        st.dataframe(df, use_container_width=True)
+
+    # Footer
+    add_footer()
 
 
+if __name__ == "__main__":
+    main()

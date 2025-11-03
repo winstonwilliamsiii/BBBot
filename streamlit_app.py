@@ -1,370 +1,157 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import yfinance as yf
+from datetime import date, timedelta
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='Bentley Budget Bot',
-    page_icon=':earth_americas:',  # This is an emoji shortcode. Could be a URL too.
+    page_title='Bentley Dashboard',
+    page_icon=':chart_with_upwards_trend:',
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
 
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def get_yfinance_data(tickers, start_date, end_date):
+    """Grab Yahoo Finance data.
 
     This uses caching to avoid having to read the file every time. If we were
     reading from an HTTP endpoint instead of a file, it's a good idea to set
     a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
     """
+    # yfinance returns a wide-format dataframe, so we'll process it.
+    raw_df = yf.download(tickers, start=start_date, end=end_date)
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+    if raw_df.empty:
+        return pd.DataFrame()
 
-    MIN_YEAR = 2017
-    MAX_YEAR = 2025
+    # We only need the 'Close' price for this dashboard
+    close_prices = raw_df['Close']
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    # Find which year columns actually exist in the data
-    available_years = [
-        str(y) for y in range(MIN_YEAR, MAX_YEAR + 1)
-        if str(y) in raw_gdp_df.columns
-    ]
+    # Melt the dataframe to have Ticker, Date, and Price
+    long_df = close_prices.reset_index().melt(id_vars='Date', var_name='Ticker', value_name='Price')
+    long_df['Date'] = pd.to_datetime(long_df['Date'])
 
-    gdp_long_df = raw_gdp_df.melt(
-        ['Country Code'],
-        available_years,
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_long_df['Year'] = pd.to_numeric(gdp_long_df['Year'])
-
-    return gdp_long_df
-
-gdp_data = get_gdp_data()
+    return long_df
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
-# Set the title that appears at the top of the page.
-title_md = """
-# :earth_americas: Bentley Budget Bot
+# Define the color scheme based on your request
+COLOR_SCHEME = {
+    "background": "#FFFFFF",
+    "text": "#020617",
+    "primary": "#0F172A",
+    "primary_foreground": "#F8FAFC",
+    "secondary": "#F1F5F9",
+    "card_background": "#FFFFFF"
+}
 
-Ideal Dashboard tool for High Earners Not Yet Wealthy "HENRYs." As you'll
-notice, the data only goes to 2025 and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of financial tool
-"""
-st.markdown(title_md, unsafe_allow_html=True)
+# Apply custom CSS for background and text colors
+st.markdown(f"""
+<style>
+    .stApp {{
+        background-color: {COLOR_SCHEME['background']};
+        color: {COLOR_SCHEME['text']};
+    }}
+</style>
+""", unsafe_allow_html=True)
+
+# Set the title that appears at the top of the page.
+st.markdown(f"""
+    <h1 style='text-align: center; color: {COLOR_SCHEME['text']}; 
+    margin-bottom: 1rem; font-size: 3rem;'>
+    Bentley Dashboard
+    </h1>
+    """, unsafe_allow_html=True)
+
+st.markdown("<p style='text-align: center;'>An ideal dashboard tool for viewing your financial portfolios.</p>", unsafe_allow_html=True)
 
 # Add some spacing
 st.write("")
 st.write("")
 
-min_value = gdp_data['Year'].min()
-max_value = gdp_data['Year'].max()
+# --- Sidebar for user inputs ---
+st.sidebar.header("Portfolio Selection")
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+portfolio_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA']
 
-countries = gdp_data['Country Code'].unique()
+selected_tickers = st.sidebar.multiselect(
+    'Which stocks would you like to view?',
+    portfolio_tickers,
+    ['AAPL', 'MSFT', 'GOOGL'])
 
-if not len(countries):
-    st.warning("Select at least one country")
+today = date.today()
+five_years_ago = today - timedelta(days=5*365)
 
-selected_countries = st.multiselect(
-    'Which cost would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+from_date, to_date = st.sidebar.date_input(
+    "Select date range:",
+    value=[five_years_ago, today],
+    min_value=date(2000, 1, 1),
+    max_value=today
+)
 
-st.write("")
-st.write("")
-st.write("")
+if not selected_tickers:
+    st.warning("Please select at least one ticker from the sidebar.")
+    st.stop()
+
+if from_date > to_date:
+    st.error("Error: Start date must be before end date.")
+    st.stop()
+
+portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
 
 # Filter the data
-filtered_gdp_df = gdp_data[
-    (gdp_data['Country Code'].isin(selected_countries))
-    & (gdp_data['Year'] <= to_year)
-    & (from_year <= gdp_data['Year'])
-]
+filtered_df = portfolio_data.copy()
 
-st.header('GDP over time', divider='gray')
+# Calculate daily percentage change
+filtered_df['Daily Change %'] = filtered_df.groupby('Ticker')['Price'].pct_change() * 100
 
-st.write("")
 
-st.markdown(
-    "<span style='color:#F8F8FF; font-size:1.2em;'>GDP over time</span>",
-    unsafe_allow_html=True
-)
+st.header('Portfolio Performance Over Time', divider='blue')
 
 st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
+    filtered_df,
+    x='Date',
+    y='Price',
+    color='Ticker'
 )
 
 st.write("")
 st.write("")
 
-
-first_year = gdp_data[gdp_data['Year'] == from_year]
-last_year = gdp_data[gdp_data['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-st.write("")
-
-st.markdown(
-    f"<span style='color:#F8F8FF; font-size:1.2em;'>GDP in {to_year}</span>",
-    unsafe_allow_html=True
-)
+st.header(f'Metrics for {to_date.strftime("%Y-%m-%d")}', divider='blue')
 
 cols = st.columns(4)
 
-for i, country in enumerate(selected_countries):
+for i, ticker in enumerate(selected_tickers):
     col = cols[i % len(cols)]
 
     with col:
-        # Extract GDP series for the country and convert to billions
-        first_series = first_year.loc[
-            first_year['Country Code'] == country, 'GDP'
-        ]
-        last_series = last_year.loc[
-            last_year['Country Code'] == country, 'GDP'
-        ]
+        ticker_data = filtered_df[filtered_df['Ticker'] == ticker]
+        if not ticker_data.empty:
+            first_price = ticker_data['Price'].iloc[0]
+            last_price = ticker_data['Price'].iloc[-1]
 
-        first_gdp = first_series.iat[0] / 1_000_000_000
-        last_gdp = last_series.iat[0] / 1_000_000_000
+            if pd.notna(first_price) and first_price > 0:
+                growth_pct = ((last_price - first_price) / first_price) * 100
+                delta = f'{growth_pct:.2f}%'
+            else:
+                delta = 'n/a'
 
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
+            st.metric(
+                label=f'{ticker} Price',
+                value=f'${last_price:,.2f}',
+                delta=delta,
+            )
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+            st.metric(label=f'{ticker} Price', value='N/A', delta='N/A')
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+st.write("")
+st.write("")
 
-st.set_page_config(
-    page_title="Bentley Budget Bot",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-st.markdown("""
-    <style>
-                /* Color scheme variables */
-        :root {
-          --lavender: #E6E6FA;
-          --mint-mist: #AAF0D1;
-          --soft-gold: #FAFAD2;
-          --pearl-white: #FFFFFF;
-          --graphite: #383838;
-          
-          /* Semantic color assignments */
-          --primary-color: var(--lavender);
-          --secondary-color: var(--mint-mist);
-          --accent-color: var(--soft-gold);
-          --background-color: var(--pearl-white);
-          --text-color: var(--graphite);
-          --text-light: var(--pearl-white);
-        }
-        
-        /* Base styling */
-        body {
-          background-color: var(--background-color);
-          color: var(--text-color);
-          font-family: Arial, sans-serif;
-        }
-        
-        /* Headers */
-        h1, h2, h3, h4, h5, h6 {
-          color: var(--graphite);
-        }
-        
-        /* Primary elements */
-        .primary {
-          background-color: var(--primary-color);
-          color: var(--text-color);
-        }
-        
-        /* Secondary elements */
-        .secondary {
-          background-color: var(--secondary-color);
-          color: var(--text-color);
-        }
-        
-        /* Accent elements */
-        .accent {
-          background-color: var(--accent-color);
-          color: var(--text-color);
-        }
-        
-        /* Buttons */
-        .btn-primary {
-          background-color: var(--lavender);
-          border-color: var(--lavender);
-          color: var(--text-color);
-        }
-        
-        .btn-primary:hover {
-          background-color: var(--mint-mist);
-          border-color: var(--mint-mist);
-        }
-        
-        .btn-secondary {
-          background-color: var(--mint-mist);
-          border-color: var(--mint-mist);
-          color: var(--text-color);
-        }
-        
-        .btn-secondary:hover {
-          background-color: var(--soft-gold);
-          border-color: var(--soft-gold);
-        }
-        
-        /* Navigation */
-        .navbar {
-          background-color: var(--graphite);
-          color: var(--pearl-white);
-        }
-        
-        .navbar a {
-          color: var(--pearl-white);
-        }
-        
-        .navbar a:hover {
-          color: var(--lavender);
-        }
-        
-        /* Cards/Containers */
-        .card {
-          background-color: var(--pearl-white);
-          border: 1px solid var(--lavender);
-          color: var(--text-color);
-        }
-        
-        .card-header {
-          background-color: var(--lavender);
-          color: var(--text-color);
-        }
-        
-        /* Links */
-        a {
-          color: var(--graphite);
-        }
-        
-        a:hover {
-          color: var(--mint-mist);
-        }
-        
-        /* Form elements */
-        .form-control {
-          border-color: var(--lavender);
-        }
-        
-        .form-control:focus {
-          border-color: var(--mint-mist);
-          box-shadow: 0 0 0 0.2rem rgba(170, 240, 209, 0.25);
-        }
-        
-        /* Alerts/Messages */
-        .alert-success {
-          background-color: var(--mint-mist);
-          border-color: var(--mint-mist);
-          color: var(--text-color);
-        }
-        
-        .alert-warning {
-          background-color: var(--soft-gold);
-          border-color: var(--soft-gold);
-          color: var(--text-color);
-        }
-        
-        .alert-info {
-          background-color: var(--lavender);
-          border-color: var(--lavender);
-          color: var(--text-color);
-        }:root {
-            --primary-color: #6A0DAD;
-            --secondary-color: #228B22;
-            --background-color: #2F4F4F;
-            --accent-color: #E6FFED;
-            --text-color: #E0E0E0;        /* Changed from #1C1C1C to light grey */
-            --subtext-color: #AA82C5;
-            --highlight-color: #FFD700;
-            --border-color: #C0C0C0;
-            --off-white: #F8F8FF;         /* Added off-white color */
-        }
-
-        .block-container {
-            background-color: var(--background-color);
-            color: var(--text-color);
-        }
-
-        h1, h2, h3 {
-            color: var(--primary-color);
-        }
-
-        .stButton > button {
-            background-color: var(--secondary-color);
-            color: white;
-        }
-
-        .stDataFrame, .stTable {
-            border-color: var(--border-color);
-            color: var(--text-color); /* Ensure table text is light grey */
-        }
-
-        .metric {
-            color: var(--off-white);
-        }
-
-        .stMetric > div > div {
-            color: var(--off-white) !important;
-        }
-
-        .stMetric label {
-            color: var(--off-white) !important;
-        }
-
-        .stMetric [data-testid="metric-value"] {
-            color: var(--off-white) !important;
-        }
-
-        .stMetric [data-testid="metric-delta"] {
-            color: var(--off-white) !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-
+st.header("Raw Portfolio Data", divider='blue')
+st.dataframe(filtered_df, use_container_width=True)

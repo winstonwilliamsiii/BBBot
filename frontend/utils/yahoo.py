@@ -15,6 +15,7 @@ def fetch_portfolio_list(root_url: str) -> List[Dict[str, str]]:
     the site layout changes or if content is dynamically loaded by JavaScript.
     """
     try:
+<<<<<<< HEAD
         # Use more realistic browser-like headers to reduce automatic blocking
         headers = {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -26,10 +27,15 @@ def fetch_portfolio_list(root_url: str) -> List[Dict[str, str]]:
         # If blocked or rate-limited, return empty early
         if resp.status_code == 429:
             return []
+=======
+        headers = {"User-Agent": "python-requests/3 (fetching yahoo portfolios)"}
+        resp = requests.get(root_url, headers=headers, timeout=10)
+>>>>>>> 5b35dc0 (feat: Add functions to fetch portfolio links and tickers from Yahoo Finance)
         resp.raise_for_status()
     except Exception:
         return []
 
+<<<<<<< HEAD
     html = resp.text
 
     # First try to extract portfolio metadata from embedded JSON
@@ -88,6 +94,26 @@ def fetch_portfolio_list(root_url: str) -> List[Dict[str, str]]:
 
                 full = urljoin(root_url, href)
                 found[full] = name
+=======
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    anchors = soup.find_all("a", href=True)
+    found = {}
+    for a in anchors:
+        href = a["href"]
+        # look for portfolio links (pattern contains '/portfolio/')
+        if "/portfolio/" in href:
+            # get text if available
+            name = a.get_text(strip=True)
+            if not name:
+                # fallback to last path segment
+                name = href.rstrip("/").split("/")[-1]
+            # build absolute URL
+            from urllib.parse import urljoin
+
+            full = urljoin(root_url, href)
+            found[full] = name
+>>>>>>> 5b35dc0 (feat: Add functions to fetch portfolio links and tickers from Yahoo Finance)
 
     results = [{"name": v, "url": k} for k, v in found.items()]
     return results
@@ -142,6 +168,7 @@ def fetch_portfolio_tickers(portfolio_url: str) -> List[str]:
     Returns a list of tickers (may be empty if extraction fails).
     """
     try:
+<<<<<<< HEAD
         headers = {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -151,6 +178,10 @@ def fetch_portfolio_tickers(portfolio_url: str) -> List[str]:
         resp = requests.get(portfolio_url, headers=headers, timeout=10)
         if resp.status_code == 429:
             return []
+=======
+        headers = {"User-Agent": "python-requests/3 (fetching yahoo portfolio holdings)"}
+        resp = requests.get(portfolio_url, headers=headers, timeout=10)
+>>>>>>> 5b35dc0 (feat: Add functions to fetch portfolio links and tickers from Yahoo Finance)
         resp.raise_for_status()
     except Exception:
         return []
@@ -160,6 +191,7 @@ def fetch_portfolio_tickers(portfolio_url: str) -> List[str]:
     # 1) Try embedded JSON
     data = _extract_json_from_html(html)
     if data:
+<<<<<<< HEAD
         # Look for holdings/positions-like structures first
         candidates = set()
 
@@ -194,12 +226,15 @@ def fetch_portfolio_tickers(portfolio_url: str) -> List[str]:
             return sorted(candidates)
 
         # fallback: generic symbol search in JSON
+=======
+>>>>>>> 5b35dc0 (feat: Add functions to fetch portfolio links and tickers from Yahoo Finance)
         symbols = _walk_for_symbols(data)
         if symbols:
             return symbols
 
     # 2) Fallback to HTML scraping
     soup = BeautifulSoup(html, "lxml")
+<<<<<<< HEAD
     # Prefer anchors to quote pages: '/quote/SYMBOL' is a reliable indicator
     candidates = set()
     for a in soup.find_all("a", href=True):
@@ -230,6 +265,29 @@ def fetch_portfolio_tickers(portfolio_url: str) -> List[str]:
         tokens = re.findall(r"\b[A-Z0-9\.\-]{1,6}\b", soup.get_text())
         for tok in tokens:
             if re.search(r"[A-Z]", tok) and not tok.isdigit() and len(tok) <= 5:
+=======
+    # Search tables first
+    candidates = set()
+    for table in soup.find_all("table"):
+        for cell in table.find_all(["td", "th"]):
+            text = cell.get_text(strip=True)
+            # If text looks like a ticker, add it
+            if re.fullmatch(r"[A-Z0-9\.\-]{1,6}", text):
+                candidates.add(text)
+            # anchors often contain tickers
+            for a in cell.find_all("a", href=True):
+                t = a.get_text(strip=True)
+                if re.fullmatch(r"[A-Z0-9\.\-]{1,6}", t):
+                    candidates.add(t)
+
+    # Also search anywhere in the page for ticker-looking tokens near portfolio keywords
+    if not candidates:
+        # look for tokens in the page text
+        tokens = re.findall(r"\b[A-Z0-9\.\-]{1,6}\b", soup.get_text())
+        # keep tokens that have at least one letter and not all numbers
+        for tok in tokens:
+            if re.search(r"[A-Z]", tok) and not tok.isdigit():
+>>>>>>> 5b35dc0 (feat: Add functions to fetch portfolio links and tickers from Yahoo Finance)
                 candidates.add(tok)
 
     return sorted(candidates)

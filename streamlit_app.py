@@ -6,7 +6,7 @@ from pathlib import Path
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
     page_title='Bentley Budget Bot',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_icon=':earth_americas:',  # This is an emoji shortcode. Could be a URL too.
 )
 
 # -----------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def get_gdp_data():
         if str(y) in raw_gdp_df.columns
     ]
 
-    gdp_df = raw_gdp_df.melt(
+    gdp_long_df = raw_gdp_df.melt(
         ['Country Code'],
         available_years,
         'Year',
@@ -59,29 +59,31 @@ def get_gdp_data():
     )
 
     # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    gdp_long_df['Year'] = pd.to_numeric(gdp_long_df['Year'])
 
-    return gdp_df
+    return gdp_long_df
 
-gdp_df = get_gdp_data()
+gdp_data = get_gdp_data()
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
 # Set the title that appears at the top of the page.
-'''
+title_md = """
 # :earth_americas: Bentley Budget Bot
 
 Ideal Dashboard tool for High Earners Not Yet Wealthy "HENRYs." As you'll
 notice, the data only goes to 2025 and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of financial tool'''
+But it's otherwise a great (and did I mention _free_?) source of financial tool
+"""
+st.markdown(title_md, unsafe_allow_html=True)
 
 # Add some spacing
-''
-''
+st.write("")
+st.write("")
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+min_value = gdp_data['Year'].min()
+max_value = gdp_data['Year'].max()
 
 from_year, to_year = st.slider(
     'Which years are you interested in?',
@@ -89,7 +91,7 @@ from_year, to_year = st.slider(
     max_value=max_value,
     value=[min_value, max_value])
 
-countries = gdp_df['Country Code'].unique()
+countries = gdp_data['Country Code'].unique()
 
 if not len(countries):
     st.warning("Select at least one country")
@@ -99,20 +101,20 @@ selected_countries = st.multiselect(
     countries,
     ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
 
-''
-''
-''
+st.write("")
+st.write("")
+st.write("")
 
 # Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
+filtered_gdp_df = gdp_data[
+    (gdp_data['Country Code'].isin(selected_countries))
+    & (gdp_data['Year'] <= to_year)
+    & (from_year <= gdp_data['Year'])
 ]
 
 st.header('GDP over time', divider='gray')
 
-''
+st.write("")
 
 st.markdown(
     "<span style='color:#F8F8FF; font-size:1.2em;'>GDP over time</span>",
@@ -123,19 +125,18 @@ st.line_chart(
     filtered_gdp_df,
     x='Year',
     y='GDP',
-    color='Country Code',
 )
 
-''
-''
+st.write("")
+st.write("")
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+first_year = gdp_data[gdp_data['Year'] == from_year]
+last_year = gdp_data[gdp_data['Year'] == to_year]
 
 st.header(f'GDP in {to_year}', divider='gray')
 
-''
+st.write("")
 
 st.markdown(
     f"<span style='color:#F8F8FF; font-size:1.2em;'>GDP in {to_year}</span>",
@@ -148,8 +149,16 @@ for i, country in enumerate(selected_countries):
     col = cols[i % len(cols)]
 
     with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+        # Extract GDP series for the country and convert to billions
+        first_series = first_year.loc[
+            first_year['Country Code'] == country, 'GDP'
+        ]
+        last_series = last_year.loc[
+            last_year['Country Code'] == country, 'GDP'
+        ]
+
+        first_gdp = first_series.iat[0] / 1_000_000_000
+        last_gdp = last_series.iat[0] / 1_000_000_000
 
         if math.isnan(first_gdp):
             growth = 'n/a'
@@ -173,7 +182,139 @@ st.set_page_config(
 
 st.markdown("""
     <style>
+                /* Color scheme variables */
         :root {
+          --lavender: #E6E6FA;
+          --mint-mist: #AAF0D1;
+          --soft-gold: #FAFAD2;
+          --pearl-white: #FFFFFF;
+          --graphite: #383838;
+          
+          /* Semantic color assignments */
+          --primary-color: var(--lavender);
+          --secondary-color: var(--mint-mist);
+          --accent-color: var(--soft-gold);
+          --background-color: var(--pearl-white);
+          --text-color: var(--graphite);
+          --text-light: var(--pearl-white);
+        }
+        
+        /* Base styling */
+        body {
+          background-color: var(--background-color);
+          color: var(--text-color);
+          font-family: Arial, sans-serif;
+        }
+        
+        /* Headers */
+        h1, h2, h3, h4, h5, h6 {
+          color: var(--graphite);
+        }
+        
+        /* Primary elements */
+        .primary {
+          background-color: var(--primary-color);
+          color: var(--text-color);
+        }
+        
+        /* Secondary elements */
+        .secondary {
+          background-color: var(--secondary-color);
+          color: var(--text-color);
+        }
+        
+        /* Accent elements */
+        .accent {
+          background-color: var(--accent-color);
+          color: var(--text-color);
+        }
+        
+        /* Buttons */
+        .btn-primary {
+          background-color: var(--lavender);
+          border-color: var(--lavender);
+          color: var(--text-color);
+        }
+        
+        .btn-primary:hover {
+          background-color: var(--mint-mist);
+          border-color: var(--mint-mist);
+        }
+        
+        .btn-secondary {
+          background-color: var(--mint-mist);
+          border-color: var(--mint-mist);
+          color: var(--text-color);
+        }
+        
+        .btn-secondary:hover {
+          background-color: var(--soft-gold);
+          border-color: var(--soft-gold);
+        }
+        
+        /* Navigation */
+        .navbar {
+          background-color: var(--graphite);
+          color: var(--pearl-white);
+        }
+        
+        .navbar a {
+          color: var(--pearl-white);
+        }
+        
+        .navbar a:hover {
+          color: var(--lavender);
+        }
+        
+        /* Cards/Containers */
+        .card {
+          background-color: var(--pearl-white);
+          border: 1px solid var(--lavender);
+          color: var(--text-color);
+        }
+        
+        .card-header {
+          background-color: var(--lavender);
+          color: var(--text-color);
+        }
+        
+        /* Links */
+        a {
+          color: var(--graphite);
+        }
+        
+        a:hover {
+          color: var(--mint-mist);
+        }
+        
+        /* Form elements */
+        .form-control {
+          border-color: var(--lavender);
+        }
+        
+        .form-control:focus {
+          border-color: var(--mint-mist);
+          box-shadow: 0 0 0 0.2rem rgba(170, 240, 209, 0.25);
+        }
+        
+        /* Alerts/Messages */
+        .alert-success {
+          background-color: var(--mint-mist);
+          border-color: var(--mint-mist);
+          color: var(--text-color);
+        }
+        
+        .alert-warning {
+          background-color: var(--soft-gold);
+          border-color: var(--soft-gold);
+          color: var(--text-color);
+        }
+        
+        .alert-info {
+          background-color: var(--lavender);
+          border-color: var(--lavender);
+          color: var(--text-color);
+        }:root {
             --primary-color: #6A0DAD;
             --secondary-color: #228B22;
             --background-color: #2F4F4F;
@@ -225,4 +366,5 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
+
 

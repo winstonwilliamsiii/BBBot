@@ -1,7 +1,11 @@
 # example/st_app.py
 
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
+try:
+	from streamlit_gsheets import GSheetsConnection
+except Exception:
+	st.error("Missing dependency 'streamlit-gsheets'. Install it with: pip install streamlit-gsheets")
+	raise
 
 url = "https://docs.google.com/spreadsheets/d/1nQahl9pYaEETzbxxjOPYvtPySewuyJOH7Bp_b4Zwt5I/edit?usp=sharing"
 

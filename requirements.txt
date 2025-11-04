@@ -2,7 +2,7 @@ streamlit
 pandas
 plotly
 sqlalchemy
- yfinance
+yfinance
 requests
 beautifulsoup4
 lxml

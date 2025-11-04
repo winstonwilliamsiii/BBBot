@@ -1,11 +1,4 @@
 {
-<<<<<<< Updated upstream
-    "jira-plugin.workingProject": ""
-=======
     "jira-plugin.workingProject": "",
-    "DockerRun.DisableDockerrc": true,
-    "cSpell.words": [
-        "datapoints"
-    ]
->>>>>>> Stashed changes
+    "DockerRun.DisableDockerrc": true
 }

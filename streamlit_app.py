@@ -60,6 +60,31 @@ def get_yfinance_data(tickers, start_date, end_date):
                 raw_df = pd.concat(frames, axis=1)
         else:
             raw_df = yf.download(tickers, start=start_date, end=end_date, threads=True, progress=False)
+        # yfinance (and Yahoo) can be flaky with a large list of tickers.
+        # To be robust, download in batches and concatenate results.
+        def _chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
+
+        # choose a conservative batch size; this can be tuned
+        batch_size = 8
+        if isinstance(tickers, (list, tuple)) and len(tickers) > batch_size:
+            frames = []
+            for chunk in _chunks(list(tickers), batch_size):
+                try:
+                    part = yf.download(chunk, start=start_date, end=end_date, threads=True, progress=False)
+                except Exception as e:
+                    st.warning(f"yfinance chunk download failed for {chunk}: {e}")
+                    continue
+                if part is not None and not part.empty:
+                    frames.append(part)
+            if not frames:
+                raw_df = pd.DataFrame()
+            else:
+                # align frames by index/columns carefully by concatenating along columns
+                raw_df = pd.concat(frames, axis=1)
+        else:
+            raw_df = yf.download(tickers, start=start_date, end=end_date, threads=True, progress=False)
     except Exception as e:
         # Return empty dataframe on network / yfinance errors; caller can warn.
         st.error(f"Failed to download data from yfinance: {e}")
@@ -191,59 +216,13 @@ def main():
             st.sidebar.info("Could not extract holdings from selected portfolio; using default tickers.")
     else:
         st.sidebar.info("No portfolios found on the provided URL. Enter a different Yahoo portfolio page or ensure the page is public.")
-        portfolio_tickers = default_portfolio_tickers
-        # Provide fallback inputs: allow user to paste tickers or upload a CSV
-        pasted = st.sidebar.text_area("Paste tickers (comma or whitespace separated)", value="")
-        uploaded = st.sidebar.file_uploader("Or upload a CSV/ TXT with tickers (one per line)", type=["csv", "txt"])
-        if uploaded is not None:
-            try:
-                content = uploaded.read().decode('utf-8')
-                lines = [ln.strip() for ln in content.replace(',','\n').splitlines() if ln.strip()]
-                if lines:
-                    portfolio_tickers = lines
-                    st.sidebar.success(f"Loaded {len(lines)} tickers from uploaded file")
-            except Exception:
-                st.sidebar.error("Failed to read uploaded file; please ensure it's plain text or CSV with tickers.")
-        elif pasted:
-            parsed = [t.strip().upper() for t in re.split(r"[\s,]+", pasted) if t.strip()]
-            if parsed:
-                portfolio_tickers = parsed
-                st.sidebar.success(f"Loaded {len(parsed)} tickers from paste")
-    # default selection: if we loaded fetched tickers, select them; otherwise pick a few defaults
-    default_selection = portfolio_tickers if (portfolio_tickers and portfolio_tickers != default_portfolio_tickers) else ['AAPL', 'MSFT', 'GOOGL']
+    portfolio_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA']
 
     selected_tickers = st.sidebar.multiselect(
         'Which stocks would you like to view?',
         portfolio_tickers,
-        default_selection
+        ['AAPL', 'MSFT', 'GOOGL']
     )
-
-    # Optional: give user a way to validate tickers via yfinance (best-effort)
-    if st.sidebar.button("Validate selected tickers"):
-        if not YFINANCE_AVAILABLE:
-            st.sidebar.error("yfinance not installed; cannot validate tickers.")
-        else:
-            invalid = []
-            valid = []
-            max_check = 20
-            to_check = selected_tickers[:max_check]
-            progress = st.sidebar.progress(0)
-            for i, sym in enumerate(to_check):
-                try:
-                    t = yf.Ticker(sym)
-                    info = t.info
-                    # heuristic: valid if info contains a longName or regularMarketPrice
-                    if info and (info.get('longName') or info.get('regularMarketPrice') is not None):
-                        valid.append(sym)
-                    else:
-                        invalid.append(sym)
-                except Exception:
-                    invalid.append(sym)
-                progress.progress(int((i + 1) / len(to_check) * 100))
-            progress.empty()
-            st.sidebar.write(f"Valid: {valid}")
-            if invalid:
-                st.sidebar.warning(f"Possibly invalid or not-found tickers (first {max_check} checked): {invalid}")
 
     today = date.today()
     five_years_ago = today - timedelta(days=5 * 365)

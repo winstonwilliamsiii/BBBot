@@ -145,6 +145,65 @@ def get_yfinance_data(tickers, start_date, end_date):
     return df_long
 
 
+def calculate_portfolio_metrics(portfolio_df):
+    """Calculate portfolio metrics from uploaded CSV data."""
+    if portfolio_df is None or portfolio_df.empty:
+        return None, None, None, None
+    
+    try:
+        # Get current prices for all symbols in portfolio
+        symbols = portfolio_df['Symbol'].unique().tolist()
+        
+        if YFINANCE_AVAILABLE:
+            # Fetch current prices
+            current_data = {}
+            for symbol in symbols:
+                try:
+                    ticker = yf.Ticker(symbol)
+                    info = ticker.info
+                    current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+                    current_data[symbol] = current_price
+                except:
+                    current_data[symbol] = 0
+            
+            # Calculate metrics
+            total_value = 0
+            for _, row in portfolio_df.iterrows():
+                symbol = row['Symbol']
+                quantity = row.get('Quantity', 0)
+                current_price = current_data.get(symbol, 0)
+                total_value += quantity * current_price
+            
+            num_assets = len(symbols)
+            
+            # Simple sector allocation (you can enhance this)
+            num_sectors = min(5, max(1, num_assets // 2))
+            
+            # Calculate percentage change (if purchase price provided)
+            total_cost = 0
+            if 'Purchase_Price' in portfolio_df.columns:
+                for _, row in portfolio_df.iterrows():
+                    quantity = row.get('Quantity', 0)
+                    purchase_price = row.get('Purchase_Price', 0)
+                    total_cost += quantity * purchase_price
+                
+                if total_cost > 0:
+                    change_pct = ((total_value - total_cost) / total_cost) * 100
+                else:
+                    change_pct = 0
+            else:
+                change_pct = 0
+            
+            return total_value, num_assets, num_sectors, change_pct
+        else:
+            # If yfinance not available, use placeholder values
+            return None, len(symbols), min(5, max(1, len(symbols) // 2)), 0
+            
+    except Exception as e:
+        st.sidebar.error(f"Error calculating portfolio metrics: {str(e)}")
+        return None, None, None, None
+
+
 def main():
     # Set page config first (Streamlit requires this before other writes)
     st.set_page_config(
@@ -161,13 +220,83 @@ def main():
     st.markdown(f"""
     <h1 style='text-align: center; color: {COLOR_SCHEME['text']}; 
     margin-bottom: 2rem; font-size: 3rem;'>
-    🤖 BBBot Dashboard
+    🤖 Bentley Bot Dashboard
     </h1>
     """, unsafe_allow_html=True)
 
     st.markdown("<p style='text-align: center;'>An ideal dashboard tool for viewing your financial portfolios.</p>", unsafe_allow_html=True)
 
     # Sidebar controls
+    st.sidebar.header("Portfolio Data Upload")
+    
+    # Option to upload a full portfolio CSV
+    st.sidebar.subheader("📄 Upload Portfolio CSV")
+    
+    # Add information about CSV format
+    with st.sidebar.expander("ℹ️ CSV Format Help"):
+        st.write("""
+        **Required columns:**
+        - `Symbol`: Stock ticker (e.g., AAPL, MSFT)
+        - `Quantity`: Number of shares owned
+        
+        **Optional columns:**
+        - `Purchase_Price`: Price paid per share
+        - `Purchase_Date`: Date purchased (YYYY-MM-DD)
+        - `Current_Price`: Current price per share
+        """)
+    
+    portfolio_csv = st.sidebar.file_uploader(
+        "Upload your portfolio data (CSV)",
+        type=["csv"],
+        help="CSV should contain columns: Symbol, Quantity, Purchase_Price (optional: Purchase_Date, Current_Price)"
+    )
+    
+    # Initialize portfolio_data in session state if not exists
+    if 'portfolio_data' not in st.session_state:
+        st.session_state.portfolio_data = None
+        
+    if portfolio_csv is not None:
+        try:
+            # Read the uploaded CSV
+            portfolio_df = pd.read_csv(portfolio_csv)
+            
+            # Validate required columns
+            required_cols = ['Symbol', 'Quantity']
+            if all(col in portfolio_df.columns for col in required_cols):
+                st.session_state.portfolio_data = portfolio_df
+                st.sidebar.success(f"✅ Portfolio loaded: {len(portfolio_df)} holdings")
+                
+                # Display a preview
+                st.sidebar.write("**Preview:**")
+                st.sidebar.dataframe(portfolio_df.head(3), use_container_width=True)
+            else:
+                st.sidebar.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
+                
+        except Exception as e:
+            st.sidebar.error(f"❌ Error reading CSV: {str(e)}")
+    
+    # CSV Template Download
+    if st.sidebar.button("📥 Download CSV Template"):
+        # Create sample CSV data
+        sample_data = {
+            'Symbol': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+            'Quantity': [10, 5, 3, 8, 2],
+            'Purchase_Price': [150.00, 280.00, 2500.00, 3200.00, 800.00],
+            'Purchase_Date': ['2023-01-15', '2023-02-10', '2023-03-05', '2023-01-20', '2023-02-28']
+        }
+        sample_df = pd.DataFrame(sample_data)
+        
+        # Convert to CSV
+        csv_content = sample_df.to_csv(index=False)
+        
+        st.sidebar.download_button(
+            label="Download portfolio_template.csv",
+            data=csv_content,
+            file_name="portfolio_template.csv",
+            mime="text/csv"
+        )
+    
+    st.sidebar.markdown("---")
     st.sidebar.header("Portfolio Selection")
     # default tickers (fallback)
     default_portfolio_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA']
@@ -288,17 +417,76 @@ def main():
         st.error("Error: Start date must be before end date.")
         st.stop()
 
-    # Example top-level metric cards (demo)
+    # Calculate portfolio metrics if CSV uploaded
+    portfolio_value, num_assets, num_sectors, value_change = calculate_portfolio_metrics(
+        st.session_state.get('portfolio_data')
+    )
+
+    # Example top-level metric cards (using real data if available)
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        create_metric_card("Active Users", "1,234", "+12%")
+        if portfolio_value is not None:
+            value_str = f"${portfolio_value:,.0f}"
+            change_str = f"{value_change:+.1f}%" if value_change != 0 else "N/A"
+            create_metric_card("Market Value", value_str, change_str)
+        else:
+            create_metric_card("Market Value", "$125,430", "+12%")
 
     with col2:
-        create_metric_card("Messages Today", "5,678", "+8%")
+        if num_assets is not None:
+            create_metric_card("Asset Allocation", f"{num_assets} Assets", "+2%")
+        else:
+            create_metric_card("Asset Allocation", "8 Assets", "+2%")
 
     with col3:
-        create_metric_card("Response Time", "0.8s", "-15%")
+        if num_sectors is not None:
+            create_metric_card("Sector Allocation", f"{num_sectors} Sectors", "+1%")
+        else:
+            create_metric_card("Sector Allocation", "5 Sectors", "+1%")
+
+    # Portfolio Overview Section (if CSV uploaded)
+    if st.session_state.get('portfolio_data') is not None:
+        st.markdown("### 📊 Your Portfolio Overview")
+        portfolio_df = st.session_state.portfolio_data
+        
+        # Display portfolio table
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("**Holdings:**")
+            display_df = portfolio_df.copy()
+            
+            # Add current value if we have current prices
+            if YFINANCE_AVAILABLE:
+                current_values = []
+                for _, row in display_df.iterrows():
+                    symbol = row['Symbol']
+                    quantity = row.get('Quantity', 0)
+                    try:
+                        ticker = yf.Ticker(symbol)
+                        info = ticker.info
+                        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+                        current_value = quantity * current_price
+                        current_values.append(f"${current_value:,.2f}")
+                    except:
+                        current_values.append("N/A")
+                
+                display_df['Current Value'] = current_values
+            
+            st.dataframe(display_df, use_container_width=True)
+        
+        with col2:
+            st.markdown("**Portfolio Summary:**")
+            total_holdings = len(portfolio_df)
+            total_shares = portfolio_df['Quantity'].sum() if 'Quantity' in portfolio_df.columns else 0
+            
+            st.metric("Total Holdings", total_holdings)
+            st.metric("Total Shares", f"{total_shares:,.0f}")
+            
+            if 'Purchase_Price' in portfolio_df.columns:
+                avg_purchase = portfolio_df['Purchase_Price'].mean()
+                st.metric("Avg Purchase Price", f"${avg_purchase:.2f}")
 
     # Bot status card
     create_custom_card(

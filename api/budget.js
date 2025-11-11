@@ -2,7 +2,46 @@
  * Budget API Endpoint for Bentley Budget Bot
  * Handles budget-related operations and calculations
  */
+// api/budget.js
 
+import mysql from 'mysql2/promise';
+
+export default async function handler(req, res) {
+  try {
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    // Handle OPTIONS preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
+    // Route based on method
+    switch (req.method) {
+      case 'GET':
+        return await global.handleGetBudget(req, res);
+      case 'POST':
+        return await global.handleCreateBudget(req, res);
+      case 'PUT':
+        return await global.handleUpdateBudget(req, res);
+      case 'DELETE':
+        return await global.handleDeleteBudget(req, res);
+      default:
+        res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE']);
+        return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
+    }
+  } catch (error) {
+    console.error('Budget API Error:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);

@@ -1,3 +1,22 @@
-from celery import Celery
+# Celery configuration for Bentley Budget Bot
 
-celery_app = Celery('bentley_bot', broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
+try:
+    from celery import Celery
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
+    Celery = None
+
+# Configuration
+REDIS_BROKER = 'redis://localhost:6379/0'
+REDIS_BACKEND = 'redis://localhost:6379/0'
+
+if CELERY_AVAILABLE:
+    celery_app = Celery(
+        'bentley_bot',
+        broker=REDIS_BROKER,
+        backend=REDIS_BACKEND
+    )
+else:
+    celery_app = None
+    print("Celery not available. Install with: pip install celery[redis]")

@@ -1,0 +1,2 @@
+from tasks import async_execute_trade
+async_execute_trade.delay('binance', 'BTCUSDT', 'BUY', 0.01)

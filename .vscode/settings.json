@@ -1,4 +1,5 @@
 {
     "jira-plugin.workingProject": "",
-    "DockerRun.DisableDockerrc": true
+    "DockerRun.DisableDockerrc": true,
+    "git.ignoreLimitWarning": true
 }

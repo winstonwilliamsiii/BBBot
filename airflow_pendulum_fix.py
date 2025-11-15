@@ -79,12 +79,6 @@ def test_mysql_connection():
         sql_conn = conf.get('core', 'sql_alchemy_conn')
         
         if 'mysql' in sql_conn:
-            try:
-                import pymysql
-            except ImportError:
-                print("❌ 'pymysql' is not installed. Please run: pip install pymysql")
-                return False
-
             import pymysql
             from urllib.parse import urlparse
             

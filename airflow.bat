@@ -15,18 +15,18 @@ REM Activate virtual environment
 call %~dp0.venv\Scripts\activate.bat
 
 REM Apply Windows compatibility patch and run command
-python "%~dp0airflow_windows.py" %*
+python "%~dp0airflow_pendulum_fix.py" %*
 
 if "%1"=="webserver" (
     echo Starting Airflow webserver...
-    python -c "import os; os.register_at_fork = lambda **kwargs: None; exec(open('airflow_windows.py').read()); from airflow.cli.commands.webserver_command import webserver; webserver(['--port', '8080'])"
+    python -c "exec(open('airflow_pendulum_fix.py').read()); from airflow.cli.commands.webserver_command import webserver; webserver(['--port', '8080'])"
 ) else if "%1"=="scheduler" (
     echo Starting Airflow scheduler...
-    python -c "import os; os.register_at_fork = lambda **kwargs: None; exec(open('airflow_windows.py').read()); from airflow.cli.commands.scheduler_command import scheduler; scheduler([])"
+    python -c "exec(open('airflow_pendulum_fix.py').read()); from airflow.cli.commands.scheduler_command import scheduler; scheduler([])"
 ) else if "%1"=="config" (
-    python "%~dp0airflow_windows.py" config
+    python "%~dp0airflow_pendulum_fix.py" config
 ) else if "%1"=="init" (
-    python "%~dp0airflow_windows.py" init
+    python "%~dp0airflow_pendulum_fix.py" init
 ) else (
     echo Available commands:
     echo   airflow.bat config     - Show configuration

@@ -39,12 +39,6 @@ def patch_pendulum():
 patch_pendulum()
 
 # Now set up Airflow environment
-if not hasattr(os, 'register_at_fork'):
-    def register_at_fork(*, before=None, after_in_parent=None, after_in_child=None):
-        """Dummy implementation of register_at_fork for Windows."""
-        pass
-    os.register_at_fork = register_at_fork
-    print("Applied Windows compatibility patch for os.register_at_fork")
 
 # Set environment variables for Windows compatibility
 os.environ.setdefault('AIRFLOW__CORE__MP_START_METHOD', 'spawn')

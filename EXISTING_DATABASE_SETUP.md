@@ -12,7 +12,7 @@
 I've updated your Airflow configuration to use:
 ```
 Database: Bentley_Bot
-Connection: mysql+pymysql://root:password@localhost:3306/Bentley_Bot
+Connection: mysql+pymysql://root:root@localhost:3306/Bentley_Bot
 ```
 
 ### 📝 **YOU NEED TO UPDATE THE PASSWORD**
@@ -21,12 +21,12 @@ Please update the connection string in `airflow_config/airflow.cfg` with your ac
 
 ```ini
 # Replace 'password' with your actual MySQL root password
-sql_alchemy_conn = mysql+pymysql://root:YOUR_ACTUAL_PASSWORD@localhost:3306/Bentley_Bot
+sql_alchemy_conn = mysql+pymysql://root:root@localhost:3306/Bentley_Bot
 ```
 
 Or if you have a different MySQL user:
 ```ini
-sql_alchemy_conn = mysql+pymysql://YOUR_USERNAME:YOUR_PASSWORD@localhost:3306/Bentley_Bot
+sql_alchemy_conn = mysql+pymysql://root:root@localhost:3306/Bentley_Bot
 ```
 
 ### 🛡️ How Airflow Will Use Your Database
@@ -53,14 +53,14 @@ Bentley_Bot database:
 
 1. **Update Password** in `airflow_config/airflow.cfg`:
    ```ini
-   sql_alchemy_conn = mysql+pymysql://root:YOUR_REAL_PASSWORD@localhost:3306/Bentley_Bot
+   sql_alchemy_conn = mysql+pymysql://root:root@localhost:3306/Bentley_Bot
    ```
 
 2. **Test Connection**:
    ```bash
    .\airflow.bat test
    ```
-
+d
 3. **Initialize Airflow** (creates Airflow tables in your existing database):
    ```bash
    .\airflow.bat init

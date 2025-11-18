@@ -14,7 +14,7 @@ import time
 
 # Configuration
 AIRBYTE_API = "http://localhost:8001"  # Airbyte API endpoint (Docker)
-CONNECTION_ID = "your-connection-id"   # Update this with your actual connection ID
+CONNECTION_ID = "your-connection-id"   # Update with actual connection ID
 MAX_WAIT_TIME = 3600  # Maximum wait time in seconds (1 hour)
 
 def check_airbyte_health(**context):
@@ -61,7 +61,10 @@ def wait_for_sync_completion(**context):
     """Poll Airbyte for sync completion"""
     try:
         # Get job_id from previous task
-        job_id = context['task_instance'].xcom_pull(key='job_id', task_ids='trigger_airbyte_sync')
+        job_id = context['task_instance'].xcom_pull(
+            key='job_id',
+            task_ids='trigger_airbyte_sync'
+        )
         
         if not job_id:
             raise Exception("No job ID found from previous task")

@@ -11,7 +11,7 @@ services:
       MYSQL_USER: airflow
       MYSQL_PASSWORD: airflow
     ports:
-      - "3306:3306"
+      - "3307:3306"  # Changed to avoid conflict with local MySQL
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
@@ -28,15 +28,17 @@ services:
 
   # Airflow Webserver
   airflow-webserver:
-    image: apache/airflow:2.8.4-python3.11
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     container_name: bentley-airflow-webserver
     depends_on:
       - mysql
       - redis
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
-      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
@@ -64,15 +66,17 @@ services:
 
   # Airflow Scheduler
   airflow-scheduler:
-    image: apache/airflow:2.8.4-python3.11
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     container_name: bentley-airflow-scheduler
     depends_on:
       - mysql
       - redis
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
-      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
@@ -86,15 +90,17 @@ services:
 
   # Airflow Worker (for Celery executor)
   airflow-worker:
-    image: apache/airflow:2.8.4-python3.11
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     container_name: bentley-airflow-worker
     depends_on:
       - mysql
       - redis
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
-      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'

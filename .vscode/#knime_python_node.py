@@ -1,17 +1,23 @@
 # KNIME-compatible Python node: RSI, MACD, Trigger
 
+# pandas is available in KNIME environment for DataFrame operations
 import pandas as pd
 
 # === Input: KNIME passes input_table as a DataFrame ===
+# For standalone testing, create a sample input_table
+# In KNIME environment, this would be provided automatically
+if 'input_table' not in globals():
+    input_table = pd.DataFrame({'close': [100, 102, 101, 103, 105, 104, 106, 108, 107, 109, 111, 110, 112, 114, 113, 115, 117, 116, 118, 120]})
+
 closes = input_table['close'].tolist()
 
 # === RSI Calculation ===
-def calculate_rsi(closes, period=14):
+def calculate_rsi(price_data, period=14):
     rsi = [None] * period
-    for i in range(period, len(closes)):
+    for i in range(period, len(price_data)):
         gains = losses = 0
         for j in range(i - period + 1, i + 1):
-            delta = closes[j] - closes[j - 1]
+            delta = price_data[j] - price_data[j - 1]
             if delta > 0:
                 gains += delta
             else:
@@ -28,19 +34,19 @@ def ema(values, period):
         ema_vals.append(values[i] * k + ema_vals[i - 1] * (1 - k))
     return ema_vals
 
-def calculate_macd(closes, short=12, long=26, signal=9):
-    ema_short = ema(closes, short)
-    ema_long = ema(closes, long)
+def calculate_macd(price_data, short=12, long=26, signal=9):
+    ema_short = ema(price_data, short)
+    ema_long = ema(price_data, long)
     macd_line = [s - l for s, l in zip(ema_short, ema_long)]
     signal_line = ema(macd_line[long - 1:], signal)
     return macd_line[long - 1:], signal_line
 
 # === Trigger Logic ===
-def evaluate_triggers(df):
-    df['trigger'] = None
-    df.loc[(df['RSI'] < 30) & (df['MACD'] > df['Signal']), 'trigger'] = 'BUY'
-    df.loc[(df['RSI'] > 70) & (df['MACD'] < df['Signal']), 'trigger'] = 'SELL'
-    return df
+def evaluate_triggers(dataframe):
+    dataframe['trigger'] = None
+    dataframe.loc[(dataframe['RSI'] < 30) & (dataframe['MACD'] > dataframe['Signal']), 'trigger'] = 'BUY'
+    dataframe.loc[(dataframe['RSI'] > 70) & (dataframe['MACD'] < dataframe['Signal']), 'trigger'] = 'SELL'
+    return dataframe
 
 # === Apply Calculations ===
 df = input_table.copy()

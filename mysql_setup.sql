@@ -1,28 +1,27 @@
--- MySQL Setup for Airflow - Using Existing Bentley_Bot Database
--- Run these commands in your MySQL client (e.g., MySQL Workbench, phpMyAdmin, or mysql CLI)
+-- MySQL Setup for Docker Airflow - mansa_bot Database
+-- This script runs automatically when MySQL container starts
 
--- 1. Verify your existing database
-SHOW DATABASES LIKE 'Bentley_Bot';
+-- Create the mansa_bot database if it doesn't exist
+CREATE DATABASE IF NOT EXISTS mansa_bot;
+USE mansa_bot;
 
--- 2. Use your existing database
-USE Bentley_Bot;
+-- Create airflow user with necessary permissions
+CREATE USER IF NOT EXISTS 'airflow'@'%' IDENTIFIED BY 'airflow';
+GRANT ALL PRIVILEGES ON mansa_bot.* TO 'airflow'@'%';
 
--- 3. Show existing schemas/tables (optional - to see what's already there)
-SHOW TABLES;
+-- Also grant access to root user from any host (for Docker)
+GRANT ALL PRIVILEGES ON mansa_bot.* TO 'root'@'%';
+FLUSH PRIVILEGES;
 
--- 4. Create airflow user (optional - you can use your existing user)
--- DROP USER IF EXISTS 'airflow'@'localhost';
--- CREATE USER 'airflow'@'localhost' IDENTIFIED BY 'airflow123';
+-- Create a sample table to verify setup (optional)
+CREATE TABLE IF NOT EXISTS setup_status (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    message VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
--- 5. Grant privileges to airflow user on your existing database
--- GRANT ALL PRIVILEGES ON Bentley_Bot.* TO 'airflow'@'localhost';
--- FLUSH PRIVILEGES;
+INSERT INTO setup_status (message) VALUES ('MySQL database initialized for Airflow and Bentley Bot');
 
--- 6. Verify database access
-SELECT 'Bentley_Bot database is ready for Airflow!' AS status;
-
--- 7. Check if mansa_bot schema/tables exist
-SHOW TABLES LIKE '%mansa%';
-
--- Note: Airflow will create its own tables (prefixed with 'airflow_') in this database
--- Your existing mansa_bot schema tables will remain untouched
+-- Show current status
+SELECT 'mansa_bot database is ready!' AS status;
+SELECT * FROM setup_status;

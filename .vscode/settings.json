@@ -1,5 +1,11 @@
 {
     "jira-plugin.workingProject": "",
     "DockerRun.DisableDockerrc": true,
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "cSpell.words": [
+        "airbyte",
+        "mlflow",
+        "mlruns",
+        "pymysql"
+    ]
 }

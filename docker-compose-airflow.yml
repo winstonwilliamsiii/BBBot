@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  # MySQL Database (shared between Airflow and Streamlit app)
+  mysql:
+    image: mysql:8.0
+    container_name: bentley-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mansa_bot
+      MYSQL_USER: airflow
+      MYSQL_PASSWORD: airflow
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Redis (for Airflow Celery executor)
+  redis:
+    image: redis:7-alpine
+    container_name: bentley-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Airflow Webserver
+  airflow-webserver:
+    image: apache/airflow:2.8.4-python3.11
+    container_name: bentley-airflow-webserver
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./.vscode:/opt/airflow/dags  # Your DAGs folder
+      - ./airflow_config/logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+    command: webserver
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.8.4-python3.11
+    container_name: bentley-airflow-scheduler
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./.vscode:/opt/airflow/dags
+      - ./airflow_config/logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+    command: scheduler
+    restart: unless-stopped
+
+  # Airflow Worker (for Celery executor)
+  airflow-worker:
+    image: apache/airflow:2.8.4-python3.11
+    container_name: bentley-airflow-worker
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./.vscode:/opt/airflow/dags
+      - ./airflow_config/logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+    command: celery worker
+    restart: unless-stopped
+
+  # Your existing Bentley Budget Bot (Streamlit app)
+  bentley-budget-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bentley-budget-bot
+    depends_on:
+      - mysql
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=mansa_bot
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_data:
+
+networks:
+  default:
+    name: bentley-network

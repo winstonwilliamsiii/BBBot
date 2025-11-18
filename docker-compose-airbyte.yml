@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # Airbyte Database
+  airbyte-db:
+    image: postgres:13-alpine
+    container_name: bentley-airbyte-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=docker
+      - POSTGRES_PASSWORD=docker
+      - POSTGRES_DB=airbyte
+    volumes:
+      - airbyte_db_data:/var/lib/postgresql/data
+
+  # Airbyte Server (Backend API)
+  airbyte-server:
+    image: airbyte/server:latest
+    container_name: bentley-airbyte-server
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_VERSION=dev
+      - CONFIG_ROOT=/data
+      - DATABASE_PASSWORD=docker
+      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
+      - DATABASE_USER=docker
+      - TRACKING_STRATEGY=logging
+      - WORKER_ENVIRONMENT=docker
+      - WORKSPACE_ROOT=/tmp/workspace
+      - WEBAPP_URL=http://localhost:8000/
+      - LOCAL_ROOT=/tmp/airbyte_local
+    ports:
+      - "8001:8001"  # API port (used by your Airflow DAG)
+    volumes:
+      - workspace:/tmp/workspace:rw
+      - data:/data:rw
+      - local_root:/tmp/airbyte_local:rw
+    depends_on:
+      - airbyte-db
+
+  # Airbyte Web UI
+  airbyte-webapp:
+    image: airbyte/webapp:latest
+    container_name: bentley-airbyte-webapp
+    restart: unless-stopped
+    ports:
+      - "8000:80"  # Web UI port
+    environment:
+      - AIRBYTE_VERSION=dev
+      - API_URL=/api/v1/
+      - TRACKING_STRATEGY=logging
+      - INTERNAL_API_HOST=airbyte-server:8001
+    depends_on:
+      - airbyte-server
+
+  # Airbyte Worker
+  airbyte-worker:
+    image: airbyte/worker:latest
+    container_name: bentley-airbyte-worker
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_VERSION=dev
+      - AUTO_DETECT_SCHEMA=true
+      - CONFIG_ROOT=/data
+      - DATABASE_PASSWORD=docker
+      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
+      - DATABASE_USER=docker
+      - DEPLOYMENT_MODE=OSS
+      - LOCAL_DOCKER_MOUNT=/tmp/airbyte_local
+      - LOCAL_ROOT=/tmp/airbyte_local
+      - SECRET_PERSISTENCE=TESTING_CONFIG_DB_TABLE
+      - TRACKING_STRATEGY=logging
+      - WEBAPP_URL=http://localhost:8000/
+      - WORKER_ENVIRONMENT=docker
+      - WORKSPACE_ROOT=/tmp/workspace
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - workspace:/tmp/workspace:rw
+      - local_root:/tmp/airbyte_local:rw
+    depends_on:
+      - airbyte-server
+
+  # Airbyte Scheduler
+  airbyte-scheduler:
+    image: airbyte/scheduler:latest
+    container_name: bentley-airbyte-scheduler
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_VERSION=dev
+      - CONFIG_ROOT=/data
+      - DATABASE_PASSWORD=docker
+      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
+      - DATABASE_USER=docker
+      - TRACKING_STRATEGY=logging
+      - WEBAPP_URL=http://localhost:8000/
+      - WORKSPACE_ROOT=/tmp/workspace
+    volumes:
+      - workspace:/tmp/workspace:rw
+      - data:/data:rw
+    depends_on:
+      - airbyte-server
+
+volumes:
+  airbyte_db_data:
+  workspace:
+  data:
+  local_root:
+
+networks:
+  default:
+    name: airbyte-network

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: mansa_bot
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  airflow-webserver:
+    image: apache/airflow:2.7.1
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:rootpass@mysql/mansa_bot
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+    depends_on:
+      - mysql
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.1
+    command: scheduler
+    depends_on:
+      - airflow-webserver
+
+  airbyte-webapp:
+    image: airbyte/webapp:latest
+    ports:
+      - "8000:80"
+    depends_on:
+      - airbyte-server
+
+  airbyte-server:
+    image: airbyte/server:latest
+    ports:
+      - "8001:8001"
+
+  mlflow:
+    image: mlflow/mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlflow/mlruns
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow/mlruns
+
+volumes:
+  mysql_data:

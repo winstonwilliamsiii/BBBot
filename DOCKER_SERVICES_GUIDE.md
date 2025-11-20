@@ -5,31 +5,34 @@ This guide explains how to run Bentley Budget Bot with **separate Docker Compose
 ## 🏗️ Architecture Overview
 
 ```
-┌─────────────────────────────────────────────┐
-│              Bentley Budget Bot             │
-├─────────────────┬───────────────┬───────────┤
-│   Streamlit     │    Airflow    │  Airbyte  │
-│   (Port 8501)   │ (Port 8080)   │(Port 8000)│
-│                 │               │           │
-│ • Main App      │ • Orchestration│• Data ETL │
-│ • Yahoo Finance │ • DAG Mgmt    │• API Sync │
-│ • Portfolio UI  │ • Scheduling  │• Transform│
-└─────────────────┴───────────────┴───────────┘
-            │             │             │
-            └─────────────┼─────────────┘
-                          │
-                    MySQL Database
-                    (Port 3306)
+┌───────────────────────────────────────────────────────────┐
+│                  Bentley Budget Bot                       │
+├─────────────┬─────────────┬─────────────┬─────────────────┤
+│  Streamlit  │   Airflow   │   Airbyte   │    MLflow       │
+│  (Port 8501)│ (Port 8080) │ (Port 8000) │  (Port 5000)    │
+│             │             │             │                 │
+│ • Main App  │ • DAG Mgmt  │ • Data ETL  │ • Tracking      │
+│ • Yahoo     │ • Scheduler │ • API Sync  │ • Experiments   │
+│ • Portfolio │ • Workers   │ • Transform │ • Artifacts     │
+└─────────────┴─────────────┴─────────────┴─────────────────┘
+            │             │             │             │
+            └─────────────┼─────────────┼─────────────┘
+                          │             │
+                    MySQL Database      │
+                    (Port 3307)         │
+                                   MLflow DB
+                                 & Artifacts
 ```
 
 ## 📁 Docker Compose Files
 
-### 1. **`docker-compose-airflow.yml`** - Airflow + Streamlit + MySQL
+### 1. **`docker-compose-airflow.yml`** - Airflow + Streamlit + MLflow + MySQL
 - **Airflow Webserver** (8080) - UI and API
 - **Airflow Scheduler** - DAG execution
 - **Airflow Worker** - Task execution  
 - **Streamlit App** (8501) - Main application
-- **MySQL Database** (3306) - Shared storage
+- **MLflow Server** (5000) - ML experiment tracking
+- **MySQL Database** (3307) - Shared storage
 - **Redis** (6379) - Airflow message broker
 
 ### 2. **`docker-compose-airbyte.yml`** - Airbyte Platform
@@ -58,6 +61,7 @@ This guide explains how to run Bentley Budget Bot with **separate Docker Compose
 - **Streamlit App**: http://localhost:8501
 - **Airflow UI**: http://localhost:8080 (admin/admin)
 - **Airbyte UI**: http://localhost:8000
+- **MLflow UI**: http://localhost:5000
 
 ### Manage Services
 ```powershell

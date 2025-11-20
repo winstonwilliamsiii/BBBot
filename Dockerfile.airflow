@@ -13,7 +13,11 @@ USER airflow
 RUN pip install --no-cache-dir \
     pymysql \
     mysqlclient \
-    apache-airflow[mysql]
+    apache-airflow[mysql] \
+    mlflow \
+    cryptography \
+    requests \
+    pandas
 
 # Copy any custom configuration
 COPY --chown=airflow:root airflow_config/airflow.cfg /opt/airflow/airflow.cfg

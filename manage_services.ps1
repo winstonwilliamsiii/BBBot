@@ -47,6 +47,7 @@ function Start-AllServices {
     Write-Host "   • Streamlit App:   http://localhost:8501" -ForegroundColor Cyan
     Write-Host "   • Airflow UI:      http://localhost:8080 (admin/admin)" -ForegroundColor Cyan
     Write-Host "   • Airbyte UI:      http://localhost:8000" -ForegroundColor Cyan
+    Write-Host "   • MLflow UI:       http://localhost:5000" -ForegroundColor Cyan
 }
 
 function Stop-AllServices {

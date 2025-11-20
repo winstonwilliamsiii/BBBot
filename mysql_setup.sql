@@ -3,14 +3,20 @@
 
 -- Create the mansa_bot database if it doesn't exist
 CREATE DATABASE IF NOT EXISTS mansa_bot;
+
+-- Create the MLflow database for experiment tracking
+CREATE DATABASE IF NOT EXISTS mlflow_db;
+
 USE mansa_bot;
 
 -- Create airflow user with necessary permissions
 CREATE USER IF NOT EXISTS 'airflow'@'%' IDENTIFIED BY 'airflow';
 GRANT ALL PRIVILEGES ON mansa_bot.* TO 'airflow'@'%';
+GRANT ALL PRIVILEGES ON mlflow_db.* TO 'airflow'@'%';
 
 -- Also grant access to root user from any host (for Docker)
 GRANT ALL PRIVILEGES ON mansa_bot.* TO 'root'@'%';
+GRANT ALL PRIVILEGES ON mlflow_db.* TO 'root'@'%';
 FLUSH PRIVILEGES;
 
 -- Create a sample table to verify setup (optional)

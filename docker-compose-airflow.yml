@@ -139,8 +139,39 @@ services:
       retries: 5
       start_period: 30s
 
+  # MLflow Tracking Server
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: bentley-mlflow
+    depends_on:
+      - mysql
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=mysql+pymysql://root:root@mysql:3306/mlflow_db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    command: >
+      bash -c "pip install mlflow pymysql cryptography &&
+      mlflow server
+      --backend-store-uri mysql+pymysql://root:root@mysql:3306/mlflow_db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
 volumes:
   mysql_data:
+  mlflow_artifacts:
 
 networks:
   default:

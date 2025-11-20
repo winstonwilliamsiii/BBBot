@@ -20,7 +20,7 @@ function Show-ServiceStatus {
     docker-compose -f docker-compose-airflow.yml ps
     
     Write-Host "`n🔄 Airbyte Services:" -ForegroundColor Yellow  
-    docker-compose -f docker-compose-airbyte.yml ps
+    docker-compose -f docker-compose-airbyte-fixed.yml ps
     
     Write-Host "`n📊 Streamlit App:" -ForegroundColor Yellow
     docker-compose ps
@@ -35,7 +35,7 @@ function Start-AllServices {
     
     # Start Airbyte (separate network)
     Write-Host "`n2️⃣ Starting Airbyte..." -ForegroundColor Cyan
-    docker-compose -f docker-compose-airbyte.yml up -d
+    docker-compose -f docker-compose-airbyte-fixed.yml up -d
     
     Write-Host "`n⏳ Waiting for services to initialize..." -ForegroundColor Yellow
     Start-Sleep -Seconds 30
@@ -47,13 +47,14 @@ function Start-AllServices {
     Write-Host "   • Streamlit App:   http://localhost:8501" -ForegroundColor Cyan
     Write-Host "   • Airflow UI:      http://localhost:8080 (admin/admin)" -ForegroundColor Cyan
     Write-Host "   • Airbyte UI:      http://localhost:8000" -ForegroundColor Cyan
+    Write-Host "   • MLflow UI:       http://localhost:5000" -ForegroundColor Cyan
 }
 
 function Stop-AllServices {
     Write-Host "🛑 Stopping all services..." -ForegroundColor Red
     
     docker-compose -f docker-compose-airflow.yml down
-    docker-compose -f docker-compose-airbyte.yml down
+    docker-compose -f docker-compose-airbyte-fixed.yml down
     docker-compose down
     
     Write-Host "✅ All services stopped." -ForegroundColor Green
@@ -67,7 +68,7 @@ function Start-ServiceByName($serviceName) {
         }
         "airbyte" {
             Write-Host "🔄 Starting Airbyte services..." -ForegroundColor Green  
-            docker-compose -f docker-compose-airbyte.yml up -d
+            docker-compose -f docker-compose-airbyte-fixed.yml up -d
         }
         "streamlit" {
             Write-Host "📊 Starting Streamlit app..." -ForegroundColor Green
@@ -83,12 +84,12 @@ function Start-ServiceByName($serviceName) {
 function Show-Logs($serviceName) {
     switch ($serviceName) {
         "airflow" { docker-compose -f docker-compose-airflow.yml logs -f }
-        "airbyte" { docker-compose -f docker-compose-airbyte.yml logs -f }
+        "airbyte" { docker-compose -f docker-compose-airbyte-fixed.yml logs -f }
         "streamlit" { docker-compose logs -f }
         "all" { 
             Write-Host "📜 Showing logs for all services (Ctrl+C to exit)..." -ForegroundColor Cyan
             Start-Process powershell -ArgumentList "-Command docker-compose -f docker-compose-airflow.yml logs -f"
-            Start-Process powershell -ArgumentList "-Command docker-compose -f docker-compose-airbyte.yml logs -f"
+            Start-Process powershell -ArgumentList "-Command docker-compose -f docker-compose-airbyte-fixed.yml logs -f"
             docker-compose logs -f
         }
         default {
@@ -113,7 +114,7 @@ switch ($Action) {
             Write-Host "🛑 Stopping $Service services..." -ForegroundColor Yellow
             switch ($Service) {
                 "airflow" { docker-compose -f docker-compose-airflow.yml down }
-                "airbyte" { docker-compose -f docker-compose-airbyte.yml down }
+                "airbyte" { docker-compose -f docker-compose-airbyte-fixed.yml down }
                 "streamlit" { docker-compose down }
             }
         }

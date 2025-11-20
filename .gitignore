@@ -1,5 +1,12 @@
 .streamlit/secrets.toml
 
+# Temporary files
+.tmp*
+*.tmp
+
+# Git error logs
+git-error-*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

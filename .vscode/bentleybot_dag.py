@@ -99,11 +99,14 @@ def execute_trade():
 # === 5. Log to MLFlow ===
 def log_to_mlflow():
     df = pd.read_csv("/tmp/indicators.csv")
-    mlflow.set_tracking_uri("http://localhost:5000")
+    # Use container name in Docker network, localhost outside
+    mlflow.set_tracking_uri("http://mlflow:5000")
     mlflow.set_experiment("BentleyBudgetBot-Trading")
     with mlflow.start_run():
-        mlflow.log_metric("buy_signals", (df['trigger'] == 'BUY').sum())
-        mlflow.log_metric("sell_signals", (df['trigger'] == 'SELL').sum())
+        buy_count = (df['trigger'] == 'BUY').sum()
+        sell_count = (df['trigger'] == 'SELL').sum()
+        mlflow.log_metric("buy_signals", buy_count)
+        mlflow.log_metric("sell_signals", sell_count)
         df.to_csv("trade_signals.csv", index=False)
         mlflow.log_artifact("trade_signals.csv")
 

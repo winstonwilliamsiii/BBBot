@@ -3,6 +3,10 @@
     "DockerRun.DisableDockerrc": true,
     "git.ignoreLimitWarning": true,
     "cSpell.words": [
-        "MACD"
+        "MACD",
+        "airbyte",
+        "mlflow",
+        "mlruns",
+        "pymysql"
     ]
 }

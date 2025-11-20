@@ -11,7 +11,7 @@ services:
       MYSQL_USER: airflow
       MYSQL_PASSWORD: airflow
     ports:
-      - "3307:3306"
+      - "3307:3306"  # Changed to avoid conflict with local MySQL
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
@@ -38,8 +38,8 @@ services:
       - mlflow
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
-      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
@@ -79,8 +79,8 @@ services:
       - mlflow
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
-      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
@@ -104,8 +104,8 @@ services:
       - mlflow
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/mansa_bot
-      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:airflow@mysql:3306/mansa_bot
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'

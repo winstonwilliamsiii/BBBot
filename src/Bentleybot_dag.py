@@ -1,18 +1,23 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import pandas as pd
 import mlflow
 from sqlalchemy import create_engine
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # === CONFIG ===
 AIRBYTE_API = "http://localhost:8001"
 AIRBYTE_CONNECTION_ID = "your-airbyte-connection-id"
 MYSQL_CONFIG = {
-    "host": "localhost",
-    "user": "your_user",
-    "password": "your_pass",
+    "host": "mysql",  # Docker container name
+    "user": "airflow",
+    "password": "airflow",
     "database": "mansa_bot"
 }
 MYSQL_URL = (
@@ -112,13 +117,63 @@ def execute_trade():
 
 def log_to_mlflow():
     df = pd.read_csv("/tmp/indicators.csv")
-    mlflow.set_tracking_uri("http://localhost:5000")
+    
+    # Set MLflow tracking URI (accessible within Docker network)
+    mlflow.set_tracking_uri("http://mlflow:5000")
     mlflow.set_experiment("BentleyBudgetBot-Trading")
-    with mlflow.start_run():
-        mlflow.log_metric("buy_signals", (df['trigger'] == 'BUY').sum())
-        mlflow.log_metric("sell_signals", (df['trigger'] == 'SELL').sum())
-        df.to_csv("trade_signals.csv", index=False)
-        mlflow.log_artifact("trade_signals.csv")
+    
+    with mlflow.start_run() as run:
+        # Log parameters
+        mlflow.log_param("data_points", len(df))
+        mlflow.log_param("broker", BROKER)
+        mlflow.log_param("symbol", SYMBOL)
+        mlflow.log_param("quantity", QUANTITY)
+        
+        # Log metrics
+        buy_signals = (df['trigger'] == 'BUY').sum()
+        sell_signals = (df['trigger'] == 'SELL').sum()
+        
+        mlflow.log_metric("buy_signals", buy_signals)
+        mlflow.log_metric("sell_signals", sell_signals)
+        mlflow.log_metric("total_signals", buy_signals + sell_signals)
+        
+        # Log latest market data
+        if len(df) > 0:
+            latest = df.iloc[-1]
+            mlflow.log_metric("latest_rsi", latest.get('RSI', 0))
+            mlflow.log_metric("latest_macd", latest.get('MACD', 0))
+            mlflow.log_metric("latest_close", latest.get('close', 0))
+        
+        # Save and log artifacts
+        import os
+        artifact_path = "/tmp/mlflow_artifacts"
+        os.makedirs(artifact_path, exist_ok=True)
+        
+        # Save trading signals
+        signals_file = f"{artifact_path}/trade_signals.csv"
+        df.to_csv(signals_file, index=False)
+        mlflow.log_artifact(signals_file)
+        
+        # Save trading summary
+        summary = {
+            "run_id": run.info.run_id,
+            "timestamp": pd.Timestamp.now().isoformat(),
+            "total_data_points": len(df),
+            "buy_signals": int(buy_signals),
+            "sell_signals": int(sell_signals),
+            "last_action": (
+                latest.get('trigger', 'HOLD') if len(df) > 0 else 'HOLD'
+            )
+        }
+        
+        summary_file = f"{artifact_path}/trading_summary.json"
+        import json
+        with open(summary_file, 'w') as f:
+            json.dump(summary, f, indent=2)
+        mlflow.log_artifact(summary_file)
+        
+        print(f"✅ MLflow run completed: {run.info.run_id}")
+        print(f"📊 Logged {buy_signals} BUY and {sell_signals} SELL signals")
 
 
 # === Airflow Tasks ===
@@ -155,3 +210,4 @@ t5 = PythonOperator(
 )
 
 t1 >> t2 >> t3 >> t4 >> t5
+

@@ -3,8 +3,13 @@ from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import requests
 
-# Replace with your Tiingo API token
-TIINGO_API_TOKEN = "e6c794cd1e5e48519194065a2a43b2396298288b"
+# Load Tiingo API token from environment variable
+import os
+TIINGO_API_TOKEN = os.getenv('TIINGO_API_KEY', '')
+
+if not TIINGO_API_TOKEN:
+    raise ValueError("TIINGO_API_KEY environment variable not set")
+
 
 def fetch_tiingo_data(**kwargs):
     url = "https://api.tiingo.com/tiingo/daily/AAPL/prices"
@@ -15,6 +20,7 @@ def fetch_tiingo_data(**kwargs):
     data = response.json()
     print("Fetched Tiingo data:", data)
     # You could push to XCom, save to DB, etc.
+
 
 default_args = {
     "owner": "airflow",

@@ -1,3 +1,6 @@
+import knime.extension as knime
+import pandas as pd
+
 symbol = knime.workflow_variable("symbol")
 quantity = float(knime.workflow_variable("quantity"))
 trigger = knime.workflow_variable("trigger")

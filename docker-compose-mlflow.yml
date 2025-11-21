@@ -1,0 +1,106 @@
+# Bentley Budget Bot - Standalone MLflow Setup
+# This docker-compose file sets up MLflow tracking server independently
+# Use this if you want to run MLflow without the full Airflow stack
+
+version: '3.8'
+
+services:
+  # MLflow Tracking Server
+  mlflow:
+    image: python:3.11-slim
+    container_name: bentley-mlflow-standalone
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+      - MLFLOW_BACKEND_STORE_URI=sqlite:////mlflow/mlflow.db
+    volumes:
+      - ./data/mlflow:/mlflow/artifacts
+      - ./data/mlflow/db:/mlflow/db
+    command: >
+      bash -c "
+        pip install mlflow==2.8.1 pandas==2.1.4 && 
+        mkdir -p /mlflow/artifacts /mlflow/db && 
+        mlflow server 
+        --backend-store-uri sqlite:////mlflow/db/mlflow.db
+        --default-artifact-root /mlflow/artifacts 
+        --host 0.0.0.0 
+        --port 5000 
+        --serve-artifacts
+      "
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import requests; requests.get(\"http://localhost:5000\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Optional: MLflow with MySQL backend (more robust for production)
+  mlflow-mysql:
+    image: python:3.11-slim
+    container_name: bentley-mlflow-mysql
+    ports:
+      - "5001:5000"  # Different port to avoid conflict
+    depends_on:
+      - mysql
+    environment:
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=bentley_user
+      - MYSQL_PASSWORD=bentley_secure_2025
+      - MYSQL_DATABASE=mlflow_db
+    volumes:
+      - ./data/mlflow:/mlflow/artifacts
+    command: >
+      bash -c "
+        pip install mlflow==2.8.1 pymysql==1.1.0 pandas==2.1.4 && 
+        mkdir -p /mlflow/artifacts && 
+        mlflow server 
+        --backend-store-uri mysql+pymysql://bentley_user:bentley_secure_2025@mysql:3306/mlflow_db
+        --default-artifact-root /mlflow/artifacts 
+        --host 0.0.0.0 
+        --port 5000 
+        --serve-artifacts
+      "
+    restart: unless-stopped
+    profiles:
+      - mysql  # Only start with --profile mysql
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import requests; requests.get(\"http://localhost:5000\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # MySQL database for MLflow backend (optional)
+  mysql:
+    image: mysql:8.0
+    container_name: bentley-mysql-mlflow
+    ports:
+      - "3307:3306"  # Different port to avoid conflicts
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_secure_2025
+      - MYSQL_DATABASE=mlflow_db
+      - MYSQL_USER=bentley_user
+      - MYSQL_PASSWORD=bentley_secure_2025
+    volumes:
+      - mysql_mlflow_data:/var/lib/mysql
+      - ./mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
+    profiles:
+      - mysql  # Only start with --profile mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "bentley_user", "-pbentley_secure_2025"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  mysql_mlflow_data:
+    driver: local
+
+networks:
+  default:
+    name: bentley-mlflow-network

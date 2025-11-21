@@ -1,5 +1,44 @@
 .streamlit/secrets.toml
 
+# ==============================================
+# SECURITY - NEVER COMMIT THESE FILES
+# ==============================================
+# Environment variables with secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# API Keys and credentials
+**/secrets.toml
+secrets.json
+credentials.json
+service-account*.json
+
+# Database files with sensitive data
+*.db
+*.sqlite
+*.sqlite3
+
+# Airflow configuration with secrets
+airflow.cfg
+webserver_config.py
+
+# MLflow artifacts with model data
+mlflow/
+mlartifacts/
+
+# Docker secrets
+docker-compose.override.yml
+.docker/
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+*.ppk
+
+# ==============================================
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

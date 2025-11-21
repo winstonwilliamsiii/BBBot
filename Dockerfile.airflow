@@ -11,13 +11,9 @@ RUN apt-get update && apt-get install -y \
 
 USER airflow
 RUN pip install --no-cache-dir \
-    pymysql \
+    pymysql==1.1.0 \
     mysqlclient \
-    apache-airflow[mysql] \
-    mlflow \
-    cryptography \
-    requests \
-    pandas
+    apache-airflow[mysql]
 
-# Copy any custom configuration
-COPY --chown=airflow:root airflow_config/airflow.cfg /opt/airflow/airflow.cfg
+# Copy any custom configuration if it exists
+# COPY --chown=airflow:root airflow_config/airflow.cfg /opt/airflow/airflow.cfg

@@ -55,7 +55,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./src:/opt/airflow/dags  # Your DAGs folder
+      - ./workflows/airflow/dags:/opt/airflow/dags  # Organized Airflow DAGs folder
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: webserver
@@ -86,7 +86,7 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     volumes:
-      - ./src:/opt/airflow/dags
+      - ./workflows/airflow/dags:/opt/airflow/dags
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: scheduler
@@ -113,7 +113,7 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     volumes:
-      - ./src:/opt/airflow/dags
+      - ./workflows/airflow/dags:/opt/airflow/dags
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: celery worker
@@ -139,7 +139,8 @@ services:
                --default-artifact-root /mlflow/artifacts 
                --host 0.0.0.0 
                --port 5000 
-               --serve-artifacts"
+               --serve-artifacts
+               --gunicorn-opts '--bind 0.0.0.0:5000'"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000 || exit 1"]

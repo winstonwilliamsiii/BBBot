@@ -1,0 +1,126 @@
+version: '3.8'
+
+# Simplified Airbyte setup for Bentley Budget Bot
+# Using stable version 0.50.33 with basic authentication disabled
+
+services:
+  # Airbyte Database
+  airbyte-db:
+    image: postgres:13-alpine
+    container_name: bentley-airbyte-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: docker
+      POSTGRES_PASSWORD: docker
+      POSTGRES_DB: airbyte
+    volumes:
+      - airbyte_db:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  # Airbyte Bootloader
+  airbyte-bootloader:
+    image: airbyte/bootloader:0.50.33
+    container_name: bentley-airbyte-bootloader
+    environment:
+      - DATABASE_PASSWORD=docker
+      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
+      - DATABASE_USER=docker
+    depends_on:
+      - airbyte-db
+
+  # Airbyte Server (API)
+  airbyte-server:
+    image: airbyte/server:0.50.33
+    container_name: bentley-airbyte-server
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_VERSION=0.50.33
+      - CONFIG_ROOT=/data
+      - DATABASE_PASSWORD=docker
+      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
+      - DATABASE_USER=docker
+      - TRACKING_STRATEGY=logging
+      - WORKER_ENVIRONMENT=docker
+      - WORKSPACE_ROOT=/tmp/workspace
+      - WEBAPP_URL=http://localhost:8000/
+      - API_URL=/api/v1/
+    ports:
+      - "8001:8001"
+    volumes:
+      - workspace:/tmp/workspace
+      - data:/data
+      - local_root:/tmp/airbyte_local
+    depends_on:
+      - airbyte-bootloader
+
+  # Airbyte Web UI (Simple version)
+  airbyte-webapp:
+    image: airbyte/webapp:0.50.33
+    container_name: bentley-airbyte-webapp
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    environment:
+      - AIRBYTE_VERSION=0.50.33
+      - API_URL=/api/v1/
+      - INTERNAL_API_HOST=airbyte-server:8001
+      - CONNECTOR_BUILDER_API_HOST=airbyte-server:8001
+      - KEYCLOAK_INTERNAL_HOST=airbyte-server:8001
+      - AIRBYTE_SERVER_HOST=airbyte-server:8001
+      - TRACKING_STRATEGY=logging
+    depends_on:
+      - airbyte-server
+
+  # Airbyte Worker
+  airbyte-worker:
+    image: airbyte/worker:0.50.33
+    container_name: bentley-airbyte-worker
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_VERSION=0.50.33
+      - AUTO_DETECT_SCHEMA=true
+      - CONFIG_ROOT=/data
+      - DATABASE_PASSWORD=docker
+      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
+      - DATABASE_USER=docker
+      - DEPLOYMENT_MODE=OSS
+      - LOCAL_DOCKER_MOUNT=/tmp/airbyte_local
+      - LOCAL_ROOT=/tmp/airbyte_local
+      - TRACKING_STRATEGY=logging
+      - WEBAPP_URL=http://localhost:8000/
+      - WORKER_ENVIRONMENT=docker
+      - WORKSPACE_ROOT=/tmp/workspace
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspace:/tmp/workspace
+      - local_root:/tmp/airbyte_local
+    depends_on:
+      - airbyte-server
+
+  # Airbyte Temporal
+  airbyte-temporal:
+    image: airbyte/temporal:0.50.33
+    container_name: bentley-airbyte-temporal
+    restart: unless-stopped
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=docker
+      - POSTGRES_PWD=docker
+      - POSTGRES_SEEDS=airbyte-db
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+    volumes:
+      - ./temporal:/etc/temporal/config/dynamicconfig
+    depends_on:
+      - airbyte-db
+
+volumes:
+  airbyte_db:
+  workspace:
+  data:
+  local_root:
+
+networks:
+  default:
+    name: airbyte-network

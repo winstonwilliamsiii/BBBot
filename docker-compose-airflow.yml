@@ -35,12 +35,13 @@ services:
     depends_on:
       - mysql
       - redis
+      - mlflow
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
@@ -49,10 +50,12 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     ports:
       - "8080:8080"
     volumes:
-      - ./.vscode:/opt/airflow/dags  # Your DAGs folder
+      - ./workflows/airflow/dags:/opt/airflow/dags  # Organized Airflow DAGs folder
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: webserver
@@ -73,6 +76,7 @@ services:
     depends_on:
       - mysql
       - redis
+      - mlflow
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
@@ -82,7 +86,7 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     volumes:
-      - ./.vscode:/opt/airflow/dags
+      - ./workflows/airflow/dags:/opt/airflow/dags
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: scheduler
@@ -97,20 +101,53 @@ services:
     depends_on:
       - mysql
       - redis
+      - mlflow
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     volumes:
-      - ./.vscode:/opt/airflow/dags
+      - ./workflows/airflow/dags:/opt/airflow/dags
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: celery worker
     restart: unless-stopped
+
+  # MLflow Tracking Server
+  mlflow:
+    image: python:3.11-slim
+    container_name: bentley-mlflow
+    depends_on:
+      - mysql
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - ./data/mlflow:/mlflow/artifacts
+    command: >
+      bash -c "pip install mlflow==2.8.1 gunicorn && 
+               mkdir -p /mlflow && 
+               mlflow server 
+               --backend-store-uri sqlite:////mlflow/mlflow.db
+               --default-artifact-root /mlflow/artifacts 
+               --host 0.0.0.0 
+               --port 5000 
+               --serve-artifacts
+               --gunicorn-opts '--bind 0.0.0.0:5000'"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # Your existing Bentley Budget Bot (Streamlit app)
   bentley-budget-bot:
@@ -120,15 +157,17 @@ services:
     container_name: bentley-budget-bot
     depends_on:
       - mysql
+      - mlflow
     ports:
       - "8501:8501"
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=mysql
       - DB_PORT=3306
-      - DB_USER=root
-      - DB_PASSWORD=root
+      - DB_USER=airflow
+      - DB_PASSWORD=airflow
       - DB_NAME=mansa_bot
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
     volumes:
       - ./data:/app/data
     restart: unless-stopped

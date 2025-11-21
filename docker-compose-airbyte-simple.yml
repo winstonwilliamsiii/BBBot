@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Simplified Airbyte setup for Bentley Budget Bot
+# Using stable version 0.50.33 with basic authentication disabled
+
 services:
   # Airbyte Database
   airbyte-db:
@@ -17,54 +20,31 @@ services:
 
   # Airbyte Bootloader
   airbyte-bootloader:
-    image: airbyte/bootloader:0.63.15
+    image: airbyte/bootloader:0.50.33
     container_name: bentley-airbyte-bootloader
     environment:
-      - AIRBYTE_VERSION=0.63.15
       - DATABASE_PASSWORD=docker
       - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
       - DATABASE_USER=docker
-    depends_on:
-      - airbyte-db
-    command: ./wait-for-it.sh airbyte-db:5432 -- bootloader
-
-  # Airbyte Temporal
-  airbyte-temporal:
-    image: temporalio/auto-setup:1.22.0
-    container_name: bentley-airbyte-temporal
-    restart: unless-stopped
-    ports:
-      - "7233:7233"
-    environment:
-      - DB=postgresql
-      - DB_PORT=5432
-      - POSTGRES_USER=docker
-      - POSTGRES_PWD=docker
-      - POSTGRES_SEEDS=airbyte-db
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-    volumes:
-      - ./temporal:/etc/temporal/config/dynamicconfig
     depends_on:
       - airbyte-db
 
   # Airbyte Server (API)
   airbyte-server:
-    image: airbyte/server:0.63.15
+    image: airbyte/server:0.50.33
     container_name: bentley-airbyte-server
     restart: unless-stopped
     environment:
-      - AIRBYTE_VERSION=0.63.15
+      - AIRBYTE_VERSION=0.50.33
       - CONFIG_ROOT=/data
       - DATABASE_PASSWORD=docker
       - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
       - DATABASE_USER=docker
-      - TEMPORAL_HOST=airbyte-temporal:7233
       - TRACKING_STRATEGY=logging
-      - WORKSPACE_ROOT=/tmp/workspace
       - WORKER_ENVIRONMENT=docker
-      - LOCAL_ROOT=/tmp/airbyte_local
-      - WEBAPP_URL=http://localhost:8000
-      - AUTO_DETECT_SCHEMA=true
+      - WORKSPACE_ROOT=/tmp/workspace
+      - WEBAPP_URL=http://localhost:8000/
+      - API_URL=/api/v1/
     ports:
       - "8001:8001"
     volumes:
@@ -72,35 +52,33 @@ services:
       - data:/data
       - local_root:/tmp/airbyte_local
     depends_on:
-      airbyte-bootloader:
-        condition: service_completed_successfully
+      - airbyte-bootloader
 
-  # Airbyte Web UI  
+  # Airbyte Web UI (Simple version)
   airbyte-webapp:
-    image: airbyte/webapp:0.63.15
+    image: airbyte/webapp:0.50.33
     container_name: bentley-airbyte-webapp
     restart: unless-stopped
     ports:
       - "8000:80"
     environment:
-      - AIRBYTE_VERSION=0.63.15
+      - AIRBYTE_VERSION=0.50.33
       - API_URL=/api/v1/
-      - CONNECTOR_BUILDER_API_URL=/connector-builder-api
       - INTERNAL_API_HOST=airbyte-server:8001
-      - CONNECTOR_BUILDER_API_HOST=airbyte-connector-builder-server:80
+      - CONNECTOR_BUILDER_API_HOST=airbyte-server:8001
+      - KEYCLOAK_INTERNAL_HOST=airbyte-server:8001
       - AIRBYTE_SERVER_HOST=airbyte-server:8001
-      - KEYCLOAK_INTERNAL_HOST=airbyte-keycloak:8080
       - TRACKING_STRATEGY=logging
     depends_on:
       - airbyte-server
 
   # Airbyte Worker
   airbyte-worker:
-    image: airbyte/worker:0.63.15
+    image: airbyte/worker:0.50.33
     container_name: bentley-airbyte-worker
     restart: unless-stopped
     environment:
-      - AIRBYTE_VERSION=0.63.15
+      - AIRBYTE_VERSION=0.50.33
       - AUTO_DETECT_SCHEMA=true
       - CONFIG_ROOT=/data
       - DATABASE_PASSWORD=docker
@@ -109,32 +87,33 @@ services:
       - DEPLOYMENT_MODE=OSS
       - LOCAL_DOCKER_MOUNT=/tmp/airbyte_local
       - LOCAL_ROOT=/tmp/airbyte_local
-      - SECRET_PERSISTENCE=TESTING_CONFIG_DB_TABLE
-      - TEMPORAL_HOST=airbyte-temporal:7233
       - TRACKING_STRATEGY=logging
-      - WEBAPP_URL=http://localhost:8000
+      - WEBAPP_URL=http://localhost:8000/
       - WORKER_ENVIRONMENT=docker
       - WORKSPACE_ROOT=/tmp/workspace
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:rw
-      - workspace:/tmp/workspace:rw
-      - local_root:/tmp/airbyte_local:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspace:/tmp/workspace
+      - local_root:/tmp/airbyte_local
     depends_on:
       - airbyte-server
 
-  # Airbyte Connector Builder Server
-  airbyte-connector-builder-server:
-    image: airbyte/connector-builder-server:0.63.15
-    container_name: bentley-airbyte-connector-builder-server
+  # Airbyte Temporal
+  airbyte-temporal:
+    image: airbyte/temporal:0.50.33
+    container_name: bentley-airbyte-temporal
     restart: unless-stopped
-    ports:
-      - "80"
     environment:
-      - AIRBYTE_VERSION=0.63.15
-      - CDK_VERSION=0.63.15
-      - CONNECTOR_BUILDER_SERVER_API_HOST=0.0.0.0
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=docker
+      - POSTGRES_PWD=docker
+      - POSTGRES_SEEDS=airbyte-db
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+    volumes:
+      - ./temporal:/etc/temporal/config/dynamicconfig
     depends_on:
-      - airbyte-server
+      - airbyte-db
 
 volumes:
   airbyte_db:

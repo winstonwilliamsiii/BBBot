@@ -1,0 +1,173 @@
+version: '3.8'
+
+# Bentley Budget Bot - Simplified Services Configuration
+# This file runs MLflow and Airbyte with proper resource limits and networking
+
+networks:
+  bentley-network:
+    driver: bridge
+
+volumes:
+  mlflow-data:
+  airbyte-db-data:
+  airbyte-config:
+
+services:
+  # ==================================================
+  # MLFLOW - Experiment Tracking
+  # ==================================================
+  mlflow:
+    image: python:3.11-slim
+    container_name: bentley-mlflow
+    entrypoint: >
+      /bin/bash -c "pip install mlflow==2.8.0 && mlflow server
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000"
+    ports:
+      - "5000:5000"
+    networks:
+      - bentley-network
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - mlflow-data:/mlflow
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==================================================
+  # AIRBYTE - Data Integration Platform
+  # ==================================================
+  
+  # Airbyte Database
+  airbyte-db:
+    image: postgres:13-alpine
+    container_name: bentley-airbyte-db
+    networks:
+      - bentley-network
+    environment:
+      - POSTGRES_USER=airbyte
+      - POSTGRES_PASSWORD=airbyte
+      - POSTGRES_DB=airbyte
+    volumes:
+      - airbyte-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airbyte"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Airbyte Server
+  airbyte-server:
+    image: airbyte/server:0.50.33
+    container_name: bentley-airbyte-server
+    ports:
+      - "8001:8001"
+    networks:
+      - bentley-network
+    environment:
+      - DATABASE_USER=airbyte
+      - DATABASE_PASSWORD=airbyte
+      - DATABASE_HOST=airbyte-db
+      - DATABASE_PORT=5432
+      - DATABASE_DB=airbyte
+      - WORKSPACE_ROOT=/tmp/workspace
+      - CONFIG_ROOT=/data
+      - TRACKING_STRATEGY=segment
+      - AIRBYTE_VERSION=latest
+      - TEMPORAL_HOST=airbyte-temporal:7233
+    volumes:
+      - airbyte-config:/data
+      - ./data/airbyte:/tmp/workspace
+    depends_on:
+      airbyte-db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # Airbyte Web UI
+  airbyte-webapp:
+    image: airbyte/webapp:0.50.33
+    container_name: bentley-airbyte-webapp
+    ports:
+      - "8000:80"
+    networks:
+      - bentley-network
+    environment:
+      - AIRBYTE_SERVER_HOST=airbyte-server
+      - AIRBYTE_SERVER_PORT=8001
+    depends_on:
+      - airbyte-server
+    restart: unless-stopped
+
+  # Airbyte Temporal (Workflow Engine)
+  airbyte-temporal:
+    image: temporalio/auto-setup:1.20.0
+    container_name: bentley-airbyte-temporal
+    networks:
+      - bentley-network
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=airbyte
+      - POSTGRES_PWD=airbyte
+      - POSTGRES_SEEDS=airbyte-db
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+    volumes:
+      - ./airbyte-temporal-dynamicconfig:/etc/temporal/config/dynamicconfig
+    depends_on:
+      airbyte-db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Airbyte Worker
+  airbyte-worker:
+    image: airbyte/worker:0.50.33
+    container_name: bentley-airbyte-worker
+    networks:
+      - bentley-network
+    environment:
+      - AIRBYTE_VERSION=latest
+      - DATABASE_USER=airbyte
+      - DATABASE_PASSWORD=airbyte
+      - DATABASE_HOST=airbyte-db
+      - DATABASE_PORT=5432
+      - DATABASE_DB=airbyte
+      - WORKSPACE_ROOT=/tmp/workspace
+      - CONFIG_ROOT=/data
+      - TEMPORAL_HOST=airbyte-temporal:7233
+      - TRACKING_STRATEGY=segment
+    volumes:
+      - airbyte-config:/data
+      - ./data/airbyte:/tmp/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - airbyte-temporal
+      - airbyte-server
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G

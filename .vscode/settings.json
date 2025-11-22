@@ -8,5 +8,18 @@
         "mlflow",
         "mlruns",
         "pymysql"
-    ]
+    ],
+    // Airflow Extension Configuration
+    "airflow.connections": [
+        {
+            "name": "Bentley Airflow Local",
+            "url": "http://localhost:8080",
+            "username": "admin",
+            "password": "admin"
+        }
+    ],
+    "airflow.defaultConnection": "Bentley Airflow Local",
+    "airflow.dagsFolder": "${workspaceFolder}/dags",
+    "airflow.enableAuthentication": true,
+    "airflow.refreshInterval": 30
 }

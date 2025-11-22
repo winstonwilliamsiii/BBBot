@@ -14,10 +14,11 @@ RUN pip install --no-cache-dir \
     pymysql==1.1.0 \
     mysqlclient \
     apache-airflow[mysql] \
+    apache-airflow-providers-airbyte \
     mlflow==2.8.1 \
     pandas==2.1.4 \
     numpy==1.24.3 \
     requests==2.31.0
 
 # Copy any custom configuration if it exists
-# COPY --chown=airflow:root airflow_config/airflow.cfg /opt/airflow/airflow.cfg
+COPY --chown=airflow:root airflow_config/airflow.cfg /opt/airflow/airflow.cfg

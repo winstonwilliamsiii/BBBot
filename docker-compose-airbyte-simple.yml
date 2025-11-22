@@ -40,6 +40,7 @@ services:
       - DATABASE_PASSWORD=docker
       - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
       - DATABASE_USER=docker
+      - TEMPORAL_HOST=airbyte-temporal:7233
       - TRACKING_STRATEGY=logging
       - WORKER_ENVIRONMENT=docker
       - WORKSPACE_ROOT=/tmp/workspace
@@ -87,6 +88,7 @@ services:
       - DEPLOYMENT_MODE=OSS
       - LOCAL_DOCKER_MOUNT=/tmp/airbyte_local
       - LOCAL_ROOT=/tmp/airbyte_local
+      - TEMPORAL_HOST=airbyte-temporal:7233
       - TRACKING_STRATEGY=logging
       - WEBAPP_URL=http://localhost:8000/
       - WORKER_ENVIRONMENT=docker
@@ -100,7 +102,7 @@ services:
 
   # Airbyte Temporal
   airbyte-temporal:
-    image: airbyte/temporal:0.50.33
+    image: temporalio/auto-setup:1.20.0
     container_name: bentley-airbyte-temporal
     restart: unless-stopped
     environment:
@@ -109,9 +111,7 @@ services:
       - POSTGRES_USER=docker
       - POSTGRES_PWD=docker
       - POSTGRES_SEEDS=airbyte-db
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
-    volumes:
-      - ./temporal:/etc/temporal/config/dynamicconfig
+      - SKIP_DEFAULT_NAMESPACE_CREATION=false
     depends_on:
       - airbyte-db
 

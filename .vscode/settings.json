@@ -21,5 +21,7 @@
     "airflow.defaultConnection": "Bentley Airflow Local",
     "airflow.dagsFolder": "${workspaceFolder}/dags",
     "airflow.enableAuthentication": true,
-    "airflow.refreshInterval": 30
+    "airflow.refreshInterval": 30,
+    "airflow.apiVersion": "v1",
+    "airflow.pythonPath": "python"
 }

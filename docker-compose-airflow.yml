@@ -15,6 +15,8 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./mysql_config/airbyte_ip_whitelist.sql:/docker-entrypoint-initdb.d/02-airbyte-whitelist.sql
+      - ./mysql_config/my.cnf:/etc/mysql/conf.d/custom.cnf
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password
 
@@ -44,6 +46,7 @@ services:
       AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
       _AIRFLOW_DB_MIGRATE: 'true'
@@ -51,11 +54,12 @@ services:
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      TIINGO_API_KEY: ${TIINGO_API_KEY:-}
       _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     ports:
       - "8080:8080"
     volumes:
-      - ./workflows/airflow/dags:/opt/airflow/dags  # Organized Airflow DAGs folder
+      - ./dags:/opt/airflow/dags  # DAGs folder in project root
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: webserver
@@ -85,8 +89,10 @@ services:
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      TIINGO_API_KEY: ${TIINGO_API_KEY:-}
     volumes:
-      - ./workflows/airflow/dags:/opt/airflow/dags
+      - ./dags:/opt/airflow/dags  # DAGs folder in project root
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: scheduler
@@ -111,9 +117,10 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      TIINGO_API_KEY: ${TIINGO_API_KEY:-}
       _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     volumes:
-      - ./workflows/airflow/dags:/opt/airflow/dags
+      - ./dags:/opt/airflow/dags  # DAGs folder in project root
       - ./airflow_config/logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
     command: celery worker

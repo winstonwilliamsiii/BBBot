@@ -10,9 +10,25 @@ sys.path.append('/opt/airflow/dags')
 sys.path.append('/opt/airflow')
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from mlflow_config import log_data_ingestion, log_portfolio_metrics
+# TODO: Create mlflow_config.py module with these functions
+# from mlflow_config import log_data_ingestion, log_portfolio_metrics
+import mlflow
 
 dataset = Dataset("mysql://mansa_bot/binance_ohlcv")
+
+
+def log_data_ingestion(stats, run_name):
+    """Stub function for MLflow data ingestion logging"""
+    print(f"MLflow logging stub: {run_name} - {stats}")
+    # TODO: Implement actual MLflow logging
+    pass
+
+
+def log_portfolio_metrics(data, run_name):
+    """Stub function for MLflow portfolio metrics logging"""
+    print(f"MLflow portfolio stub: {run_name} - {data}")
+    # TODO: Implement actual MLflow logging
+    pass
 
 
 def log_ingestion_metrics(**context):

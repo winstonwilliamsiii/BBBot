@@ -14,7 +14,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 # from mlflow_config import log_data_ingestion, log_portfolio_metrics
 import mlflow
 
-dataset = Dataset("mysql://mansa_bot/binance_ohlcv")
+# Datasets from upstream DAGs
+airbyte_dataset = Dataset("mysql://mansa_bot/binance_ohlcv")
+knime_dataset = Dataset("mysql://mansa_bot/knime_processed")
 
 
 def log_data_ingestion(stats, run_name):
@@ -140,10 +142,10 @@ default_args = {
 }
 
 with DAG(
-    "mlflow_logging_dag", 
+    "mlflow_logging_dag",
     default_args=default_args,
     description='Bentley Budget Bot - MLflow Data Tracking',
-    schedule=[dataset], 
+    schedule=[airbyte_dataset, knime_dataset],
     catchup=False,
     tags=['bentley-bot', 'mlflow', 'tracking', 'data-quality']
 ) as dag:

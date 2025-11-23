@@ -55,6 +55,9 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: admin
       MLFLOW_TRACKING_URI: http://mlflow:5000
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
+      AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
+      AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
+      AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
       _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     ports:
       - "8080:8080"
@@ -91,6 +94,9 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
+      AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
+      AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
+      AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
     volumes:
       - ./dags:/opt/airflow/dags  # DAGs folder in project root
       - ./airflow_config/logs:/opt/airflow/logs
@@ -118,6 +124,9 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       MLFLOW_TRACKING_URI: http://mlflow:5000
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
+      AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
+      AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
+      AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
       _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     volumes:
       - ./dags:/opt/airflow/dags  # DAGs folder in project root

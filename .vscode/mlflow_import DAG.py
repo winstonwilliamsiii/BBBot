@@ -19,7 +19,7 @@ def log_ingestion_metrics(**context):
     """Enhanced data ingestion logging with proper error handling"""
     try:
         # Get connection from Airflow connection
-        from airflow.hooks.mysql_hook import MySqlHook
+        from airflow.providers.mysql.hooks.mysql import MySqlHook
         mysql_hook = MySqlHook(mysql_conn_id='mysql_default')
 
         # Query data

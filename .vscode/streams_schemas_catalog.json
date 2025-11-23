@@ -1,0 +1,84 @@
+{
+  "connectionSpecification": {
+    "title": "Stocktwits Sentiment Source",
+    "type": "object",
+    "required": ["tickers", "poll_interval_seconds"],
+    "properties": {
+      "tickers": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "List of tickers to track (e.g., [\"AMZN\", \"AAPL\"])."
+      },
+      "poll_interval_seconds": {
+        "type": "integer",
+        "default": 60,
+        "minimum": 15,
+        "description": "Polling interval for messages API."
+      },
+      "score_refresh_minutes": {
+        "type": "integer",
+        "default": 30,
+        "minimum": 5,
+        "description": "Refresh cadence for scraped sentiment score."
+      },
+      "user_agent": {
+        "type": "string",
+        "default": "Mozilla/5.0",
+        "description": "User-Agent header for scraping."
+      }
+    }
+  },
+  "type": "object"
+{
+  "streams": [
+    {
+      "name": "sentiment_messages",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "ticker": { "type": "string" },
+          "body": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "sentiment": { "type": "string" },
+          "user_id": { "type": "integer" },
+          "user_followers": { "type": "integer" }
+        }
+      },
+      "supported_sync_modes": ["incremental", "full_refresh"],
+      "source_defined_cursor": true,
+      "default_cursor_field": ["created_at"]
+    },
+    {
+      "name": "sentiment_aggregates",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "ticker": { "type": "string" },
+          "window_start": { "type": "string", "format": "date-time" },
+          "window_end": { "type": "string", "format": "date-time" },
+          "bullish_count": { "type": "integer" },
+          "bearish_count": { "type": "integer" },
+          "total_messages": { "type": "integer" },
+          "unique_authors": { "type": "integer" },
+          "message_rate_per_min": { "type": "number" },
+          "sentiment_score_1d": { "type": "number" }
+        }
+      },
+      "supported_sync_modes": ["incremental", "full_refresh"],
+      "source_defined_cursor": false
+    },
+    {
+      "name": "sentiment_score",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "ticker": { "type": "string" },
+          "scraped_at": { "type": "string", "format": "date-time" },
+          "sentiment_score_1d": { "type": "number" }
+        }
+      },
+      "supported_sync_modes": ["full_refresh"]
+    }
+  ]
+}}

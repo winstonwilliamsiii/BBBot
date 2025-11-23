@@ -14,9 +14,9 @@ services:
       - "3307:3306"  # Changed to avoid conflict with local MySQL
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./mysql_config/airbyte_ip_whitelist.sql:/docker-entrypoint-initdb.d/02-airbyte-whitelist.sql
-      - ./mysql_config/my.cnf:/etc/mysql/conf.d/custom.cnf
+      - ../scripts/setup/mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../mysql_config/airbyte_ip_whitelist.sql:/docker-entrypoint-initdb.d/02-airbyte-whitelist.sql
+      - ../mysql_config/my.cnf:/etc/mysql/conf.d/custom.cnf
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password
 
@@ -31,8 +31,8 @@ services:
   # Airflow Webserver
   airflow-webserver:
     build:
-      context: .
-      dockerfile: Dockerfile.airflow
+      context: ..
+      dockerfile: docker/Dockerfile.airflow
     container_name: bentley-airflow-webserver
     depends_on:
       - mysql
@@ -62,9 +62,10 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./dags:/opt/airflow/dags  # DAGs folder in project root
-      - ./airflow_config/logs:/opt/airflow/logs
-      - ./data:/opt/airflow/data
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/config/logs:/opt/airflow/logs
+      - ../data:/opt/airflow/data
+      - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
     command: webserver
     restart: unless-stopped
     healthcheck:
@@ -77,8 +78,8 @@ services:
   # Airflow Scheduler
   airflow-scheduler:
     build:
-      context: .
-      dockerfile: Dockerfile.airflow
+      context: ..
+      dockerfile: docker/Dockerfile.airflow
     container_name: bentley-airflow-scheduler
     depends_on:
       - mysql
@@ -98,17 +99,18 @@ services:
       AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
     volumes:
-      - ./dags:/opt/airflow/dags  # DAGs folder in project root
-      - ./airflow_config/logs:/opt/airflow/logs
-      - ./data:/opt/airflow/data
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/config/logs:/opt/airflow/logs
+      - ../data:/opt/airflow/data
+      - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
     command: scheduler
     restart: unless-stopped
 
   # Airflow Worker (for Celery executor)
   airflow-worker:
     build:
-      context: .
-      dockerfile: Dockerfile.airflow
+      context: ..
+      dockerfile: docker/Dockerfile.airflow
     container_name: bentley-airflow-worker
     depends_on:
       - mysql
@@ -129,9 +131,10 @@ services:
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
       _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
     volumes:
-      - ./dags:/opt/airflow/dags  # DAGs folder in project root
-      - ./airflow_config/logs:/opt/airflow/logs
-      - ./data:/opt/airflow/data
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/config/logs:/opt/airflow/logs
+      - ../data:/opt/airflow/data
+      - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
     command: celery worker
     restart: unless-stopped
 
@@ -146,7 +149,7 @@ services:
     environment:
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
     volumes:
-      - ./data/mlflow:/mlflow/artifacts
+      - ../data/mlflow:/mlflow/artifacts
     command: >
       bash -c "pip install mlflow==2.8.1 gunicorn && 
                mkdir -p /mlflow && 
@@ -168,8 +171,8 @@ services:
   # Your existing Bentley Budget Bot (Streamlit app)
   bentley-budget-bot:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: bentley-budget-bot
     depends_on:
       - mysql
@@ -185,7 +188,7 @@ services:
       - DB_NAME=mansa_bot
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     volumes:
-      - ./data:/app/data
+      - ../data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]

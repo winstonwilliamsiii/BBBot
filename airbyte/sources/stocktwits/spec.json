@@ -1,0 +1,28 @@
+{
+  "documentationUrl": "https://stocktwits.com/developers/docs/api",
+  "connectionSpecification": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Stocktwits Sentiment Source Spec",
+    "type": "object",
+    "required": ["tickers"],
+    "properties": {
+      "tickers": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "title": "Stock Tickers",
+        "description": "List of stock tickers to fetch sentiment for (e.g., AMZN, TSLA, AAPL)",
+        "examples": [
+          ["AMZN", "TSLA", "AAPL"]
+        ]
+      },
+      "user_agent": {
+        "type": "string",
+        "title": "User Agent",
+        "description": "User agent string for HTTP requests",
+        "default": "Mozilla/5.0 (compatible; AirbyteBot/1.0)"
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "tickers": ["AMZN", "TSLA", "AAPL", "NVDA", "MSFT"],
+  "user_agent": "Mozilla/5.0 (compatible; BentleyBot/1.0)"
+}

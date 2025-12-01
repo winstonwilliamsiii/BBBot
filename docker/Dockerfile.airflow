@@ -20,5 +20,4 @@ RUN pip install --no-cache-dir \
     numpy==1.24.3 \
     requests==2.31.0
 
-# Copy any custom configuration if it exists
-COPY --chown=airflow:root airflow_config/airflow.cfg /opt/airflow/airflow.cfg
+# Note: Custom airflow.cfg can be mounted via volume if needed

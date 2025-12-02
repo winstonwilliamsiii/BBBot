@@ -23,5 +23,35 @@
     "airflow.enableAuthentication": true,
     "airflow.refreshInterval": 30,
     "airflow.apiVersion": "v1",
-    "airflow.pythonPath": "python"
+    "airflow.pythonPath": "python",
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3306,
+            "driver": "MySQL",
+            "database": "mydb",
+            "name": "MoorKingdom",
+            "username": "root"
+        },
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3307,
+            "driver": "MySQL",
+            "name": "Demo_Bots",
+            "database": "bbbot1",
+            "username": "root"
+        }
+    ]
 }

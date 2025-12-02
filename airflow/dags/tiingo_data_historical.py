@@ -27,9 +27,9 @@ def fetch_tiingo_data(**kwargs):
     conn = mysql_hook.get_conn()
     cursor = conn.cursor()
     
-    # Create table if not exists
+    # Create table if not exists - Named stock_prices_tiingo for clarity
     create_table_sql = """
-    CREATE TABLE IF NOT EXISTS stock_prices (
+    CREATE TABLE IF NOT EXISTS stock_prices_tiingo (
         id INT AUTO_INCREMENT PRIMARY KEY,
         ticker VARCHAR(10) NOT NULL,
         date DATE NOT NULL,
@@ -78,7 +78,7 @@ def fetch_tiingo_data(**kwargs):
             
             # Insert data into MySQL
             insert_sql = """
-            INSERT INTO stock_prices 
+            INSERT INTO stock_prices_tiingo 
             (ticker, date, open, high, low, close, volume, adj_open, adj_high, adj_low, adj_close, adj_volume, split_factor)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE

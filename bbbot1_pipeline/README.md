@@ -45,13 +45,25 @@ python -m bbbot1_pipeline.db
 
 ## 📊 Usage Examples
 
+### Load Ticker Configuration
+
+```python
+from bbbot1_pipeline import load_tickers_config
+
+# Load centralized ticker config
+config = load_tickers_config()
+quantum_tickers = config['tickers']['quantum']  # ['IONQ', 'QBTS', 'SOUN', 'RGTI']
+all_tickers = config['tickers']['all']  # All tracked tickers
+```
+
 ### Ingest Stock Prices (yfinance)
 
 ```python
-from bbbot1_pipeline import run_yfinance_ingestion
+from bbbot1_pipeline import run_yfinance_ingestion, load_tickers_config
 
 # Fetch 2 years of data for quantum stocks
-tickers = ["RGTI", "QBTS", "IONQ", "SOUN"]
+config = load_tickers_config()
+tickers = config['tickers']['quantum']
 run_yfinance_ingestion(tickers, lookback_days=730)
 ```
 
@@ -130,6 +142,28 @@ Stores company fundamental data.
 | total_liabilities | BIGINT | Total liabilities |
 
 **Primary Key**: `(ticker, report_date)`
+
+**Indexes**: 
+- `idx_ticker_report_date` on `(ticker, report_date)`
+- `idx_report_date` on `(report_date)`
+- `idx_ticker_fundamentals` on `(ticker)`
+
+### Performance Optimization
+
+Run `sql/create_indexes.sql` to create optimized indexes:
+
+```bash
+mysql -u root -p -h 127.0.0.1 -P 3307 < bbbot1_pipeline/sql/create_indexes.sql
+```
+
+**Indexes created**:
+- `stock_prices_yf`: `(ticker, date)`, `(date)`, `(ticker)`
+- `stock_fundamentals`: `(ticker, report_date)`, `(report_date)`, `(ticker)`
+
+These indexes dramatically improve query performance for:
+- Ticker + date range queries (WHERE ticker = 'IONQ' AND date >= ...)
+- Cross-ticker aggregations (GROUP BY ticker WHERE date >= ...)
+- Single ticker lookups
 
 ## 🔧 Module Reference
 

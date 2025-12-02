@@ -26,3 +26,13 @@ def run_yf(tickers):
 if __name__ == "__main__":
     tickers = ["AMZN","AAPL"]
     run_yf(tickers)
+
+# In your Airflow DAG
+from bbbot1_pipeline.ingest_yfinance import fetch_prices
+from bbbot1_pipeline.derive_ratios import calculate_pe_ratio
+
+# Fetch data
+fetch_prices(['RGTI', 'QBTS'])
+
+# Calculate metrics
+pe_ratio = calculate_pe_ratio('RGTI')

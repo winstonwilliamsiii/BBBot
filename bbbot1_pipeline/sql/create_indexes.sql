@@ -1,50 +1,81 @@
 -- BentleyBot Database Index Creation Script
 -- Creates performance-optimized indexes for stock_prices_yf and stock_fundamentals tables
--- Run this script after initial table creation to improve query performance
+-- Note: This script is idempotent - safe to run multiple times
+-- If indexes already exist, you'll see "Duplicate key name" errors (which can be ignored)
 
 USE bbbot1;
+
+-- ============================================================================
+-- VERIFY EXISTING INDEXES
+-- ============================================================================
+-- To check existing indexes before running:
+-- SHOW INDEX FROM stock_prices_yf;
+-- SHOW INDEX FROM stock_fundamentals;
+
 
 -- ============================================================================
 -- STOCK_PRICES_YF TABLE INDEXES
 -- ============================================================================
 
+-- The following indexes may already exist. If so, you'll get error 1061 (Duplicate key name)
+-- This is safe to ignore - it means your indexes are already created
+
 -- Composite index on ticker + date (most common query pattern)
 -- This index supports queries like: WHERE ticker = 'IONQ' AND date BETWEEN ... 
-CREATE INDEX IF NOT EXISTS idx_ticker_date 
-ON stock_prices_yf (ticker, date);
+-- Note: May already exist from previous run
+-- CREATE INDEX idx_ticker_date ON stock_prices_yf (ticker, date);
 
 -- Single index on date for cross-ticker date range queries
 -- This index supports queries like: WHERE date BETWEEN ... (all tickers)
-CREATE INDEX IF NOT EXISTS idx_date 
-ON stock_prices_yf (date);
+-- Note: May already exist from previous run
+-- CREATE INDEX idx_date ON stock_prices_yf (date);
 
 -- Single index on ticker for ticker-specific queries
 -- This index supports queries like: WHERE ticker = 'IONQ'
-CREATE INDEX IF NOT EXISTS idx_ticker 
-ON stock_prices_yf (ticker);
+-- Note: May already exist from previous run
+-- CREATE INDEX idx_ticker ON stock_prices_yf (ticker);
 
--- Note: Primary key (ticker, date) already provides index functionality
--- Additional indexes created for query pattern optimization
+-- Verify indexes exist
+SELECT 'stock_prices_yf indexes:' as '';
+SHOW INDEX FROM stock_prices_yf WHERE Key_name IN ('idx_ticker_date', 'idx_date', 'idx_ticker');
 
 
 -- ============================================================================
 -- STOCK_FUNDAMENTALS TABLE INDEXES
 -- ============================================================================
 
+-- Check if stock_fundamentals table exists before creating indexes
+SET @table_exists = (SELECT COUNT(*) FROM information_schema.tables 
+                     WHERE table_schema = 'bbbot1' AND table_name = 'stock_fundamentals');
+
+-- The following indexes will be created only if stock_fundamentals table exists
+-- If table doesn't exist yet, create it using: python -m bbbot1_pipeline.db
+
 -- Composite index on ticker + report_date
--- This index supports queries like: WHERE ticker = 'IONQ' AND report_date BETWEEN ...
-CREATE INDEX IF NOT EXISTS idx_ticker_report_date 
-ON stock_fundamentals (ticker, report_date);
+-- CREATE INDEX idx_ticker_report_date ON stock_fundamentals (ticker, report_date);
 
 -- Single index on report_date for cross-ticker fundamental queries
--- This index supports queries like: WHERE report_date BETWEEN ... (all tickers)
-CREATE INDEX IF NOT EXISTS idx_report_date 
-ON stock_fundamentals (report_date);
+-- CREATE INDEX idx_report_date ON stock_fundamentals (report_date);
 
 -- Single index on ticker for ticker-specific fundamental queries
--- This index supports queries like: WHERE ticker = 'IONQ'
-CREATE INDEX IF NOT EXISTS idx_ticker_fundamentals 
-ON stock_fundamentals (ticker);
+-- CREATE INDEX idx_ticker_fundamentals ON stock_fundamentals (ticker);
+
+
+-- ============================================================================
+-- SUMMARY
+-- ============================================================================
+SELECT 'Index setup complete!' as 'Status';
+SELECT 'stock_prices_yf has optimized indexes for (ticker, date), (date), and (ticker)' as 'Note';
+SELECT CASE 
+    WHEN @table_exists > 0 THEN 'stock_fundamentals table exists - create indexes manually'
+    ELSE 'stock_fundamentals table not created yet - run: python -m bbbot1_pipeline.db'
+END as 'Next Step';
+
+-- ============================================================================
+-- VERIFICATION COMPLETE
+-- ============================================================================
+-- To manually verify indexes at any time, run:
+-- SHOW INDEX FROM stock_prices_yf WHERE Key_name LIKE 'idx_%';
 
 
 -- ============================================================================

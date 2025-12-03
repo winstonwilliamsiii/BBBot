@@ -1,6 +1,7 @@
-#MLFlow logging of experiments, metrics, parameters, and artifacts
-mlflow>=2.4.1
+# MLFlow logging of experiments, metrics, parameters, and artifacts
+# Requirements: mlflow>=2.4.1
 import mlflow
+import mlflow.sklearn
 
 # Configure MLFlow tracking
 mlflow.set_tracking_uri("mysql+pymysql://user:password@localhost:3306/mlflow_db")
@@ -30,11 +31,21 @@ def log_fundamental_ratios(ticker: str, report_date: str, ratios: dict, source: 
         mlflow.log_artifact("ratios.json")
         
         import streamlit as st
+        mlflow.log_artifact("ratios.json")
+
+
+import streamlit as st
 from mlflow.tracking import MlflowClient
 
-client = MlflowClient()
-runs = client.search_runs(experiment_ids=["fundamentals_ratio_analysis"], order_by=["metrics.pe_ratio DESC"])
 
-st.title("MLFlow Logged Ratios")
-for run in runs[:10]:
-    st.write(run.data.params["ticker"], run.data.metrics)
+def display_logged_ratios():
+    """Display MLFlow logged ratios in Streamlit."""
+    client = MlflowClient()
+    runs = client.search_runs(
+        experiment_ids=["fundamentals_ratio_analysis"],
+        order_by=["metrics.pe_ratio DESC"]
+    )
+
+    st.title("MLFlow Logged Ratios")
+    for run in runs[:10]:
+        st.write(run.data.params["ticker"], run.data.metrics)

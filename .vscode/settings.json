@@ -3,11 +3,12 @@
     "DockerRun.DisableDockerrc": true,
     "git.ignoreLimitWarning": true,
     "cSpell.words": [
-        "MACD",
         "airbyte",
+        "MACD",
         "mlflow",
         "mlruns",
-        "pymysql"
+        "pymysql",
+        "Tiingo"
     ],
     // Airflow Extension Configuration
     "airflow.connections": [

@@ -3,7 +3,6 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.mysql.hooks.mysql import MySqlHook
 from datetime import datetime, timedelta
 import requests
-import json
 
 # Load Tiingo API token from environment variable
 import os
@@ -17,16 +16,16 @@ TICKERS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'RGTI', 'QBTS', 'SOUN', 'IONQ']
 
 def fetch_tiingo_data(**kwargs):
     """Fetch 2 years of OHLC data for specified tickers and store in MySQL"""
-    
+
     # Calculate date range (last 2 years)
     end_date = datetime.now()
     start_date = end_date - timedelta(days=730)  # ~2 years
-    
+
     # Get MySQL connection
     mysql_hook = MySqlHook(mysql_conn_id='mysql_bbbot1')
     conn = mysql_hook.get_conn()
     cursor = conn.cursor()
-    
+
     # Create table if not exists - Named stock_prices_tiingo for clarity
     create_table_sql = """
     CREATE TABLE IF NOT EXISTS stock_prices_tiingo (
@@ -52,15 +51,15 @@ def fetch_tiingo_data(**kwargs):
     """
     cursor.execute(create_table_sql)
     conn.commit()
-    
+
     total_records = 0
     successful_tickers = []
     failed_tickers = []
-    
+
     # Fetch data for each ticker
     for ticker in TICKERS:
         print(f"Fetching data for {ticker}...")
-        
+
         url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices"
         headers = {"Content-Type": "application/json"}
         params = {
@@ -68,17 +67,17 @@ def fetch_tiingo_data(**kwargs):
             "startDate": start_date.strftime('%Y-%m-%d'),
             "endDate": end_date.strftime('%Y-%m-%d')
         }
-        
+
         try:
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
             data = response.json()
-            
+
             print(f"Received {len(data)} records for {ticker}")
-            
+
             # Insert data into MySQL
             insert_sql = """
-            INSERT INTO stock_prices_tiingo 
+            INSERT INTO stock_prices_tiingo
             (ticker, date, open, high, low, close, volume, adj_open, adj_high, adj_low, adj_close, adj_volume, split_factor)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
@@ -94,7 +93,7 @@ def fetch_tiingo_data(**kwargs):
                 adj_volume = VALUES(adj_volume),
                 split_factor = VALUES(split_factor)
             """
-            
+
             for record in data:
                 date_obj = datetime.strptime(record['date'][:10], '%Y-%m-%d').date()
                 cursor.execute(insert_sql, (
@@ -112,12 +111,12 @@ def fetch_tiingo_data(**kwargs):
                     record.get('adjVolume'),
                     record.get('splitFactor', 1.0)
                 ))
-            
+
             conn.commit()
             total_records += len(data)
             successful_tickers.append(f"{ticker}({len(data)})")
             print(f"✓ Successfully stored {len(data)} records for {ticker}")
-            
+
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 403:
                 print(f"⚠ {ticker}: Access denied (requires premium Tiingo subscription)")
@@ -130,16 +129,16 @@ def fetch_tiingo_data(**kwargs):
             print(f"✗ Error fetching {ticker}: {str(e)}")
             failed_tickers.append(f"{ticker}(Error)")
             conn.rollback()
-    
+
     cursor.close()
     conn.close()
-    
+
     print(f"\n=== Summary ===")
     print(f"Total records stored: {total_records}")
     print(f"Successful: {', '.join(successful_tickers) if successful_tickers else 'None'}")
     print(f"Failed: {', '.join(failed_tickers) if failed_tickers else 'None'}")
     print(f"Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-    
+
     return {"total_records": total_records, "successful": len(successful_tickers), "failed": len(failed_tickers)}
 
 

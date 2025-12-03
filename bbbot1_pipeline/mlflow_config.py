@@ -10,7 +10,7 @@ from typing import Optional
 MLFLOW_MYSQL_CONFIG = {
     "name": "Bentley_Budget",
     "host": "127.0.0.1",
-    "port": 3306,
+    "port": 3307,  # MySQL container maps 3306 -> 3307 on host
     "user": "root",
     "password": "root",
     "database": "mlflow_db"

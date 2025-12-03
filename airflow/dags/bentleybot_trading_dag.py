@@ -102,13 +102,43 @@ def compute_indicators():
 
 
 def execute_trade():
+    """
+    Execute trades based on signals using real broker APIs
+    Routes to appropriate broker based on symbol type
+    """
     df = pd.read_csv("/tmp/indicators.csv")
     latest = df.iloc[-1]
     action = latest.get("trigger")
+    
     if action in ["BUY", "SELL"]:
-        # Replace with your broker API logic
-        print(f"{action} order placed for {SYMBOL} at quantity {QUANTITY}")
+        # Import broker API
+        from bbbot1_pipeline.broker_api import execute_trade as place_order
+        
+        # Determine broker based on symbol
+        # Example routing logic:
+        # - Crypto (ends with USDT) -> Binance
+        # - Forex pairs (contains dot) -> IBKR
+        # - Futures/Commodities (2-3 chars) -> IBKR
+        # - Everything else -> Webull
+        
+        if SYMBOL.endswith("USDT"):
+            # Crypto -> Binance
+            result = place_order("binance", SYMBOL, action, QUANTITY)
+        elif "." in SYMBOL or len(SYMBOL) <= 3:
+            # Forex or Futures -> IBKR
+            result = place_order("ibkr", SYMBOL, action, QUANTITY, sec_type="FUT", exchange="CME")
+        else:
+            # Equities/ETFs -> Webull
+            result = place_order("webull", SYMBOL, action, QUANTITY)
+        
+        logger.info(f"Trade executed: {result}")
+        
+        # Save trade result
+        with open("/tmp/trade_result.json", "w") as f:
+            import json
+            json.dump(result, f, indent=2)
     else:
+        logger.info("No trade triggered.")
         print("No trade triggered.")
 
 

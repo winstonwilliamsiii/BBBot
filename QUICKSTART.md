@@ -226,6 +226,20 @@ After completing quick start:
 5. **Optimize dbt**: Add incremental models for performance
 6. **Extend features**: Add more technical indicators or data sources
 
+### 💼 Bonus: Automated Trading (Optional)
+
+**Execute trades** based on ML signals across 3 brokers:
+- **Webull** → Equities & ETFs
+- **Interactive Brokers (IBKR)** → Forex, Futures, Commodities
+- **Binance** → Cryptocurrency
+
+Setup guide: [docs/BROKER_TRADING_SETUP.md](docs/BROKER_TRADING_SETUP.md)
+
+Quick install:
+```bash
+pip install webull ibapi python-binance
+```
+
 ---
 
 **Need help?** Check [docs/COMPLETE_SETUP_GUIDE.md](docs/COMPLETE_SETUP_GUIDE.md) for detailed instructions.

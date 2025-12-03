@@ -12,6 +12,18 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 import pandas as pd
 
+# Import MLFlow configuration
+try:
+    from .mlflow_config import initialize_mlflow, get_mlflow_client, get_mlflow_tracking_uri
+    MLFLOW_CONFIG_AVAILABLE = True
+except ImportError:
+    # Try absolute import for when module is run directly
+    try:
+        from mlflow_config import initialize_mlflow, get_mlflow_client, get_mlflow_tracking_uri
+        MLFLOW_CONFIG_AVAILABLE = True
+    except ImportError:
+        MLFLOW_CONFIG_AVAILABLE = False
+
 
 class BentleyBotMLFlowTracker:
     """MLFlow tracking for BentleyBot financial analysis"""
@@ -21,21 +33,28 @@ class BentleyBotMLFlowTracker:
         Initialize MLFlow tracker
         
         Args:
-            tracking_uri: MLFlow tracking server URI (default: local file storage)
+            tracking_uri: MLFlow tracking server URI (default: MySQL backend)
             experiment_name: Name of the MLFlow experiment
         """
-        # Set tracking URI (use MySQL if provided, otherwise local file storage)
-        if tracking_uri:
-            mlflow.set_tracking_uri(tracking_uri)
+        # Initialize MLFlow with MySQL backend
+        if MLFLOW_CONFIG_AVAILABLE and tracking_uri is None:
+            # Use centralized configuration
+            initialize_mlflow(experiment_name)
+            self.client = get_mlflow_client()
         else:
-            # Default to local file storage in mlflow_logs directory
-            mlflow_dir = os.path.join(os.path.dirname(__file__), '../data/mlflow')
-            os.makedirs(mlflow_dir, exist_ok=True)
-            mlflow.set_tracking_uri(f"file://{os.path.abspath(mlflow_dir)}")
+            # Use provided tracking URI or fallback
+            if tracking_uri:
+                mlflow.set_tracking_uri(tracking_uri)
+            else:
+                # Fallback to local file storage
+                mlflow_dir = os.path.join(os.path.dirname(__file__), '../data/mlflow')
+                os.makedirs(mlflow_dir, exist_ok=True)
+                mlflow.set_tracking_uri(f"file://{os.path.abspath(mlflow_dir)}")
+            
+            # Set or create experiment
+            mlflow.set_experiment(experiment_name)
+            self.client = MlflowClient()
         
-        # Set or create experiment
-        mlflow.set_experiment(experiment_name)
-        self.client = MlflowClient()
         self.experiment_name = experiment_name
         
     def log_fundamental_ratios(
@@ -229,7 +248,11 @@ def get_tracker(tracking_uri: str = None, experiment_name: str = "bentley_bot_an
     global _tracker_instance
     
     if _tracker_instance is None:
-        _tracker_instance = BentleyBotMLFlowTracker(tracking_uri, experiment_name)
+        # Don't pass tracking_uri=None, let the class use the config automatically
+        if tracking_uri:
+            _tracker_instance = BentleyBotMLFlowTracker(tracking_uri, experiment_name)
+        else:
+            _tracker_instance = BentleyBotMLFlowTracker(experiment_name=experiment_name)
     
     return _tracker_instance
 

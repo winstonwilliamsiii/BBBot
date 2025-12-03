@@ -1,17 +1,52 @@
+# Bentley Budget Bot - Master Requirements File
+# This file references all component requirements
+
+# ============================================
+# STREAMLIT APPLICATION
+# For running the web dashboard locally
+# ============================================
+# Install with: pip install -r requirements-streamlit.txt
+
+# Streamlit framework
 streamlit>=1.28.0
-pandas>=1.5.0
+
+# Data visualization
 plotly>=5.0.0
+pandas>=1.5.0
+numpy>=1.24.0
+
+# Database connectivity
 sqlalchemy>=1.4.0
+pymysql>=1.1.0
+
+# Financial data
 yfinance>=0.2.0
-pyyaml>=6.0
-requests>=2.28.0
-python-dotenv>=1.0.0
+
+# MLFlow integration
+mlflow>=2.8.0
+
+# Web scraping
 beautifulsoup4>=4.11.0
 lxml>=4.9.0
+
+# Configuration
+pyyaml>=6.0
+python-dotenv>=1.0.0
 pathlib2>=2.3.0
-mlflow>=2.8.0
-pymysql>=1.1.0
-apache-airflow>=2.8.0
-scipy>=1.10.0
+
+# HTTP requests
+requests>=2.28.0
+
+# Machine learning
 scikit-learn>=1.3.0
-numpy>=1.24.0
+scipy>=1.10.0
+
+# Airflow (optional - for local orchestration)
+apache-airflow>=2.8.0
+
+# ============================================
+# COMPONENT-SPECIFIC REQUIREMENTS
+# ============================================
+# MLFlow Pipeline: See bbbot1_pipeline/requirements.txt
+# Vercel API: See api/requirements.txt
+# ============================================

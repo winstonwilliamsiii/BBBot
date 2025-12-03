@@ -28,17 +28,61 @@ node_modules/
 
 # Exclude the main streamlit app from Vercel deployment
 streamlit_app.py
+streamlit_mlflow_integration.py
 frontend/
+pages/
 data/
+mlruns/
+logs/
+
+# Pipeline and workflow files
+bbbot1_pipeline/
+airflow/
+airflow_config/
+dags/
+workflows/
+temporal/
+airbyte/
+
+# Data files
 *.csv
-*.json
-requirements.txt
+*.parquet
+*.db
+
+# Docker and containers
 Dockerfile
 docker-compose.yml
+docker/
+
+# Configuration files (keep in repo but ignore for deployment)
+requirements-streamlit.txt
+bbbot1_pipeline/requirements.txt
+
+# Documentation
 README.md
 LICENSE
+docs/
 *.md
-*.txt
+
+# Scripts and utilities
 *.sh
+*.bat
 *.sql
+scripts/
+mysql_config/
+mysql_setup.sql/
+
+# IDE and dev files
+.vscode/
+.git/
+.github/
 git-error-*
+*.log
+
+# Database connections
+*.session.sql
+BentleyBot_MySQL_Connection.xml
+
+# Test files
+# Test*
+*test*.py

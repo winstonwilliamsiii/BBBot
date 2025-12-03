@@ -1,6 +1,11 @@
 # BBBot1 Pipeline & MLFlow Dependencies
 # Core dependencies for data pipeline and MLFlow tracking
 
+# dbt - Data transformation
+dbt-core>=1.7.0
+dbt-mysql>=1.7.0
+dbt-snowflake>=1.7.0
+
 # MLFlow and database
 mlflow>=2.8.0
 pymysql>=1.1.0

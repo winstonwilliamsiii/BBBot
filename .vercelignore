@@ -43,6 +43,7 @@ dags/
 workflows/
 temporal/
 airbyte/
+dbt_project/
 
 # Data files
 *.csv

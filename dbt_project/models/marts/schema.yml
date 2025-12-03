@@ -1,0 +1,94 @@
+version: 2
+
+models:
+  - name: fundamentals_derived
+    description: "Calculated fundamental ratios (PE, PB, EV/EBIT, ROA, ROI, etc.)"
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: report_date
+        description: "Financial report date"
+        tests:
+          - not_null
+      - name: pe_ratio
+        description: "Price-to-Earnings ratio"
+      - name: pb_ratio
+        description: "Price-to-Book ratio"
+      - name: ev_ebit
+        description: "Enterprise Value to EBIT ratio"
+      - name: ev_ebitda
+        description: "Enterprise Value to EBITDA ratio"
+      - name: roa
+        description: "Return on Assets"
+      - name: roi
+        description: "Return on Investment (target variable for ML)"
+        tests:
+          - not_null
+      - name: eps
+        description: "Earnings per share"
+      - name: debt_to_equity
+        description: "Debt-to-Equity ratio"
+        
+  - name: sentiment_aggregates
+    description: "Daily aggregated sentiment metrics by ticker"
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: sentiment_date
+        description: "Date of sentiment aggregation"
+        tests:
+          - not_null
+      - name: avg_sentiment_score
+        description: "Average daily sentiment score"
+      - name: bullish_ratio
+        description: "Ratio of bullish to total messages"
+      - name: sentiment_7day_ma
+        description: "7-day moving average of sentiment"
+        
+  - name: features_roi
+    description: "Feature engineering table for MLFlow ROI prediction models"
+    meta:
+      owner: "mlflow_pipeline"
+      mlflow_experiment: "roi_prediction_models"
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: report_date
+        description: "Financial report date"
+        tests:
+          - not_null
+      - name: target_roi
+        description: "Return on Investment - ML target variable"
+        tests:
+          - not_null
+      - name: pe_ratio
+        description: "Price-to-Earnings ratio (feature)"
+      - name: pb_ratio
+        description: "Price-to-Book ratio (feature)"
+      - name: roa
+        description: "Return on Assets (feature)"
+      - name: debt_to_equity
+        description: "Debt-to-Equity ratio (feature)"
+      - name: price_momentum_30d
+        description: "30-day price momentum (feature)"
+      - name: avg_sentiment_score
+        description: "Average sentiment score (feature)"
+      - name: bullish_ratio
+        description: "Bullish message ratio (feature)"
+      - name: ticker_category
+        description: "Ticker category (quantum vs traditional)"
+      - name: has_missing_fundamentals
+        description: "Data quality flag for missing fundamentals"
+      - name: has_missing_sentiment
+        description: "Data quality flag for missing sentiment"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - ticker
+            - report_date

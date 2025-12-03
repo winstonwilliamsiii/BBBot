@@ -19,6 +19,11 @@ numpy>=1.24.0
 sqlalchemy>=1.4.0
 pymysql>=1.1.0
 
+# dbt - Data transformation
+dbt-core>=1.7.0
+dbt-mysql>=1.7.0
+dbt-snowflake>=1.7.0
+
 # Financial data
 yfinance>=0.2.0
 

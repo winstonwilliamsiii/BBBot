@@ -1,0 +1,33 @@
+bbbot1:
+  target: dev
+  outputs:
+    dev:
+      type: mysql
+      host: 127.0.0.1
+      port: 3307
+      user: root
+      password: root
+      database: bbbot1
+      schema: bbbot1
+      threads: 4
+      
+    prod:
+      type: mysql
+      host: 127.0.0.1
+      port: 3307
+      user: root
+      password: root
+      database: bbbot1
+      schema: bbbot1
+      threads: 8
+      
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'ACCOUNTADMIN') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'COMPUTE_WH') }}"
+      database: MARKET_DATA
+      schema: PUBLIC
+      threads: 4

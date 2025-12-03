@@ -1,0 +1,23 @@
+#dbt_project.yml
+name: 'bbbot1_project'
+version: '1.0.0'
+config-version: 2
+
+profile: 'bbbot1_profile'
+
+# Paths
+source-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_modules"]
+
+models:
+  bbbot1_project:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

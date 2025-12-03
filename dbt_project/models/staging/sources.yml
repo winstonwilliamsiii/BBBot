@@ -1,0 +1,203 @@
+# ============================================
+# dbt Sources Configuration
+# Maps raw tables for staging models
+# ============================================
+
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw data tables loaded by Airbyte from external APIs"
+    database: bbbot1  # MySQL database
+    schema: bbbot1    # Use database name as schema for MySQL
+    
+    tables:
+      - name: prices_daily
+        description: "Daily OHLC price data from Tiingo API"
+        columns:
+          - name: id
+            description: "Primary key"
+            tests:
+              - unique
+              - not_null
+          - name: ticker
+            description: "Stock ticker symbol"
+            tests:
+              - not_null
+          - name: date
+            description: "Trading date"
+            tests:
+              - not_null
+          - name: close
+            description: "Closing price (required field)"
+            tests:
+              - not_null
+          - name: volume
+            description: "Trading volume"
+          - name: created_at
+            description: "Record creation timestamp"
+        
+        # Data quality tests at table level
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "close > 0"
+              config:
+                where: "close IS NOT NULL"
+        
+        # Freshness check - warn if data is older than 2 days
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 5, period: day}
+        
+        # Metadata
+        meta:
+          owner: "airbyte_pipeline"
+          source_system: "tiingo_api"
+      
+      - name: fundamentals_raw
+        description: "Financial statement data from AlphaVantage/yfinance"
+        columns:
+          - name: id
+            description: "Primary key"
+            tests:
+              - unique
+              - not_null
+          - name: ticker
+            description: "Stock ticker symbol"
+            tests:
+              - not_null
+          - name: report_date
+            description: "Financial report date"
+            tests:
+              - not_null
+          - name: net_income
+            description: "Net income (required)"
+            tests:
+              - not_null
+          - name: ebit
+            description: "Earnings before interest and taxes (required)"
+            tests:
+              - not_null
+          - name: ebitda
+            description: "EBITDA (required)"
+            tests:
+              - not_null
+          - name: total_assets
+            description: "Total assets (required)"
+            tests:
+              - not_null
+          - name: total_equity
+            description: "Total shareholder equity (required)"
+            tests:
+              - not_null
+          - name: total_liabilities
+            description: "Total liabilities (required)"
+            tests:
+              - not_null
+          - name: cash_and_equivalents
+            description: "Cash and cash equivalents (required)"
+            tests:
+              - not_null
+          - name: shares_outstanding
+            description: "Number of shares outstanding (required)"
+            tests:
+              - not_null
+        
+        # Freshness check - warn if fundamentals data is older than 7 days
+        freshness:
+          warn_after: {count: 7, period: day}
+          error_after: {count: 14, period: day}
+        
+        # Metadata
+        meta:
+          owner: "airbyte_pipeline"
+          source_system: "alphavantage_api"
+      
+      - name: sentiment_msgs
+        description: "Social sentiment messages from StockTwits/Twitter"
+        columns:
+          - name: id
+            description: "Primary key"
+            tests:
+              - unique
+              - not_null
+          - name: ticker
+            description: "Stock ticker symbol"
+            tests:
+              - not_null
+          - name: timestamp
+            description: "Message timestamp"
+            tests:
+              - not_null
+          - name: message_id
+            description: "External message ID (should be unique)"
+            tests:
+              - unique
+          - name: message_text
+            description: "Message content"
+          - name: sentiment_score
+            description: "Sentiment score from -1 (bearish) to 1 (bullish)"
+          - name: sentiment_label
+            description: "Sentiment classification"
+            tests:
+              - accepted_values:
+                  values: ['bullish', 'bearish', 'neutral']
+          - name: source
+            description: "Data source platform"
+            tests:
+              - accepted_values:
+                  values: ['stocktwits', 'twitter', 'reddit']
+        
+        # Freshness check - warn if sentiment data is older than 1 day
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 3, period: day}
+        
+        # Metadata
+        meta:
+          owner: "airbyte_pipeline"
+          source_system: "stocktwits_api"
+      
+      - name: technicals_raw
+        description: "Technical indicators calculated from price data"
+        columns:
+          - name: id
+            description: "Primary key"
+            tests:
+              - unique
+              - not_null
+          - name: ticker
+            description: "Stock ticker symbol"
+            tests:
+              - not_null
+          - name: date
+            description: "Calculation date"
+            tests:
+              - not_null
+          - name: sma_20
+            description: "20-day Simple Moving Average"
+          - name: sma_50
+            description: "50-day Simple Moving Average"
+          - name: sma_200
+            description: "200-day Simple Moving Average"
+          - name: rsi_14
+            description: "14-day Relative Strength Index (0-100)"
+            tests:
+              - dbt_utils.expression_is_true:
+                  expression: "rsi_14 >= 0 AND rsi_14 <= 100"
+                  config:
+                    where: "rsi_14 IS NOT NULL"
+          - name: macd
+            description: "MACD line"
+          - name: macd_signal
+            description: "MACD signal line"
+        
+        # Freshness check - warn if technicals are older than 2 days
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 5, period: day}
+        
+        # Metadata
+        meta:
+          owner: "airbyte_pipeline"
+          source_system: "calculated_internally"

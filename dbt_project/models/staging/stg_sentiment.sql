@@ -16,7 +16,7 @@ SELECT
     bullish_count,
     bearish_count,
     created_at AS ingested_at
-FROM {{ source('raw', 'sentiment_raw') }}
+FROM {{ source('raw', 'sentiment_msgs') }}
 WHERE ticker IS NOT NULL
   AND timestamp IS NOT NULL
   AND sentiment_score IS NOT NULL

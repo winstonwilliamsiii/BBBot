@@ -1,0 +1,14 @@
+#models_mart_features_roi.sql
+{{ config(materialized='table') }}
+
+SELECT
+    ticker,
+    report_date,
+    pe_ratio,
+    pb_ratio,
+    ev_ebit,
+    ev_ebitda,
+    roa,
+    roi,
+    noi
+FROM {{ ref('fundamentals_derived') }}

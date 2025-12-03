@@ -1,0 +1,37 @@
+#sources.yml
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw ingested tables from Airbyte into MySQL/Snowflake"
+    database: bbbot1        # or your Snowflake database name
+    schema: public          # adjust schema if needed
+    tables:
+      - name: fundamentals_raw
+        description: "Raw fundamentals data from Alpha Vantage"
+        columns:
+          - name: ticker
+            tests: [not_null]
+          - name: report_date
+            tests: [not_null]
+      - name: prices_daily
+        description: "Daily OHLCV prices from yfinance"
+        columns:
+          - name: ticker
+            tests: [not_null]
+          - name: date
+            tests: [not_null]
+      - name: sentiment_msgs
+        description: "Raw Stocktwits sentiment messages"
+        columns:
+          - name: id
+            tests: [unique, not_null]
+          - name: ticker
+            tests: [not_null]
+      - name: technicals_raw
+        description: "Raw technical indicators from Massive API"
+        columns:
+          - name: ticker
+            tests: [not_null]
+          - name: date
+            tests: [not_null]

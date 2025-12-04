@@ -155,21 +155,35 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        latest_value = portfolio_df[portfolio_df['Date'] == portfolio_df['Date'].max()]['Close'].sum()
-        st.metric("Portfolio Value", f"${latest_value:,.2f}")
+        try:
+            latest_data = portfolio_df[portfolio_df['Date'] == portfolio_df['Date'].max()]
+            latest_value = float(latest_data['Close'].sum())
+            st.metric("Portfolio Value", f"${latest_value:,.2f}")
+        except (TypeError, ValueError) as e:
+            st.metric("Portfolio Value", "N/A")
+            st.caption(f"Error: {e}")
     
     with col2:
         st.metric("Assets", len(tickers))
     
     with col3:
-        total_volume = portfolio_df[portfolio_df['Date'] == portfolio_df['Date'].max()]['Volume'].sum()
-        st.metric("Daily Volume", f"{total_volume:,.0f}")
+        try:
+            latest_data = portfolio_df[portfolio_df['Date'] == portfolio_df['Date'].max()]
+            total_volume = float(latest_data['Volume'].sum())
+            st.metric("Daily Volume", f"{total_volume:,.0f}")
+        except (TypeError, ValueError) as e:
+            st.metric("Daily Volume", "N/A")
     
     with col4:
-        # Calculate portfolio return
-        first_value = portfolio_df[portfolio_df['Date'] == portfolio_df['Date'].min()]['Close'].sum()
-        portfolio_return = ((latest_value - first_value) / first_value) * 100 if first_value > 0 else 0
-        st.metric("Total Return", f"{portfolio_return:+.2f}%")
+        try:
+            # Calculate portfolio return
+            first_data = portfolio_df[portfolio_df['Date'] == portfolio_df['Date'].min()]
+            first_value = float(first_data['Close'].sum())
+            latest_value = float(latest_data['Close'].sum())
+            portfolio_return = ((latest_value - first_value) / first_value) * 100 if first_value > 0 else 0
+            st.metric("Total Return", f"{portfolio_return:+.2f}%")
+        except (TypeError, ValueError, ZeroDivisionError) as e:
+            st.metric("Total Return", "N/A")
     
     # Plot portfolio performance
     st.subheader("Price Performance")

@@ -122,9 +122,26 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
             try:
                 df = yf.download(ticker, start=start_date, end=end_date, progress=False)
                 if not df.empty:
+                    # Handle MultiIndex columns from yfinance
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    
+                    # Reset index to make Date a column
+                    df = df.reset_index()
+                    
+                    # Add ticker column
                     df['Ticker'] = ticker
-                    df['Date'] = df.index
-                    data_frames.append(df[['Date', 'Ticker', 'Close', 'Volume']])
+                    
+                    # Select only the columns we need (handle missing columns gracefully)
+                    cols_to_keep = []
+                    for col in ['Date', 'Ticker', 'Close', 'Volume']:
+                        if col in df.columns or col == 'Ticker':
+                            cols_to_keep.append(col)
+                    
+                    if 'Close' in df.columns and 'Date' in df.columns:
+                        data_frames.append(df[cols_to_keep])
+                    else:
+                        st.warning(f"⚠️ {ticker}: Missing required columns")
             except Exception as e:
                 st.warning(f"⚠️ Could not fetch {ticker}: {e}")
         
@@ -133,6 +150,9 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
             return
         
         portfolio_df = pd.concat(data_frames, ignore_index=True)
+        
+        # Ensure Date column is datetime
+        portfolio_df['Date'] = pd.to_datetime(portfolio_df['Date'])
     
     fetch_time = time.time() - start_time
     
@@ -188,21 +208,31 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
     # Plot portfolio performance
     st.subheader("Price Performance")
     
-    fig = px.line(
-        portfolio_df,
-        x='Date',
-        y='Close',
-        color='Ticker',
-        title='Portfolio Price History',
-        labels={'Close': 'Price ($)', 'Date': 'Date'}
-    )
-    
-    fig.update_layout(
-        hovermode='x unified',
-        height=500
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    try:
+        # Ensure data is valid for plotting
+        plot_df = portfolio_df[['Date', 'Close', 'Ticker']].dropna()
+        
+        if not plot_df.empty:
+            fig = px.line(
+                plot_df,
+                x='Date',
+                y='Close',
+                color='Ticker',
+                title='Portfolio Price History',
+                labels={'Close': 'Price ($)', 'Date': 'Date'}
+            )
+            
+            fig.update_layout(
+                hovermode='x unified',
+                height=500
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No valid data to plot")
+    except Exception as e:
+        st.error(f"Unable to create price chart: {e}")
+        st.info("Data shape: " + str(portfolio_df.shape) + " | Columns: " + str(list(portfolio_df.columns)))
     
     # Individual ticker performance
     st.subheader("Individual Ticker Performance")
@@ -308,15 +338,24 @@ def display_mlflow_experiments(tickers):
                     if len(numeric_cols) > 0:
                         selected_metric = st.selectbox("Select metric to plot", numeric_cols)
                         
-                        fig = px.line(
-                            ratio_df,
-                            x='Date',
-                            y=selected_metric,
-                            title=f'{selected_metric} Trend for {selected_ticker}',
-                            markers=True
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
+                        try:
+                            # Ensure Date column is valid and data is clean
+                            plot_df = ratio_df[['Date', selected_metric]].dropna()
+                            
+                            if not plot_df.empty:
+                                fig = px.line(
+                                    plot_df,
+                                    x='Date',
+                                    y=selected_metric,
+                                    title=f'{selected_metric} Trend for {selected_ticker}',
+                                    markers=True
+                                )
+                                
+                                st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                st.warning("No valid data to plot")
+                        except Exception as e:
+                            st.error(f"Unable to create trend chart: {e}")
             else:
                 st.info(f"No ratio analysis runs found for {selected_ticker}")
         
@@ -342,6 +381,17 @@ def display_technical_analysis(tickers, start_date, end_date):
             
             if df.empty:
                 st.warning(f"No data available for {selected_ticker}")
+                return
+            
+            # Handle MultiIndex columns from yfinance
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            
+            # Verify required columns exist
+            required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                st.error(f"Missing columns: {missing_cols}")
                 return
             
             # Calculate moving averages

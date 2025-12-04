@@ -2,10 +2,16 @@
 
 A comprehensive financial data platform with real-time portfolio tracking, automated data pipelines, and ML-powered insights.
 
+## 🌐 Live Demo
+
+**Streamlit Cloud**: https://bbbot305.streamlit.app/
+
 ## 🎯 Features
 
 - **Portfolio Dashboard**: Real-time tracking of stocks, ETFs, and financial holdings via Yahoo Finance
-- **Data Pipeline**: Automated ETL using Apache Airflow + Airbyte + MLflow
+- **Live Crypto Dashboard**: Real-time cryptocurrency prices and charts
+- **Multi-Broker Trading**: Automated trading across Webull, IBKR, and Binance (local only)
+- **Data Pipeline**: Automated ETL using Apache Airflow + Airbyte + dbt + MLflow
 - **Sentiment Analysis**: Stocktwits social sentiment tracking for market insights
 - **Financial Integration**: Plaid API for bank/billing transaction sync
 - **ML Tracking**: MLflow experiment tracking and model management
@@ -56,29 +62,57 @@ BentleyBudgetBot/
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Cloud Demo (Read-Only)
+Visit https://bbbot305.streamlit.app/ for a live demo with portfolio tracking and crypto dashboard.
+
+### Option 2: Local Development (Full Features)
+
+#### Prerequisites
 - Docker Desktop
 - PowerShell (Windows) or Bash
 - Python 3.11+
 
-### 1. Clone & Setup
+#### 1. Clone & Setup
 ```bash
 git clone https://github.com/winstonwilliamsiii/BBBot.git
 cd BentleyBudgetBot
+
+# Install dependencies
+pip install -r requirements-local.txt
+
+# Configure environment
 cp .env.example .env
 # Edit .env with your API keys
 ```
 
-### 2. Start Services
+#### 2. Start Services
 ```powershell
 cd docker
 docker-compose -f docker-compose-airflow.yml up -d
 ```
 
-### 3. Access Applications
+#### 3. Launch Streamlit
+```bash
+streamlit run streamlit_app.py
+```
+
+#### 4. Access Applications
 - **Streamlit Dashboard**: http://localhost:8501
 - **Airflow UI**: http://localhost:8080 (admin/admin)
 - **MLflow**: http://localhost:5000
+
+### Cloud vs Local Features
+
+| Feature | Cloud (bbbot305.streamlit.app) | Local Development |
+|---------|-------------------------------|-------------------|
+| Portfolio Dashboard | ✅ | ✅ |
+| Live Crypto Dashboard | ✅ | ✅ |
+| Yahoo Finance Integration | ✅ | ✅ |
+| Broker Trading | ❌ | ✅ |
+| Airflow Orchestration | ❌ | ✅ |
+| MLFlow Tracking | ❌ | ✅ |
+| dbt Transformations | ❌ | ✅ |
+| MySQL/Snowflake | ❌ | ✅ |
 
 ## 📚 Documentation
 

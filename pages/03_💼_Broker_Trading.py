@@ -22,8 +22,9 @@ try:
     )
     BROKER_API_AVAILABLE = True
 except ImportError as e:
-    st.error(f"Broker API not available: {e}")
+    # Broker APIs not available in cloud deployment
     BROKER_API_AVAILABLE = False
+    BROKER_IMPORT_ERROR = str(e)
 
 
 def main():
@@ -37,7 +38,24 @@ def main():
     st.markdown("---")
     
     if not BROKER_API_AVAILABLE:
-        st.error("Broker API module not available. Check bbbot1_pipeline installation.")
+        st.warning("🌐 **Cloud Deployment Mode**: Broker trading APIs are available in local development only.")
+        st.info("""
+        This feature requires local installation with broker API packages:
+        ```bash
+        pip install -r requirements-local.txt
+        ```
+        
+        **Available locally:**
+        - Webull (Equities & ETFs)
+        - Interactive Brokers (Forex, Futures, Commodities)
+        - Binance (Cryptocurrency)
+        
+        **For more information**, see [Broker Trading Setup Guide](https://github.com/winstonwilliamsiii/BBBot/blob/main/docs/BROKER_TRADING_SETUP.md)
+        """)
+        
+        st.markdown("---")
+        st.subheader("📊 Portfolio Analytics (Cloud)")
+        st.info("Showing read-only portfolio analytics. For live trading, run locally.")
         return
     
     # Sidebar - Trade Execution

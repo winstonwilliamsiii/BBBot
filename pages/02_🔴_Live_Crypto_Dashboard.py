@@ -10,6 +10,31 @@ from plotly.subplots import make_subplots
 import time
 from datetime import datetime, timedelta
 
+# Import color scheme for consistent styling
+try:
+    from frontend.styles.colors import COLOR_SCHEME
+    from frontend.utils.styling import apply_custom_styling
+    apply_custom_styling()
+except ImportError:
+    # Fallback colors if import fails
+    COLOR_SCHEME = {
+        "background": "#0F172A",
+        "secondary": "#0B1220",
+        "text": "#E6EEF8",
+        "primary": "#06B6D4",
+        "card_background": "#071431"
+    }
+    
+    # Apply background styling
+    st.markdown(f"""
+    <style>
+    .stApp {{
+        background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
+        color: {COLOR_SCHEME['text']};
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # Import yfinance for crypto data
 try:
     import yfinance as yf

@@ -9,6 +9,31 @@ from datetime import datetime
 import sys
 import os
 
+# Import color scheme for consistent styling
+try:
+    from frontend.styles.colors import COLOR_SCHEME
+    from frontend.utils.styling import apply_custom_styling
+    apply_custom_styling()
+except ImportError:
+    # Fallback colors if import fails
+    COLOR_SCHEME = {
+        "background": "#0F172A",
+        "secondary": "#0B1220",
+        "text": "#E6EEF8",
+        "primary": "#06B6D4",
+        "card_background": "#071431"
+    }
+    
+    # Apply background styling
+    st.markdown(f"""
+    <style>
+    .stApp {{
+        background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
+        color: {COLOR_SCHEME['text']};
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # Add bbbot1_pipeline to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 

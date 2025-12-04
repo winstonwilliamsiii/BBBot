@@ -10,6 +10,40 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 
+# Import color scheme for consistent styling
+try:
+    from frontend.styles.colors import COLOR_SCHEME
+    from frontend.utils.styling import apply_custom_styling
+    apply_custom_styling()
+except ImportError:
+    # Fallback colors if import fails
+    COLOR_SCHEME = {
+        "background": "#0F172A",
+        "secondary": "#0B1220",
+        "text": "#E6EEF8",
+        "primary": "#06B6D4",
+        "card_background": "#071431"
+    }
+    
+    # Apply background styling
+    st.markdown(f"""
+    <style>
+    .stApp {{
+        background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
+        color: {COLOR_SCHEME['text']};
+    }}
+    
+    /* Ensure tab content has consistent background */
+    .stTabs [data-baseweb="tab-panel"] {{
+        background: transparent;
+    }}
+    
+    .stTabs [data-baseweb="tab-list"] {{
+        background: transparent;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # Import MLFlow tracker
 try:
     from bbbot1_pipeline.mlflow_tracker import get_tracker

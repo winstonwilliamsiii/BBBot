@@ -40,6 +40,44 @@ def apply_custom_styling():
         color: rgba(230,238,248,0.7);
         font-size: 0.9rem;
     }}
+
+    /* Sidebar styling - CRITICAL for visibility */
+    [data-testid="stSidebar"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+
+    [data-testid="stSidebar"] * {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+
+    /* Sidebar input labels */
+    [data-testid="stSidebar"] label {{
+        color: {COLOR_SCHEME['text']} !important;
+        font-weight: 500 !important;
+    }}
+
+    /* Sidebar buttons */
+    [data-testid="stSidebar"] button {{
+        color: {COLOR_SCHEME['text']} !important;
+        border: 1px solid {COLOR_SCHEME['primary']} !important;
+    }}
+
+    /* Sidebar selectbox/input text */
+    [data-testid="stSidebar"] input,
+    [data-testid="stSidebar"] textarea,
+    [data-testid="stSidebar"] [data-baseweb="select"] {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
     </style>
     """
 

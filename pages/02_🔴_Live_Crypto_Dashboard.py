@@ -59,6 +59,23 @@ try:
     h1, h2, h3, h4, h5, h6, p, span, div {{
         color: {COLOR_SCHEME['text']} !important;
     }}
+
+    /* Sidebar styling - prevent color changes */
+    [data-testid="stSidebar"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+    
+    [data-testid="stSidebar"] * {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] label {{
+        color: {COLOR_SCHEME['text']} !important;
+        font-weight: 500 !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
     

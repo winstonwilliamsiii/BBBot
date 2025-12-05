@@ -103,21 +103,38 @@ st.markdown("""
     }
     
     /* Trade cards */
-    .trade-card {
+    .trade-card {{
         background: rgba(15, 23, 42, 0.6);
         border-left: 4px solid;
         padding: 1rem;
         margin: 0.5rem 0;
         border-radius: 4px;
-    }
+    }}
     
-    .trade-buy {
+    .trade-buy {{
         border-left-color: #10B981;
-    }
+    }}
     
-    .trade-sell {
+    .trade-sell {{
         border-left-color: #EF4444;
-    }
+    }}
+
+    /* Sidebar styling - prevent color changes */
+    [data-testid="stSidebar"] {{
+        background-color: #0B1220 !important;
+    }}
+    
+    [data-testid="stSidebar"] * {{
+        color: #E6EEF8 !important;
+    }}
+    
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] label {{
+        color: #E6EEF8 !important;
+        font-weight: 500 !important;
+    }}
     </style>
 """, unsafe_allow_html=True)
 

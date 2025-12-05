@@ -216,6 +216,28 @@ def main():
     # Apply custom styling (CSS)
     apply_custom_styling()
 
+    # Additional sidebar-specific CSS to ensure visibility
+    st.markdown(f"""
+    <style>
+    /* Sidebar text visibility - prevent color changes */
+    [data-testid="stSidebar"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+    
+    [data-testid="stSidebar"] * {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] label {{
+        color: {COLOR_SCHEME['text']} !important;
+        font-weight: 500 !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
     # Main title with custom styling
     st.markdown(f"""
     <h1 style='text-align: center; color: {COLOR_SCHEME['text']}; 

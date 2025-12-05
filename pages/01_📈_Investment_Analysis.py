@@ -41,6 +41,41 @@ except ImportError:
     .stTabs [data-baseweb="tab-list"] {{
         background: transparent;
     }}
+    
+    /* Force white text color for all elements */
+    .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, 
+    .stMarkdown h4, .stMarkdown h5, .stMarkdown h6, .stText, div[data-testid="stMarkdownContainer"],
+    div[data-testid="stText"], label, .stSelectbox label, .stMultiSelect label,
+    .stDateInput label, .stCheckbox label, .stRadio label, .stNumberInput label,
+    .stTextInput label, .row-widget label {{  
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Headers and subheaders */
+    h1, h2, h3, h4, h5, h6 {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Dataframe headers and cells */
+    .stDataFrame, .stDataFrame th, .stDataFrame td, 
+    div[data-testid="stDataFrame"] {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Metric labels and values */
+    div[data-testid="stMetricLabel"], div[data-testid="stMetricValue"] {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Tab labels */
+    .stTabs [data-baseweb="tab"] {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Caption text */
+    .stCaption {{
+        color: rgba(230, 238, 248, 0.8) !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 

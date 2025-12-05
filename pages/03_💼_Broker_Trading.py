@@ -59,6 +59,24 @@ try:
         color: {COLOR_SCHEME['text']} !important;
     }}
 
+    /* DROPDOWN MENU OPTIONS - Ensure visibility */
+    [data-baseweb="popover"],
+    [data-baseweb="menu"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+    
+    [data-baseweb="menu"] li,
+    [role="option"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-baseweb="menu"] li:hover,
+    [role="option"]:hover {{
+        background-color: rgba(6, 182, 212, 0.2) !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+
     /* Sidebar styling - prevent color changes */
     [data-testid="stSidebar"] {{
         background-color: {COLOR_SCHEME['secondary']} !important;

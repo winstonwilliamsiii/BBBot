@@ -78,6 +78,40 @@ def apply_custom_styling():
     [data-testid="stSidebar"] [data-baseweb="select"] {{
         color: {COLOR_SCHEME['text']} !important;
     }}
+
+    /* DROPDOWN MENU OPTIONS - Ensure visibility */
+    [data-baseweb="popover"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+    
+    [data-baseweb="menu"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+    
+    [data-baseweb="menu"] li {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-baseweb="menu"] li:hover {{
+        background-color: rgba(6, 182, 212, 0.2) !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [role="option"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [role="option"]:hover {{
+        background-color: rgba(6, 182, 212, 0.2) !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-baseweb="select"] > div {{
+        background-color: rgba(15, 23, 42, 0.6) !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
     </style>
     """
 

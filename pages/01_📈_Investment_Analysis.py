@@ -96,6 +96,51 @@ try:
         color: {COLOR_SCHEME['text']} !important;
     }}
 
+    /* DROPDOWN MENU OPTIONS - Fix invisible text in dropdown */
+    [data-baseweb="popover"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+    
+    [data-baseweb="menu"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+    }}
+    
+    [data-baseweb="menu"] li {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-baseweb="menu"] li:hover {{
+        background-color: rgba(6, 182, 212, 0.2) !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Dropdown option text */
+    [role="option"] {{
+        background-color: {COLOR_SCHEME['secondary']} !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [role="option"]:hover {{
+        background-color: rgba(6, 182, 212, 0.2) !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Select dropdown input field */
+    [data-baseweb="select"] > div {{
+        background-color: rgba(15, 23, 42, 0.6) !important;
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Selected value in dropdown */
+    [data-baseweb="select"] input {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-baseweb="select"] span {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+
     /* Sidebar styling - prevent color changes */
     [data-testid="stSidebar"] {{
         background-color: {COLOR_SCHEME['secondary']} !important;

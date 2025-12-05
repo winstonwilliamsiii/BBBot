@@ -119,6 +119,24 @@ st.markdown("""
         border-left-color: #EF4444;
     }}
 
+    /* DROPDOWN MENU OPTIONS - Ensure visibility */
+    [data-baseweb="popover"],
+    [data-baseweb="menu"] {{
+        background-color: #0B1220 !important;
+    }}
+    
+    [data-baseweb="menu"] li,
+    [role="option"] {{
+        background-color: #0B1220 !important;
+        color: #E6EEF8 !important;
+    }}
+    
+    [data-baseweb="menu"] li:hover,
+    [role="option"]:hover {{
+        background-color: rgba(6, 182, 212, 0.2) !important;
+        color: #E6EEF8 !important;
+    }}
+
     /* Sidebar styling - prevent color changes */
     [data-testid="stSidebar"] {{
         background-color: #0B1220 !important;

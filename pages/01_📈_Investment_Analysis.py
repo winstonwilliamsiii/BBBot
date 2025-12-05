@@ -77,6 +77,24 @@ try:
     .element-container {{
         color: {COLOR_SCHEME['text']} !important;
     }}
+    
+    /* Force all input labels to be visible - match home page */
+    label, .stSelectbox label, .stMultiSelect label, .stTextInput label,
+    .stNumberInput label, .stDateInput label, .stTimeInput label,
+    .stTextArea label, .stCheckbox label, .stRadio label,
+    .stSlider label, .stFileUploader label,
+    div[data-baseweb="select"] label,
+    div[data-testid="stSelectbox"] label,
+    div[data-testid="stSelectbox"] > label,
+    .row-widget label {{
+        color: {COLOR_SCHEME['text']} !important;
+        font-weight: 500 !important;
+    }}
+    
+    /* Headers and text */
+    h1, h2, h3, h4, h5, h6, p, span, div {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
     

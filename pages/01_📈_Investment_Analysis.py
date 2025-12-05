@@ -79,6 +79,10 @@ try:
     }}
     </style>
     """, unsafe_allow_html=True)
+    
+except ImportError:
+    # Fallback if frontend modules not available
+    st.warning("⚠️ Styling modules not found. Using fallback styles.")
 
 # Import MLFlow tracker
 try:

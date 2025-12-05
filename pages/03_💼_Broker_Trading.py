@@ -52,28 +52,46 @@ except ImportError:
         color: {COLOR_SCHEME['text']} !important;
     }}
     
-    /* Metric labels and values - ENHANCED */
-    [data-testid="stMetricLabel"] {{
-        color: {COLOR_SCHEME['text']} !important;
-        font-weight: 500 !important;
+    /* Metric labels and values - SUPER AGGRESSIVE VISIBILITY */
+    [data-testid="stMetricLabel"], 
+    [data-testid="stMetricLabel"] *,
+    div[data-testid="stMetricLabel"],
+    div[data-testid="stMetricLabel"] * {{
+        color: #00FFFF !important;  /* Bright cyan */
+        font-weight: 600 !important;
+        text-shadow: 0 0 2px rgba(0, 255, 255, 0.5) !important;
     }}
     
-    [data-testid="stMetricValue"] {{
-        color: {COLOR_SCHEME['text']} !important;
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricValue"] *,
+    div[data-testid="stMetricValue"],
+    div[data-testid="stMetricValue"] * {{
+        color: #FFFFFF !important;  /* Pure white */
+        font-weight: 700 !important;
+        font-size: 1.8rem !important;
+        text-shadow: 0 0 3px rgba(255, 255, 255, 0.8) !important;
+    }}
+    
+    [data-testid="stMetricDelta"],
+    [data-testid="stMetricDelta"] *,
+    div[data-testid="stMetricDelta"],
+    div[data-testid="stMetricDelta"] * {{
+        color: #FFD700 !important;  /* Bright gold */
         font-weight: 600 !important;
     }}
     
-    [data-testid="stMetricDelta"] {{
-        color: {COLOR_SCHEME['text']} !important;
+    /* Force ALL metric container content to be visible */
+    [data-testid="metric-container"],
+    [data-testid="metric-container"] *,
+    div[data-testid="metric-container"],
+    div[data-testid="metric-container"] * {{
+        color: #FFFFFF !important;
     }}
     
-    /* Additional metric container styling */
-    [data-testid="metric-container"] {{
-        color: {COLOR_SCHEME['text']} !important;
-    }}
-    
-    [data-testid="metric-container"] > div {{
-        color: {COLOR_SCHEME['text']} !important;
+    /* Override ANY inline styles on metrics */
+    .css-1xarl3l, .css-1xarl3l *, 
+    .css-12w0qpk, .css-12w0qpk * {{
+        color: #FFFFFF !important;
     }}
     
     /* Caption text */

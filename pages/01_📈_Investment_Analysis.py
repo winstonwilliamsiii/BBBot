@@ -62,19 +62,54 @@ except ImportError:
         color: {COLOR_SCHEME['text']} !important;
     }}
     
-    /* Metric labels and values */
-    div[data-testid="stMetricLabel"], div[data-testid="stMetricValue"] {{
+    /* Metric labels and values - ENHANCED */
+    [data-testid="stMetricLabel"] {{
+        color: {COLOR_SCHEME['text']} !important;
+        font-weight: 500 !important;
+    }}
+    
+    [data-testid="stMetricValue"] {{
+        color: {COLOR_SCHEME['text']} !important;
+        font-weight: 600 !important;
+    }}
+    
+    [data-testid="stMetricDelta"] {{
         color: {COLOR_SCHEME['text']} !important;
     }}
     
-    /* Tab labels */
+    /* Additional metric container styling */
+    [data-testid="metric-container"] {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    [data-testid="metric-container"] > div {{
+        color: {COLOR_SCHEME['text']} !important;
+    }}
+    
+    /* Tab labels - WHITE with ORANGE hover */
     .stTabs [data-baseweb="tab"] {{
         color: {COLOR_SCHEME['text']} !important;
+        font-weight: 500 !important;
+    }}
+    
+    .stTabs [data-baseweb="tab"]:hover {{
+        color: #FF8C00 !important;
+        background-color: rgba(255, 140, 0, 0.1) !important;
+    }}
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
+        color: {COLOR_SCHEME['primary']} !important;
+        border-bottom-color: {COLOR_SCHEME['primary']} !important;
     }}
     
     /* Caption text */
     .stCaption {{
         color: rgba(230, 238, 248, 0.8) !important;
+    }}
+    
+    /* Ensure all text in columns is white */
+    .element-container {{
+        color: {COLOR_SCHEME['text']} !important;
     }}
     </style>
     """, unsafe_allow_html=True)

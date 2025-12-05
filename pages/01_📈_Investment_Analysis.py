@@ -10,28 +10,17 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 
-# Import color scheme for consistent styling
+# Import color scheme and styling from home page
 try:
     from frontend.styles.colors import COLOR_SCHEME
     from frontend.utils.styling import apply_custom_styling
-    apply_custom_styling()
-except ImportError:
-    # Fallback colors if import fails
-    COLOR_SCHEME = {
-        "background": "#0F172A",
-        "secondary": "#0B1220",
-        "text": "#E6EEF8",
-        "primary": "#06B6D4",
-        "card_background": "#071431"
-    }
     
-    # Apply background styling
+    # Apply home page styling first
+    apply_custom_styling()
+    
+    # Add page-specific styling
     st.markdown(f"""
     <style>
-    .stApp {{
-        background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
-        color: {COLOR_SCHEME['text']};
-    }}
     
     /* Ensure tab content has consistent background */
     .stTabs [data-baseweb="tab-panel"] {{
@@ -42,66 +31,25 @@ except ImportError:
         background: transparent;
     }}
     
-    /* Force white text color for all elements */
-    .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, 
-    .stMarkdown h4, .stMarkdown h5, .stMarkdown h6, .stText, div[data-testid="stMarkdownContainer"],
-    div[data-testid="stText"], label, .stSelectbox label, .stMultiSelect label,
-    .stDateInput label, .stCheckbox label, .stRadio label, .stNumberInput label,
-    .stTextInput label, .row-widget label {{  
-        color: {COLOR_SCHEME['text']} !important;
-    }}
-    
-    /* Headers and subheaders */
-    h1, h2, h3, h4, h5, h6 {{
-        color: {COLOR_SCHEME['text']} !important;
-    }}
-    
-    /* Dataframe headers and cells */
-    .stDataFrame, .stDataFrame th, .stDataFrame td, 
-    div[data-testid="stDataFrame"] {{
-        color: {COLOR_SCHEME['text']} !important;
-    }}
-    
-    /* Metric labels and values - SUPER AGGRESSIVE VISIBILITY */
-    [data-testid="stMetricLabel"], 
-    [data-testid="stMetricLabel"] *,
-    div[data-testid="stMetricLabel"],
-    div[data-testid="stMetricLabel"] * {{
-        color: #00FFFF !important;  /* Bright cyan */
-        font-weight: 600 !important;
-        text-shadow: 0 0 2px rgba(0, 255, 255, 0.5) !important;
+    /* CRITICAL: Force Streamlit metrics to match home page exactly */
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricLabel"] * {{
+        color: rgba(230, 238, 248, 0.9) !important;
+        font-size: 0.9rem !important;
+        font-weight: 500 !important;
     }}
     
     [data-testid="stMetricValue"],
-    [data-testid="stMetricValue"] *,
-    div[data-testid="stMetricValue"],
-    div[data-testid="stMetricValue"] * {{
-        color: #FFFFFF !important;  /* Pure white */
+    [data-testid="stMetricValue"] * {{
+        color: {COLOR_SCHEME['text']} !important;
+        font-size: 1.6rem !important;
         font-weight: 700 !important;
-        font-size: 1.8rem !important;
-        text-shadow: 0 0 3px rgba(255, 255, 255, 0.8) !important;
     }}
     
     [data-testid="stMetricDelta"],
-    [data-testid="stMetricDelta"] *,
-    div[data-testid="stMetricDelta"],
-    div[data-testid="stMetricDelta"] * {{
-        color: #FFD700 !important;  /* Bright gold */
-        font-weight: 600 !important;
-    }}
-    
-    /* Force ALL metric container content to be visible */
-    [data-testid="metric-container"],
-    [data-testid="metric-container"] *,
-    div[data-testid="metric-container"],
-    div[data-testid="metric-container"] * {{
-        color: #FFFFFF !important;
-    }}
-    
-    /* Override ANY inline styles on metrics */
-    .css-1xarl3l, .css-1xarl3l *, 
-    .css-12w0qpk, .css-12w0qpk * {{
-        color: #FFFFFF !important;
+    [data-testid="stMetricDelta"] * {{
+        color: rgba(230, 238, 248, 0.9) !important;
+        opacity: 0.9 !important;
     }}
     
     /* Tab labels - WHITE with ORANGE hover */

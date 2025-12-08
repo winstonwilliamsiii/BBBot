@@ -164,6 +164,26 @@ except ImportError:
     # Fallback if frontend modules not available
     st.warning("⚠️ Styling modules not found. Using fallback styles.")
 
+# Import RBAC and broker connections
+try:
+    from frontend.utils.rbac import (
+        RBACManager,
+        Permission,
+        show_login_form,
+        show_user_info,
+        show_permission_denied,
+    )
+    from frontend.utils.broker_connections import (
+        display_broker_connections,
+        display_webull_funds,
+        display_position_analysis,
+        display_connection_health,
+    )
+    RBAC_AVAILABLE = True
+except ImportError:
+    RBAC_AVAILABLE = False
+    st.warning("⚠️ RBAC system not available.")
+
 # Import MLFlow tracker
 try:
     from bbbot1_pipeline.mlflow_tracker import get_tracker
@@ -187,6 +207,17 @@ def display_investment_page():
     
     st.title("📈 Investment Analysis Dashboard")
     st.markdown("Real-time portfolio tracking with ML experiment logging")
+    
+    # Initialize RBAC
+    if RBAC_AVAILABLE:
+        RBACManager.init_session_state()
+        
+        # Show login form or user info in sidebar
+        if not RBACManager.is_authenticated():
+            show_login_form()
+            st.info("👈 Please login to access full features")
+        else:
+            show_user_info()
     
     # Sidebar configuration
     st.sidebar.header("⚙️ Analysis Configuration")
@@ -232,13 +263,28 @@ def display_investment_page():
         st.info("👈 Select tickers from the sidebar to begin analysis")
         return
     
-    # Create tabs for different views
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Portfolio Overview",
-        "🔬 MLFlow Experiments",
-        "📈 Technical Analysis",
-        "💰 Fundamental Ratios"
-    ])
+    # Determine which tabs to show based on permissions
+    if RBAC_AVAILABLE and RBACManager.require_connections_access():
+        # Show all tabs including connections for authorized users
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "📊 Portfolio Overview",
+            "🔬 MLFlow Experiments",
+            "📈 Technical Analysis",
+            "💰 Fundamental Ratios",
+            "🔗 Broker Connections"
+        ])
+        
+        # Tab 5: Broker Connections (Restricted)
+        with tab5:
+            display_broker_connections_tab()
+    else:
+        # Show standard tabs without connections
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Portfolio Overview",
+            "🔬 MLFlow Experiments",
+            "📈 Technical Analysis",
+            "💰 Fundamental Ratios"
+        ])
     
     # Tab 1: Portfolio Overview
     with tab1:
@@ -678,6 +724,87 @@ def display_fundamental_ratios(tickers, enable_logging):
             
         except Exception as e:
             st.error(f"Error fetching fundamentals: {e}")
+
+
+def display_broker_connections_tab():
+    """Display broker connections tab (requires KYC and investment agreement)"""
+    
+    if not RBAC_AVAILABLE:
+        st.error("RBAC system not available")
+        return
+    
+    # Check authentication and permissions
+    if not RBACManager.is_authenticated():
+        st.warning("⚠️ Please login to access broker connections")
+        show_login_form()
+        return
+    
+    # Check if user has required permissions and compliance
+    if not RBACManager.require_connections_access():
+        show_permission_denied("Broker Connections Access")
+        
+        st.markdown("### 📋 Requirements")
+        st.markdown("""
+        This tab is restricted to **Asset Management Clients** and **Investors** who have:
+        
+        1. ✅ **Completed KYC** (Know Your Customer) verification
+        2. ✅ **Signed Investment Management Agreement**
+        
+        These requirements ensure compliance with financial regulations and protect both parties.
+        """)
+        
+        user = RBACManager.get_current_user()
+        if user:
+            st.markdown("### 📊 Your Status")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if user.kyc_completed:
+                    st.success("✅ KYC Completed")
+                    if user.kyc_date:
+                        st.caption(f"Completed on: {user.kyc_date.strftime('%Y-%m-%d')}")
+                else:
+                    st.error("❌ KYC Not Completed")
+                    st.caption("Please contact support to complete KYC")
+            
+            with col2:
+                if user.investment_agreement_signed:
+                    st.success("✅ Investment Agreement Signed")
+                    if user.agreement_date:
+                        st.caption(f"Signed on: {user.agreement_date.strftime('%Y-%m-%d')}")
+                else:
+                    st.error("❌ Investment Agreement Not Signed")
+                    st.caption("Please contact support to sign agreement")
+        
+        st.markdown("---")
+        st.info("💡 **Contact Support:** For assistance with onboarding, email: support@bentleybot.com")
+        
+        return
+    
+    # User has access - display broker connections
+    st.header("🔗 Broker Connections & Fund Management")
+    st.markdown("Manage your connected broker accounts and monitor fund positions")
+    
+    # Create sub-tabs for different connection views
+    conn_tab1, conn_tab2, conn_tab3, conn_tab4 = st.tabs([
+        "🏦 Accounts",
+        "💼 WeFolio Funds",
+        "📊 Positions",
+        "🔍 Health Monitor"
+    ])
+    
+    with conn_tab1:
+        display_broker_connections()
+    
+    with conn_tab2:
+        display_webull_funds()
+    
+    with conn_tab3:
+        display_position_analysis()
+    
+    with conn_tab4:
+        display_connection_health()
 
 
 if __name__ == "__main__":

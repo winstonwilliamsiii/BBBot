@@ -184,6 +184,16 @@ except ImportError:
     RBAC_AVAILABLE = False
     st.warning("⚠️ RBAC system not available.")
 
+# Import multi-source fundamentals fetcher
+try:
+    from frontend.utils.fundamentals_fetcher import (
+        cached_fetch_fundamentals,
+        format_fundamental_value
+    )
+    FUNDAMENTALS_FETCHER_AVAILABLE = True
+except ImportError:
+    FUNDAMENTALS_FETCHER_AVAILABLE = False
+
 # Import MLFlow tracker
 try:
     from bbbot1_pipeline.mlflow_tracker import get_tracker
@@ -644,36 +654,93 @@ def display_technical_analysis(tickers, start_date, end_date):
 
 
 def display_fundamental_ratios(tickers, enable_logging):
-    """Display and log fundamental ratios"""
+    """Display and log fundamental ratios with multi-source support"""
     
     st.header("💰 Fundamental Analysis")
     
-    if not YFINANCE_AVAILABLE:
-        st.error("yfinance package required")
-        return
-    
     selected_ticker = st.selectbox("Select ticker for fundamentals", tickers, key="fund_ticker")
+    
+    # Data source selection
+    if FUNDAMENTALS_FETCHER_AVAILABLE:
+        data_source = st.radio(
+            "Data Source",
+            ["Auto (Alpha Vantage → Tiingo → yfinance)", "yfinance only"],
+            horizontal=True,
+            help="Auto uses multiple sources with rate limiting to avoid API errors"
+        )
+        use_multi_source = "Auto" in data_source
+    else:
+        use_multi_source = False
+        st.info("💡 Using yfinance only. Install multi-source fetcher for Alpha Vantage support.")
     
     with st.spinner(f"Fetching fundamentals for {selected_ticker}..."):
         try:
-            ticker = yf.Ticker(selected_ticker)
-            info = ticker.info
+            fundamentals = {}
+            data_source_used = "unknown"
             
-            # Extract key fundamentals
-            fundamentals = {
-                'Market Cap': info.get('marketCap', 'N/A'),
-                'P/E Ratio': info.get('trailingPE', 'N/A'),
-                'Forward P/E': info.get('forwardPE', 'N/A'),
-                'PEG Ratio': info.get('pegRatio', 'N/A'),
-                'Price to Book': info.get('priceToBook', 'N/A'),
-                'Dividend Yield': info.get('dividendYield', 'N/A'),
-                'ROE': info.get('returnOnEquity', 'N/A'),
-                'ROA': info.get('returnOnAssets', 'N/A'),
-                'Debt to Equity': info.get('debtToEquity', 'N/A'),
-                'Current Ratio': info.get('currentRatio', 'N/A'),
-                'Revenue': info.get('totalRevenue', 'N/A'),
-                'Profit Margin': info.get('profitMargins', 'N/A'),
-            }
+            # Try multi-source fetcher first
+            if use_multi_source and FUNDAMENTALS_FETCHER_AVAILABLE:
+                data = cached_fetch_fundamentals(selected_ticker)
+                
+                if data:
+                    data_source_used = data.get('source', 'unknown')
+                    st.success(f"✅ Data from: **{data_source_used}**")
+                    
+                    # Map to display format
+                    fundamentals = {
+                        'Market Cap': data.get('market_cap', 'N/A'),
+                        'P/E Ratio': data.get('pe_ratio', 'N/A'),
+                        'Forward P/E': data.get('forward_pe', 'N/A'),
+                        'PEG Ratio': data.get('peg_ratio', 'N/A'),
+                        'Price to Book': data.get('price_to_book', 'N/A'),
+                        'Price to Sales': data.get('price_to_sales', 'N/A'),
+                        'Dividend Yield': data.get('dividend_yield', 'N/A'),
+                        'EPS': data.get('eps', 'N/A'),
+                        'Revenue TTM': data.get('revenue_ttm', 'N/A'),
+                        'Profit Margin': data.get('profit_margin', 'N/A'),
+                        'Operating Margin': data.get('operating_margin', 'N/A'),
+                        'ROE': data.get('roe', 'N/A'),
+                        'ROA': data.get('roa', 'N/A'),
+                        'Beta': data.get('beta', 'N/A'),
+                        '52W High': data.get('52_week_high', 'N/A'),
+                        '52W Low': data.get('52_week_low', 'N/A'),
+                        'SMA 50': data.get('50_day_ma', 'N/A'),
+                        'SMA 200': data.get('200_day_ma', 'N/A'),
+                    }
+                    
+                    # Add additional fields if from Alpha Vantage
+                    if data_source_used == 'alpha_vantage':
+                        fundamentals.update({
+                            'Sector': data.get('sector', 'N/A'),
+                            'Industry': data.get('industry', 'N/A'),
+                            'Analyst Target': data.get('analyst_target_price', 'N/A'),
+                            'Q. Rev Growth': data.get('quarterly_revenue_growth', 'N/A'),
+                            'Q. Earnings Growth': data.get('quarterly_earnings_growth', 'N/A'),
+                        })
+                else:
+                    st.warning("⚠️ Multi-source fetch failed, falling back to yfinance...")
+            
+            # Fallback to yfinance
+            if not fundamentals and YFINANCE_AVAILABLE:
+                ticker = yf.Ticker(selected_ticker)
+                info = ticker.info
+                data_source_used = "yfinance"
+                
+                # Extract key fundamentals from yfinance
+                fundamentals = {
+                    'Market Cap': info.get('marketCap', 'N/A'),
+                    'P/E Ratio': info.get('trailingPE', 'N/A'),
+                    'Forward P/E': info.get('forwardPE', 'N/A'),
+                    'PEG Ratio': info.get('pegRatio', 'N/A'),
+                    'Price to Book': info.get('priceToBook', 'N/A'),
+                    'Dividend Yield': info.get('dividendYield', 'N/A'),
+                    'ROE': info.get('returnOnEquity', 'N/A'),
+                    'ROA': info.get('returnOnAssets', 'N/A'),
+                    'Debt to Equity': info.get('debtToEquity', 'N/A'),
+                    'Current Ratio': info.get('currentRatio', 'N/A'),
+                    'Revenue': info.get('totalRevenue', 'N/A'),
+                    'Profit Margin': info.get('profitMargins', 'N/A'),
+                }
             
             # Display in columns
             col1, col2, col3 = st.columns(3)
@@ -683,16 +750,27 @@ def display_fundamental_ratios(tickers, enable_logging):
                 col = [col1, col2, col3][i % 3]
                 value = fundamentals[key]
                 
-                # Format value
-                if isinstance(value, (int, float)):
-                    if key == 'Market Cap' or key == 'Revenue':
-                        value_str = f"${value:,.0f}"
-                    elif 'Ratio' in key or 'Margin' in key or 'Yield' in key or key in ['ROE', 'ROA']:
-                        value_str = f"{value:.2f}"
-                    else:
-                        value_str = f"{value:,.2f}"
+                # Format value with improved handling
+                if use_multi_source and FUNDAMENTALS_FETCHER_AVAILABLE:
+                    value_str = format_fundamental_value(key.lower().replace(' ', '_'), value)
                 else:
-                    value_str = str(value)
+                    # Original yfinance formatting
+                    if isinstance(value, (int, float)):
+                        if 'Cap' in key or 'Revenue' in key:
+                            if value >= 1_000_000_000_000:
+                                value_str = f"${value/1_000_000_000_000:.2f}T"
+                            elif value >= 1_000_000_000:
+                                value_str = f"${value/1_000_000_000:.2f}B"
+                            elif value >= 1_000_000:
+                                value_str = f"${value/1_000_000:.2f}M"
+                            else:
+                                value_str = f"${value:,.0f}"
+                        elif 'Ratio' in key or 'Margin' in key or 'Yield' in key or key in ['ROE', 'ROA']:
+                            value_str = f"{value:.2f}"
+                        else:
+                            value_str = f"{value:,.2f}"
+                    else:
+                        value_str = str(value)
                 
                 col.metric(key, value_str)
             

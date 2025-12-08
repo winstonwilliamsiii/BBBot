@@ -664,13 +664,32 @@ def display_fundamental_ratios(tickers, enable_logging):
     if FUNDAMENTALS_FETCHER_AVAILABLE:
         data_source = st.radio(
             "Data Source",
-            ["Auto (Alpha Vantage → Tiingo → yfinance)", "yfinance only"],
+            [
+                "Auto (Alpha Vantage → yfinance)",
+                "Alpha Vantage only",
+                "yfinance only",
+                "Tiingo only"
+            ],
             horizontal=True,
-            help="Auto uses multiple sources with rate limiting to avoid API errors"
+            help="Auto tries Alpha Vantage first, then falls back to yfinance. Configure API keys in .env file."
         )
-        use_multi_source = "Auto" in data_source
+        
+        # Determine source priority based on selection
+        if "Auto" in data_source:
+            use_multi_source = True
+            source_priority = ['alpha_vantage', 'yfinance']
+        elif "Alpha Vantage only" in data_source:
+            use_multi_source = True
+            source_priority = ['alpha_vantage']
+        elif "Tiingo only" in data_source:
+            use_multi_source = True
+            source_priority = ['tiingo']
+        else:  # yfinance only
+            use_multi_source = False
+            source_priority = []
     else:
         use_multi_source = False
+        source_priority = []
         st.info("💡 Using yfinance only. Install multi-source fetcher for Alpha Vantage support.")
     
     with st.spinner(f"Fetching fundamentals for {selected_ticker}..."):
@@ -680,7 +699,9 @@ def display_fundamental_ratios(tickers, enable_logging):
             
             # Try multi-source fetcher first
             if use_multi_source and FUNDAMENTALS_FETCHER_AVAILABLE:
-                data = cached_fetch_fundamentals(selected_ticker)
+                # Use custom source priority
+                from frontend.utils.fundamentals_fetcher import fetch_fundamentals_multi_source
+                data = fetch_fundamentals_multi_source(selected_ticker, sources=source_priority)
                 
                 if data:
                     data_source_used = data.get('source', 'unknown')

@@ -696,16 +696,31 @@ def display_fundamental_ratios(tickers, enable_logging):
         try:
             fundamentals = {}
             data_source_used = "unknown"
+            raw_data = {}  # Store raw data for "View All" section
             
             # Try multi-source fetcher first
             if use_multi_source and FUNDAMENTALS_FETCHER_AVAILABLE:
                 # Use custom source priority
                 from frontend.utils.fundamentals_fetcher import fetch_fundamentals_multi_source
                 data = fetch_fundamentals_multi_source(selected_ticker, sources=source_priority)
+                raw_data = data  # Store for display
                 
                 if data:
                     data_source_used = data.get('source', 'unknown')
-                    st.success(f"✅ Data from: **{data_source_used}**")
+                    
+                    # Custom styling for Tiingo data source
+                    if data_source_used == 'tiingo':
+                        st.markdown(
+                            '<div style="padding: 0.5rem; border-radius: 0.3rem; '
+                            'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); '
+                            'color: white; font-weight: 600; text-align: center; '
+                            'box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);">' 
+                            f'✅ Data from: <strong>{data_source_used.upper()}</strong> (Premium)' 
+                            '</div>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.success(f"✅ Data from: **{data_source_used}**")
                     
                     # Map to display format
                     fundamentals = {
@@ -729,7 +744,7 @@ def display_fundamental_ratios(tickers, enable_logging):
                         'SMA 200': data.get('200_day_ma', 'N/A'),
                     }
                     
-                    # Add additional fields if from Alpha Vantage
+                    # Add additional fields based on source
                     if data_source_used == 'alpha_vantage':
                         fundamentals.update({
                             'Sector': data.get('sector', 'N/A'),
@@ -738,13 +753,38 @@ def display_fundamental_ratios(tickers, enable_logging):
                             'Q. Rev Growth': data.get('quarterly_revenue_growth', 'N/A'),
                             'Q. Earnings Growth': data.get('quarterly_earnings_growth', 'N/A'),
                         })
+                    elif data_source_used == 'tiingo':
+                        # Show Tiingo-specific info if available
+                        if data.get('description'):
+                            with st.expander("📋 Company Description"):
+                                st.write(data.get('description'))
+                        
+                        # Add exchange and date info
+                        tiingo_info = []
+                        if data.get('exchange') != 'N/A':
+                            tiingo_info.append(f"Exchange: {data.get('exchange')}")
+                        if data.get('start_date') != 'N/A':
+                            tiingo_info.append(f"Data Since: {data.get('start_date')}")
+                        
+                        if tiingo_info:
+                            st.caption(" | ".join(tiingo_info))
                 else:
-                    st.warning("⚠️ Multi-source fetch failed, falling back to yfinance...")
+                    # Only show errors if this is a single-source mode
+                    # For Auto mode, silently fall back to yfinance
+                    if len(source_priority) == 1:
+                        if 'alpha_vantage' in source_priority:
+                            st.warning("⚠️ Alpha Vantage unavailable, trying yfinance fallback...")
+                        elif 'tiingo' in source_priority:
+                            st.warning("⚠️ Tiingo unavailable, trying yfinance fallback...")
+                            st.info("💡 **Tiingo Subscription Note:**\n"
+                                   "If you just purchased a subscription, API access may take 15-30 minutes to activate. "
+                                   "Check your email for confirmation and API key updates.")
             
             # Fallback to yfinance
             if not fundamentals and YFINANCE_AVAILABLE:
                 ticker = yf.Ticker(selected_ticker)
                 info = ticker.info
+                raw_data = info  # Store for display
                 data_source_used = "yfinance"
                 
                 # Extract key fundamentals from yfinance
@@ -762,6 +802,36 @@ def display_fundamental_ratios(tickers, enable_logging):
                     'Revenue': info.get('totalRevenue', 'N/A'),
                     'Profit Margin': info.get('profitMargins', 'N/A'),
                 }
+            
+            # Final check - if still no data, show comprehensive error
+            if not fundamentals or len(fundamentals) == 0:
+                st.error(f"❌ Unable to fetch fundamentals for **{selected_ticker}** from any source")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.warning("**Possible Issues:**")
+                    st.markdown(
+                        "- Invalid ticker symbol\n"
+                        "- Ticker not found in databases\n"
+                        "- Rate limits exceeded\n"
+                        "- Network connectivity issues"
+                    )
+                
+                with col2:
+                    st.info("**Solutions:**")
+                    st.markdown(
+                        "- Verify ticker symbol is correct\n"
+                        "- Try 'Auto' mode for multiple sources\n"
+                        "- Wait 5-10 minutes if rate limited\n"
+                        "- Check API keys in `.env` file"
+                    )
+                
+                # Show which sources were tried
+                if use_multi_source and source_priority:
+                    st.caption(f"📍 Tried sources: {', '.join(source_priority)}")
+                
+                return
             
             # Display in columns
             col1, col2, col3 = st.columns(3)
@@ -817,9 +887,72 @@ def display_fundamental_ratios(tickers, enable_logging):
                 except Exception as e:
                     st.warning(f"⚠️ MLFlow logging failed: {e}")
             
-            # Display full info in expander
+            # Display full info in expander with custom styling
             with st.expander("📋 View All Available Data"):
-                st.json(info)
+                # Add custom CSS for the data display
+                st.markdown("""
+                <style>
+                .data-section {
+                    padding: 1rem;
+                    border-radius: 0.5rem;
+                    margin-bottom: 1rem;
+                }
+                .alpha-vantage-data {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }
+                .tiingo-data {
+                    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                    color: white;
+                }
+                .yfinance-data {
+                    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+                    color: #1a1a1a;
+                }
+                .data-key {
+                    font-weight: 600;
+                    opacity: 0.9;
+                }
+                .data-value {
+                    font-weight: 400;
+                    margin-left: 1rem;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Determine which data to show based on source
+                if data_source_used == 'alpha_vantage':
+                    st.markdown(
+                        '<div class="data-section alpha-vantage-data">'
+                        '<h4>📊 Alpha Vantage Data (Premium)</h4>'
+                        '<p>Source: Alpha Vantage API | Comprehensive Fundamentals</p>'
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
+                    st.json(raw_data if raw_data else fundamentals)
+                        
+                elif data_source_used == 'tiingo':
+                    st.markdown(
+                        '<div class="data-section tiingo-data">'
+                        '<h4>📈 Tiingo Data (Premium)</h4>'
+                        '<p>Source: Tiingo API | Professional Grade</p>'
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
+                    st.json(raw_data if raw_data else fundamentals)
+                        
+                elif data_source_used == 'yfinance':
+                    st.markdown(
+                        '<div class="data-section yfinance-data">'
+                        '<h4>📉 Yahoo Finance Data (Free)</h4>'
+                        '<p>Source: yfinance Library | Community Maintained</p>'
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
+                    st.json(raw_data if raw_data else fundamentals)
+                else:
+                    # Fallback for unknown source
+                    st.json(raw_data if raw_data else fundamentals)
             
         except Exception as e:
             st.error(f"Error fetching fundamentals: {e}")

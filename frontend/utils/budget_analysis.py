@@ -29,12 +29,13 @@ class BudgetAnalyzer:
     
     def __init__(self):
         """Initialize database connection."""
+        # Use separate budget database configuration
         self.db_config = {
-            'host': os.getenv('MYSQL_HOST', '127.0.0.1'),
-            'port': int(os.getenv('MYSQL_PORT', '3306')),
-            'user': os.getenv('MYSQL_USER', 'root'),
-            'password': os.getenv('MYSQL_PASSWORD', ''),
-            'database': os.getenv('MYSQL_DATABASE', 'mydb'),
+            'host': os.getenv('BUDGET_MYSQL_HOST', os.getenv('MYSQL_HOST', '127.0.0.1')),
+            'port': int(os.getenv('BUDGET_MYSQL_PORT', os.getenv('MYSQL_PORT', '3306'))),
+            'user': os.getenv('BUDGET_MYSQL_USER', os.getenv('MYSQL_USER', 'root')),
+            'password': os.getenv('BUDGET_MYSQL_PASSWORD', os.getenv('MYSQL_PASSWORD', '')),
+            'database': os.getenv('BUDGET_MYSQL_DATABASE', os.getenv('MYSQL_DATABASE', 'mydb')),
             'charset': 'utf8mb4',
             'collation': 'utf8mb4_unicode_ci'
         }
@@ -44,7 +45,61 @@ class BudgetAnalyzer:
         try:
             return mysql.connector.connect(**self.db_config)
         except mysql.connector.Error as err:
-            st.error(f"Database connection error: {err}")
+            st.error(f"❌ Database connection error: {err}")
+            
+            # Provide helpful troubleshooting
+            with st.expander("🔧 Troubleshooting Database Connection"):
+                st.markdown(f"""
+                **Connection Details:**
+                - Host: `{self.db_config['host']}`
+                - Port: `{self.db_config['port']}`
+                - Database: `{self.db_config['database']}`
+                - User: `{self.db_config['user']}`
+                
+                **Common Fixes:**
+                
+                1. ✅ **Check MySQL is running:**
+                   ```powershell
+                   # Check if MySQL is listening on port 3306
+                   netstat -an | Select-String "3306"
+                   ```
+                
+                2. ✅ **Verify database exists:**
+                   ```sql
+                   mysql -u root -p
+                   SHOW DATABASES;
+                   CREATE DATABASE IF NOT EXISTS mydb;
+                   ```
+                
+                3. ✅ **Run database schema:**
+                   ```powershell
+                   mysql -u root -p mydb < scripts/setup/budget_schema.sql
+                   ```
+                
+                4. ✅ **Check .env configuration:**
+                   ```
+                   BUDGET_MYSQL_HOST=127.0.0.1
+                   BUDGET_MYSQL_PORT=3306
+                   BUDGET_MYSQL_USER=root
+                   BUDGET_MYSQL_PASSWORD=root
+                   BUDGET_MYSQL_DATABASE=mydb
+                   ```
+                
+                5. ✅ **Restart MySQL service:**
+                   ```powershell
+                   # Windows
+                   net stop MySQL80
+                   net start MySQL80
+                   
+                   # Or restart via Services.msc
+                   ```
+                
+                **Error Code Reference:**
+                - `2003`: Cannot connect to server (check if MySQL is running)
+                - `1045`: Access denied (check username/password)
+                - `1049`: Unknown database (create database first)
+                """)
+            
             return None
     
     # ==========================================================================

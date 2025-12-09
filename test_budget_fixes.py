@@ -141,15 +141,48 @@ def test_plaid_button_logic():
     plaid_client_id = os.getenv('PLAID_CLIENT_ID')
     plaid_secret = os.getenv('PLAID_SECRET')
     
-    print(f"   PLAID_CLIENT_ID: {plaid_client_id}")
+    print(f"   PLAID_CLIENT_ID: {plaid_client_id[:20] + '...' if plaid_client_id and len(plaid_client_id) > 20 else plaid_client_id}")
     
     if plaid_client_id and plaid_client_id != 'your_plaid_client_id_here':
         print("   ✅ Plaid credentials are configured")
-        print("   📝 Button will show: OAuth flow instructions")
-        return True
+        print("   📝 OAuth flow will be available")
+        
+        # Test PlaidLinkManager initialization
+        try:
+            from frontend.utils.plaid_link import PlaidLinkManager
+            manager = PlaidLinkManager()
+            print("   ✅ PlaidLinkManager initialized successfully")
+            return True
+        except ValueError as e:
+            print(f"   ❌ PlaidLinkManager error: {e}")
+            return False
+        except Exception as e:
+            print(f"   ⚠️  Import error: {e}")
+            print("   💡 Run: pip install plaid-python")
+            return False
     else:
         print("   ⚠️  Plaid credentials are placeholders")
         print("   📝 Button will show: Setup instructions")
+        return False
+
+
+def test_plaid_logo():
+    """Test if Plaid logo exists"""
+    print("\n🎨 Test 5: Plaid Logo")
+    print("=" * 60)
+    
+    from pathlib import Path
+    logo_path = Path(__file__).parent / "resources" / "images" / "plaid_logo.png"
+    
+    if logo_path.exists():
+        file_size = logo_path.stat().st_size / 1024  # KB
+        print(f"   ✅ Logo found at: {logo_path}")
+        print(f"   📊 Size: {file_size:.2f} KB")
+        return True
+    else:
+        print(f"   ⚠️  Logo not found at: {logo_path}")
+        print("   💡 Save your Plaid PNG to: resources/images/plaid_logo.png")
+        print("   💡 Or run: python scripts/setup/save_plaid_logo.py")
         return False
 
 
@@ -164,6 +197,7 @@ def main():
         'MySQL Service': test_mysql_service(),
         'Database Connection': test_database_connection(),
         'Plaid Logic': test_plaid_button_logic(),
+        'Plaid Logo': test_plaid_logo(),
     }
     
     print("\n" + "=" * 60)
@@ -196,6 +230,10 @@ def main():
         if not results['Plaid Logic']:
             print("   - Sign up at: https://plaid.com/dashboard")
             print("   - Update .env with real credentials")
+            print("   - Install: pip install plaid-python")
+        if not results['Plaid Logo']:
+            print("   - Save PNG to: resources/images/plaid_logo.png")
+            print("   - Run: python scripts/setup/save_plaid_logo.py")
     print("=" * 60 + "\n")
     
     return 0 if all_passed else 1

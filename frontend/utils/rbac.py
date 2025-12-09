@@ -27,6 +27,10 @@ class Permission(Enum):
     TRADE_EXECUTION = "trade_execution"
     VIEW_FUNDS = "view_funds"
     ADMIN_PANEL = "admin_panel"
+    # Personal Budget Permissions
+    VIEW_BUDGET = "view_budget"
+    MANAGE_BUDGET = "manage_budget"
+    CONNECT_BANK = "connect_bank"
 
 
 # Role-Permission mapping
@@ -39,6 +43,8 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
         Permission.VIEW_ANALYSIS,
         Permission.VIEW_CONNECTIONS,
         Permission.VIEW_FUNDS,
+        Permission.VIEW_BUDGET,
+        Permission.CONNECT_BANK,
     },
     UserRole.INVESTOR: {
         Permission.VIEW_PORTFOLIO,
@@ -46,6 +52,9 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
         Permission.VIEW_CONNECTIONS,
         Permission.VIEW_FUNDS,
         Permission.TRADE_EXECUTION,
+        Permission.VIEW_BUDGET,
+        Permission.MANAGE_BUDGET,
+        Permission.CONNECT_BANK,
     },
     UserRole.ADMIN: {
         Permission.VIEW_PORTFOLIO,
@@ -54,6 +63,9 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
         Permission.VIEW_FUNDS,
         Permission.TRADE_EXECUTION,
         Permission.ADMIN_PANEL,
+        Permission.VIEW_BUDGET,
+        Permission.MANAGE_BUDGET,
+        Permission.CONNECT_BANK,
     },
 }
 

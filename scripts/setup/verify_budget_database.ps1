@@ -92,12 +92,10 @@ Write-Host ""
 try {
     # Run MySQL commands
     if ($BUDGET_MYSQL_PASSWORD) {
-        $mysqlCmd = "mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER -p$BUDGET_MYSQL_PASSWORD < `"$tempSqlFile`""
+        $result = Get-Content $tempSqlFile | mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER -p$BUDGET_MYSQL_PASSWORD 2>&1
     } else {
-        $mysqlCmd = "mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER < `"$tempSqlFile`""
+        $result = Get-Content $tempSqlFile | mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER 2>&1
     }
-    
-    $result = Invoke-Expression $mysqlCmd 2>&1
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "   ✅ Database '$BUDGET_MYSQL_DATABASE' is ready!" -ForegroundColor Green
@@ -127,9 +125,9 @@ if (Test-Path $schemaFile) {
     if ($runSchema -eq 'y' -or $runSchema -eq 'Y') {
         Write-Host "   Running schema..." -ForegroundColor Yellow
         if ($BUDGET_MYSQL_PASSWORD) {
-            mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER -p$BUDGET_MYSQL_PASSWORD $BUDGET_MYSQL_DATABASE < $schemaFile
+            Get-Content $schemaFile | mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER -p$BUDGET_MYSQL_PASSWORD $BUDGET_MYSQL_DATABASE
         } else {
-            mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER $BUDGET_MYSQL_DATABASE < $schemaFile
+            Get-Content $schemaFile | mysql -h $BUDGET_MYSQL_HOST -P $BUDGET_MYSQL_PORT -u $BUDGET_MYSQL_USER $BUDGET_MYSQL_DATABASE
         }
         
         if ($LASTEXITCODE -eq 0) {

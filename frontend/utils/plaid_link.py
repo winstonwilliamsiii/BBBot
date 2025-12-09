@@ -22,9 +22,9 @@ class PlaidLinkManager:
     
     def __init__(self):
         """Initialize Plaid API client"""
-        self.client_id = os.getenv('PLAID_CLIENT_ID')
-        self.secret = os.getenv('PLAID_SECRET')
-        self.env = os.getenv('PLAID_ENV', 'sandbox')
+        self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
+        self.secret = os.getenv('PLAID_SECRET', '').strip()
+        self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
         
         # Validate credentials
         if not self.client_id or self.client_id == 'your_plaid_client_id_here':

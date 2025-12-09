@@ -889,7 +889,7 @@ def display_fundamental_ratios(tickers, enable_logging):
             
             # Display full info in expander with custom styling
             with st.expander("📋 View All Available Data"):
-                # Add custom CSS for the data display
+                # Add custom CSS for the data display with visible JSON
                 st.markdown("""
                 <style>
                 .data-section {
@@ -909,13 +909,39 @@ def display_fundamental_ratios(tickers, enable_logging):
                     background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
                     color: #1a1a1a;
                 }
-                .data-key {
-                    font-weight: 600;
-                    opacity: 0.9;
+                
+                /* Force JSON viewer to be visible with proper colors */
+                .stJson {
+                    background-color: rgba(28, 28, 28, 0.95) !important;
+                    padding: 1.5rem !important;
+                    border-radius: 0.5rem !important;
+                    border: 2px solid rgba(255, 140, 0, 0.3) !important;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
                 }
-                .data-value {
-                    font-weight: 400;
-                    margin-left: 1rem;
+                
+                /* JSON content colors */
+                .stJson pre {
+                    color: #e6eef8 !important;
+                    font-family: 'Courier New', monospace !important;
+                    font-size: 0.9rem !important;
+                    line-height: 1.6 !important;
+                }
+                
+                /* JSON syntax highlighting */
+                .stJson .token.property {
+                    color: #79c0ff !important;
+                }
+                .stJson .token.string {
+                    color: #a5d6ff !important;
+                }
+                .stJson .token.number {
+                    color: #ffa657 !important;
+                }
+                .stJson .token.boolean {
+                    color: #ff7b72 !important;
+                }
+                .stJson .token.null {
+                    color: #8b949e !important;
                 }
                 </style>
                 """, unsafe_allow_html=True)
@@ -923,35 +949,45 @@ def display_fundamental_ratios(tickers, enable_logging):
                 # Determine which data to show based on source
                 if data_source_used == 'alpha_vantage':
                     st.markdown(
-                        '<div class="data-section alpha-vantage-data">'
-                        '<h4>📊 Alpha Vantage Data (Premium)</h4>'
-                        '<p>Source: Alpha Vantage API | Comprehensive Fundamentals</p>'
+                        '<div class="data-section alpha-vantage-data" style="margin-bottom: 1.5rem;">'
+                        '<h4 style="margin: 0 0 0.5rem 0; font-size: 1.2rem;">📊 Alpha Vantage Data (Premium)</h4>'
+                        '<p style="margin: 0; opacity: 0.9; font-size: 0.9rem;">Source: Alpha Vantage API | Comprehensive Fundamentals</p>'
                         '</div>',
                         unsafe_allow_html=True
                     )
+                    # Display with color-coded background
+                    st.markdown('<div style="background: rgba(102, 126, 234, 0.1); padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #667eea;">', unsafe_allow_html=True)
                     st.json(raw_data if raw_data else fundamentals)
+                    st.markdown('</div>', unsafe_allow_html=True)
                         
                 elif data_source_used == 'tiingo':
                     st.markdown(
-                        '<div class="data-section tiingo-data">'
-                        '<h4>📈 Tiingo Data (Premium)</h4>'
-                        '<p>Source: Tiingo API | Professional Grade</p>'
+                        '<div class="data-section tiingo-data" style="margin-bottom: 1.5rem;">'
+                        '<h4 style="margin: 0 0 0.5rem 0; font-size: 1.2rem;">📈 Tiingo Data (Premium)</h4>'
+                        '<p style="margin: 0; opacity: 0.9; font-size: 0.9rem;">Source: Tiingo API | Professional Grade</p>'
                         '</div>',
                         unsafe_allow_html=True
                     )
+                    # Display with color-coded background
+                    st.markdown('<div style="background: rgba(240, 147, 251, 0.1); padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #f093fb;">', unsafe_allow_html=True)
                     st.json(raw_data if raw_data else fundamentals)
+                    st.markdown('</div>', unsafe_allow_html=True)
                         
                 elif data_source_used == 'yfinance':
                     st.markdown(
-                        '<div class="data-section yfinance-data">'
-                        '<h4>📉 Yahoo Finance Data (Free)</h4>'
-                        '<p>Source: yfinance Library | Community Maintained</p>'
+                        '<div class="data-section yfinance-data" style="margin-bottom: 1.5rem;">'
+                        '<h4 style="margin: 0 0 0.5rem 0; font-size: 1.2rem; color: #1a1a1a;">📉 Yahoo Finance Data (Free)</h4>'
+                        '<p style="margin: 0; opacity: 0.8; font-size: 0.9rem; color: #1a1a1a;">Source: yfinance Library | Community Maintained</p>'
                         '</div>',
                         unsafe_allow_html=True
                     )
+                    # Display with color-coded background
+                    st.markdown('<div style="background: rgba(79, 172, 254, 0.1); padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #4facfe;">', unsafe_allow_html=True)
                     st.json(raw_data if raw_data else fundamentals)
+                    st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     # Fallback for unknown source
+                    st.warning(f"⚠️ Unknown data source: {data_source_used}")
                     st.json(raw_data if raw_data else fundamentals)
             
         except Exception as e:

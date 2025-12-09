@@ -260,12 +260,13 @@ def main():
     # Main title with custom styling
     st.markdown(f"""
     <h1 style='text-align: center; color: {COLOR_SCHEME['text']}; 
-    margin-bottom: 2rem; font-size: 3rem;'>
+    margin-bottom: 1rem; font-size: 3rem;'>
     🤖 Bentley Bot Dashboard
     </h1>
+    <p style='text-align: center; color: rgba(230,238,248,0.8); font-size: 1.1rem; margin-bottom: 2rem;'>
+    The ideal financial tool for time conscience folks who need to Capture that Bag
+    </p>
     """, unsafe_allow_html=True)
-
-    st.markdown("<p style='text-align: center;'>An ideal dashboard tool for viewing your financial portfolios.</p>", unsafe_allow_html=True)
 
     # ==========================================================================
     # Bentley AI ChatBot Section - Primary Interface

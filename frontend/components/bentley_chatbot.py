@@ -221,15 +221,22 @@ def render_chatbot_interface(context_data: Dict = None):
     # Initialize chatbot
     chatbot = BentleyChatBot()
     
-    # Header section with status cards
+    # Header section with status cards and Mansa Capital branding
     st.markdown("""
     <div style='text-align: center; margin-bottom: 1rem;'>
-        <h2 style='color: #e6eef8; font-size: 2rem; margin-bottom: 0.5rem;'>
+        <h2 style='color: #FFFFFF; font-size: 2rem; margin-bottom: 0.5rem;'>
             🤖 Bentley AI Assistant
         </h2>
-        <p style='color: rgba(230,238,248,0.8); font-size: 1rem; margin-bottom: 0.5rem;'>
+        <p style='color: rgba(255,255,255,0.9); font-size: 1rem; margin-bottom: 0.3rem;'>
             Your intelligent financial advisor - Ask me anything about your portfolio, budget, or the markets
         </p>
+        <div style='background: linear-gradient(135deg, #0A0A0A 0%, #111827 100%); 
+                    padding: 0.75rem 1.5rem; border-radius: 8px; margin: 1rem auto; 
+                    max-width: 400px; border: 1px solid #FACC15; box-shadow: 0 2px 8px rgba(250, 204, 21, 0.2);'>
+            <p style='color: #FACC15; font-size: 0.85rem; font-weight: 600; margin: 0; letter-spacing: 0.5px;'>
+                ⚡ Powered by Mansa Capital, LLC
+            </p>
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -240,65 +247,67 @@ def render_chatbot_interface(context_data: Dict = None):
         status_icon = "🟢" if chatbot.api_key else "🟡"
         status_text = "AI Connected" if chatbot.api_key else "Rule-Based Mode"
         st.markdown(f"""
-        <div class='metric-card'>
-            <div class='metric-label'>Status</div>
-            <div class='metric-value'>{status_icon} {status_text}</div>
+        <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #14B8A6;'>
+            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Status</div>
+            <div class='metric-value' style='color: #14B8A6;'>{status_icon} {status_text}</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         chat_count = len(st.session_state.get('chat_history', []))
         st.markdown(f"""
-        <div class='metric-card'>
-            <div class='metric-label'>Conversations</div>
-            <div class='metric-value'>{chat_count // 2} exchanges</div>
+        <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #FACC15;'>
+            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Conversations</div>
+            <div class='metric-value' style='color: #FACC15;'>{chat_count // 2} exchanges</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         model_name = "DeepSeek" if chatbot.api_key else "Local Rules"
         st.markdown(f"""
-        <div class='metric-card'>
-            <div class='metric-label'>Model</div>
-            <div class='metric-value'>{model_name}</div>
+        <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #14B8A6;'>
+            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Model</div>
+            <div class='metric-value' style='color: #14B8A6;'>{model_name}</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col4:
         context_items = len([k for k, v in (context_data or {}).items() if v])
         st.markdown(f"""
-        <div class='metric-card'>
-            <div class='metric-label'>Data Sources</div>
-            <div class='metric-value'>{context_items} active</div>
+        <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #FACC15;'>
+            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Data Sources</div>
+            <div class='metric-value' style='color: #FACC15;'>{context_items} active</div>
         </div>
         """, unsafe_allow_html=True)
     
-    # Quick action buttons with improved visibility
+    # Quick action buttons with Mansa Capital branding
     st.markdown("""
     <style>
-    /* Button styling for better visibility */
+    /* Button styling with Mansa Capital teal accent */
     div[data-testid="column"] button[kind="primary"] {
-        background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%) !important;
+        background: linear-gradient(135deg, #14B8A6 0%, #0D9488 100%) !important;
         color: #FFFFFF !important;
-        border: 2px solid #06B6D4 !important;
+        border: 2px solid #14B8A6 !important;
         font-weight: 600 !important;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.4) !important;
     }
     div[data-testid="column"] button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #0891B2 0%, #06B6D4 100%) !important;
-        box-shadow: 0 4px 16px rgba(6, 182, 212, 0.5) !important;
+        background: linear-gradient(135deg, #0D9488 0%, #14B8A6 100%) !important;
+        box-shadow: 0 4px 16px rgba(20, 184, 166, 0.5) !important;
+        border-color: #FACC15 !important;
         transform: translateY(-2px) !important;
         transition: all 0.2s ease !important;
     }
-    /* Popover buttons */
+    /* Popover buttons with gold accent */
     button[data-testid="baseButton-secondary"] {
-        background-color: rgba(6, 182, 212, 0.2) !important;
-        color: #E6EEF8 !important;
-        border: 1px solid #06B6D4 !important;
+        background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%) !important;
+        color: #FFFFFF !important;
+        border: 1px solid #14B8A6 !important;
     }
     button[data-testid="baseButton-secondary"]:hover {
-        background-color: rgba(6, 182, 212, 0.4) !important;
-        border-color: #0891B2 !important;
+        background: linear-gradient(135deg, #0A0A0A 0%, #111827 100%) !important;
+        border-color: #FACC15 !important;
+        color: #FACC15 !important;
     }
     </style>
     <br>
@@ -335,16 +344,16 @@ def render_chatbot_interface(context_data: Dict = None):
             else:
                 st.markdown("No context data loaded")
     
-    # Greeting message placed after buttons
+    # Greeting message placed after buttons with Mansa Capital styling
     if len(st.session_state.chat_history) == 0:
         st.markdown("""
-        <div style='background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(8, 145, 178, 0.1) 100%); 
+        <div style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); 
                     padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0; 
-                    border-left: 4px solid #06B6D4;'>
-            <p style='color: #E6EEF8; font-size: 1.1rem; margin: 0;'>
-                👋 <strong>Hi, I'm Bentley</strong> - your AI financial assistant.
+                    border-left: 4px solid #14B8A6; box-shadow: 0 4px 12px rgba(20, 184, 166, 0.2);'>
+            <p style='color: #FFFFFF; font-size: 1.1rem; margin: 0;'>
+                👋 <strong style='color: #FACC15;'>Hi, I'm Bentley</strong> - your AI financial assistant.
             </p>
-            <p style='color: rgba(230,238,248,0.8); font-size: 0.95rem; margin: 0.5rem 0 0 0;'>
+            <p style='color: rgba(255,255,255,0.85); font-size: 0.95rem; margin: 0.5rem 0 0 0;'>
                 Ask me anything about your portfolio, budget, or the markets!
             </p>
         </div>

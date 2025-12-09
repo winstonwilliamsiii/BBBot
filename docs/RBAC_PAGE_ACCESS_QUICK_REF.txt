@@ -1,0 +1,184 @@
+╔════════════════════════════════════════════════════════════════════╗
+║              RBAC PAGE ACCESS - QUICK REFERENCE                    ║
+║                    December 9, 2025                                ║
+╚════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 📋 PAGE STRUCTURE                                                  │
+├────────────────────────────────────────────────────────────────────┤
+│  1. 🤖 Bentley Dashboard (Home)                                    │
+│  2. 💰 Personal Budget                                             │
+│  3. 📈 Investment Analysis                                         │
+│  4. 🔴 Live Crypto Dashboard                                       │
+│  5. 💼 Broker Trading                                              │
+│  6. 🤖 Trading Bot                                                 │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🔐 ACCESS MATRIX                                                   │
+├────────────────────────────────────────────────────────────────────┤
+│  Role       │ Pages   │ Agreement                                  │
+│  ───────────┼─────────┼────────────────────────────────────────   │
+│  Guest      │  1-6    │ Dev/Testing                                │
+│  Client     │  1-4    │ Asset Management                           │
+│  Investor   │  1-5    │ Investor Mgmt OR PPM                       │
+│  Admin      │  1-6+   │ Admin (Production patches)                 │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🔑 CREDENTIALS                                                     │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  DEVELOPMENT/TESTING (All Pages)                                   │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Username: guest                                              │ │
+│  │ Password: guest123                                           │ │
+│  │ Access: Pages 1-6 (Full access for development)             │ │
+│  │ Agreement: dev_testing                                       │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  CLIENT (Pages 1-4)                                                │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Username: client                                             │ │
+│  │ Password: client123                                          │ │
+│  │ Access: Dashboard, Budget, Investment, Crypto                │ │
+│  │ Agreement: Asset Management Agreement                        │ │
+│  │ KYC: ✅ Required                                             │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  INVESTOR (Pages 1-5)                                              │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Username: investor                                           │ │
+│  │ Password: investor123                                        │ │
+│  │ Access: Dashboard, Budget, Investment, Crypto, Broker        │ │
+│  │ Agreement: Investor Management Agreement OR PPM              │ │
+│  │ KYC: ✅ Required                                             │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ADMIN - PRODUCTION GCP (All Pages)                                │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Username: admin                                              │ │
+│  │ Password: admin123                                           │ │
+│  │ Access: Full RW to all pages + Admin panel                  │ │
+│  │ Purpose: Production patches and system administration        │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ ✅ VERIFICATION                                                    │
+├────────────────────────────────────────────────────────────────────┤
+│  # Run test suite                                                  │
+│  python test_rbac_page_access.py                                   │
+│                                                                     │
+│  # Expected: 5/5 tests passing                                     │
+│  ✅ Credentials                                                    │
+│  ✅ Agreement Types                                                │
+│  ✅ Compliance Requirements                                        │
+│  ✅ Permission Mapping                                             │
+│  ✅ Page Access Permissions                                        │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 📊 DETAILED ACCESS BY ROLE                                         │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  GUEST (Dev/Testing)                                               │
+│  ├─ ✅ Page 1: Bentley Dashboard                                  │
+│  ├─ ✅ Page 2: Personal Budget                                    │
+│  ├─ ✅ Page 3: Investment Analysis                                │
+│  ├─ ✅ Page 4: Live Crypto Dashboard                              │
+│  ├─ ✅ Page 5: Broker Trading                                     │
+│  └─ ✅ Page 6: Trading Bot                                        │
+│                                                                     │
+│  CLIENT (Asset Management Agreement)                               │
+│  ├─ ✅ Page 1: Bentley Dashboard                                  │
+│  ├─ ✅ Page 2: Personal Budget (View only)                        │
+│  ├─ ✅ Page 3: Investment Analysis                                │
+│  ├─ ✅ Page 4: Live Crypto Dashboard                              │
+│  ├─ ❌ Page 5: Broker Trading (Denied)                            │
+│  └─ ❌ Page 6: Trading Bot (Denied)                               │
+│                                                                     │
+│  INVESTOR (Investor Mgmt/PPM)                                      │
+│  ├─ ✅ Page 1: Bentley Dashboard                                  │
+│  ├─ ✅ Page 2: Personal Budget (Full RW)                          │
+│  ├─ ✅ Page 3: Investment Analysis                                │
+│  ├─ ✅ Page 4: Live Crypto Dashboard                              │
+│  ├─ ✅ Page 5: Broker Trading                                     │
+│  └─ ❌ Page 6: Trading Bot (Denied)                               │
+│                                                                     │
+│  ADMIN (Production)                                                │
+│  ├─ ✅ Page 1: Bentley Dashboard                                  │
+│  ├─ ✅ Page 2: Personal Budget (Full RW)                          │
+│  ├─ ✅ Page 3: Investment Analysis                                │
+│  ├─ ✅ Page 4: Live Crypto Dashboard                              │
+│  ├─ ✅ Page 5: Broker Trading                                     │
+│  ├─ ✅ Page 6: Trading Bot                                        │
+│  └─ ✅ Admin Panel                                                 │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 📝 COMPLIANCE REQUIREMENTS                                         │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  CLIENT ACCESS (Pages 1-4)                                         │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ ✅ KYC completed                                             │ │
+│  │ ✅ Asset Management Agreement signed                         │ │
+│  │ Features:                                                    │ │
+│  │  • Portfolio viewing                                         │ │
+│  │  • Budget tracking (view)                                    │ │
+│  │  • Investment analysis                                       │ │
+│  │  • Crypto dashboard                                          │ │
+│  │  • Bank connection (Plaid)                                   │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  INVESTOR ACCESS (Pages 1-5)                                       │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ ✅ KYC completed                                             │ │
+│  │ ✅ Investor Management Agreement OR PPM signed               │ │
+│  │ Features:                                                    │ │
+│  │  • All Client features, plus:                                │ │
+│  │  • Budget management (full RW)                               │ │
+│  │  • Broker trading interface                                  │ │
+│  │  • Trade execution                                           │ │
+│  │  • WeBull, IBKR, Binance, NinjaTrader, Meta5               │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 🚀 DEPLOYMENT PHASES                                               │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  DEVELOPMENT PHASE (Current)                                       │
+│  • Use: guest/guest123                                             │
+│  • Access: All pages for testing                                   │
+│  • Compliance: Pre-completed for convenience                       │
+│                                                                     │
+│  PRODUCTION PHASE (GCP)                                            │
+│  • Use: admin/admin123 for patches                                 │
+│  • Client/Investor: Real user accounts                             │
+│  • Compliance: Must be verified before access                      │
+│  • Security: Change default passwords                              │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ 📚 DOCUMENTATION                                                   │
+├────────────────────────────────────────────────────────────────────┤
+│  • docs/RBAC_PAGE_ACCESS.md - Full documentation                   │
+│  • test_rbac_page_access.py - Test suite                           │
+│  • frontend/utils/rbac.py - Implementation                         │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│ ⚠️  PRODUCTION SECURITY REMINDERS                                  │
+├────────────────────────────────────────────────────────────────────┤
+│  ⚠️  Change all default passwords before production                │
+│  ⚠️  Use environment variables for credentials                     │
+│  ⚠️  Enable HTTPS for all connections                              │
+│  ⚠️  Implement proper session management                           │
+│  ⚠️  Add rate limiting for login attempts                          │
+│  ⚠️  Store agreements securely                                     │
+│  ⚠️  Verify KYC before granting access                             │
+└────────────────────────────────────────────────────────────────────┘
+
+Last Updated: December 9, 2025 | Status: ✅ Verified | Tests: 5/5 Passing

@@ -189,7 +189,7 @@ def show_budget_summary(user_id: int, month: str = None):
     # Link to full budget page
     st.markdown("")
     if st.button("📊 View Full Budget Dashboard →", use_container_width=True):
-        st.switch_page("pages/03_💰_Personal_Budget.py")
+        st.switch_page("pages/01_💰_Personal_Budget.py")
     
     # Bank connection info
     st.caption(f"🏦 Connected: {plaid_status.get('institution', 'Unknown Bank')}")

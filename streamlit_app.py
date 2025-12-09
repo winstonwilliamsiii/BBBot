@@ -235,12 +235,13 @@ def main():
     if RBAC_AVAILABLE:
         RBACManager.init_session_state()
 
-    # Additional sidebar-specific CSS to ensure visibility
+    # Additional sidebar-specific CSS with Mansa Capital styling
     st.markdown(f"""
     <style>
-    /* Sidebar text visibility - prevent color changes */
+    /* Sidebar with Mansa Capital branding */
     [data-testid="stSidebar"] {{
-        background-color: {COLOR_SCHEME['secondary']} !important;
+        background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%) !important;
+        border-right: 1px solid rgba(20, 184, 166, 0.2) !important;
     }}
     
     [data-testid="stSidebar"] * {{
@@ -257,15 +258,22 @@ def main():
     </style>
     """, unsafe_allow_html=True)
 
-    # Main title with custom styling
+    # Main title with Mansa Capital branding
     st.markdown(f"""
-    <h1 style='text-align: center; color: {COLOR_SCHEME['text']}; 
-    margin-bottom: 1rem; font-size: 3rem;'>
-    🤖 Bentley Bot Dashboard
-    </h1>
-    <p style='text-align: center; color: rgba(230,238,248,0.8); font-size: 1.1rem; margin-bottom: 2rem;'>
-    The ideal financial tool for time conscience folks who need to Capture that Bag
-    </p>
+    <div style='text-align: center; margin-bottom: 2rem;'>
+        <h1 style='color: {COLOR_SCHEME['text']}; margin-bottom: 0.5rem; font-size: 3rem;'>
+            <span style='color: {COLOR_SCHEME['accent_teal']}'>🤖</span> 
+            <span style='background: linear-gradient(135deg, {COLOR_SCHEME['accent_teal']} 0%, {COLOR_SCHEME['accent_gold']} 100%); 
+                         -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
+                         background-clip: text;'>Bentley Bot</span> 
+            Dashboard
+        </h1>
+        <p style='color: rgba(255,255,255,0.9); font-size: 1.1rem; margin-bottom: 0.5rem;'>
+            The ideal financial tool for time conscience folks who need to Capture that Bag
+        </p>
+        <div style='width: 60px; height: 3px; background: linear-gradient(90deg, {COLOR_SCHEME['accent_teal']} 0%, {COLOR_SCHEME['accent_gold']} 100%); 
+                    margin: 1rem auto; border-radius: 2px;'></div>
+    </div>
     """, unsafe_allow_html=True)
 
     # ==========================================================================

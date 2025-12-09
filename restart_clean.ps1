@@ -13,25 +13,27 @@ Start-Sleep -Seconds 2
 
 # 2. Test Plaid credentials
 Write-Host "[2/6] Testing Plaid credentials..." -ForegroundColor Yellow
-$result = python test_plaid_credentials.py
-Write-Host $result
+python test_plaid_credentials.py
 if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
     Write-Host "❌ ERROR: Plaid credentials test failed!" -ForegroundColor Red
     Write-Host "Check your .env file" -ForegroundColor Red
-    pause
-    exit 1
+    Write-Host ""
+    Write-Host "Press any key to continue anyway or Ctrl+C to exit..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
 # 3. Test database
 Write-Host ""
 Write-Host "[3/6] Testing database connection..." -ForegroundColor Yellow
-$result = python test_budget_database.py
-Write-Host $result
+python test_budget_database.py
 if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
     Write-Host "❌ ERROR: Database test failed!" -ForegroundColor Red
     Write-Host "Check MySQL is running on port 3306" -ForegroundColor Red
-    pause
-    exit 1
+    Write-Host ""
+    Write-Host "Press any key to continue anyway or Ctrl+C to exit..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
 # 4. Clear Python cache

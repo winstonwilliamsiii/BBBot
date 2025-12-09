@@ -227,8 +227,14 @@ def render_chatbot_interface(context_data: Dict = None):
         <h2 style='color: #e6eef8; font-size: 2rem; margin-bottom: 0.5rem;'>
             🤖 Bentley AI Assistant
         </h2>
-        <p style='color: rgba(230,238,248,0.8); font-size: 1rem;'>
+        <p style='color: rgba(230,238,248,0.8); font-size: 1rem; margin-bottom: 0.3rem;'>
             Your intelligent financial advisor - Ask me anything about your portfolio, budget, or the markets
+        </p>
+        <p style='color: rgba(230,238,248,0.6); font-size: 0.75rem; font-style: italic;'>
+            The ideal financial tool for time conscience folks who need to Capture that Bag
+        </p>
+        <p style='color: rgba(230,238,248,0.5); font-size: 0.7rem; position: relative; text-align: left; max-width: 800px; margin: 0.5rem auto 0 auto; padding-left: 1rem;'>
+            Powered by Mansa Capital, LLC
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -273,12 +279,27 @@ def render_chatbot_interface(context_data: Dict = None):
         </div>
         """, unsafe_allow_html=True)
     
-    # Quick action buttons
-    st.markdown("<br>", unsafe_allow_html=True)
+    # Quick action buttons with teal styling
+    st.markdown("""
+    <style>
+    div[data-testid="column"] button {
+        background: linear-gradient(135deg, #20B2AA 0%, #008B8B 100%) !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 500 !important;
+    }
+    div[data-testid="column"] button:hover {
+        background: linear-gradient(135deg, #008B8B 0%, #20B2AA 100%) !important;
+        box-shadow: 0 4px 12px rgba(32, 178, 170, 0.4) !important;
+    }
+    </style>
+    <br>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        if st.button("🗑️ Clear Chat", use_container_width=True, type="primary"):
             chatbot.clear_history()
             st.rerun()
     
@@ -306,9 +327,6 @@ def render_chatbot_interface(context_data: Dict = None):
             else:
                 st.markdown("No context data loaded")
     
-    # Chat container
-    st.markdown("---")
-    
     # Display chat history
     chat_container = st.container()
     
@@ -324,7 +342,7 @@ def render_chatbot_interface(context_data: Dict = None):
                     with st.chat_message("assistant", avatar="🤖"):
                         st.write(msg['content'])
     
-    # User input
+    # User input (no separator line above it)
     user_input = st.chat_input("Ask me anything about your finances...")
     
     if user_input:
@@ -342,30 +360,6 @@ def render_chatbot_interface(context_data: Dict = None):
                 st.write(response)
         
         st.rerun()
-    
-    # Example questions
-    with st.expander("💡 Example Questions"):
-        st.markdown("""
-        **Portfolio Questions:**
-        - "How is my portfolio performing?"
-        - "What are my top holdings?"
-        - "Should I rebalance my investments?"
-        
-        **Budget Questions:**
-        - "How much did I spend last month?"
-        - "Am I over budget in any category?"
-        - "What are my largest expenses?"
-        
-        **Market Questions:**
-        - "What's happening in the crypto market?"
-        - "What are the latest economic indicators?"
-        - "Should I buy or sell right now?"
-        
-        **Trading Questions:**
-        - "What positions do I have open?"
-        - "How is my IBKR account performing?"
-        - "What's my trading strategy for today?"
-        """)
 
 
 def get_chatbot_context_data() -> Dict:

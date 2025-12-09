@@ -249,7 +249,7 @@ def render_chatbot_interface(context_data: Dict = None):
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #14B8A6;'>
             <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Status</div>
-            <div class='metric-value' style='color: #14B8A6;'>{status_icon} {status_text}</div>
+            <div class='metric-value' style='color: #14B8A6; font-size: 1.1rem;'>{status_icon} {status_text}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -258,7 +258,7 @@ def render_chatbot_interface(context_data: Dict = None):
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #FACC15;'>
             <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Conversations</div>
-            <div class='metric-value' style='color: #FACC15;'>{chat_count // 2} exchanges</div>
+            <div class='metric-value' style='color: #FACC15; font-size: 1.1rem;'>{chat_count // 2} exchanges</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -267,7 +267,7 @@ def render_chatbot_interface(context_data: Dict = None):
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #14B8A6;'>
             <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Model</div>
-            <div class='metric-value' style='color: #14B8A6;'>{model_name}</div>
+            <div class='metric-value' style='color: #14B8A6; font-size: 1.1rem;'>{model_name}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -276,7 +276,7 @@ def render_chatbot_interface(context_data: Dict = None):
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #FACC15;'>
             <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Data Sources</div>
-            <div class='metric-value' style='color: #FACC15;'>{context_items} active</div>
+            <div class='metric-value' style='color: #FACC15; font-size: 1.1rem;'>{context_items} active</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -322,27 +322,27 @@ def render_chatbot_interface(context_data: Dict = None):
     
     with col2:
         with st.popover("⚙️ Settings", use_container_width=True):
-            st.markdown("**API Configuration**")
+            st.markdown("<p style='color: #FFFFFF; font-weight: 600;'>API Configuration</p>", unsafe_allow_html=True)
             st.code("DEEPSEEK_API_KEY=your_key", language="bash")
             st.code("DEEPSEEK_MODEL=deepseek-chat", language="bash")
-            st.caption("Add to .env file")
+            st.markdown("<p style='color: #14B8A6; font-size: 0.85rem;'>Add to .env file</p>", unsafe_allow_html=True)
     
     with col3:
         with st.popover("💡 Examples", use_container_width=True):
-            st.markdown("**Try asking:**")
-            st.markdown("- How is my portfolio?")
-            st.markdown("- Am I over budget?")
-            st.markdown("- What's the crypto market doing?")
+            st.markdown("<p style='color: #FFFFFF; font-weight: 600;'>Try asking:</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #FACC15;'>• How is my portfolio?</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #FACC15;'>• Am I over budget?</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #FACC15;'>• What's the crypto market doing?</p>", unsafe_allow_html=True)
     
     with col4:
         with st.popover("📊 Context", use_container_width=True):
-            st.markdown("**Available Data:**")
+            st.markdown("<p style='color: #FFFFFF; font-weight: 600;'>Available Data:</p>", unsafe_allow_html=True)
             if context_data:
                 for key, value in context_data.items():
                     if value:
-                        st.markdown(f"✅ {key.replace('_', ' ').title()}")
+                        st.markdown(f"<p style='color: #14B8A6;'>✅ {key.replace('_', ' ').title()}</p>", unsafe_allow_html=True)
             else:
-                st.markdown("No context data loaded")
+                st.markdown("<p style='color: #FACC15;'>No context data loaded</p>", unsafe_allow_html=True)
     
     # Greeting message placed after buttons with Mansa Capital styling
     st.markdown("""

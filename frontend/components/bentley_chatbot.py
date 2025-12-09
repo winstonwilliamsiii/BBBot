@@ -227,14 +227,8 @@ def render_chatbot_interface(context_data: Dict = None):
         <h2 style='color: #e6eef8; font-size: 2rem; margin-bottom: 0.5rem;'>
             🤖 Bentley AI Assistant
         </h2>
-        <p style='color: rgba(230,238,248,0.8); font-size: 1rem; margin-bottom: 0.3rem;'>
+        <p style='color: rgba(230,238,248,0.8); font-size: 1rem; margin-bottom: 0.5rem;'>
             Your intelligent financial advisor - Ask me anything about your portfolio, budget, or the markets
-        </p>
-        <p style='color: rgba(230,238,248,0.6); font-size: 0.75rem; font-style: italic;'>
-            The ideal financial tool for time conscience folks who need to Capture that Bag
-        </p>
-        <p style='color: rgba(230,238,248,0.5); font-size: 0.7rem; position: relative; text-align: left; max-width: 800px; margin: 0.5rem auto 0 auto; padding-left: 1rem;'>
-            Powered by Mansa Capital, LLC
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -279,18 +273,32 @@ def render_chatbot_interface(context_data: Dict = None):
         </div>
         """, unsafe_allow_html=True)
     
-    # Quick action buttons with teal styling
+    # Quick action buttons with improved visibility
     st.markdown("""
     <style>
-    div[data-testid="column"] button {
-        background: linear-gradient(135deg, #20B2AA 0%, #008B8B 100%) !important;
-        color: white !important;
-        border: none !important;
-        font-weight: 500 !important;
+    /* Button styling for better visibility */
+    div[data-testid="column"] button[kind="primary"] {
+        background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%) !important;
+        color: #FFFFFF !important;
+        border: 2px solid #06B6D4 !important;
+        font-weight: 600 !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
     }
-    div[data-testid="column"] button:hover {
-        background: linear-gradient(135deg, #008B8B 0%, #20B2AA 100%) !important;
-        box-shadow: 0 4px 12px rgba(32, 178, 170, 0.4) !important;
+    div[data-testid="column"] button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #0891B2 0%, #06B6D4 100%) !important;
+        box-shadow: 0 4px 16px rgba(6, 182, 212, 0.5) !important;
+        transform: translateY(-2px) !important;
+        transition: all 0.2s ease !important;
+    }
+    /* Popover buttons */
+    button[data-testid="baseButton-secondary"] {
+        background-color: rgba(6, 182, 212, 0.2) !important;
+        color: #E6EEF8 !important;
+        border: 1px solid #06B6D4 !important;
+    }
+    button[data-testid="baseButton-secondary"]:hover {
+        background-color: rgba(6, 182, 212, 0.4) !important;
+        border-color: #0891B2 !important;
     }
     </style>
     <br>
@@ -327,13 +335,29 @@ def render_chatbot_interface(context_data: Dict = None):
             else:
                 st.markdown("No context data loaded")
     
-    # Display chat history
+    # Greeting message placed after buttons
+    if len(st.session_state.chat_history) == 0:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(8, 145, 178, 0.1) 100%); 
+                    padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0; 
+                    border-left: 4px solid #06B6D4;'>
+            <p style='color: #E6EEF8; font-size: 1.1rem; margin: 0;'>
+                👋 <strong>Hi, I'm Bentley</strong> - your AI financial assistant.
+            </p>
+            <p style='color: rgba(230,238,248,0.8); font-size: 0.95rem; margin: 0.5rem 0 0 0;'>
+                Ask me anything about your portfolio, budget, or the markets!
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # User input placed right after greeting/buttons
+    user_input = st.chat_input("Ask me anything about your finances...")
+    
+    # Display chat history below input
     chat_container = st.container()
     
     with chat_container:
-        if len(st.session_state.chat_history) == 0:
-            st.info("👋 Hi! I'm Bentley, your AI financial assistant. Ask me anything about your portfolio, budget, or the markets!")
-        else:
+        if len(st.session_state.chat_history) > 0:
             for msg in st.session_state.chat_history:
                 if msg['role'] == 'user':
                     with st.chat_message("user"):
@@ -341,9 +365,6 @@ def render_chatbot_interface(context_data: Dict = None):
                 else:
                     with st.chat_message("assistant", avatar="🤖"):
                         st.write(msg['content'])
-    
-    # User input (no separator line above it)
-    user_input = st.chat_input("Ask me anything about your finances...")
     
     if user_input:
         # Display user message

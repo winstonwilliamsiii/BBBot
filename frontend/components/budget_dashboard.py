@@ -42,75 +42,40 @@ def show_plaid_connection_prompt(user_id: int):
         """)
     
     with col2:
-        # Display Plaid branding
-        st.markdown("""
-        <div style='text-align: center; padding: 20px 10px; background: linear-gradient(135deg, rgba(0,0,0,0.3) 0%, rgba(6,182,212,0.2) 100%); border-radius: 10px; margin-bottom: 10px;'>
-            <div style='font-size: 2rem; font-weight: 700; color: #06B6D4; margin-bottom: 5px;'>
-                PLAID
-            </div>
-            <p style='font-size: 0.75rem; color: rgba(230,238,248,0.7); margin: 0;'>
-                🔒 Bank-Level Security
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Display Plaid logo from local file
+        import os
+        from pathlib import Path
         
-        # Connect Your Bank button with proper flow
-        if st.button("🔗 Connect Your Bank", type="primary", use_container_width=True, key="connect_bank_btn"):
-            # Check if Plaid credentials are configured
-            import os
-            plaid_client_id = os.getenv('PLAID_CLIENT_ID')
-            plaid_secret = os.getenv('PLAID_SECRET')
+        # Try to load Plaid logo
+        logo_path = Path(__file__).parent.parent.parent / "resources" / "images" / "plaid_logo.png"
+        
+        if logo_path.exists():
+            st.image(str(logo_path), width=200, use_container_width=False)
+        else:
+            # Fallback if logo not found
+            st.markdown("""
+            <div style='text-align: center; padding: 20px 10px; background: linear-gradient(135deg, rgba(0,0,0,0.3) 0%, rgba(6,182,212,0.2) 100%); border-radius: 10px; margin-bottom: 10px;'>
+                <div style='font-size: 2rem; font-weight: 700; color: #06B6D4; margin-bottom: 5px;'>
+                    PLAID
+                </div>
+                <p style='font-size: 0.75rem; color: rgba(230,238,248,0.7); margin: 0;'>
+                    🔒 Bank-Level Security
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("<p style='text-align: center; font-size: 0.8rem; color: rgba(230,238,248,0.6); margin-top: 5px;'>🔒 Bank-Level Security</p>", unsafe_allow_html=True)
+        
+        # Connect Your Bank button with Plaid Link
+        try:
+            from frontend.utils.plaid_link import render_plaid_link_button
             
-            if plaid_client_id and plaid_client_id != 'your_plaid_client_id_here':
-                # Plaid credentials configured - show integration instructions
-                st.success("✅ Plaid credentials detected!")
-                st.info("""
-                **Next Steps to Connect Your Bank:**
-                
-                1. 🔑 **OAuth Flow:** Plaid Link will open in a secure window
-                2. 🏦 **Select Bank:** Choose your financial institution
-                3. ✅ **Authenticate:** Login with your bank credentials
-                4. 📊 **Sync Data:** Transactions will sync automatically
-                
-                **What gets synced:**
-                - Last 90 days of transactions
-                - Account balances
-                - Spending categories
-                - Merchant information
-                
-                🔒 **Security:** Your credentials are never stored. Plaid uses bank-level encryption.
-                """)
-                
-                with st.expander("🛠️ Developer: Implement Plaid Link"):
-                    st.code("""
-# To implement Plaid Link, add this to your code:
-
-from plaid import Client
-from plaid.api import plaid_api
-
-# 1. Create link token
-client = plaid_api.PlaidApi(configuration)
-link_token_response = client.link_token_create(
-    products=['transactions'],
-    client_name='Bentley Budget Bot',
-    country_codes=['US'],
-    language='en',
-    user={'client_user_id': str(user_id)}
-)
-
-# 2. Open Plaid Link in iframe/popup
-# Use link_token_response['link_token']
-
-# 3. Exchange public_token for access_token
-access_token_response = client.item_public_token_exchange(
-    public_token=public_token
-)
-
-# 4. Store access_token in database
-# 5. Fetch transactions
-                    """, language="python")
-            else:
-                # Plaid credentials not configured
+            # Render Plaid Link button with OAuth flow
+            render_plaid_link_button(user_id)
+            
+        except ValueError as e:
+            # Credentials not configured - show setup instructions
+            if st.button("🔗 Connect Your Bank", type="primary", use_container_width=True, key="connect_bank_btn"):
                 st.warning("⚠️ Plaid credentials not configured")
                 st.info("""
                 **To enable bank connections:**
@@ -122,16 +87,23 @@ access_token_response = client.item_public_token_exchange(
                 3. ⚙️ **Update .env file** with your credentials
                 4. 🔄 **Restart app** to apply changes
                 
-                **Alternative (Future):**
-                Bank of America CashPro API integration
-                (Awaiting API key)
+                **What you'll be able to do:**
+                - 🏦 Connect any US bank account
+                - 📊 Auto-sync transactions (last 90 days)
+                - 💰 Track spending by category
+                - 📈 Get personalized insights
                 
-                **Current Status:**
-                Using Plaid for spending insights and transaction data
+                🔒 **Security:** Your bank credentials are never stored. Plaid uses bank-level encryption trusted by Venmo, Robinhood, and thousands of fintech apps.
                 """)
                 
-                if st.button("🔗 Open Plaid Dashboard", use_container_width=True):
-                    st.markdown('[Click here to sign up](https://plaid.com/dashboard)', unsafe_allow_html=True)
+                st.markdown("[![Sign Up](https://img.shields.io/badge/Sign%20Up-Plaid%20Dashboard-00d4ff?style=for-the-badge)](https://plaid.com/dashboard)", unsafe_allow_html=True)
+        
+        except Exception as e:
+            # Other error - show error message
+            st.error(f"Error loading Plaid Link: {e}")
+            with st.expander("🐛 Debug Info"):
+                import traceback
+                st.code(traceback.format_exc())
 
 
 def show_budget_summary(user_id: int, month: str = None):

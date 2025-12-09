@@ -359,7 +359,7 @@ def render_chatbot_interface(context_data: Dict = None):
         </div>
         """, unsafe_allow_html=True)
     
-    # User input placed right after greeting/buttons
+    # User input placed right after greeting (not at bottom of page)
     user_input = st.chat_input("Ask me anything about your finances...")
     
     # Display chat history below input

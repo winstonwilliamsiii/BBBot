@@ -26,6 +26,13 @@ try:
 except ImportError:
     RBAC_AVAILABLE = False
 
+# Chatbot imports
+try:
+    from frontend.components.bentley_chatbot import render_chatbot_interface, get_chatbot_context_data
+    CHATBOT_AVAILABLE = True
+except ImportError:
+    CHATBOT_AVAILABLE = False
+
 
 @st.cache_data
 def get_yfinance_data(tickers, start_date, end_date):
@@ -560,6 +567,24 @@ def main():
         st.write("")
         st.header("Raw Portfolio Data")
         st.dataframe(df, use_container_width=True)
+
+    # ==========================================================================
+    # Bentley AI ChatBot Section
+    # ==========================================================================
+    if CHATBOT_AVAILABLE:
+        # Gather context data for the chatbot
+        chatbot_context = get_chatbot_context_data()
+        
+        # Add current portfolio data if available
+        if df is not None and not df.empty:
+            total_value = df['Price'].sum() if 'Price' in df.columns else 0
+            chatbot_context['portfolio_summary'] = f"Portfolio has {len(df)} positions with total value ~${total_value:,.2f}"
+        
+        # Render chatbot interface
+        render_chatbot_interface(chatbot_context)
+    else:
+        st.markdown("---")
+        st.info("🤖 **Bentley AI Assistant** - Coming soon! This will provide AI-powered financial insights and Q&A.")
 
     # ==========================================================================
     # Personal Budget Analysis Section (Authenticated Users Only)

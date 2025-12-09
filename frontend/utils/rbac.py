@@ -21,57 +21,85 @@ class UserRole(Enum):
 
 class Permission(Enum):
     """System permissions"""
-    VIEW_PORTFOLIO = "view_portfolio"
-    VIEW_ANALYSIS = "view_analysis"
-    VIEW_CONNECTIONS = "view_connections"
-    TRADE_EXECUTION = "trade_execution"
-    VIEW_FUNDS = "view_funds"
-    ADMIN_PANEL = "admin_panel"
-    # Personal Budget Permissions
-    VIEW_BUDGET = "view_budget"
+    # Page Access Permissions
+    VIEW_DASHBOARD = "view_dashboard"  # Page 1: Home Dashboard
+    VIEW_BUDGET = "view_budget"  # Page 2: Personal Budget
+    VIEW_ANALYSIS = "view_analysis"  # Page 3: Investment Analysis
+    VIEW_CRYPTO = "view_crypto"  # Page 4: Live Crypto Dashboard
+    VIEW_BROKER_TRADING = "view_broker_trading"  # Page 5: Broker Trading
+    VIEW_TRADING_BOT = "view_trading_bot"  # Page 6: Trading Bot
+    
+    # Feature Permissions
     MANAGE_BUDGET = "manage_budget"
     CONNECT_BANK = "connect_bank"
+    TRADE_EXECUTION = "trade_execution"
+    ADMIN_PANEL = "admin_panel"
+    
+    # Legacy aliases for backwards compatibility
+    VIEW_PORTFOLIO = "view_dashboard"
+    VIEW_CONNECTIONS = "view_broker_trading"
+    VIEW_FUNDS = "view_analysis"
 
 
 # Role-Permission mapping
+# Admin: Full RW access to ALL pages (1-6)
+# Clients: Pages 1-4 (Dashboard, Budget, Investment, Crypto) - KYC + Asset Management Agreement
+# Investors: Pages 1-5 (Dashboard, Budget, Investment, Crypto, Broker) - KYC + Investor Management/PPM
+# Guest: Development/Testing access
 ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
     UserRole.GUEST: {
-        Permission.VIEW_PORTFOLIO,
+        # Dev/Testing: Full access during development
+        Permission.VIEW_DASHBOARD,
+        Permission.VIEW_BUDGET,
+        Permission.VIEW_ANALYSIS,
+        Permission.VIEW_CRYPTO,
+        Permission.VIEW_BROKER_TRADING,
+        Permission.VIEW_TRADING_BOT,
     },
     UserRole.CLIENT: {
-        Permission.VIEW_PORTFOLIO,
-        Permission.VIEW_ANALYSIS,
-        Permission.VIEW_CONNECTIONS,
-        Permission.VIEW_FUNDS,
+        # Pages 1-4: Dashboard, Budget, Investment Analysis, Crypto
+        # Requires: KYC + Asset Management Agreement
+        Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
+        Permission.VIEW_ANALYSIS,
+        Permission.VIEW_CRYPTO,
         Permission.CONNECT_BANK,
     },
     UserRole.INVESTOR: {
-        Permission.VIEW_PORTFOLIO,
-        Permission.VIEW_ANALYSIS,
-        Permission.VIEW_CONNECTIONS,
-        Permission.VIEW_FUNDS,
-        Permission.TRADE_EXECUTION,
+        # Pages 1-5: Dashboard, Budget, Investment, Crypto, Broker Trading
+        # Requires: KYC + Investor Management Agreement OR Private Placement Memorandum
+        Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
+        Permission.VIEW_ANALYSIS,
+        Permission.VIEW_CRYPTO,
+        Permission.VIEW_BROKER_TRADING,
         Permission.MANAGE_BUDGET,
         Permission.CONNECT_BANK,
+        Permission.TRADE_EXECUTION,
     },
     UserRole.ADMIN: {
-        Permission.VIEW_PORTFOLIO,
-        Permission.VIEW_ANALYSIS,
-        Permission.VIEW_CONNECTIONS,
-        Permission.VIEW_FUNDS,
-        Permission.TRADE_EXECUTION,
-        Permission.ADMIN_PANEL,
+        # Full RW access to ALL pages (1-6) + Admin panel
+        Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
+        Permission.VIEW_ANALYSIS,
+        Permission.VIEW_CRYPTO,
+        Permission.VIEW_BROKER_TRADING,
+        Permission.VIEW_TRADING_BOT,
         Permission.MANAGE_BUDGET,
         Permission.CONNECT_BANK,
+        Permission.TRADE_EXECUTION,
+        Permission.ADMIN_PANEL,
     },
 }
 
 
 class User:
-    """User model with authentication and compliance tracking"""
+    """User model with authentication and compliance tracking
+    
+    Agreement Types:
+    - CLIENT: Asset Management Agreement
+    - INVESTOR: Investor Management Agreement OR Private Placement Memorandum (PPM)
+    """
     
     def __init__(
         self,
@@ -82,6 +110,8 @@ class User:
         kyc_date: Optional[datetime] = None,
         agreement_date: Optional[datetime] = None,
         email: Optional[str] = None,
+        user_id: Optional[int] = None,
+        agreement_type: Optional[str] = None,  # "asset_mgmt", "investor_mgmt", "ppm"
     ):
         self.username = username
         self.role = role
@@ -90,6 +120,8 @@ class User:
         self.kyc_date = kyc_date
         self.agreement_date = agreement_date
         self.email = email
+        self.user_id = user_id or hash(username) % 10000
+        self.agreement_type = agreement_type
     
     def has_permission(self, permission: Permission) -> bool:
         """Check if user has specific permission"""
@@ -98,10 +130,23 @@ class User:
     def can_view_connections(self) -> bool:
         """Check if user can view broker connections (requires KYC and agreement)"""
         return (
-            self.has_permission(Permission.VIEW_CONNECTIONS)
+            self.has_permission(Permission.VIEW_BROKER_TRADING)
             and self.kyc_completed
             and self.investment_agreement_signed
         )
+    
+    def can_access_page(self, page_number: int) -> bool:
+        """Check if user can access a specific page number (1-6)"""
+        page_permissions = {
+            1: Permission.VIEW_DASHBOARD,
+            2: Permission.VIEW_BUDGET,
+            3: Permission.VIEW_ANALYSIS,
+            4: Permission.VIEW_CRYPTO,
+            5: Permission.VIEW_BROKER_TRADING,
+            6: Permission.VIEW_TRADING_BOT,
+        }
+        permission = page_permissions.get(page_number)
+        return self.has_permission(permission) if permission else False
     
     def to_dict(self) -> dict:
         """Convert user to dictionary"""
@@ -113,6 +158,8 @@ class User:
             'kyc_date': self.kyc_date.isoformat() if self.kyc_date else None,
             'agreement_date': self.agreement_date.isoformat() if self.agreement_date else None,
             'email': self.email,
+            'user_id': self.user_id,
+            'agreement_type': self.agreement_type,
         }
     
     @classmethod
@@ -126,19 +173,29 @@ class User:
             kyc_date=datetime.fromisoformat(data['kyc_date']) if data.get('kyc_date') else None,
             agreement_date=datetime.fromisoformat(data['agreement_date']) if data.get('agreement_date') else None,
             email=data.get('email'),
+            user_id=data.get('user_id'),
+            agreement_type=data.get('agreement_type'),
         )
 
 
 class RBACManager:
-    """Manages authentication and authorization"""
+    """Manages authentication and authorization
+    
+    Development/Testing: guest/guest123
+    Production (GCP): admin/admin123 for patches
+    """
     
     # Demo users for testing (in production, use database)
     DEMO_USERS = {
         'guest': {
             'password_hash': hashlib.sha256('guest123'.encode()).hexdigest(),
             'role': UserRole.GUEST,
-            'kyc_completed': False,
-            'investment_agreement_signed': False,
+            'kyc_completed': True,  # Dev/testing has KYC
+            'investment_agreement_signed': True,  # Dev/testing has agreement
+            'kyc_date': datetime.now() - timedelta(days=1),
+            'agreement_date': datetime.now() - timedelta(days=1),
+            'agreement_type': 'dev_testing',
+            'email': 'dev@bentleybot.com',
         },
         'client': {
             'password_hash': hashlib.sha256('client123'.encode()).hexdigest(),
@@ -147,6 +204,7 @@ class RBACManager:
             'investment_agreement_signed': True,
             'kyc_date': datetime.now() - timedelta(days=30),
             'agreement_date': datetime.now() - timedelta(days=30),
+            'agreement_type': 'asset_mgmt',  # Asset Management Agreement
             'email': 'client@bentleybot.com',
         },
         'investor': {
@@ -156,6 +214,7 @@ class RBACManager:
             'investment_agreement_signed': True,
             'kyc_date': datetime.now() - timedelta(days=60),
             'agreement_date': datetime.now() - timedelta(days=60),
+            'agreement_type': 'investor_mgmt',  # Investor Management Agreement
             'email': 'investor@bentleybot.com',
         },
         'admin': {
@@ -165,6 +224,7 @@ class RBACManager:
             'investment_agreement_signed': True,
             'kyc_date': datetime.now() - timedelta(days=90),
             'agreement_date': datetime.now() - timedelta(days=90),
+            'agreement_type': 'admin',
             'email': 'admin@bentleybot.com',
         },
     }
@@ -194,6 +254,7 @@ class RBACManager:
             kyc_date=user_data.get('kyc_date'),
             agreement_date=user_data.get('agreement_date'),
             email=user_data.get('email'),
+            agreement_type=user_data.get('agreement_type'),
         )
     
     @staticmethod
@@ -233,13 +294,18 @@ class RBACManager:
         return st.session_state.get('authenticated', False)
     
     @staticmethod
-    def require_permission(permission: Permission) -> bool:
+    def has_permission(permission: Permission) -> bool:
         """Check if current user has required permission"""
         if not RBACManager.is_authenticated():
             return False
         
         user = RBACManager.get_current_user()
         return user.has_permission(permission) if user else False
+    
+    @staticmethod
+    def require_permission(permission: Permission) -> bool:
+        """Check if current user has required permission (alias for has_permission)"""
+        return RBACManager.has_permission(permission)
     
     @staticmethod
     def require_connections_access() -> bool:
@@ -270,21 +336,25 @@ def show_login_form():
     # Show demo credentials
     with st.sidebar.expander("🔑 Demo Credentials"):
         st.markdown("""
-        **Guest User:**
+        **Development/Testing:**
         - Username: `guest`
         - Password: `guest123`
+        - Access: All pages (1-6)
         
-        **Client User:**
+        **Client User (Pages 1-4):**
         - Username: `client`
         - Password: `client123`
+        - Agreement: Asset Management
         
-        **Investor User:**
+        **Investor User (Pages 1-5):**
         - Username: `investor`
         - Password: `investor123`
+        - Agreement: Investor Management
         
-        **Admin User:**
+        **Admin (Production - GCP):**
         - Username: `admin`
         - Password: `admin123`
+        - Access: Full RW (All pages + patches)
         """)
 
 
@@ -300,6 +370,10 @@ def show_user_info():
         if user.email:
             st.sidebar.markdown(f"**📧 Email:** {user.email}")
         
+        # Page access summary
+        accessible_pages = [i for i in range(1, 7) if user.can_access_page(i)]
+        st.sidebar.markdown(f"**📄 Page Access:** {len(accessible_pages)}/6")
+        
         # Compliance status
         st.sidebar.markdown("**📋 Compliance:**")
         
@@ -307,7 +381,14 @@ def show_user_info():
         st.sidebar.markdown(f"- KYC: {kyc_status}")
         
         agreement_status = "✅" if user.investment_agreement_signed else "❌"
-        st.sidebar.markdown(f"- Agreement: {agreement_status}")
+        agreement_type_display = {
+            'asset_mgmt': 'Asset Mgmt',
+            'investor_mgmt': 'Investor Mgmt',
+            'ppm': 'PPM',
+            'dev_testing': 'Dev/Testing',
+            'admin': 'Admin',
+        }.get(user.agreement_type, 'None')
+        st.sidebar.markdown(f"- Agreement: {agreement_status} ({agreement_type_display})")
         
         if st.sidebar.button("Logout"):
             RBACManager.logout()

@@ -345,22 +345,50 @@ def render_chatbot_interface(context_data: Dict = None):
                 st.markdown("No context data loaded")
     
     # Greeting message placed after buttons with Mansa Capital styling
-    if len(st.session_state.chat_history) == 0:
-        st.markdown("""
-        <div style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); 
-                    padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0; 
-                    border-left: 4px solid #14B8A6; box-shadow: 0 4px 12px rgba(20, 184, 166, 0.2);'>
-            <p style='color: #FFFFFF; font-size: 1.1rem; margin: 0;'>
-                👋 <strong style='color: #FACC15;'>Hi, I'm Bentley</strong> - your AI financial assistant.
-            </p>
-            <p style='color: rgba(255,255,255,0.85); font-size: 0.95rem; margin: 0.5rem 0 0 0;'>
-                Ask me anything about your portfolio, budget, or the markets!
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); 
+                padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0; 
+                border-left: 4px solid #14B8A6; box-shadow: 0 4px 12px rgba(20, 184, 166, 0.2);'>
+        <p style='color: #FFFFFF; font-size: 1.1rem; margin: 0;'>
+            👋 <strong style='color: #FACC15;'>Hi, I'm Bentley</strong> - your AI financial assistant.
+        </p>
+        <p style='color: rgba(255,255,255,0.85); font-size: 0.95rem; margin: 0.5rem 0 0 0;'>
+            Ask me anything about your portfolio, budget, or the markets!
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # User input placed right after greeting (not at bottom of page)
-    user_input = st.chat_input("Ask me anything about your finances...")
+    # User input placed right after greeting using form and text_input
+    with st.form(key='chat_form', clear_on_submit=True):
+        col1, col2 = st.columns([6, 1])
+        with col1:
+            user_input = st.text_input(
+                "Your message:",
+                placeholder="Ask me anything about your finances...",
+                label_visibility="collapsed",
+                key="chat_input_field"
+            )
+        with col2:
+            submit_button = st.form_submit_button("Send 💬", use_container_width=True)
+    
+    # Process input if submitted
+    if submit_button and user_input:
+        # Add user message to history
+        st.session_state.chat_history.append({
+            'role': 'user',
+            'content': user_input
+        })
+        
+        # Get AI response
+        response = chatbot.get_response(user_input, context_data)
+        
+        # Add response to history
+        st.session_state.chat_history.append({
+            'role': 'assistant',
+            'content': response
+        })
+        
+        st.rerun()
     
     # Display chat history below input
     chat_container = st.container()
@@ -375,21 +403,7 @@ def render_chatbot_interface(context_data: Dict = None):
                     with st.chat_message("assistant", avatar="🤖"):
                         st.write(msg['content'])
     
-    if user_input:
-        # Display user message
-        with chat_container:
-            with st.chat_message("user"):
-                st.write(user_input)
-        
-        # Get and display AI response
-        with st.spinner("🤖 Thinking..."):
-            response = chatbot.get_response(user_input, context_data)
-        
-        with chat_container:
-            with st.chat_message("assistant", avatar="🤖"):
-                st.write(response)
-        
-        st.rerun()
+
 
 
 def get_chatbot_context_data() -> Dict:

@@ -230,6 +230,10 @@ def main():
 
     # Apply custom styling (CSS)
     apply_custom_styling()
+    
+    # Initialize RBAC session state
+    if RBAC_AVAILABLE:
+        RBACManager.init_session_state()
 
     # Additional sidebar-specific CSS to ensure visibility
     st.markdown(f"""

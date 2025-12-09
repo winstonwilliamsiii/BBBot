@@ -67,7 +67,7 @@ Once logged in, you'll see the **🔗 Broker Connections** tab. Click it to view
 
 The system includes demo data by default:
 
-- **3 broker connections** (Webull, TD Ameritrade, E*TRADE)
+- **5 broker connections** (WeBull, IBKR, Binance, NinjaTrader, Meta5)
 - **4 WeFolio funds** with realistic values
 - **Performance metrics** and charts
 
@@ -154,7 +154,7 @@ Edit `frontend/utils/broker_connections.py`:
 ```python
 def get_demo_connections():
     return [
-        # ... existing connections
+        # ... existing connections (WeBull, IBKR, Binance, NinjaTrader, Meta5)
         BrokerConnection(
             broker_name="New Broker",
             account_number="****1234",

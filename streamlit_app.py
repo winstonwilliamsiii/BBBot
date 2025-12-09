@@ -263,6 +263,21 @@ def main():
 
     st.markdown("<p style='text-align: center;'>An ideal dashboard tool for viewing your financial portfolios.</p>", unsafe_allow_html=True)
 
+    # ==========================================================================
+    # Bentley AI ChatBot Section - Primary Interface
+    # ==========================================================================
+    if CHATBOT_AVAILABLE:
+        # Gather context data for the chatbot
+        chatbot_context = get_chatbot_context_data()
+        
+        # Render chatbot interface at the top
+        render_chatbot_interface(chatbot_context)
+    else:
+        st.markdown("---")
+        st.info("🤖 **Bentley AI Assistant** - Coming soon! This will provide AI-powered financial insights and Q&A.")
+    
+    st.markdown("---")
+
     # Sidebar controls
     st.sidebar.header("Portfolio Data Upload")
     
@@ -567,24 +582,6 @@ def main():
         st.write("")
         st.header("Raw Portfolio Data")
         st.dataframe(df, use_container_width=True)
-
-    # ==========================================================================
-    # Bentley AI ChatBot Section
-    # ==========================================================================
-    if CHATBOT_AVAILABLE:
-        # Gather context data for the chatbot
-        chatbot_context = get_chatbot_context_data()
-        
-        # Add current portfolio data if available
-        if df is not None and not df.empty:
-            total_value = df['Price'].sum() if 'Price' in df.columns else 0
-            chatbot_context['portfolio_summary'] = f"Portfolio has {len(df)} positions with total value ~${total_value:,.2f}"
-        
-        # Render chatbot interface
-        render_chatbot_interface(chatbot_context)
-    else:
-        st.markdown("---")
-        st.info("🤖 **Bentley AI Assistant** - Coming soon! This will provide AI-powered financial insights and Q&A.")
 
     # ==========================================================================
     # Personal Budget Analysis Section (Authenticated Users Only)

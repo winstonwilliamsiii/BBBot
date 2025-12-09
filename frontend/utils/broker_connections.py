@@ -80,7 +80,7 @@ class BrokerConnectionManager:
         """Get demo broker connections for testing"""
         return [
             BrokerConnection(
-                broker_name="Webull",
+                broker_name="WeBull",
                 account_number="****5678",
                 status="Connected",
                 last_sync=datetime.now(),
@@ -88,20 +88,36 @@ class BrokerConnectionManager:
                 positions_count=12,
             ),
             BrokerConnection(
-                broker_name="TD Ameritrade",
+                broker_name="Interactive Brokers (IBKR)",
                 account_number="****9012",
                 status="Connected",
                 last_sync=datetime.now(),
                 balance=87650.25,
+                positions_count=15,
+            ),
+            BrokerConnection(
+                broker_name="Binance",
+                account_number="****3456",
+                status="Connected",
+                last_sync=datetime.now(),
+                balance=42380.75,
                 positions_count=8,
             ),
             BrokerConnection(
-                broker_name="E*TRADE",
-                account_number="****3456",
-                status="Pending",
+                broker_name="NinjaTrader",
+                account_number="****7890",
+                status="Connected",
                 last_sync=datetime.now(),
-                balance=0.0,
-                positions_count=0,
+                balance=35200.00,
+                positions_count=5,
+            ),
+            BrokerConnection(
+                broker_name="MetaTrader 5 (Meta5)",
+                account_number="****2345",
+                status="Connected",
+                last_sync=datetime.now(),
+                balance=28750.50,
+                positions_count=6,
             ),
         ]
     

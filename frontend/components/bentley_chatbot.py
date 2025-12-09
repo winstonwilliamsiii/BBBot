@@ -213,37 +213,98 @@ class BentleyChatBot:
 
 def render_chatbot_interface(context_data: Dict = None):
     """
-    Render the chatbot UI component.
+    Render the chatbot UI component with Bot Status styling.
     
     Args:
         context_data: Dictionary with portfolio_summary, budget_summary, market_data, etc.
     """
-    st.markdown("---")
-    st.header("🤖 Bentley AI Assistant")
-    
     # Initialize chatbot
     chatbot = BentleyChatBot()
     
-    # Display API status
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # Header section with status cards
+    st.markdown("""
+    <div style='text-align: center; margin-bottom: 1rem;'>
+        <h2 style='color: #e6eef8; font-size: 2rem; margin-bottom: 0.5rem;'>
+            🤖 Bentley AI Assistant
+        </h2>
+        <p style='color: rgba(230,238,248,0.8); font-size: 1rem;'>
+            Your intelligent financial advisor - Ask me anything about your portfolio, budget, or the markets
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Status cards row
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if chatbot.api_key:
-            st.success("✅ AI API Connected (DeepSeek)")
-        else:
-            st.info("💡 Using rule-based responses. Configure DeepSeek API for full AI capabilities.")
+        status_icon = "🟢" if chatbot.api_key else "🟡"
+        status_text = "AI Connected" if chatbot.api_key else "Rule-Based Mode"
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-label'>Status</div>
+            <div class='metric-value'>{status_icon} {status_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
+        chat_count = len(st.session_state.get('chat_history', []))
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-label'>Conversations</div>
+            <div class='metric-value'>{chat_count // 2} exchanges</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        model_name = "DeepSeek" if chatbot.api_key else "Local Rules"
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-label'>Model</div>
+            <div class='metric-value'>{model_name}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        context_items = len([k for k, v in (context_data or {}).items() if v])
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-label'>Data Sources</div>
+            <div class='metric-value'>{context_items} active</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Quick action buttons
+    st.markdown("<br>", unsafe_allow_html=True)
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
         if st.button("🗑️ Clear Chat", use_container_width=True):
             chatbot.clear_history()
             st.rerun()
     
-    with col3:
-        with st.popover("⚙️ Settings"):
+    with col2:
+        with st.popover("⚙️ Settings", use_container_width=True):
             st.markdown("**API Configuration**")
-            st.code("DEEPSEEK_API_KEY=your_key")
-            st.code("DEEPSEEK_MODEL=deepseek-chat")
+            st.code("DEEPSEEK_API_KEY=your_key", language="bash")
+            st.code("DEEPSEEK_MODEL=deepseek-chat", language="bash")
             st.caption("Add to .env file")
+    
+    with col3:
+        with st.popover("💡 Examples", use_container_width=True):
+            st.markdown("**Try asking:**")
+            st.markdown("- How is my portfolio?")
+            st.markdown("- Am I over budget?")
+            st.markdown("- What's the crypto market doing?")
+    
+    with col4:
+        with st.popover("📊 Context", use_container_width=True):
+            st.markdown("**Available Data:**")
+            if context_data:
+                for key, value in context_data.items():
+                    if value:
+                        st.markdown(f"✅ {key.replace('_', ' ').title()}")
+            else:
+                st.markdown("No context data loaded")
     
     # Chat container
     st.markdown("---")

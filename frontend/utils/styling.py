@@ -3,47 +3,52 @@ from frontend.styles.colors import COLOR_SCHEME
 
 
 def apply_custom_styling():
-    """Inject custom CSS for the app using COLOR_SCHEME."""
+    """Inject custom CSS for the app using Mansa Capital COLOR_SCHEME."""
     css = f"""
     <style>
-    /* App background */
+    /* App background with Mansa Capital branding */
     .stApp {{
         background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
         color: {COLOR_SCHEME['text']};
     }}
 
-    /* Card style */
+    /* Card style with Mansa Capital colors */
     .custom-card {{
-        background: {COLOR_SCHEME['card_background']};
+        background: linear-gradient(135deg, {COLOR_SCHEME['secondary']} 0%, {COLOR_SCHEME['background']} 100%);
         color: {COLOR_SCHEME['text']};
         padding: 1rem;
         border-radius: 10px;
-        box-shadow: 0 4px 14px rgba(2,6,23,0.6);
+        box-shadow: 0 4px 14px rgba(20, 184, 166, 0.2);
+        border: 1px solid rgba(20, 184, 166, 0.3);
         margin-bottom: 1rem;
     }}
 
     .metric-card {{
-        background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+        background: linear-gradient(135deg, {COLOR_SCHEME['secondary']} 0%, {COLOR_SCHEME['background']} 100%);
         color: {COLOR_SCHEME['text']};
         padding: .75rem 1rem;
         border-radius: 8px;
         text-align: left;
+        border: 1px solid rgba(20, 184, 166, 0.2);
     }}
 
-    .metric-label {{ font-size: 0.9rem; color: rgba(230,238,248,0.9); }}
-    .metric-value {{ font-size: 1.6rem; font-weight: 700; margin-top: .25rem; }}
-    .metric-delta {{ font-size: 0.9rem; opacity: .9; margin-left: .5rem; }}
+    .metric-label {{ font-size: 0.9rem; color: rgba(255,255,255,0.8); }}
+    .metric-value {{ font-size: 1.6rem; font-weight: 700; margin-top: .25rem; color: {COLOR_SCHEME['accent_gold']}; }}
+    .metric-delta {{ font-size: 0.9rem; opacity: .9; margin-left: .5rem; color: {COLOR_SCHEME['accent_teal']}; }}
 
     .app-footer {{
         text-align: center;
         padding: 1rem 0.5rem;
-        color: rgba(230,238,248,0.7);
+        color: rgba(255,255,255,0.7);
         font-size: 0.9rem;
+        background: linear-gradient(135deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
+        border-top: 1px solid rgba(250, 204, 21, 0.2);
     }}
 
-    /* Sidebar styling - CRITICAL for visibility */
+    /* Sidebar styling with Mansa Capital branding */
     [data-testid="stSidebar"] {{
-        background-color: {COLOR_SCHEME['secondary']} !important;
+        background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%) !important;
+        border-right: 1px solid rgba(20, 184, 166, 0.2) !important;
     }}
 
     [data-testid="stSidebar"] * {{
@@ -60,16 +65,22 @@ def apply_custom_styling():
         color: {COLOR_SCHEME['text']} !important;
     }}
 
-    /* Sidebar input labels */
+    /* Sidebar input labels with gold accent */
     [data-testid="stSidebar"] label {{
         color: {COLOR_SCHEME['text']} !important;
         font-weight: 500 !important;
     }}
 
-    /* Sidebar buttons */
+    /* Sidebar buttons with teal accent */
     [data-testid="stSidebar"] button {{
         color: {COLOR_SCHEME['text']} !important;
-        border: 1px solid {COLOR_SCHEME['primary']} !important;
+        border: 1px solid {COLOR_SCHEME['accent_teal']} !important;
+        background: linear-gradient(135deg, {COLOR_SCHEME['secondary']} 0%, {COLOR_SCHEME['background']} 100%) !important;
+    }}
+    
+    [data-testid="stSidebar"] button:hover {{
+        border-color: {COLOR_SCHEME['accent_gold']} !important;
+        box-shadow: 0 2px 8px rgba(250, 204, 21, 0.3) !important;
     }}
 
     /* Sidebar selectbox/input text */
@@ -79,13 +90,14 @@ def apply_custom_styling():
         color: {COLOR_SCHEME['text']} !important;
     }}
 
-    /* DROPDOWN MENU OPTIONS - Ensure visibility */
+    /* DROPDOWN MENU OPTIONS with Mansa Capital styling */
     [data-baseweb="popover"] {{
-        background-color: {COLOR_SCHEME['secondary']} !important;
+        background: linear-gradient(135deg, {COLOR_SCHEME['secondary']} 0%, {COLOR_SCHEME['background']} 100%) !important;
+        border: 1px solid rgba(20, 184, 166, 0.3) !important;
     }}
     
     [data-baseweb="menu"] {{
-        background-color: {COLOR_SCHEME['secondary']} !important;
+        background: linear-gradient(135deg, {COLOR_SCHEME['secondary']} 0%, {COLOR_SCHEME['background']} 100%) !important;
     }}
     
     [data-baseweb="menu"] li {{
@@ -94,8 +106,9 @@ def apply_custom_styling():
     }}
     
     [data-baseweb="menu"] li:hover {{
-        background-color: rgba(6, 182, 212, 0.2) !important;
-        color: {COLOR_SCHEME['text']} !important;
+        background: linear-gradient(90deg, rgba(20, 184, 166, 0.2) 0%, rgba(250, 204, 21, 0.1) 100%) !important;
+        color: {COLOR_SCHEME['accent_gold']} !important;
+        border-left: 2px solid {COLOR_SCHEME['accent_teal']} !important;
     }}
     
     [role="option"] {{
@@ -104,13 +117,14 @@ def apply_custom_styling():
     }}
     
     [role="option"]:hover {{
-        background-color: rgba(6, 182, 212, 0.2) !important;
-        color: {COLOR_SCHEME['text']} !important;
+        background: linear-gradient(90deg, rgba(20, 184, 166, 0.2) 0%, rgba(250, 204, 21, 0.1) 100%) !important;
+        color: {COLOR_SCHEME['accent_gold']} !important;
     }}
     
     [data-baseweb="select"] > div {{
-        background-color: rgba(15, 23, 42, 0.6) !important;
+        background: linear-gradient(135deg, {COLOR_SCHEME['secondary']} 0%, {COLOR_SCHEME['background']} 100%) !important;
         color: {COLOR_SCHEME['text']} !important;
+        border: 1px solid rgba(20, 184, 166, 0.3) !important;
     }}
     </style>
     """
@@ -130,13 +144,13 @@ def create_custom_card(title: str, body: str):
 
 
 def create_metric_card(label: str, value: str, delta: str = None):
-    """Render a compact metric card used in small columns."""
+    """Render a compact metric card with Mansa Capital branding."""
     delta_html = f"<span class='metric-delta'>{delta}</span>" if delta else ""
     html = f"""
-    <div class='metric-card'>
+    <div class='metric-card' style='border: 1px solid rgba(20, 184, 166, 0.3);'>
       <div class='metric-label'>{label}</div>
       <div style='display:flex; align-items:center;'>
-        <div class='metric-value'>{value}</div>
+        <div class='metric-value' style='color: {COLOR_SCHEME['accent_gold']};'>{value}</div>
         {delta_html}
       </div>
     </div>

@@ -42,10 +42,20 @@ def show_plaid_connection_prompt(user_id: int):
         """)
     
     with col2:
-        st.image("https://plaid.com/assets/img/plaid-logo.svg", width=150)
+        # Display Plaid logo (non-interactive)
+        st.markdown("""
+        <div style='text-align: center; padding: 10px;'>
+            <img src='https://plaid.com/assets/img/plaid-logo.svg' width='150' style='opacity: 0.8;'>
+            <p style='font-size: 0.8rem; color: rgba(230,238,248,0.6); margin-top: 5px;'>
+                Powered by Plaid
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
         if st.button("🔗 Connect Your Bank", type="primary", use_container_width=True):
-            st.info("🚧 Plaid Link integration coming soon! Contact your administrator for early access.")
+            st.info("🚧 Plaid Link integration coming soon!\n\n**Future Integration:** Bank of America CashPro API (awaiting API key)\n\n**Current:** Plaid will be used for spending insights and bank transaction data.")
             # TODO: Implement Plaid Link flow
+            # TODO: Add Bank of America CashPro integration when API key received
             # from frontend.utils.plaid_integration import create_link_token
 
 

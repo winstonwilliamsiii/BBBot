@@ -43,6 +43,12 @@ sqlalchemy>=1.4.0
 pymysql>=1.1.0
 
 # ============================================
+# AI CHATBOT (Bentley AI Assistant)
+# ============================================
+# Note: DeepSeek or other LLM APIs require API keys
+# Add to .env: DEEPSEEK_API_KEY=your_key_here
+
+# ============================================
 # NOTE: Heavy packages excluded for Streamlit Cloud
 # ============================================
 # For local development with full pipeline features, use:

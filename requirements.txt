@@ -29,11 +29,18 @@ python-dotenv>=1.0.0
 requests>=2.28.0
 
 # ============================================
-# OPTIONAL: Database connectivity (if using external DB)
+# PLAID INTEGRATION (Personal Budget Analysis)
 # ============================================
-# Uncomment if connecting to external MySQL/Snowflake
-# sqlalchemy>=1.4.0
-# pymysql>=1.1.0
+plaid-python>=14.0.0
+cryptography>=41.0.0
+python-dateutil>=2.8.0
+
+# ============================================
+# DATABASE CONNECTIVITY (Required for Budget Features)
+# ============================================
+mysql-connector-python>=8.0.0
+sqlalchemy>=1.4.0
+pymysql>=1.1.0
 
 # ============================================
 # NOTE: Heavy packages excluded for Streamlit Cloud

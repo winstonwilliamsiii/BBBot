@@ -4,6 +4,7 @@
     "git.ignoreLimitWarning": true,
     "cSpell.words": [
         "airbyte",
+        "barchart",
         "MACD",
         "mlflow",
         "mlruns",

@@ -482,6 +482,12 @@ def main():
         st.error("Error: Start date must be before end date.")
         st.stop()
 
+    # Bot status card - positioned above portfolio metrics
+    create_custom_card(
+        "Bot Status",
+        "All systems operational. Bot is responding normally to user queries.",
+    )
+
     # Calculate portfolio metrics if CSV uploaded
     portfolio_value, num_assets, num_sectors, value_change = calculate_portfolio_metrics(
         st.session_state.get('portfolio_data')
@@ -552,12 +558,6 @@ def main():
             if 'Purchase_Price' in portfolio_df.columns:
                 avg_purchase = portfolio_df['Purchase_Price'].mean()
                 st.metric("Avg Purchase Price", f"${avg_purchase:.2f}")
-
-    # Bot status card
-    create_custom_card(
-        "Bot Status",
-        "All systems operational. Bot is responding normally to user queries.",
-    )
 
     # Fetch portfolio data
     portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)

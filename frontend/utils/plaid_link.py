@@ -4,6 +4,11 @@ Handles OAuth flow, token exchange, and bank connection
 """
 
 import os
+from dotenv import load_dotenv
+
+# Load environment variables at module import
+load_dotenv()
+
 import streamlit as st
 from plaid.api import plaid_api
 from plaid.model.link_token_create_request import LinkTokenCreateRequest

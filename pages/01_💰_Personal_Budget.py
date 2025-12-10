@@ -13,6 +13,12 @@ Features:
 - Plaid account management
 """
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 import streamlit as st
 
 # RBAC imports

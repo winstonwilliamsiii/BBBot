@@ -200,12 +200,39 @@ def get_config() -> EnvironmentConfig:
     return _config_instance
 
 
-def require_env_var(var_name: str) -> str:
+def reload_env(force: bool = False) -> bool:
+    """
+    Reload environment variables from .env file
+    
+    This function provides cache-busting by reloading the .env file.
+    Useful when environment variables change during runtime.
+    
+    Args:
+        force: If True, always reload. If False, only reload if not already loaded.
+    
+    Returns:
+        bool: True if .env file was found and loaded
+    """
+    env_path = Path.cwd()
+    
+    # Search for .env in current directory and up to 3 parent directories
+    for _ in range(4):
+        env_file = env_path / '.env'
+        if env_file.exists():
+            load_dotenv(env_file, override=force)
+            return True
+        env_path = env_path.parent
+    
+    return False
+
+
+def require_env_var(var_name: str, reload: bool = False) -> str:
     """
     Get environment variable or raise error if not set
     
     Args:
         var_name: Name of environment variable
+        reload: If True, reload .env file before getting variable
     
     Returns:
         str: Value of environment variable
@@ -213,6 +240,9 @@ def require_env_var(var_name: str) -> str:
     Raises:
         ValueError: If environment variable is not set
     """
+    if reload:
+        reload_env(force=True)
+    
     value = os.getenv(var_name)
     if not value or value.startswith('your_'):
         raise ValueError(

@@ -1,5 +1,11 @@
 import streamlit as st
 import pandas as pd
+import os
+from dotenv import load_dotenv
+
+# Load environment variables FIRST before any other imports
+load_dotenv()
+
 try:
     import yfinance as yf
     YFINANCE_AVAILABLE = True

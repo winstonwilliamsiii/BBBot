@@ -6,8 +6,15 @@ Handles OAuth flow, token exchange, and bank connection
 import os
 from dotenv import load_dotenv
 
-# Force reload environment variables
+# Force reload environment variables with cache-busting
 load_dotenv(override=True)
+
+# Try to use config_env reload if available
+try:
+    from config_env import reload_env
+    reload_env(force=True)
+except ImportError:
+    pass
 
 import streamlit as st
 from plaid.api import plaid_api
@@ -27,13 +34,23 @@ class PlaidLinkManager:
     
     def __init__(self):
         """Initialize Plaid API client"""
+        # Reload environment one more time to be sure
+        load_dotenv(override=True)
+        
         self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
         self.secret = os.getenv('PLAID_SECRET', '').strip()
         self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
         
-        # Validate credentials
+        # Debug: Print what we got (masked)
         if not self.client_id or self.client_id == 'your_plaid_client_id_here':
-            raise ValueError("PLAID_CLIENT_ID not configured in .env")
+            # Show debug info
+            all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
+            print(f"DEBUG: Plaid env vars found: {list(all_env.keys())}")
+            raise ValueError(
+                f"PLAID_CLIENT_ID not configured in .env\n"
+                f"Found value: '{self.client_id}'\n"
+                f"Please ensure .env file has: PLAID_CLIENT_ID=your_actual_client_id"
+            )
         if not self.secret or self.secret == 'your_plaid_secret_here':
             raise ValueError("PLAID_SECRET not configured in .env")
         

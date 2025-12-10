@@ -10,6 +10,13 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+# Import cache-busting reload function
+try:
+    from config_env import reload_env
+    ENV_RELOAD_AVAILABLE = True
+except ImportError:
+    ENV_RELOAD_AVAILABLE = False
+
 # Import custom styling
 try:
     from frontend.styles.colors import COLOR_SCHEME
@@ -28,6 +35,10 @@ except ImportError:
 try:
     from sqlalchemy import create_engine
     import os
+    
+    # Reload env vars to ensure fresh database credentials
+    if ENV_RELOAD_AVAILABLE:
+        reload_env(force=False)
     
     MYSQL_CONFIG = {
         'host': 'localhost',

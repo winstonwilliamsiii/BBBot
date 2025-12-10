@@ -6,8 +6,8 @@ Handles OAuth flow, token exchange, and bank connection
 import os
 from dotenv import load_dotenv
 
-# Load environment variables at module import
-load_dotenv()
+# Force reload environment variables
+load_dotenv(override=True)
 
 import streamlit as st
 from plaid.api import plaid_api

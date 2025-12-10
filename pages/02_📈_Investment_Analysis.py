@@ -215,8 +215,8 @@ except ImportError:
 def display_investment_page():
     """Main investment analysis page with MLFlow integration"""
     
-    st.title("📈 Investment Analysis Dashboard")
-    st.markdown("Real-time portfolio tracking with ML experiment logging")
+    st.title("📈 Mansa Capital Investment Dashboard")
+    st.markdown("Real-time fund tracking with ML experiment logging | *Mansa Capital Funds*")
     
     # Initialize RBAC
     if RBAC_AVAILABLE:
@@ -232,22 +232,40 @@ def display_investment_page():
     # Sidebar configuration
     st.sidebar.header("⚙️ Analysis Configuration")
     
+    # Mansa Capital Fund Names (Demo Portfolio Names)
+    MANSA_FUNDS = {
+        'IONQ': 'Mansa AI',
+        'QBTS': 'Mansa AI2',
+        'SOUN': 'Mansa Tech',
+        'RGTI': 'Mansa Jugarnaut',
+        'AMZN': 'Mansa MoneyBag',
+        'MSFT': 'Mansa Retail',
+        'GOOGL': 'Mansa Energy',
+        'NVDA': 'Mansa Minerals',
+        'TSLA': 'Mansa Balanced',
+        'AAPL': 'Mansa EAD'
+    }
+    
     # Load tickers from config
     if MLFLOW_AVAILABLE:
         try:
             config = load_tickers_config()
             available_tickers = config['tickers']['all']
         except:
-            available_tickers = ['IONQ', 'QBTS', 'SOUN', 'RGTI', 'AMZN', 'MSFT', 'GOOGL']
+            available_tickers = list(MANSA_FUNDS.keys())
     else:
-        available_tickers = ['IONQ', 'QBTS', 'SOUN', 'RGTI', 'AMZN', 'MSFT', 'GOOGL']
+        available_tickers = list(MANSA_FUNDS.keys())
     
-    # Ticker selection
-    selected_tickers = st.sidebar.multiselect(
-        "Select Tickers to Analyze",
-        available_tickers,
-        default=['IONQ', 'QBTS', 'SOUN', 'RGTI']
+    # Ticker selection with Mansa fund names
+    ticker_options = [f"{ticker} - {MANSA_FUNDS.get(ticker, ticker)}" for ticker in available_tickers]
+    selected_options = st.sidebar.multiselect(
+        "Select Mansa Funds to Analyze",
+        ticker_options,
+        default=[f"{t} - {MANSA_FUNDS.get(t, t)}" for t in ['IONQ', 'QBTS', 'SOUN', 'RGTI']]
     )
+    
+    # Extract ticker symbols from selections
+    selected_tickers = [opt.split(' - ')[0] for opt in selected_options]
     
     # Date range selection
     end_date = datetime.now()
@@ -298,7 +316,7 @@ def display_investment_page():
     
     # Tab 1: Portfolio Overview
     with tab1:
-        display_portfolio_overview(selected_tickers, start_date, end_date, enable_logging)
+        display_portfolio_overview(selected_tickers, start_date, end_date, enable_logging, MANSA_FUNDS)
     
     # Tab 2: MLFlow Experiments
     with tab2:
@@ -306,17 +324,25 @@ def display_investment_page():
     
     # Tab 3: Technical Analysis
     with tab3:
-        display_technical_analysis(selected_tickers, start_date, end_date)
+        display_technical_analysis(selected_tickers, start_date, end_date, MANSA_FUNDS)
     
     # Tab 4: Fundamental Ratios
     with tab4:
         display_fundamental_ratios(selected_tickers, enable_logging)
 
 
-def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
-    """Display portfolio performance overview"""
+def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fund_names=None):
+    """Display portfolio performance overview
     
-    st.header("📊 Portfolio Performance")
+    Args:
+        tickers: List of ticker symbols
+        start_date: Analysis start date
+        end_date: Analysis end date
+        enable_logging: Whether to log to MLFlow
+        fund_names: Dict mapping ticker symbols to fund names (optional)
+    """
+    
+    st.header("📊 Mansa Capital Fund Performance")
     
     if not YFINANCE_AVAILABLE:
         st.error("yfinance package required for portfolio data")
@@ -349,7 +375,9 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
                             cols_to_keep.append(col)
                     
                     if 'Close' in df.columns and 'Date' in df.columns:
-                        data_frames.append(df[cols_to_keep])
+                        # Reset index to avoid duplicate index errors during concat
+                        df_to_add = df[cols_to_keep].reset_index(drop=True)
+                        data_frames.append(df_to_add)
                     else:
                         st.warning(f"⚠️ {ticker}: Missing required columns")
             except Exception as e:
@@ -359,7 +387,14 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
             st.error("No data available for selected tickers")
             return
         
-        portfolio_df = pd.concat(data_frames, ignore_index=True)
+        # Concatenate with ignore_index=True to ensure clean index
+        portfolio_df = pd.concat(data_frames, ignore_index=True, sort=False)
+        
+        # Add fund names column for display
+        if fund_names:
+            portfolio_df['Fund Name'] = portfolio_df['Ticker'].map(fund_names)
+        else:
+            portfolio_df['Fund Name'] = portfolio_df['Ticker']
         
         # Ensure Date column is datetime
         portfolio_df['Date'] = pd.to_datetime(portfolio_df['Date'])
@@ -416,20 +451,20 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging):
             st.metric("Total Return", "N/A")
     
     # Plot portfolio performance
-    st.subheader("Price Performance")
+    st.subheader("Fund Price Performance")
     
     try:
         # Ensure data is valid for plotting
-        plot_df = portfolio_df[['Date', 'Close', 'Ticker']].dropna()
+        plot_df = portfolio_df[['Date', 'Close', 'Fund Name']].dropna()
         
         if not plot_df.empty:
             fig = px.line(
                 plot_df,
                 x='Date',
                 y='Close',
-                color='Ticker',
-                title='Portfolio Price History',
-                labels={'Close': 'Price ($)', 'Date': 'Date'}
+                color='Fund Name',
+                title='Mansa Capital Fund Price History',
+                labels={'Close': 'Price ($)', 'Date': 'Date', 'Fund Name': 'Fund'}
             )
             
             fig.update_layout(
@@ -574,8 +609,15 @@ def display_mlflow_experiments(tickers):
         st.exception(e)
 
 
-def display_technical_analysis(tickers, start_date, end_date):
-    """Display technical analysis charts"""
+def display_technical_analysis(tickers, start_date, end_date, fund_names=None):
+    """Display technical analysis charts
+    
+    Args:
+        tickers: List of ticker symbols
+        start_date: Analysis start date
+        end_date: Analysis end date
+        fund_names: Dict mapping ticker symbols to fund names (optional)
+    """
     
     st.header("📈 Technical Analysis")
     
@@ -583,9 +625,21 @@ def display_technical_analysis(tickers, start_date, end_date):
         st.error("yfinance package required")
         return
     
-    selected_ticker = st.selectbox("Select ticker for technical analysis", tickers, key="tech_ticker")
+    # Create ticker options with fund names
+    if fund_names:
+        ticker_options = {f"{ticker} - {fund_names.get(ticker, ticker)}": ticker for ticker in tickers}
+        selected_option = st.selectbox(
+            "Select Mansa fund for technical analysis", 
+            list(ticker_options.keys()), 
+            key="tech_ticker"
+        )
+        selected_ticker = ticker_options[selected_option]
+        display_name = fund_names.get(selected_ticker, selected_ticker)
+    else:
+        selected_ticker = st.selectbox("Select ticker for technical analysis", tickers, key="tech_ticker")
+        display_name = selected_ticker
     
-    with st.spinner(f"Analyzing {selected_ticker}..."):
+    with st.spinner(f"Analyzing {display_name}..."):
         try:
             df = yf.download(selected_ticker, start=start_date, end=end_date, progress=False)
             
@@ -628,7 +682,7 @@ def display_technical_analysis(tickers, start_date, end_date):
             fig.add_trace(go.Scatter(x=df.index, y=df['MA200'], name='MA200', line=dict(color='red', width=1)))
             
             fig.update_layout(
-                title=f'{selected_ticker} Price with Moving Averages',
+                title=f'{display_name} Price with Moving Averages',
                 yaxis_title='Price ($)',
                 xaxis_title='Date',
                 height=600,
@@ -641,7 +695,7 @@ def display_technical_analysis(tickers, start_date, end_date):
             fig_volume = go.Figure()
             fig_volume.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume'))
             fig_volume.update_layout(
-                title=f'{selected_ticker} Trading Volume',
+                title=f'{display_name} Trading Volume',
                 yaxis_title='Volume',
                 xaxis_title='Date',
                 height=300

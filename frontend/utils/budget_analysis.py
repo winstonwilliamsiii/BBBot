@@ -22,6 +22,10 @@ import pandas as pd
 import os
 from functools import lru_cache
 import streamlit as st
+from dotenv import load_dotenv
+
+# Load environment variables at module import
+load_dotenv()
 
 
 class BudgetAnalyzer:

@@ -16,10 +16,17 @@ Features:
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables (initial load)
 load_dotenv()
 
 import streamlit as st
+
+# Import cache-busting reload function
+try:
+    from config_env import reload_env
+    ENV_RELOAD_AVAILABLE = True
+except ImportError:
+    ENV_RELOAD_AVAILABLE = False
 
 # RBAC imports
 try:
@@ -44,6 +51,10 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    
+    # Reload environment variables for cache-busting
+    if ENV_RELOAD_AVAILABLE:
+        reload_env(force=False)
     
     # Apply styling
     apply_custom_styling()

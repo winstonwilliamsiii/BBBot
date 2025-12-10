@@ -11,7 +11,14 @@ Run this after the RBAC AttributeError fix to verify:
 """
 
 import sys
+import os
 from pathlib import Path
+
+# Fix Windows console encoding for emoji/unicode output
+if sys.platform == 'win32':
+    os.system('chcp 65001 > nul 2>&1')
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # Add project root to path
 project_root = Path(__file__).parent

@@ -72,17 +72,38 @@ def create_budget_tables():
         raw_statements = sql_script.split(';')
         statements = []
         
+        current_statement = ""
         for stmt in raw_statements:
             # Clean the statement
             stmt = stmt.strip()
-            # Skip empty statements, comments, and USE statements
-            if not stmt or stmt.startswith('--') or stmt.startswith('/*'):
+            
+            # Skip empty statements and pure comments
+            if not stmt or (stmt.startswith('--') and '\n' not in stmt):
                 continue
-            if stmt.startswith('USE '):
+            
+            # Skip USE statements
+            if stmt.upper().startswith('USE '):
                 continue
-            statements.append(stmt)
+            
+            # Handle multi-line statements (like CREATE VIEW)
+            current_statement += " " + stmt
+            
+            # Check if this is a complete statement
+            # Views and procedures might span multiple splits
+            if 'CREATE OR REPLACE VIEW' in current_statement.upper():
+                # View definition - look for the next semicolon
+                if current_statement.count('SELECT') > 0:
+                    statements.append(current_statement.strip())
+                    current_statement = ""
+            elif current_statement.strip():
+                statements.append(current_statement.strip())
+                current_statement = ""
         
-        print(f"\n🔧 Executing {len(statements)} SQL statements...")
+        # Add any remaining statement
+        if current_statement.strip():
+            statements.append(current_statement.strip())
+        
+        print(f"\n[Executing] {len(statements)} SQL statements...")
         
         success_count = 0
         error_count = 0
@@ -126,23 +147,25 @@ def create_budget_tables():
         connection.commit()
         
         # Verify tables were created
-        print("\n📊 Verifying created tables...")
-        cursor.execute("SHOW TABLES LIKE '%budget%' OR LIKE '%cash_flow%' OR LIKE '%plaid%'")
-        tables = cursor.fetchall()
+        print("\n[Verifying created tables...")
+        cursor.execute("SHOW TABLES")
+        all_tables = cursor.fetchall()
         
-        if tables:
-            print(f"\n✓ Found {len(tables)} budget-related tables:")
-            for table in tables:
-                cursor.execute(f"SELECT COUNT(*) FROM {table[0]}")
+        # Filter budget-related tables
+        budget_tables = [t[0] for t in all_tables if 'budget' in t[0].lower() or 
+                        'cash_flow' in t[0].lower() or 'plaid' in t[0].lower()]
+        
+        if budget_tables:
+            print(f"\n[OK] Found {len(budget_tables)} budget-related tables:")
+            for table in budget_tables:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 count = cursor.fetchone()[0]
-                print(f"  • {table[0]} ({count} rows)")
+                print(f"  * {table} ({count} rows)")
         else:
-            print("\n⚠ No budget tables found. Checking all tables...")
-            cursor.execute("SHOW TABLES")
-            all_tables = cursor.fetchall()
-            print(f"\nAll tables in database:")
+            print("\n[WARNING] No budget tables found. Showing all tables...")
+            print(f"\nAll tables in {config['database']}:")
             for table in all_tables:
-                print(f"  • {table[0]}")
+                print(f"  * {table[0]}")
         
         print("\n" + "="*60)
         print(f"✓ SETUP COMPLETE!")

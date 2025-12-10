@@ -3,6 +3,12 @@ Role-Based Access Control (RBAC) System for Bentley Budget Bot
 Manages user authentication, roles, and permissions for investment services
 """
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables at module import
+load_dotenv()
+
 import streamlit as st
 from enum import Enum
 from datetime import datetime, timedelta

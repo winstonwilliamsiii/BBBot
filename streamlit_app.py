@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables FIRST before any other imports
+# Note: Individual functions should use config_env.reload_env() for fresh values
 load_dotenv()
 
 try:
@@ -23,6 +24,13 @@ from frontend.utils.styling import (
 )
 from frontend.styles.colors import COLOR_SCHEME
 from frontend.utils.yahoo import fetch_portfolio_list, fetch_portfolio_tickers
+
+# Import cache-busting reload function
+try:
+    from config_env import reload_env
+    ENV_RELOAD_AVAILABLE = True
+except ImportError:
+    ENV_RELOAD_AVAILABLE = False
 
 # RBAC and Budget Analysis imports
 try:
@@ -233,6 +241,10 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded",
     )
+
+    # Reload environment variables for cache-busting (optional but ensures fresh values)
+    if ENV_RELOAD_AVAILABLE:
+        reload_env(force=False)
 
     # Apply custom styling (CSS)
     apply_custom_styling()

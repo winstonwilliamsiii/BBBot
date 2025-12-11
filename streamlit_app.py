@@ -3,9 +3,9 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 
-# Load environment variables FIRST before any other imports
-# Note: Individual functions should use config_env.reload_env() for fresh values
-load_dotenv()
+# Load environment variables FIRST before any other imports with override enabled
+# This ensures fresh values on every Streamlit reload
+load_dotenv(override=True)
 
 try:
     import yfinance as yf
@@ -242,9 +242,9 @@ def main():
         initial_sidebar_state="expanded",
     )
 
-    # Reload environment variables for cache-busting (optional but ensures fresh values)
+    # Reload environment variables for cache-busting (ensures fresh values on every run)
     if ENV_RELOAD_AVAILABLE:
-        reload_env(force=False)
+        reload_env(force=True)  # Force override to break cache
 
     # Apply custom styling (CSS)
     apply_custom_styling()

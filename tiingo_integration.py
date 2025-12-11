@@ -22,8 +22,15 @@ from dotenv import load_dotenv
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-# Load environment variables
-load_dotenv()
+# Load environment variables with cache-busting
+load_dotenv(override=True)
+
+# Try to use config_env reload if available
+try:
+    from config_env import reload_env
+    reload_env(force=True)
+except ImportError:
+    pass
 
 TIINGO_API_KEY = os.getenv('TIINGO_API_KEY')
 TIINGO_BASE_URL = "https://api.tiingo.com"

@@ -16,8 +16,8 @@ Features:
 import os
 from dotenv import load_dotenv
 
-# Load environment variables (initial load)
-load_dotenv()
+# Load environment variables with override enabled for cache-busting
+load_dotenv(override=True)
 
 import streamlit as st
 

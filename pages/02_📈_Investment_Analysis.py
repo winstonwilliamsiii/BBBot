@@ -232,14 +232,8 @@ def display_investment_page():
     # Sidebar configuration
     st.sidebar.header("⚙️ Analysis Configuration")
     
-    # Mansa Capital Fund Names (Demo Portfolio Names)
+    # Mansa Capital Fund Names
     MANSA_FUNDS = {
-        # Your Custom Funds
-        'AAPL': 'Tech Innovation Fund',
-        'MSFT': 'Dividend Income Fund',
-        'GOOGL': 'Growth Leaders Fund',
-        'TSLA': 'ESG Sustainable Fund',
-        # Mansa Funds
         'IONQ': 'Mansa AI',
         'QBTS': 'Mansa AI2',
         'SOUN': 'Mansa Tech',
@@ -265,7 +259,7 @@ def display_investment_page():
     selected_options = st.sidebar.multiselect(
         "Select Mansa Funds to Analyze",
         ticker_options,
-        default=[f"{t} - {MANSA_FUNDS.get(t, t)}" for t in ['AAPL', 'MSFT', 'GOOGL', 'TSLA']]
+        default=[f"{t} - {MANSA_FUNDS.get(t, t)}" for t in ['IONQ', 'QBTS', 'SOUN', 'RGTI']]
     )
     
     # Extract ticker symbols from selections

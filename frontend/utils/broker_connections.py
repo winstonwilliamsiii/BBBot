@@ -127,42 +127,6 @@ class BrokerConnectionManager:
         return [
             WebullFund(
                 fund_id="MANSA001",
-                name="Tech Innovation Fund",
-                nav=125.45,
-                shares=100.5,
-                value=12607.73,
-                daily_change=156.32,
-                daily_change_pct=1.25,
-            ),
-            WebullFund(
-                fund_id="MANSA002",
-                name="Dividend Income Fund",
-                nav=98.72,
-                shares=75.25,
-                value=7428.67,
-                daily_change=-42.15,
-                daily_change_pct=-0.56,
-            ),
-            WebullFund(
-                fund_id="MANSA003",
-                name="Growth Leaders Fund",
-                nav=145.89,
-                shares=50.0,
-                value=7294.50,
-                daily_change=28.50,
-                daily_change_pct=0.39,
-            ),
-            WebullFund(
-                fund_id="MANSA004",
-                name="ESG Sustainable Fund",
-                nav=112.34,
-                shares=120.75,
-                value=13562.54,
-                daily_change=203.44,
-                daily_change_pct=1.52,
-            ),
-            WebullFund(
-                fund_id="MANSA005",
                 name="Mansa AI",
                 nav=87.56,
                 shares=85.0,
@@ -171,7 +135,7 @@ class BrokerConnectionManager:
                 daily_change_pct=1.62,
             ),
             WebullFund(
-                fund_id="MANSA006",
+                fund_id="MANSA002",
                 name="Mansa AI2",
                 nav=94.23,
                 shares=60.5,
@@ -180,7 +144,7 @@ class BrokerConnectionManager:
                 daily_change_pct=1.65,
             ),
             WebullFund(
-                fund_id="MANSA007",
+                fund_id="MANSA003",
                 name="Mansa Tech",
                 nav=103.45,
                 shares=95.0,
@@ -189,7 +153,7 @@ class BrokerConnectionManager:
                 daily_change_pct=1.52,
             ),
             WebullFund(
-                fund_id="MANSA008",
+                fund_id="MANSA004",
                 name="Mansa Jugarnaut",
                 nav=156.78,
                 shares=110.25,
@@ -198,7 +162,7 @@ class BrokerConnectionManager:
                 daily_change_pct=1.52,
             ),
             WebullFund(
-                fund_id="MANSA009",
+                fund_id="MANSA005",
                 name="Mansa Minerals",
                 nav=78.92,
                 shares=130.0,

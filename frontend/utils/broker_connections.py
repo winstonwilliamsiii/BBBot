@@ -123,11 +123,11 @@ class BrokerConnectionManager:
     
     @staticmethod
     def get_demo_webull_funds() -> List[WebullFund]:
-        """Get demo Webull WeFolio funds for testing"""
+        """Get demo Webull WeFolio funds for testing - Mansa Capital Funds"""
         return [
             WebullFund(
-                fund_id="WF001",
-                name="Growth Leaders Fund",
+                fund_id="MANSA001",
+                name="Tech Innovation Fund",
                 nav=125.45,
                 shares=100.5,
                 value=12607.73,
@@ -135,8 +135,8 @@ class BrokerConnectionManager:
                 daily_change_pct=1.25,
             ),
             WebullFund(
-                fund_id="WF002",
-                name="Tech Innovation Fund",
+                fund_id="MANSA002",
+                name="Dividend Income Fund",
                 nav=98.72,
                 shares=75.25,
                 value=7428.67,
@@ -144,8 +144,8 @@ class BrokerConnectionManager:
                 daily_change_pct=-0.56,
             ),
             WebullFund(
-                fund_id="WF003",
-                name="Dividend Income Fund",
+                fund_id="MANSA003",
+                name="Growth Leaders Fund",
                 nav=145.89,
                 shares=50.0,
                 value=7294.50,
@@ -153,13 +153,58 @@ class BrokerConnectionManager:
                 daily_change_pct=0.39,
             ),
             WebullFund(
-                fund_id="WF004",
+                fund_id="MANSA004",
                 name="ESG Sustainable Fund",
                 nav=112.34,
                 shares=120.75,
                 value=13562.54,
                 daily_change=203.44,
                 daily_change_pct=1.52,
+            ),
+            WebullFund(
+                fund_id="MANSA005",
+                name="Mansa AI",
+                nav=87.56,
+                shares=85.0,
+                value=7442.60,
+                daily_change=118.50,
+                daily_change_pct=1.62,
+            ),
+            WebullFund(
+                fund_id="MANSA006",
+                name="Mansa AI2",
+                nav=94.23,
+                shares=60.5,
+                value=5700.92,
+                daily_change=92.30,
+                daily_change_pct=1.65,
+            ),
+            WebullFund(
+                fund_id="MANSA007",
+                name="Mansa Tech",
+                nav=103.45,
+                shares=95.0,
+                value=9827.75,
+                daily_change=147.41,
+                daily_change_pct=1.52,
+            ),
+            WebullFund(
+                fund_id="MANSA008",
+                name="Mansa Jugarnaut",
+                nav=156.78,
+                shares=110.25,
+                value=17285.48,
+                daily_change=259.28,
+                daily_change_pct=1.52,
+            ),
+            WebullFund(
+                fund_id="MANSA009",
+                name="Mansa Minerals",
+                nav=78.92,
+                shares=130.0,
+                value=10259.60,
+                daily_change=123.11,
+                daily_change_pct=1.21,
             ),
         ]
     

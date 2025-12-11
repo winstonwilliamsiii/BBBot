@@ -447,12 +447,35 @@ def main():
                 portfolio_tickers = parsed
                 st.sidebar.success(f"Loaded {len(parsed)} tickers from paste")
     # default selection: if we loaded fetched tickers, select them; otherwise pick a few defaults
-    default_selection = portfolio_tickers if (portfolio_tickers and portfolio_tickers != default_portfolio_tickers) else ['AAPL', 'MSFT', 'GOOGL']
+    default_selection = portfolio_tickers if (portfolio_tickers and portfolio_tickers != default_portfolio_tickers) else ['AAPL', 'MSFT', 'GOOGL', 'TSLA']
+    
+    # Mansa Capital Fund Names for display
+    MANSA_FUNDS = {
+        'AAPL': 'Tech Innovation Fund',
+        'MSFT': 'Dividend Income Fund',
+        'GOOGL': 'Growth Leaders Fund',
+        'TSLA': 'ESG Sustainable Fund',
+        'IONQ': 'Mansa AI',
+        'QBTS': 'Mansa AI2',
+        'SOUN': 'Mansa Tech',
+        'RGTI': 'Mansa Jugarnaut',
+        'AMZN': 'Mansa Jugarnaut',
+        'NVDA': 'Mansa Jugarnaut',
+        'B': 'Mansa Minerals',
+        'IAU': 'Mansa Minerals'
+    }
+    
+    # Create ticker labels with fund names
+    def format_ticker(ticker):
+        if ticker in MANSA_FUNDS:
+            return f"{MANSA_FUNDS[ticker]} ({ticker})"
+        return ticker
 
     selected_tickers = st.sidebar.multiselect(
-        'Which stocks would you like to view?',
+        'Select Mansa Capital Funds:',
         portfolio_tickers,
-        default_selection
+        default_selection,
+        format_func=format_ticker
     )
 
     # Optional: give user a way to validate tickers via yfinance (best-effort)
@@ -577,6 +600,22 @@ def main():
                 avg_purchase = portfolio_df['Purchase_Price'].mean()
                 st.metric("Avg Purchase Price", f"${avg_purchase:.2f}")
 
+    # Mansa Capital Fund Names Mapping
+    MANSA_FUNDS = {
+        'AAPL': 'Tech Innovation Fund',
+        'MSFT': 'Dividend Income Fund',
+        'GOOGL': 'Growth Leaders Fund',
+        'TSLA': 'ESG Sustainable Fund',
+        'IONQ': 'Mansa AI',
+        'QBTS': 'Mansa AI2',
+        'SOUN': 'Mansa Tech',
+        'RGTI': 'Mansa Jugarnaut',
+        'AMZN': 'Mansa Jugarnaut',
+        'NVDA': 'Mansa Jugarnaut',
+        'B': 'Mansa Minerals',
+        'IAU': 'Mansa Minerals'
+    }
+    
     # Fetch portfolio data
     portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
     if portfolio_data.empty:
@@ -584,9 +623,12 @@ def main():
     else:
         df = portfolio_data.copy()
         df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
+        
+        # Add Fund Name column
+        df['Fund Name'] = df['Ticker'].map(MANSA_FUNDS).fillna(df['Ticker'])
 
-        st.header('Portfolio Performance Over Time')
-        st.line_chart(df, x='Date', y='Price', color='Ticker')
+        st.header('Mansa Capital Fund Performance Over Time')
+        st.line_chart(df, x='Date', y='Price', color='Fund Name')
 
         st.write("")
         # Format as: Month Day, Year (month spelled out)
@@ -606,9 +648,12 @@ def main():
                         delta = f'{growth_pct:.2f}%'
                     else:
                         delta = 'n/a'
-                    create_metric_card(f'{ticker} Price', f'${last_price:,.2f}', delta)
+                    # Use fund name if available, otherwise ticker
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    create_metric_card(f'{display_name}', f'${last_price:,.2f}', delta)
                 else:
-                    create_metric_card(f'{ticker} Price', 'N/A', 'N/A')
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    create_metric_card(f'{display_name}', 'N/A', 'N/A')
 
         st.write("")
         st.header("Raw Portfolio Data")

@@ -15,8 +15,15 @@ sys.path.insert(0, str(project_root))
 from tiingo_integration import TiingoAPIClient
 from dotenv import load_dotenv
 
-# Load environment
-load_dotenv()
+# Load environment with cache-busting
+load_dotenv(override=True)
+
+# Try to use config_env reload if available
+try:
+    from config_env import reload_env
+    reload_env(force=True)
+except ImportError:
+    pass
 
 def test_tiingo_connection():
     """Test Tiingo API connection and data fetching"""
@@ -157,10 +164,10 @@ def test_database_connection():
         
         db_config = {
             'host': os.getenv('MYSQL_HOST', 'localhost'),
-            'port': int(os.getenv('MYSQL_PORT', 3306)),
+            'port': int(os.getenv('MYSQL_PORT', 3307)),
             'user': os.getenv('MYSQL_USER', 'root'),
-            'password': os.getenv('MYSQL_PASSWORD', ''),
-            'database': os.getenv('MYSQL_DATABASE', 'bbbot1'),
+            'password': os.getenv('MYSQL_PASSWORD', 'root'),
+            'database': os.getenv('MYSQL_DATABASE', 'mansa_bot'),
         }
         
         print(f"Testing connection to:")
@@ -190,9 +197,10 @@ def test_database_connection():
         print(f"❌ Database connection failed: {e}")
         print()
         print("To fix:")
-        print("  1. Ensure MySQL is running")
+        print("  1. Ensure MySQL is running on port 3307")
         print("  2. Check database credentials in .env file")
-        print("  3. Create database: mysql -e 'CREATE DATABASE bbbot1'")
+        print("  3. Create database if needed: mysql -e 'CREATE DATABASE mansa_bot'")
+        print("  4. Verify connection: mysql -u root -p -h localhost -P 3307")
         print()
         print("Note: CSV export will still work without database")
         return False

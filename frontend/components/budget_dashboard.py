@@ -73,11 +73,13 @@ def show_plaid_connection_prompt(user_id: int):
             # Render Plaid Link button with OAuth flow
             render_plaid_link_button(user_id)
             
-        except ValueError as e:
-            # Credentials not configured - show setup instructions
-            if st.button("🔗 Connect Your Bank", type="primary", use_container_width=True, key="connect_bank_btn"):
-                st.warning("⚠️ Plaid credentials not configured")
-                st.info("""
+        except Exception as e:
+            # Show error message and debug info
+            st.error(f"⚠️ Error loading Plaid Link: {str(e)}")
+            
+            # Show setup instructions
+            with st.expander("🔧 Setup Instructions"):
+                st.markdown("""
                 **To enable bank connections:**
                 
                 1. 📝 **Sign up at:** https://plaid.com/dashboard
@@ -87,20 +89,20 @@ def show_plaid_connection_prompt(user_id: int):
                 3. ⚙️ **Update .env file** with your credentials
                 4. 🔄 **Restart app** to apply changes
                 
-                **What you'll be able to do:**
-                - 🏦 Connect any US bank account
-                - 📊 Auto-sync transactions (last 90 days)
-                - 💰 Track spending by category
-                - 📈 Get personalized insights
-                
-                🔒 **Security:** Your bank credentials are never stored. Plaid uses bank-level encryption trusted by Venmo, Robinhood, and thousands of fintech apps.
+                **Current status:**
                 """)
+                import os
+                from dotenv import load_dotenv
+                load_dotenv(override=True)
                 
-                st.markdown("[![Sign Up](https://img.shields.io/badge/Sign%20Up-Plaid%20Dashboard-00d4ff?style=for-the-badge)](https://plaid.com/dashboard)", unsafe_allow_html=True)
-        
-        except Exception as e:
-            # Other error - show error message
-            st.error(f"Error loading Plaid Link: {e}")
+                plaid_client_id = os.getenv('PLAID_CLIENT_ID', '')
+                plaid_secret = os.getenv('PLAID_SECRET', '')
+                plaid_env = os.getenv('PLAID_ENV', 'sandbox')
+                
+                st.write(f"- PLAID_CLIENT_ID: {'✅ Set' if plaid_client_id and plaid_client_id != 'your_plaid_client_id_here' else '❌ Not set'}")
+                st.write(f"- PLAID_SECRET: {'✅ Set' if plaid_secret and plaid_secret != 'your_plaid_secret_here' else '❌ Not set'}")
+                st.write(f"- PLAID_ENV: {plaid_env}")
+            
             with st.expander("🐛 Debug Info"):
                 import traceback
                 st.code(traceback.format_exc())

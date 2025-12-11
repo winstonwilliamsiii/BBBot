@@ -447,14 +447,10 @@ def main():
                 portfolio_tickers = parsed
                 st.sidebar.success(f"Loaded {len(parsed)} tickers from paste")
     # default selection: if we loaded fetched tickers, select them; otherwise pick a few defaults
-    default_selection = portfolio_tickers if (portfolio_tickers and portfolio_tickers != default_portfolio_tickers) else ['AAPL', 'MSFT', 'GOOGL', 'TSLA']
+    default_selection = portfolio_tickers if (portfolio_tickers and portfolio_tickers != default_portfolio_tickers) else ['IONQ', 'QBTS', 'SOUN', 'RGTI']
     
     # Mansa Capital Fund Names for display
     MANSA_FUNDS = {
-        'AAPL': 'Tech Innovation Fund',
-        'MSFT': 'Dividend Income Fund',
-        'GOOGL': 'Growth Leaders Fund',
-        'TSLA': 'ESG Sustainable Fund',
         'IONQ': 'Mansa AI',
         'QBTS': 'Mansa AI2',
         'SOUN': 'Mansa Tech',
@@ -602,10 +598,6 @@ def main():
 
     # Mansa Capital Fund Names Mapping
     MANSA_FUNDS = {
-        'AAPL': 'Tech Innovation Fund',
-        'MSFT': 'Dividend Income Fund',
-        'GOOGL': 'Growth Leaders Fund',
-        'TSLA': 'ESG Sustainable Fund',
         'IONQ': 'Mansa AI',
         'QBTS': 'Mansa AI2',
         'SOUN': 'Mansa Tech',

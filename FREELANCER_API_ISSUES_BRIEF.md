@@ -64,10 +64,10 @@ Testing IONQ...
 
 ---
 
-## 🟢 RESOLVED: Plaid API - Environment Loading Fixed
+## 🔴 Issue #2: Plaid API - Environment Loading Issue
 
 ### Resolution Summary
-**Issue was browser/Streamlit cache, NOT environment loading!**
+**Issue is a combination of module-level variable caching and browser cache.**
 
 The credentials were **ALWAYS configured correctly** in `.env`, but the app was using `load_dotenv()` without `override=True`, causing cached values to persist across Streamlit reloads.
 

@@ -6,14 +6,14 @@ Centralized configuration for MLFlow tracking with MySQL backend
 import os
 from typing import Optional
 
-# MySQL Connection Details for MLFlow
+# Updated MySQL Connection Details for MLFlow
 MLFLOW_MYSQL_CONFIG = {
     "name": "Bentley_Budget",
     "host": "127.0.0.1",
-    "port": 3307,  # MySQL container maps 3306 -> 3307 on host
+    "port": 3307,  # Ensure port 3307 is used
     "user": "root",
     "password": "root",
-    "database": "mlflow_db"
+    "database": "bbbot1"  # Updated to use bbbot1
 }
 
 def get_mlflow_tracking_uri() -> str:

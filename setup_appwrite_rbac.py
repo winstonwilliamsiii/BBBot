@@ -235,6 +235,16 @@ class AppwriteRBACManager:
 def main():
     """Main function to set up Mansa Capital RBAC in Appwrite"""
     
+    # Load environment variables from .env file
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        print("📁 Loaded .env configuration")
+    except ImportError:
+        print("💡 Install python-dotenv: pip install python-dotenv")
+    except Exception as e:
+        print(f"⚠️ Error loading .env file: {e}")
+    
     # Check environment variables
     required_env_vars = ['APPWRITE_ENDPOINT', 'APPWRITE_PROJECT_ID', 'APPWRITE_API_KEY']
     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
@@ -244,6 +254,15 @@ def main():
         logger.error("Please set these in your .env file or environment:")
         for var in missing_vars:
             logger.error(f"  export {var}=your_value_here")
+        
+        # Show current values for debugging
+        logger.info("Current environment variable status:")
+        for var in required_env_vars:
+            value = os.getenv(var)
+            if value:
+                logger.info(f"  {var}=***{value[-10:] if len(value) > 10 else '***'}")
+            else:
+                logger.info(f"  {var}=NOT SET")
         return False
     
     try:

@@ -1,4 +1,4 @@
-"""
+t"""
 RBAC Page Access Test - December 9, 2025
 ========================================
 Tests updated RBAC system with correct page access:

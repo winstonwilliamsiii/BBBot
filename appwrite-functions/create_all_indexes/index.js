@@ -185,6 +185,53 @@ module.exports = async function (req, res) {
             results.errors.push({ collection: 'permissions', error: error.message });
         }
 
+        // Bot Metrics Indexes
+        try {
+            await databases.createIndex(
+                databaseId,
+                'bot_metrics',
+                'idx_bot_metrics_bot_id',
+                'key',
+                ['bot_id'],
+                ['ASC']
+            );
+            await databases.createIndex(
+                databaseId,
+                'bot_metrics',
+                'idx_bot_metrics_timestamp',
+                'key',
+                ['timestamp'],
+                ['DESC']
+            );
+            await databases.createIndex(
+                databaseId,
+                'bot_metrics',
+                'idx_bot_metrics_metric_type',
+                'key',
+                ['metric_type'],
+                ['ASC']
+            );
+            await databases.createIndex(
+                databaseId,
+                'bot_metrics',
+                'idx_bot_metrics_bot_timestamp',
+                'key',
+                ['bot_id', 'timestamp'],
+                ['ASC', 'DESC']
+            );
+            await databases.createIndex(
+                databaseId,
+                'bot_metrics',
+                'idx_bot_metrics_bot_type',
+                'key',
+                ['bot_id', 'metric_type'],
+                ['ASC', 'ASC']
+            );
+            results.success.push('bot_metrics');
+        } catch (error) {
+            results.errors.push({ collection: 'bot_metrics', error: error.message });
+        }
+
         console.log('✅ Index creation completed');
         console.log('Success:', results.success);
         console.log('Errors:', results.errors);

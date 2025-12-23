@@ -4,12 +4,14 @@
     "git.ignoreLimitWarning": true,
     "cSpell.words": [
         "airbyte",
+        "Appwrite",
         "barchart",
         "MACD",
         "mlflow",
         "mlruns",
         "pymysql",
-        "Tiingo"
+        "Tiingo",
+        "watchlist"
     ],
     // Airflow Extension Configuration
     "airflow.connections": [

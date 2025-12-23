@@ -15,6 +15,11 @@ secrets.json
 credentials.json
 service-account*.json
 
+# ⚠️ CRITICAL: Files with exposed credentials
+Appwrite_DBuild.txt
+Environment_variables.txt
+config_env.py
+
 # Database files with sensitive data
 *.db
 *.sqlite

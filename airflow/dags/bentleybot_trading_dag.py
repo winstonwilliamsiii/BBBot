@@ -29,73 +29,156 @@ SYMBOL = "BTCUSDT"
 QUANTITY = 0.01
 
 # === DAG ===
-default_args = {"start_date": datetime(2023, 1, 1)}
+default_args = {
+    "owner": "bentleybot",
+    "start_date": datetime(2024, 12, 1),
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
+    "email_on_failure": False,
+    "email_on_retry": False
+}
 dag = DAG(
     "bentleybot_dag",
     schedule_interval="@hourly",
     catchup=False,
-    default_args=default_args
+    default_args=default_args,
+    description="BentleyBot automated trading pipeline",
+    tags=["trading", "crypto", "ml"]
 )
 
 
 # === 1. Trigger Airbyte Sync ===
 def trigger_airbyte_sync():
-    url = f"{AIRBYTE_API}/v1/connections/sync"
-    r = requests.post(
-        url,
-        json={"connectionId": AIRBYTE_CONNECTION_ID},
-        timeout=30
-    )
-    r.raise_for_status()
+    try:
+        url = f"{AIRBYTE_API}/v1/connections/sync"
+        r = requests.post(
+            url,
+            json={"connectionId": AIRBYTE_CONNECTION_ID},
+            timeout=30
+        )
+        r.raise_for_status()
+        logger.info(f"✅ Airbyte sync triggered successfully: {r.status_code}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Failed to trigger Airbyte sync: {e}")
+        raise
 
 
 # === 2. Read MySQL Data ===
 def read_mysql_data():
-    engine = create_engine(MYSQL_URL)
-    query = ("SELECT * FROM binance_ohlcv "
-             "ORDER BY timestamp DESC LIMIT 100")
-    df = pd.read_sql(query, engine)
-    df.to_csv("/tmp/latest_data.csv", index=False)
-    engine.dispose()
+    engine = None
+    try:
+        engine = create_engine(MYSQL_URL)
+        query = ("SELECT * FROM binance_ohlcv "
+                "ORDER BY timestamp DESC LIMIT 100")
+        df = pd.read_sql(query, engine)
+        
+        if df.empty:
+            logger.warning("⚠️ No data retrieved from MySQL")
+            # Create empty CSV with expected columns
+            df = pd.DataFrame(columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        df.to_csv("/tmp/latest_data.csv", index=False)
+        logger.info(f"✅ Retrieved {len(df)} rows from MySQL")
+    except Exception as e:
+        logger.error(f"❌ Failed to read MySQL data: {e}")
+        raise
+    finally:
+        if engine:
+            engine.dispose()
 
 
 # === 3. RSI/MACD + Trigger Logic ===
 
 
 def compute_indicators():
-    df = pd.read_csv("/tmp/latest_data.csv")
-    closes = df['close'].tolist()
+    try:
+        df = pd.read_csv("/tmp/latest_data.csv")
+        
+        if df.empty or len(df) < 26:
+            logger.warning("⚠️ Insufficient data for indicators calculation")
+            df['RSI'] = None
+            df['MACD'] = None
+            df['Signal'] = None
+            df['trigger'] = 'HOLD'
+            df.to_csv("/tmp/indicators.csv", index=False)
+            return
+            
+        closes = df['close'].fillna(method='ffill').tolist()
 
-    def ema(values, period):
-        k = 2 / (period + 1)
-        ema_vals = [values[0]]
-        for i in range(1, len(values)):
-            ema_vals.append(values[i] * k + ema_vals[i - 1] * (1 - k))
-        return ema_vals
+        def ema(values, period):
+            if len(values) < period:
+                return [None] * len(values)
+            k = 2 / (period + 1)
+            ema_vals = [values[0]]
+            for i in range(1, len(values)):
+                ema_vals.append(values[i] * k + ema_vals[i - 1] * (1 - k))
+            return ema_vals
 
-    def rsi(values, period=14):
-        rsi = [None] * period
-        for i in range(period, len(values)):
-            gains = losses = 0
-            for j in range(i - period + 1, i + 1):
-                delta = values[j] - values[j - 1]
-                if delta > 0:
-                    gains += delta
-                else:
-                    losses -= delta
-            rs = gains / (losses or 1e-10)
-            rsi.append(100 - 100 / (1 + rs))
-        return rsi
+        def rsi(values, period=14):
+            if len(values) <= period:
+                return [None] * len(values)
+            rsi_vals = [None] * period
+            for i in range(period, len(values)):
+                gains = losses = 0
+                for j in range(i - period + 1, i + 1):
+                    if j > 0:  # Avoid index error
+                        delta = values[j] - values[j - 1]
+                        if delta > 0:
+                            gains += delta
+                        else:
+                            losses -= delta
+                avg_gain = gains / period
+                avg_loss = losses / period
+                rs = avg_gain / (avg_loss if avg_loss > 0 else 1e-10)
+                rsi_vals.append(100 - 100 / (1 + rs))
+            return rsi_vals
 
-    macd_line = [s - l for s, l in zip(ema(closes, 12), ema(closes, 26))]
-    signal_line = ema(macd_line[14:], 9)
-    df['RSI'] = rsi(closes)
-    df['MACD'] = [None] * (len(df) - len(macd_line)) + macd_line
-    df['Signal'] = [None] * (len(df) - len(signal_line)) + signal_line
-    df['trigger'] = None
-    df.loc[(df['RSI'] < 30) & (df['MACD'] > df['Signal']), 'trigger'] = 'BUY'
-    df.loc[(df['RSI'] > 70) & (df['MACD'] < df['Signal']), 'trigger'] = 'SELL'
-    df.to_csv("/tmp/indicators.csv", index=False)
+        # Calculate MACD
+        ema12 = ema(closes, 12)
+        ema26 = ema(closes, 26)
+        
+        # Ensure both EMAs have the same length
+        min_len = min(len(ema12), len(ema26))
+        ema12 = ema12[-min_len:]
+        ema26 = ema26[-min_len:]
+        
+        macd_line = []
+        for i in range(len(ema12)):
+            if ema12[i] is not None and ema26[i] is not None:
+                macd_line.append(ema12[i] - ema26[i])
+            else:
+                macd_line.append(None)
+        
+        # Calculate signal line
+        signal_line = ema([x for x in macd_line if x is not None], 9)
+        
+        # Pad arrays to match DataFrame length
+        df['RSI'] = rsi(closes)
+        df['MACD'] = [None] * (len(df) - len(macd_line)) + macd_line
+        df['Signal'] = [None] * (len(df) - len(signal_line)) + signal_line
+        df['trigger'] = 'HOLD'
+        
+        # Apply trading logic with null checks
+        buy_condition = (
+            (df['RSI'].notna()) & (df['RSI'] < 30) & 
+            (df['MACD'].notna()) & (df['Signal'].notna()) & 
+            (df['MACD'] > df['Signal'])
+        )
+        sell_condition = (
+            (df['RSI'].notna()) & (df['RSI'] > 70) & 
+            (df['MACD'].notna()) & (df['Signal'].notna()) & 
+            (df['MACD'] < df['Signal'])
+        )
+        
+        df.loc[buy_condition, 'trigger'] = 'BUY'
+        df.loc[sell_condition, 'trigger'] = 'SELL'
+        
+        df.to_csv("/tmp/indicators.csv", index=False)
+        logger.info(f"✅ Indicators computed for {len(df)} data points")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to compute indicators: {e}")
+        raise
 
 
 # === 4. Execute Trade ===
@@ -106,51 +189,78 @@ def execute_trade():
     Execute trades based on signals using real broker APIs
     Routes to appropriate broker based on symbol type
     """
-    df = pd.read_csv("/tmp/indicators.csv")
-    latest = df.iloc[-1]
-    action = latest.get("trigger")
-    
-    if action in ["BUY", "SELL"]:
-        # Import broker API
-        from bbbot1_pipeline.broker_api import execute_trade as place_order
+    try:
+        df = pd.read_csv("/tmp/indicators.csv")
         
-        # Determine broker based on symbol
-        # Example routing logic:
-        # - Crypto (ends with USDT) -> Binance
-        # - Forex pairs (contains dot) -> IBKR
-        # - Futures/Commodities (2-3 chars) -> IBKR
-        # - Everything else -> Webull
+        if df.empty:
+            logger.warning("⚠️ No indicator data available for trading")
+            return
+            
+        latest = df.iloc[-1]
+        action = latest.get("trigger", "HOLD")
         
-        if SYMBOL.endswith("USDT"):
-            # Crypto -> Binance
-            result = place_order("binance", SYMBOL, action, QUANTITY)
-        elif "." in SYMBOL or len(SYMBOL) <= 3:
-            # Forex or Futures -> IBKR
-            result = place_order("ibkr", SYMBOL, action, QUANTITY, sec_type="FUT", exchange="CME")
+        result = {
+            "timestamp": pd.Timestamp.now().isoformat(),
+            "symbol": SYMBOL,
+            "action": action,
+            "quantity": QUANTITY,
+            "status": "simulated"
+        }
+        
+        if action in ["BUY", "SELL"]:
+            try:
+                # Import broker API with fallback
+                try:
+                    from bbbot1_pipeline.broker_api import execute_trade as place_order
+                    
+                    # Determine broker based on symbol
+                    if SYMBOL.endswith("USDT"):
+                        # Crypto -> Binance
+                        result = place_order("binance", SYMBOL, action, QUANTITY)
+                    elif "." in SYMBOL or len(SYMBOL) <= 3:
+                        # Forex or Futures -> IBKR
+                        result = place_order("ibkr", SYMBOL, action, QUANTITY, sec_type="FUT", exchange="CME")
+                    else:
+                        # Equities/ETFs -> Webull
+                        result = place_order("webull", SYMBOL, action, QUANTITY)
+                    
+                    result["status"] = "executed"
+                    
+                except ImportError:
+                    logger.warning("⚠️ Broker API not available, running in simulation mode")
+                    result["status"] = "simulated"
+                    result["message"] = f"Would {action} {QUANTITY} of {SYMBOL}"
+                
+                logger.info(f"Trade {result['status']}: {action} {QUANTITY} {SYMBOL}")
+                
+            except Exception as trade_error:
+                logger.error(f"❌ Trade execution failed: {trade_error}")
+                result["status"] = "failed"
+                result["error"] = str(trade_error)
         else:
-            # Equities/ETFs -> Webull
-            result = place_order("webull", SYMBOL, action, QUANTITY)
-        
-        logger.info(f"Trade executed: {result}")
+            logger.info(f"No trade triggered. Current signal: {action}")
+            result["message"] = f"No action required. Signal: {action}"
         
         # Save trade result
+        import json
         with open("/tmp/trade_result.json", "w") as f:
-            import json
             json.dump(result, f, indent=2)
-    else:
-        logger.info("No trade triggered.")
-        print("No trade triggered.")
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to execute trade: {e}")
+        raise
 
 
 # === 5. Log to MLFlow ===
 
 
 def log_to_mlflow():
-    df = pd.read_csv("/tmp/indicators.csv")
-    
-    # Set MLflow tracking URI (accessible within Docker network)
-    mlflow.set_tracking_uri("http://mlflow:5000")
-    mlflow.set_experiment("BentleyBudgetBot-Trading")
+    try:
+        df = pd.read_csv("/tmp/indicators.csv")
+        
+        # Set MLflow tracking URI (accessible within Docker network)
+        mlflow.set_tracking_uri("http://mlflow:5000")
+        mlflow.set_experiment("BentleyBudgetBot-Trading")
     
     with mlflow.start_run() as run:
         # Log parameters

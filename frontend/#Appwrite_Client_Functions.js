@@ -27,9 +27,93 @@ const appwriteClient = createClient({
 const { databases } = appwriteClient;
 const databaseId = process.env.APPWRITE_DATABASE_ID;
 
-// Function 1: Create Transaction
-async function create_transaction(userId, amount, description = '') {
+// RBAC Authorization Helper Functions
+async function getUserRole(userId) {
     try {
+        const response = await databases.listDocuments(
+            databaseId,
+            'users',
+            [`equal("userId", [${parseInt(userId)}])`]
+        );
+        
+        if (response.documents.length === 0) {
+            throw new Error('User not found');
+        }
+        
+        return response.documents[0].role;
+    } catch (error) {
+        console.error('❌ Error getting user role:', error);
+        throw error;
+    }
+}
+
+async function checkPermission(userId, requiredPermission) {
+    try {
+        const userRole = await getUserRole(userId);
+        
+        // Get role ID first
+        const roleResponse = await databases.listDocuments(
+            databaseId,
+            'roles',
+            [`equal("role_name", ["${userRole}"])`]
+        );
+        
+        if (roleResponse.documents.length === 0) {
+            throw new Error('Role not found');
+        }
+        
+        const roleId = roleResponse.documents[0].$id;
+        
+        // Check permissions for this role
+        const permResponse = await databases.listDocuments(
+            databaseId,
+            'permissions',
+            [
+                `equal("role_id", ["${roleId}"])`,
+                `equal("permission", ["${requiredPermission}"])`
+            ]
+        );
+        
+        return permResponse.documents.length > 0;
+    } catch (error) {
+        console.error('❌ Error checking permission:', error);
+        return false;
+    }
+}
+
+async function authorize(userId, action, resourceId = null) {
+    try {
+        const userRole = await getUserRole(userId);
+        
+        // Admin can do everything
+        if (userRole === 'admin') {
+            return true;
+        }
+        
+        // Check specific permissions
+        const hasPermission = await checkPermission(userId, action);
+        
+        // For user role, they can only access their own resources
+        if (userRole === 'user' && resourceId && resourceId !== userId) {
+            return false;
+        }
+        
+        return hasPermission;
+    } catch (error) {
+        console.error('❌ Authorization error:', error);
+        return false;
+    }
+}
+
+// Function 1: Create Transaction (with RBAC)
+async function create_transaction(requesterId, userId, amount, description = '') {
+    try {
+        // Authorization check
+        const isAuthorized = await authorize(requesterId, 'create_transaction', userId);
+        if (!isAuthorized) {
+            throw new Error('Unauthorized: Insufficient permissions to create transaction');
+        }
+
         const now = new Date().toISOString();
         
         const response = await databases.createDocument(
@@ -46,6 +130,9 @@ async function create_transaction(userId, amount, description = '') {
             }
         );
         
+        // Create audit log
+        await create_audit_log(requesterId, 'CREATE_TRANSACTION', `Created transaction for user ${userId}: $${amount}`);
+        
         console.log('✅ Transaction created:', response);
         return response;
     } catch (error) {
@@ -54,11 +141,17 @@ async function create_transaction(userId, amount, description = '') {
     }
 }
 
-// Function 2: Get Transactions
-async function get_transactions(userId, limit = 100) {
+// Function 2: Get Transactions (with RBAC)
+async function get_transactions(requesterId, userId, limit = 100) {
     try {
         if (!userId) {
             throw new Error('Missing user_id');
+        }
+
+        // Authorization check
+        const isAuthorized = await authorize(requesterId, 'read_transactions', userId);
+        if (!isAuthorized) {
+            throw new Error('Unauthorized: Insufficient permissions to read transactions');
         }
 
         const response = await databases.listDocuments(
@@ -79,11 +172,17 @@ async function get_transactions(userId, limit = 100) {
     }
 }
 
-// Function 3: Add to Watchlist
-async function add_to_watchlist(userId, symbol) {
+// Function 3: Add to Watchlist (with RBAC)
+async function add_to_watchlist(requesterId, userId, symbol) {
     try {
         if (!userId || !symbol) {
             throw new Error('Missing user_id or symbol');
+        }
+
+        // Authorization check
+        const isAuthorized = await authorize(requesterId, 'create_watchlist', userId);
+        if (!isAuthorized) {
+            throw new Error('Unauthorized: Insufficient permissions to modify watchlist');
         }
 
         const now = new Date().toISOString();
@@ -99,6 +198,9 @@ async function add_to_watchlist(userId, symbol) {
             }
         );
         
+        // Create audit log
+        await create_audit_log(requesterId, 'ADD_WATCHLIST', `Added ${symbol} to watchlist for user ${userId}`);
+        
         console.log(`✅ Added ${symbol} to watchlist for user ${userId}`);
         return response;
     } catch (error) {
@@ -107,11 +209,17 @@ async function add_to_watchlist(userId, symbol) {
     }
 }
 
-// Function 4: Get Watchlist
-async function get_watchlist(userId) {
+// Function 4: Get Watchlist (with RBAC)
+async function get_watchlist(requesterId, userId) {
     try {
         if (!userId) {
             throw new Error('Missing user_id');
+        }
+
+        // Authorization check
+        const isAuthorized = await authorize(requesterId, 'read_watchlist', userId);
+        if (!isAuthorized) {
+            throw new Error('Unauthorized: Insufficient permissions to read watchlist');
         }
 
         const response = await databases.listDocuments(
@@ -131,11 +239,17 @@ async function get_watchlist(userId) {
     }
 }
 
-// Function 5: Get User Profile
-async function get_user_profile(userId) {
+// Function 5: Get User Profile (with RBAC)
+async function get_user_profile(requesterId, userId) {
     try {
         if (!userId) {
             throw new Error('Missing user_id');
+        }
+
+        // Authorization check
+        const isAuthorized = await authorize(requesterId, 'read_profile', userId);
+        if (!isAuthorized) {
+            throw new Error('Unauthorized: Insufficient permissions to read profile');
         }
 
         const response = await databases.listDocuments(
@@ -364,12 +478,18 @@ async function get_permissions(roleId) {
 }
 
 module.exports = { 
-    createClient, 
+    createClient,
+    // RBAC Helper Functions
+    getUserRole,
+    checkPermission,
+    authorize,
+    // Core RBAC-Protected Functions
     create_transaction, 
     get_transactions, 
     add_to_watchlist, 
     get_watchlist, 
     get_user_profile,
+    // Audit & Admin Functions
     create_audit_log,
     get_audit_logs,
     create_payment,
@@ -378,4 +498,223 @@ module.exports = {
     get_roles,
     create_permission,
     get_permissions
+};
+
+// ===== SERVERLESS FUNCTION TEMPLATES =====
+// These are template functions for Appwrite Function deployment
+
+/**
+ * Serverless Create Transaction Function Template
+ * Deploy this as a separate Appwrite Function
+ * 
+ * Usage: Copy this function to a new file for Appwrite Function deployment
+ */
+const serverless_create_transaction = `
+const { createClient } = require('../_shared/appwriteClient');
+const { ID } = require('node-appwrite');
+
+module.exports = async function (req, res) {
+    try {
+        const { endpoint, projectId, apiKey, databaseId } = {
+            endpoint: process.env.APPWRITE_FUNCTION_ENDPOINT,
+            projectId: process.env.APPWRITE_FUNCTION_PROJECT_ID,
+            apiKey: process.env.APPWRITE_API_KEY,
+            databaseId: process.env.APPWRITE_DATABASE_ID
+        };
+
+        const { databases } = createClient({ endpoint, projectId, apiKey });
+
+        const body = JSON.parse(req.body || '{}');
+        const { requester_id, user_id, amount, description = '', date } = body;
+
+        if (!requester_id || !user_id || !amount) {
+            return res.json({ error: 'Missing required fields: requester_id, user_id, amount' }, 400);
+        }
+
+        // RBAC Authorization Check
+        try {
+            // Get requester role
+            const userResponse = await databases.listDocuments(
+                databaseId,
+                'users',
+                [\`equal("userId", [\${parseInt(requester_id)}])\`]
+            );
+            
+            if (userResponse.documents.length === 0) {
+                return res.json({ error: 'Requester not found' }, 404);
+            }
+            
+            const requesterRole = userResponse.documents[0].role;
+            
+            // Admin can create for anyone, users only for themselves
+            if (requesterRole !== 'admin' && requester_id !== user_id) {
+                return res.json({ error: 'Unauthorized: Insufficient permissions' }, 403);
+            }
+        } catch (authError) {
+            console.error('Authorization error:', authError);
+            return res.json({ error: 'Authorization failed' }, 403);
+        }
+
+        const now = new Date().toISOString();
+        const transactionDate = date || now;
+
+        const tx = await databases.createDocument(
+            databaseId,
+            'transactions',
+            ID.unique(),
+            {
+                user_id,
+                amount: parseFloat(amount),
+                description,
+                date: transactionDate,
+                created_at: now,
+                updated_at: now
+            }
+        );
+
+        // Create audit log
+        await databases.createDocument(
+            databaseId,
+            'auditlogs',
+            ID.unique(),
+            {
+                userId: parseInt(requester_id),
+                action: 'CREATE_TRANSACTION',
+                actionDate: now,
+                actionDescription: \`Created transaction for user \${user_id}: $\${amount}\`,
+                ipAddress: req.headers['x-forwarded-for'] || req.headers['remote-addr'] || '',
+                userAgent: req.headers['user-agent'] || ''
+            }
+        );
+
+        return res.json({ 
+            success: true, 
+            transaction: tx,
+            message: \`Transaction created successfully for user \${user_id}\`
+        }, 201);
+    } catch (err) {
+        console.error('create_transaction error:', err);
+        return res.json({ error: 'Internal server error', details: err.message }, 500);
+    }
+};
+`;
+
+/**
+ * Serverless Get Transactions Function Template
+ * Deploy this as a separate Appwrite Function
+ */
+const serverless_get_transactions = `
+const { createClient } = require('../_shared/appwriteClient');
+
+module.exports = async function (req, res) {
+    try {
+        const { endpoint, projectId, apiKey, databaseId } = {
+            endpoint: process.env.APPWRITE_FUNCTION_ENDPOINT,
+            projectId: process.env.APPWRITE_FUNCTION_PROJECT_ID,
+            apiKey: process.env.APPWRITE_API_KEY,
+            databaseId: process.env.APPWRITE_DATABASE_ID
+        };
+
+        const { databases } = createClient({ endpoint, projectId, apiKey });
+
+        const body = JSON.parse(req.body || '{}');
+        const { requester_id, user_id, limit = 100 } = body;
+
+        if (!requester_id || !user_id) {
+            return res.json({ error: 'Missing required fields: requester_id, user_id' }, 400);
+        }
+
+        // RBAC Authorization Check
+        try {
+            const userResponse = await databases.listDocuments(
+                databaseId,
+                'users',
+                [\`equal("userId", [\${parseInt(requester_id)}])\`]
+            );
+            
+            if (userResponse.documents.length === 0) {
+                return res.json({ error: 'Requester not found' }, 404);
+            }
+            
+            const requesterRole = userResponse.documents[0].role;
+            
+            if (requesterRole !== 'admin' && requester_id !== user_id) {
+                return res.json({ error: 'Unauthorized: Insufficient permissions' }, 403);
+            }
+        } catch (authError) {
+            return res.json({ error: 'Authorization failed' }, 403);
+        }
+
+        const result = await databases.listDocuments(
+            databaseId,
+            'transactions',
+            [
+                \`equal("user_id", ["\${user_id}"])\`,
+                \`orderDesc("date")\`,
+                \`limit(\${limit})\`
+            ]
+        );
+
+        return res.json({ 
+            success: true, 
+            transactions: result.documents,
+            total: result.documents.length,
+            message: \`Retrieved \${result.documents.length} transactions for user \${user_id}\`
+        }, 200);
+    } catch (err) {
+        console.error('get_transactions error:', err);
+        return res.json({ error: 'Internal server error', details: err.message }, 500);
+    }
+};
+`;
+
+/**
+ * Serverless Get Transactions for StreamLit Function Template
+ * Simplified version for StreamLit integration without RBAC
+ * Deploy this as a separate Appwrite Function
+ */
+const serverless_get_transactions_streamlit = `
+const { createClient } = require('../_shared/appwriteClient');
+
+module.exports = async function (req, res) {
+    try {
+        const { endpoint, projectId, apiKey, databaseId } = {
+            endpoint: process.env.APPWRITE_FUNCTION_ENDPOINT,
+            projectId: process.env.APPWRITE_FUNCTION_PROJECT_ID,
+            apiKey: process.env.APPWRITE_API_KEY,
+            databaseId: process.env.APPWRITE_DATABASE_ID
+        };
+
+        const { databases } = createClient({ endpoint, projectId, apiKey });
+
+        const body = JSON.parse(req.body || '{}');
+        const { user_id, limit = 100 } = body;
+
+        if (!user_id) {
+            return res.json({ error: 'Missing user_id' }, 400);
+        }
+
+        const result = await databases.listDocuments(
+            databaseId,
+            'transactions',
+            [
+                \`equal("user_id", ["\${user_id}"])\`,
+                \`orderDesc("date")\`,
+                \`limit(\${limit})\`
+            ]
+        );
+
+        return res.json({ success: true, transactions: result.documents }, 200);
+    } catch (err) {
+        console.error('get_transactions error:', err);
+        return res.json({ error: 'Internal server error' }, 500);
+    }
+};
+`;
+
+// Export serverless templates for reference
+module.exports.serverless_templates = {
+    create_transaction: serverless_create_transaction,
+    get_transactions: serverless_get_transactions,
+    get_transactions_streamlit: serverless_get_transactions_streamlit
 };

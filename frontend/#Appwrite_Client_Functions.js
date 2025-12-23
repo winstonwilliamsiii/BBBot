@@ -712,9 +712,99 @@ module.exports = async function (req, res) {
 };
 `;
 
+/**
+ * Serverless Add to Watchlist for StreamLit Function Template
+ * Simplified version for StreamLit integration without RBAC
+ * Deploy this as a separate Appwrite Function
+ */
+const serverless_add_to_watchlist_streamlit = `
+const { createClient } = require('../_shared/appwriteClient');
+const { ID } = require('node-appwrite');
+
+module.exports = async function (req, res) {
+    try {
+        const { endpoint, projectId, apiKey, databaseId } = {
+            endpoint: process.env.APPWRITE_FUNCTION_ENDPOINT,
+            projectId: process.env.APPWRITE_FUNCTION_PROJECT_ID,
+            apiKey: process.env.APPWRITE_API_KEY,
+            databaseId: process.env.APPWRITE_DATABASE_ID
+        };
+
+        const { databases } = createClient({ endpoint, projectId, apiKey });
+
+        const body = JSON.parse(req.body || '{}');
+        const { user_id, symbol } = body;
+
+        if (!user_id || !symbol) {
+            return res.json({ error: 'Missing user_id or symbol' }, 400);
+        }
+
+        const now = new Date().toISOString();
+
+        const doc = await databases.createDocument(
+            databaseId,
+            'watchlist',
+            ID.unique(),
+            { user_id, symbol, added_at: now }
+        );
+
+        return res.json({ success: true, watchlist_item: doc }, 201);
+    } catch (err) {
+        console.error('add_to_watchlist error:', err);
+        return res.json({ error: 'Internal server error' }, 500);
+    }
+};
+`;
+
+/**
+ * Serverless Get User Profile for StreamLit Function Template
+ * Simplified version for StreamLit integration without RBAC
+ * Deploy this as a separate Appwrite Function
+ */
+const serverless_get_user_profile_streamlit = `
+const { createClient } = require('../_shared/appwriteClient');
+
+module.exports = async function (req, res) {
+    try {
+        const { endpoint, projectId, apiKey, databaseId } = {
+            endpoint: process.env.APPWRITE_FUNCTION_ENDPOINT,
+            projectId: process.env.APPWRITE_FUNCTION_PROJECT_ID,
+            apiKey: process.env.APPWRITE_API_KEY,
+            databaseId: process.env.APPWRITE_DATABASE_ID
+        };
+
+        const { databases } = createClient({ endpoint, projectId, apiKey });
+
+        const body = JSON.parse(req.body || '{}');
+        const { userId } = body;
+
+        if (!userId) {
+            return res.json({ error: 'Missing userId' }, 400);
+        }
+
+        const result = await databases.listDocuments(
+            databaseId,
+            'users',
+            [\`equal("userId", [\${userId}])\`]
+        );
+
+        if (!result.documents.length) {
+            return res.json({ error: 'User not found' }, 404);
+        }
+
+        return res.json({ success: true, user: result.documents[0] }, 200);
+    } catch (err) {
+        console.error('get_user_profile error:', err);
+        return res.json({ error: 'Internal server error' }, 500);
+    }
+};
+`;
+
 // Export serverless templates for reference
 module.exports.serverless_templates = {
     create_transaction: serverless_create_transaction,
     get_transactions: serverless_get_transactions,
-    get_transactions_streamlit: serverless_get_transactions_streamlit
+    get_transactions_streamlit: serverless_get_transactions_streamlit,
+    add_to_watchlist_streamlit: serverless_add_to_watchlist_streamlit,
+    get_user_profile_streamlit: serverless_get_user_profile_streamlit
 };

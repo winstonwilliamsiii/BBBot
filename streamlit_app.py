@@ -47,6 +47,14 @@ try:
 except ImportError:
     CHATBOT_AVAILABLE = False
 
+# Appwrite services imports
+try:
+    from services.transactions import create_transaction, get_transactions
+    from services.watchlist import add_to_watchlist, get_watchlist
+    APPWRITE_SERVICES_AVAILABLE = True
+except ImportError:
+    APPWRITE_SERVICES_AVAILABLE = False
+
 
 @st.cache_data
 def get_yfinance_data(tickers, start_date, end_date):
@@ -308,6 +316,85 @@ def main():
         st.info("🤖 **Bentley AI Assistant** - Coming soon! This will provide AI-powered financial insights and Q&A.")
     
     st.markdown("---")
+
+    # ==========================================================================
+    # Appwrite Quick Actions Section - Transaction & Watchlist Management
+    # ==========================================================================
+    if APPWRITE_SERVICES_AVAILABLE:
+        st.header("⚡ Quick Actions")
+        
+        action_tab1, action_tab2 = st.tabs(["💸 Transactions", "📊 Watchlist"])
+        
+        with action_tab1:
+            col_tx1, col_tx2 = st.columns(2)
+            
+            with col_tx1:
+                st.subheader("View Transactions")
+                user_id_tx = st.text_input("User ID", key="user_id_transactions")
+                if st.button("📥 Fetch Transactions"):
+                    if user_id_tx:
+                        with st.spinner("Fetching transactions..."):
+                            txs = get_transactions(user_id_tx, limit=10)
+                            if txs.get("success"):
+                                st.success(f"✅ Found {len(txs.get('transactions', []))} transactions")
+                                if txs.get('transactions'):
+                                    st.dataframe(pd.DataFrame(txs['transactions']))
+                            else:
+                                st.error(txs.get("error", "Failed to fetch transactions"))
+                    else:
+                        st.warning("Please enter a User ID")
+            
+            with col_tx2:
+                st.subheader("Add Transaction")
+                user_id_add = st.text_input("User ID", key="user_id_add_tx")
+                amount_tx = st.number_input("Amount ($)", min_value=0.01, step=0.01, key="amount_tx")
+                date_tx = st.date_input("Date", key="date_tx")
+                
+                if st.button("➕ Add Transaction"):
+                    if user_id_add and amount_tx:
+                        result = create_transaction(user_id_add, amount_tx, str(date_tx))
+                        if result.get("success"):
+                            st.success("✅ Transaction added successfully!")
+                        else:
+                            st.error(result.get("error", "Failed to add transaction"))
+                    else:
+                        st.warning("User ID and amount required")
+        
+        with action_tab2:
+            col_wl1, col_wl2 = st.columns(2)
+            
+            with col_wl1:
+                st.subheader("Add to Watchlist")
+                user_id_wl = st.text_input("User ID", key="user_id_watchlist")
+                symbol_wl = st.text_input("Symbol (e.g., AAPL)", key="symbol_watchlist")
+                
+                if st.button("➕ Add Symbol"):
+                    if user_id_wl and symbol_wl:
+                        result = add_to_watchlist(user_id_wl, symbol_wl)
+                        if result.get("success"):
+                            st.success(f"✅ Added {symbol_wl} to watchlist!")
+                        else:
+                            st.error(result.get("error", "Failed to add symbol"))
+                    else:
+                        st.warning("User ID and symbol required")
+            
+            with col_wl2:
+                st.subheader("View Watchlist")
+                user_id_view_wl = st.text_input("User ID", key="user_id_view_watchlist")
+                
+                if st.button("📋 View Watchlist"):
+                    if user_id_view_wl:
+                        wl = get_watchlist(user_id_view_wl)
+                        if wl.get("success"):
+                            st.success(f"✅ Found {len(wl.get('watchlist', []))} items")
+                            if wl.get('watchlist'):
+                                st.dataframe(pd.DataFrame(wl['watchlist']))
+                        else:
+                            st.error(wl.get("error", "Failed to fetch watchlist"))
+                    else:
+                        st.warning("Please enter a User ID")
+        
+        st.markdown("---")
 
     # Sidebar controls
     st.sidebar.header("Portfolio Data Upload")

@@ -1,0 +1,58 @@
+name: 'bentley_budget_bot'
+version: '1.0.0'
+config-version: 2
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'bbbot1'
+
+# These configurations specify where dbt should look for different types of files.
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Configuring models
+models:
+  bentley_budget_bot:
+    # Staging models - materialized as views
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags: ['staging']
+      
+    # Marts models - materialized as tables
+    marts:
+      +materialized: table
+      +schema: marts
+      +tags: ['marts']
+
+# Seeds configuration
+seeds:
+  bentley_budget_bot:
+    +schema: seeds
+
+# Snapshot configuration
+snapshots:
+  bentley_budget_bot:
+    +target_schema: snapshots
+
+# Documentation
+docs-paths: ["docs"]
+
+# Variables
+vars:
+  start_date: '2023-01-01'
+  quantum_tickers: ['IONQ', 'QBTS', 'SOUN', 'RGTI']
+  major_tickers: ['AMZN', 'MSFT', 'GOOGL']
+
+# Test configurations
+tests:
+  +store_failures: true
+  +schema: test_failures

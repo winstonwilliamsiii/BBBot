@@ -1,0 +1,62 @@
+# Bentley Budget Bot - Streamlit Cloud Requirements
+# Optimized for Streamlit Cloud deployment at bbbot305.streamlit.app
+# For local development with full features, see requirements-local.txt
+
+# ============================================
+# CORE STREAMLIT APPLICATION
+# ============================================
+
+# Streamlit framework
+streamlit>=1.28.0
+
+# Data visualization
+plotly>=5.0.0
+pandas>=1.5.0
+numpy>=1.24.0
+
+# Financial data
+yfinance>=0.2.0
+
+# Web scraping
+beautifulsoup4>=4.11.0
+lxml>=4.9.0
+
+# Configuration
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# HTTP requests
+requests>=2.28.0
+
+# ============================================
+# PLAID INTEGRATION (Personal Budget Analysis)
+# ============================================
+plaid-python>=14.0.0
+cryptography>=41.0.0
+python-dateutil>=2.8.0
+
+# ============================================
+# DATABASE CONNECTIVITY (Required for Budget Features)
+# ============================================
+mysql-connector-python>=8.0.0
+sqlalchemy>=1.4.0
+pymysql>=1.1.0
+
+# ============================================
+# AI CHATBOT (Bentley AI Assistant)
+# ============================================
+# Note: DeepSeek or other LLM APIs require API keys
+# Add to .env: DEEPSEEK_API_KEY=your_key_here
+
+# ============================================
+# NOTE: Heavy packages excluded for Streamlit Cloud
+# ============================================
+# For local development with full pipeline features, use:
+# pip install -r requirements-local.txt
+#
+# Excluded from cloud deployment:
+# - apache-airflow (too large, conflicts)
+# - dbt-core/dbt-mysql (local transformation only)
+# - mlflow (local experiment tracking only)
+# - broker APIs (local trading only)
+# ============================================

@@ -1,0 +1,21 @@
+up:
+	docker-compose -f docker/docker-compose.yml up -d
+
+down:
+	docker-compose -f docker/docker-compose.yml down
+
+logs:
+	docker-compose -f docker/docker-compose.yml logs -f
+
+reset:
+	docker-compose -f docker/docker-compose.yml down -v
+	docker-compose -f docker/docker-compose.yml up --build -d
+
+airbyte:
+	docker-compose -f docker/airbyte/docker-compose.airbyte.yml up -d
+
+mlflow:
+	mlflow ui --backend-store-uri ./docker/mlflow/mlruns --port 5000
+
+dag:
+	cp airflow/dags/bentleybot_dag.py docker/airflow/dags/

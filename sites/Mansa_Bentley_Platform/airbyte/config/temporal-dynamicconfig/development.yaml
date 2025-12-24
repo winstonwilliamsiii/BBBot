@@ -1,0 +1,13 @@
+# Temporal Dynamic Configuration for Airbyte
+# This file configures the Temporal workflow engine used by Airbyte
+
+# Worker configuration
+worker.config:
+  maxConcurrentActivityExecutionSize: 10
+  maxConcurrentWorkflowTaskExecutionSize: 10
+
+# History limits
+history.maxPageSize: 1000
+
+# System configuration
+system.enableReadFromClosedExecutionV2: true

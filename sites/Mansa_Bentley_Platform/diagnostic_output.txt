@@ -1,0 +1,11 @@
+============================================================
+BBBot Complete Diagnostic Report
+============================================================
+
+1. PYTHON ENVIRONMENT
+------------------------------------------------------------
+Python Version: 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+Python Executable: C:\Users\winst\BentleyBudgetBot\.venv\Scripts\python.exe
+
+2. ENVIRONMENT VARIABLES (.env)
+------------------------------------------------------------

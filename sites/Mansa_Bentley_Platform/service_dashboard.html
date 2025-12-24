@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bentley Budget Bot - Service Access</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .service-card { 
+            border: 1px solid #ddd; 
+            padding: 20px; 
+            margin: 20px 0; 
+            border-radius: 8px; 
+            background-color: #f9f9f9;
+        }
+        .service-link { 
+            display: inline-block; 
+            padding: 10px 20px; 
+            background-color: #007cba; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 5px;
+            margin: 5px;
+        }
+        .service-link:hover { background-color: #005a87; }
+        .status { margin-top: 10px; }
+        .working { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Bentley Budget Bot - Service Dashboard</h1>
+    
+    <div class="service-card">
+        <h2>📊 Airflow - Workflow Orchestration</h2>
+        <p>Username: <strong>admin</strong> | Password: <strong>admin</strong></p>
+        <p><strong>DAGs:</strong> <code>/workflows/airflow/dags/</code></p>
+        <a href="http://localhost:8080" target="_blank" class="service-link">Open Airflow UI</a>
+        <div id="airflow-status" class="status">Testing connection...</div>
+    </div>
+
+    <div class="service-card">
+        <h2>🧪 MLflow - ML Experiment Tracking</h2>
+        <p>View your machine learning experiments and model tracking</p>
+        <p><strong>Experiments:</strong> <code>/workflows/mlflow/dags/</code></p>
+        <a href="http://localhost:5000" target="_blank" class="service-link">Open MLflow UI</a>
+        <div id="mlflow-status" class="status">Testing connection...</div>
+    </div>
+
+    <div class="service-card">
+        <h2>📈 KNIME - Analytics Platform</h2>
+        <p>Visual analytics workflows and enterprise data science</p>
+        <p><strong>Workflows:</strong> <code>/workflows/knime/dags/</code></p>
+        <a href="#" onclick="alert('KNIME workflows are executed via Airflow DAGs')" class="service-link">View KNIME Integration</a>
+        <div class="status"><span class="working">✅ KNIME workflows integrated with Airflow</span></div>
+    </div>
+
+    <div class="service-card">
+        <h2>💰 Streamlit - Budget Dashboard</h2>
+        <p>Your financial portfolio and budget management interface</p>
+        <a href="http://localhost:8501" target="_blank" class="service-link">Open Budget Dashboard</a>
+        <div id="streamlit-status" class="status">Testing connection...</div>
+    </div>
+
+    <div class="service-card">
+        <h2>🔄 Airbyte - Data Integration</h2>
+        <p>Data ingestion and ETL pipeline management</p>
+        <p><strong>Workflows:</strong> <code>/workflows/airbyte/dags/</code></p>
+        <a href="http://localhost:8000" target="_blank" class="service-link">Open Airbyte UI</a>
+        <div id="airbyte-status" class="status">Testing connection...</div>
+    </div>
+
+    <div class="service-card">
+        <h2>🔧 Service Status & Troubleshooting</h2>
+        <p><strong>Recent Fixes Applied:</strong></p>
+        <ul>
+            <li>✅ Airbyte webapp configuration fixed with proper environment variables</li>
+            <li>⚠️ MLflow binding issue - may require container restart if inaccessible</li>
+            <li>✅ All services running in separate Docker networks</li>
+            <li>✅ Simplified Airbyte configuration (v0.50.33) for better stability</li>
+        </ul>
+        <p><strong>If services are not accessible:</strong></p>
+        <ol>
+            <li>Run: <code>.\manage_services.ps1 -Action status</code></li>
+            <li>Restart specific service: <code>.\manage_services.ps1 -Service [airbyte|mlflow] -Action start</code></li>
+            <li>Check logs: <code>.\manage_services.ps1 -Service all -Action logs</code></li>
+        </ol>
+    </div>
+
+    <script>
+        function testService(url, statusElementId, serviceName) {
+            const statusElement = document.getElementById(statusElementId);
+            statusElement.innerHTML = `<span style="color: orange;">🔄 Testing ${serviceName}...</span>`;
+            
+            // Try to fetch from the service with longer timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            fetch(url, { 
+                mode: 'no-cors', 
+                method: 'GET',
+                signal: controller.signal 
+            })
+                .then(() => {
+                    clearTimeout(timeoutId);
+                    statusElement.innerHTML = `<span class="working">✅ ${serviceName} is accessible</span>`;
+                })
+                .catch((error) => {
+                    clearTimeout(timeoutId);
+                    if (error.name === 'AbortError') {
+                        statusElement.innerHTML = `<span class="error">❌ ${serviceName} timeout - check container status</span>`;
+                    } else {
+                        statusElement.innerHTML = `<span class="error">❌ ${serviceName} is not responding</span>`;
+                    }
+                });
+        }
+
+        // Test all services when page loads with staggered timing
+        window.onload = function() {
+            testService('http://localhost:8080', 'airflow-status', 'Airflow');
+            setTimeout(() => testService('http://localhost:5000', 'mlflow-status', 'MLflow'), 1000);
+            setTimeout(() => testService('http://localhost:8501', 'streamlit-status', 'Streamlit'), 2000);
+            setTimeout(() => testService('http://localhost:8000', 'airbyte-status', 'Airbyte'), 3000);
+        };
+
+        // Add refresh button functionality
+        function refreshStatus() {
+            window.onload();
+        }
+    </script>
+
+    <style>
+        .refresh-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 20px 0;
+        }
+        .refresh-btn:hover {
+            background-color: #218838;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        ul, ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+    </style>
+
+    <button class="refresh-btn" onclick="refreshStatus()">🔄 Refresh Service Status</button>
+</body>
+</html>

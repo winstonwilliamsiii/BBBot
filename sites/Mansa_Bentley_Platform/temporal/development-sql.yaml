@@ -1,0 +1,47 @@
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}
+
+system.searchAttributesNumberOfKeysLimit:
+  - value: 100
+    constraints: {}
+
+system.searchAttributesTotalSizeLimit:
+  - value: 40000
+    constraints: {}
+
+system.blobSizeLimitError:
+  - value: 2097152
+    constraints: {}
+
+system.blobSizeLimitWarn:
+  - value: 262144
+    constraints: {}
+
+system.historyCountLimitError:
+  - value: 200
+    constraints: {}
+
+system.historyCountLimitWarn:
+  - value: 10
+    constraints: {}
+
+system.historyMaxPageSize:
+  - value: 1000
+    constraints: {}
+
+frontend.enableClientVersionCheck:
+  - value: true
+    constraints: {}
+
+worker.buildIdScavengerEnabled:
+  - value: true
+    constraints: {}
+
+worker.removableBuildIdDurationSinceDefault:
+  - value: "168h"
+    constraints: {}
+
+limit.maxIDLength:
+  - value: 1000
+    constraints: {}

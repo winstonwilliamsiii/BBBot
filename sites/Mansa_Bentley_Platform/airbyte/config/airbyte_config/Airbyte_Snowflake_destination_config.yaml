@@ -1,0 +1,68 @@
+# Airbyte Snowflake Destination Configuration
+# Configure Snowflake as a data warehouse destination for Airbyte
+
+destination:
+  type: "snowflake"
+  host: "your_account.snowflakecomputing.com"  # Replace with your Snowflake account URL
+  role: "SYSADMIN"
+  warehouse: "AIRBYTE_WH"
+  database: "MARKET_DATA"
+  schema: "PUBLIC"
+  username: "AIRBYTE_USER"
+  password: "YOUR_PASSWORD"  # Use environment variable in production
+  jdbc_url_params: "CLIENT_SESSION_KEEP_ALIVE=true"
+  
+  # Loading method configuration
+  loading_method:
+    method: "COPY"  # Options: COPY, INSERT
+    staging_mode: "internal"  # Options: internal, external (S3, GCS, Azure)
+    purge_staging_files: true
+
+# Connection settings
+connection:
+  name: "Snowflake - Market Data Warehouse"
+  namespace_definition: "destination"
+  namespace_format: "${SOURCE_NAMESPACE}"
+  prefix: ""
+
+# Sync settings
+sync:
+  frequency: "manual"  # Options: manual, scheduled
+  destination_sync_mode: "append"  # Options: append, overwrite, append_dedup
+
+# Optional: GCS External Staging Configuration (recommended for large datasets)
+# To use GCS external staging, change staging_mode above to "external"
+external_staging_gcs:
+  storage_type: "GCS"
+  bucket_name: "your-gcs-bucket-name"  # Your GCP bucket name
+  bucket_path: "airbyte-staging/"  # Optional: path within bucket
+  project_id: "your-gcp-project-id"
+  
+  # Option 1: Service Account JSON Key (recommended)
+  credentials_json: |
+    {
+      "type": "service_account",
+      "project_id": "your-project-id",
+      "private_key_id": "key-id",
+      "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+      "client_email": "service-account@project.iam.gserviceaccount.com",
+      "client_id": "123456789",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "token_uri": "https://oauth2.googleapis.com/token"
+    }
+  
+  # Option 2: HMAC Keys (alternative authentication method)
+  # hmac_key_access_id: "YOUR_HMAC_ACCESS_ID"
+  # hmac_key_secret: "YOUR_HMAC_SECRET"
+
+# Notes for GCS Setup:
+# 1. Create a GCS bucket in your GCP project
+# 2. Create a service account with Storage Object Admin role
+# 3. Generate JSON key for the service account
+# 4. In Snowflake, create a storage integration:
+#    CREATE STORAGE INTEGRATION gcs_int
+#      TYPE = EXTERNAL_STAGE
+#      STORAGE_PROVIDER = GCS
+#      ENABLED = TRUE
+#      STORAGE_ALLOWED_LOCATIONS = ('gcs://your-bucket-name/airbyte-staging/');
+# 5. Grant access: GRANT USAGE ON INTEGRATION gcs_int TO ROLE SYSADMIN;

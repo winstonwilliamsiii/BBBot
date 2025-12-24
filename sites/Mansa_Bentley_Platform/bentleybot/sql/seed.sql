@@ -1,0 +1,2 @@
+-- Seed data for Bentley Budget Bot
+-- Insert initial data for testing

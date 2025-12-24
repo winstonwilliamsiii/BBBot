@@ -1,0 +1,23 @@
+# Custom Airflow image with MySQL support
+FROM apache/airflow:2.8.4-python3.11
+
+# Install additional Python packages
+USER root
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    default-libmysqlclient-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+USER airflow
+RUN pip install --no-cache-dir \
+    pymysql==1.1.0 \
+    mysqlclient \
+    apache-airflow[mysql] \
+    apache-airflow-providers-airbyte \
+    mlflow==2.8.1 \
+    pandas==2.1.4 \
+    numpy==1.24.3 \
+    requests==2.31.0
+
+# Note: Custom airflow.cfg can be mounted via volume if needed

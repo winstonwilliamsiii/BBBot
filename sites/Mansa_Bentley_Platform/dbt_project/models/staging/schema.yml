@@ -1,0 +1,113 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw data loaded by Airbyte from various APIs"
+    database: bbbot1
+    schema: bbbot1
+    tables:
+      - name: prices_daily
+        description: "Daily OHLC price data from Tiingo API"
+        columns:
+          - name: ticker
+            description: "Stock ticker symbol"
+            tests:
+              - not_null
+          - name: date
+            description: "Trading date"
+            tests:
+              - not_null
+          - name: close
+            description: "Closing price"
+            tests:
+              - not_null
+          - name: volume
+            description: "Trading volume"
+            
+      - name: fundamentals_raw
+        description: "Fundamental financial data from AlphaVantage/yfinance"
+        columns:
+          - name: ticker
+            description: "Stock ticker symbol"
+            tests:
+              - not_null
+          - name: report_date
+            description: "Financial report date (quarterly/annual)"
+            tests:
+              - not_null
+          - name: net_income
+            description: "Net income"
+          - name: total_assets
+            description: "Total assets"
+          - name: total_equity
+            description: "Shareholders equity"
+          - name: shares_outstanding
+            description: "Outstanding shares"
+            
+      - name: sentiment_raw
+        description: "Social sentiment data from StockTwits"
+        columns:
+          - name: ticker
+            description: "Stock ticker symbol"
+            tests:
+              - not_null
+          - name: timestamp
+            description: "Sentiment timestamp"
+            tests:
+              - not_null
+          - name: sentiment_score
+            description: "Numerical sentiment score"
+          - name: source
+            description: "Data source (stocktwits, twitter, etc.)"
+
+models:
+  - name: stg_prices
+    description: "Cleaned and standardized daily price data"
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_fundamentals')
+              field: ticker
+      - name: price_date
+        description: "Trading date"
+        tests:
+          - not_null
+      - name: close_price
+        description: "Closing price"
+        tests:
+          - not_null
+          
+  - name: stg_fundamentals
+    description: "Cleaned fundamental financial data"
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: report_date
+        description: "Financial report date"
+        tests:
+          - not_null
+      - name: net_income
+        description: "Net income"
+      - name: total_assets
+        description: "Total assets"
+        tests:
+          - not_null
+          
+  - name: stg_sentiment
+    description: "Cleaned sentiment data"
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: sentiment_date
+        description: "Date of sentiment"
+        tests:
+          - not_null
+      - name: sentiment_score
+        description: "Aggregated sentiment score"

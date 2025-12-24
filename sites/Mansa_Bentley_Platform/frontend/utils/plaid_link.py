@@ -1,0 +1,318 @@
+"""
+Plaid Link Integration for Bentley Budget Bot
+Handles OAuth flow, token exchange, and bank connection
+"""
+
+import os
+from dotenv import load_dotenv
+
+# Force reload environment variables with cache-busting
+load_dotenv(override=True)
+
+# Try to use config_env reload if available
+try:
+    from config_env import reload_env
+    reload_env(force=True)
+except ImportError:
+    pass
+
+import streamlit as st
+from plaid.api import plaid_api
+from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.products import Products
+from plaid.model.country_code import CountryCode
+from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.configuration import Configuration
+from plaid.api_client import ApiClient
+import mysql.connector
+from datetime import datetime
+
+
+class PlaidLinkManager:
+    """Manages Plaid Link connections and token exchange"""
+    
+    def __init__(self):
+        """Initialize Plaid API client"""
+        # Reload environment one more time to be sure
+        load_dotenv(override=True)
+        
+        self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
+        self.secret = os.getenv('PLAID_SECRET', '').strip()
+        self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
+        
+        # Debug: Print what we got (masked)
+        if not self.client_id or self.client_id == 'your_plaid_client_id_here':
+            # Show debug info
+            all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
+            print(f"DEBUG: Plaid env vars found: {list(all_env.keys())}")
+            raise ValueError(
+                f"PLAID_CLIENT_ID not configured in .env\n"
+                f"Found value: '{self.client_id}'\n"
+                f"Please ensure .env file has: PLAID_CLIENT_ID=your_actual_client_id"
+            )
+        if not self.secret or self.secret == 'your_plaid_secret_here':
+            raise ValueError("PLAID_SECRET not configured in .env")
+        
+        # Configure Plaid client
+        configuration = Configuration(
+            host=self._get_plaid_host(),
+            api_key={
+                'clientId': self.client_id,
+                'secret': self.secret,
+            }
+        )
+        
+        api_client = ApiClient(configuration)
+        self.client = plaid_api.PlaidApi(api_client)
+    
+    def _get_plaid_host(self):
+        """Get Plaid API host based on environment"""
+        env_hosts = {
+            'sandbox': 'https://sandbox.plaid.com',
+            'development': 'https://development.plaid.com',
+            'production': 'https://production.plaid.com'
+        }
+        return env_hosts.get(self.env, 'https://sandbox.plaid.com')
+    
+    def create_link_token(self, user_id: str, client_name: str = "Bentley Budget Bot"):
+        """
+        Create a link token for Plaid Link initialization
+        
+        Args:
+            user_id: Unique identifier for the user
+            client_name: Name to display in Plaid Link
+            
+        Returns:
+            dict: Link token response with link_token and expiration
+        """
+        try:
+            request = LinkTokenCreateRequest(
+                user=LinkTokenCreateRequestUser(client_user_id=str(user_id)),
+                client_name=client_name,
+                products=[Products("transactions")],
+                country_codes=[CountryCode("US")],
+                language='en',
+            )
+            
+            response = self.client.link_token_create(request)
+            return {
+                'link_token': response['link_token'],
+                'expiration': response['expiration'],
+            }
+        except Exception as e:
+            st.error(f"Failed to create link token: {e}")
+            return None
+    
+    def exchange_public_token(self, public_token: str):
+        """
+        Exchange public token for access token
+        
+        Args:
+            public_token: Public token from Plaid Link
+            
+        Returns:
+            dict: Access token and item ID
+        """
+        try:
+            request = ItemPublicTokenExchangeRequest(public_token=public_token)
+            response = self.client.item_public_token_exchange(request)
+            
+            return {
+                'access_token': response['access_token'],
+                'item_id': response['item_id'],
+            }
+        except Exception as e:
+            st.error(f"Failed to exchange token: {e}")
+            return None
+    
+    def get_accounts(self, access_token: str):
+        """Get accounts associated with access token"""
+        from plaid.model.accounts_get_request import AccountsGetRequest
+        
+        try:
+            request = AccountsGetRequest(access_token=access_token)
+            response = self.client.accounts_get(request)
+            return response['accounts']
+        except Exception as e:
+            st.error(f"Failed to get accounts: {e}")
+            return []
+    
+    def get_transactions(self, access_token: str, start_date: str, end_date: str):
+        """
+        Get transactions for a date range
+        
+        Args:
+            access_token: Plaid access token
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+        """
+        from plaid.model.transactions_get_request import TransactionsGetRequest
+        
+        try:
+            request = TransactionsGetRequest(
+                access_token=access_token,
+                start_date=start_date,
+                end_date=end_date
+            )
+            response = self.client.transactions_get(request)
+            return response['transactions']
+        except Exception as e:
+            st.error(f"Failed to get transactions: {e}")
+            return []
+
+
+def save_plaid_item(user_id: str, item_id: str, access_token: str, institution_name: str):
+    """Save Plaid item to database"""
+    try:
+        from frontend.utils.budget_analysis import BudgetAnalyzer
+        
+        analyzer = BudgetAnalyzer()
+        conn = analyzer._get_connection()
+        
+        if conn:
+            cursor = conn.cursor()
+            
+            # Insert or update plaid_items
+            sql = """
+                INSERT INTO plaid_items (item_id, user_id, access_token, institution_name)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE 
+                    access_token = VALUES(access_token),
+                    institution_name = VALUES(institution_name),
+                    updated_at = CURRENT_TIMESTAMP
+            """
+            cursor.execute(sql, (item_id, user_id, access_token, institution_name))
+            conn.commit()
+            
+            cursor.close()
+            conn.close()
+            
+            return True
+    except Exception as e:
+        st.error(f"Failed to save Plaid item: {e}")
+        return False
+
+
+def render_plaid_link_button(user_id: str):
+    """
+    Render Plaid Link button with OAuth flow
+    
+    This uses Streamlit components to embed Plaid Link
+    """
+    import streamlit.components.v1 as components
+    
+    try:
+        # Initialize Plaid manager
+        plaid_manager = PlaidLinkManager()
+        
+        # Create link token
+        link_data = plaid_manager.create_link_token(user_id)
+        
+        if not link_data:
+            st.error("Unable to initialize Plaid Link. Check your credentials.")
+            return
+        
+        link_token = link_data['link_token']
+        
+        # Render Plaid Link as HTML/JS component
+        plaid_link_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+        </head>
+        <body>
+            <button id="link-button" style="
+                background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                font-size: 16px;
+                font-weight: 600;
+                border-radius: 8px;
+                cursor: pointer;
+                width: 100%;
+                transition: all 0.3s ease;
+            " onmouseover="this.style.transform='scale(1.02)'" 
+               onmouseout="this.style.transform='scale(1)'">
+                🔗 Connect Your Bank
+            </button>
+            
+            <script>
+                var linkHandler = Plaid.create({{
+                    token: '{link_token}',
+                    onSuccess: function(public_token, metadata) {{
+                        // Send public token back to Streamlit
+                        window.parent.postMessage({{
+                            type: 'plaid_success',
+                            public_token: public_token,
+                            institution: metadata.institution,
+                            accounts: metadata.accounts
+                        }}, '*');
+                    }},
+                    onExit: function(err, metadata) {{
+                        if (err != null) {{
+                            window.parent.postMessage({{
+                                type: 'plaid_error',
+                                error: err
+                            }}, '*');
+                        }}
+                    }}
+                }});
+                
+                document.getElementById('link-button').onclick = function() {{
+                    linkHandler.open();
+                }};
+            </script>
+        </body>
+        </html>
+        """
+        
+        # Render component
+        components.html(plaid_link_html, height=60)
+        
+        # Handle postMessage callback
+        if 'plaid_public_token' in st.session_state:
+            public_token = st.session_state.plaid_public_token
+            
+            with st.spinner("Connecting to your bank..."):
+                # Exchange token
+                token_data = plaid_manager.exchange_public_token(public_token)
+                
+                if token_data:
+                    # Save to database
+                    institution_name = st.session_state.get('plaid_institution', {}).get('name', 'Bank')
+                    success = save_plaid_item(
+                        user_id,
+                        token_data['item_id'],
+                        token_data['access_token'],
+                        institution_name
+                    )
+                    
+                    if success:
+                        st.success(f"✅ Successfully connected to {institution_name}!")
+                        st.balloons()
+                        
+                        # Clear session state
+                        del st.session_state.plaid_public_token
+                        if 'plaid_institution' in st.session_state:
+                            del st.session_state.plaid_institution
+                        
+                        st.rerun()
+        
+    except ValueError as e:
+        st.warning(str(e))
+        st.info("""
+        **To enable bank connections:**
+        
+        1. 📝 Sign up at: https://plaid.com/dashboard
+        2. 🔑 Get your credentials (Client ID & Secret)
+        3. ⚙️ Update .env file with real values
+        4. 🔄 Restart the app
+        """)
+    except Exception as e:
+        st.error(f"Plaid Link error: {e}")
+        import traceback
+        with st.expander("🐛 Debug Info"):
+            st.code(traceback.format_exc())

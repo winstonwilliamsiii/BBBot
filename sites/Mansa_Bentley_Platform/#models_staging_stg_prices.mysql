@@ -1,0 +1,8 @@
+#models_staging_stg_prices.sql
+{{ config(materialized='view') }}
+
+SELECT
+    ticker,
+    CAST(date AS DATE) AS date,
+    close AS price_per_share
+FROM {{ source('raw', 'prices_daily') }}

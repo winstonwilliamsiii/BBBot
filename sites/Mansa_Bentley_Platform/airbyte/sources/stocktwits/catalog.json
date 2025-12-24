@@ -1,0 +1,45 @@
+{
+  "streams": [
+    {
+      "name": "sentiment_scores",
+      "json_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Stock ticker symbol"
+          },
+          "sentiment_score": {
+            "type": ["number", "null"],
+            "description": "Normalized sentiment score (-1 to 1, where -1 is most bearish and 1 is most bullish)"
+          },
+          "bullish_count": {
+            "type": ["integer", "null"],
+            "description": "Number of bullish messages"
+          },
+          "bearish_count": {
+            "type": ["integer", "null"],
+            "description": "Number of bearish messages"
+          },
+          "total_messages": {
+            "type": ["integer", "null"],
+            "description": "Total number of messages"
+          },
+          "scraped_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when data was scraped"
+          },
+          "url": {
+            "type": "string",
+            "description": "Source URL"
+          }
+        }
+      },
+      "supported_sync_modes": ["full_refresh", "incremental"],
+      "source_defined_cursor": true,
+      "default_cursor_field": ["scraped_at"]
+    }
+  ]
+}

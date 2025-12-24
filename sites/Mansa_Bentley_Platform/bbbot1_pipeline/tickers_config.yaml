@@ -1,0 +1,67 @@
+# BentleyBot Ticker Configuration
+# This file defines all tickers to be tracked across the pipeline
+
+tickers:
+  quantum:
+    - IONQ
+    - QBTS
+    - SOUN
+    - RGTI
+  
+  major_tech:
+    - AMZN
+    - MSFT
+    - GOOGL
+  
+  # All tickers combined for convenience
+  all:
+    - IONQ
+    - QBTS
+    - SOUN
+    - RGTI
+    - AMZN
+    - MSFT
+    - GOOGL
+
+# Database performance optimization settings
+database:
+  indexes:
+    stock_prices_yf:
+      - name: idx_ticker_date
+        columns:
+          - ticker
+          - date
+        type: composite
+        purpose: "Optimize queries filtering by ticker and date range"
+      
+      - name: idx_date
+        columns:
+          - date
+        type: single
+        purpose: "Optimize queries filtering by date across all tickers"
+      
+      - name: idx_ticker
+        columns:
+          - ticker
+        type: single
+        purpose: "Optimize queries filtering by specific ticker"
+    
+    stock_fundamentals:
+      - name: idx_ticker_report_date
+        columns:
+          - ticker
+          - report_date
+        type: composite
+        purpose: "Optimize queries for fundamental data by ticker and reporting period"
+      
+      - name: idx_report_date
+        columns:
+          - report_date
+        type: single
+        purpose: "Optimize queries for fundamentals across all tickers by date"
+
+# Pipeline settings
+pipeline:
+  default_lookback_days: 730  # 2 years
+  batch_size: 8
+  alpha_vantage_delay: 12  # seconds between API calls

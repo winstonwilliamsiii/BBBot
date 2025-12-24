@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<data>
+  <value type="list" content-type="connection" key="connections">
+    <value type="object" struct-name="db.mgmt.Connection" id="connection1" struct-checksum="0x784a96b0">
+      <value type="string" key="hostIdentifier">Mysql@127.0.0.1:3307</value>
+      <value type="string" key="hostName">127.0.0.1</value>
+      <value type="int" key="port">3307</value>
+      <value type="string" key="schema">bbbot1</value>
+      <value type="string" key="name">BentleyBot MySQL (bbbot1)</value>
+      <value type="string" key="driver">MysqlNativeDriver</value>
+      <link type="object" struct-name="db.mgmt.Driver" key="driver">com.mysql.rdbms.mysql.driver.native_ssh</link>
+      <value type="string" key="userName">root</value>
+      <value type="string" key="parameterValues">
+        <value type="string" key="SQL_MODE">TRADITIONAL</value>
+        <value type="string" key="OPT_SSL_MODE">0</value>
+        <value type="string" key="OPT_USE_CLEARTEXT_PLUGIN"></value>
+      </value>
+      <value type="int" key="isDefault">1</value>
+    </value>
+    <value type="object" struct-name="db.mgmt.Connection" id="connection2" struct-checksum="0x784a96b0">
+      <value type="string" key="hostIdentifier">Mysql@127.0.0.1:3307</value>
+      <value type="string" key="hostName">127.0.0.1</value>
+      <value type="int" key="port">3307</value>
+      <value type="string" key="schema">mansa_bot</value>
+      <value type="string" key="name">BentleyBot MySQL (mansa_bot)</value>
+      <value type="string" key="driver">MysqlNativeDriver</value>
+      <link type="object" struct-name="db.mgmt.Driver" key="driver">com.mysql.rdbms.mysql.driver.native_ssh</link>
+      <value type="string" key="userName">root</value>
+      <value type="string" key="parameterValues">
+        <value type="string" key="SQL_MODE">TRADITIONAL</value>
+        <value type="string" key="OPT_SSL_MODE">0</value>
+        <value type="string" key="OPT_USE_CLEARTEXT_PLUGIN"></value>
+      </value>
+      <value type="int" key="isDefault">0</value>
+    </value>
+  </value>
+</data>

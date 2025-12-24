@@ -1,0 +1,205 @@
+version: '3.8'
+
+services:
+  # MySQL Database (shared between Airflow and Streamlit app)
+  mysql:
+    image: mysql:8.0
+    container_name: bentley-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mansa_bot
+      MYSQL_USER: airflow
+      MYSQL_PASSWORD: airflow
+    ports:
+      - "3307:3306"  # Changed to avoid conflict with local MySQL
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../scripts/setup/mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../mysql_config/airbyte_ip_whitelist.sql:/docker-entrypoint-initdb.d/02-airbyte-whitelist.sql
+      - ../mysql_config/my.cnf:/etc/mysql/conf.d/custom.cnf
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Redis (for Airflow Celery executor)
+  redis:
+    image: redis:7-alpine
+    container_name: bentley-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Airflow Webserver
+  airflow-webserver:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.airflow
+    container_name: bentley-airflow-webserver
+    depends_on:
+      - mysql
+      - redis
+      - mlflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      TIINGO_API_KEY: ${TIINGO_API_KEY:-}
+      AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
+      AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
+      AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/config/logs:/opt/airflow/logs
+      - ../data:/opt/airflow/data
+      - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
+    command: webserver
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.airflow
+    container_name: bentley-airflow-scheduler
+    depends_on:
+      - mysql
+      - redis
+      - mlflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      TIINGO_API_KEY: ${TIINGO_API_KEY:-}
+      AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
+      AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
+      AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/config/logs:/opt/airflow/logs
+      - ../data:/opt/airflow/data
+      - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
+    command: scheduler
+    restart: unless-stopped
+
+  # Airflow Worker (for Celery executor)
+  airflow-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.airflow
+    container_name: bentley-airflow-worker
+    depends_on:
+      - mysql
+      - redis
+      - mlflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://root:root@mysql:3306/mansa_bot
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      TIINGO_API_KEY: ${TIINGO_API_KEY:-}
+      AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
+      AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
+      AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/config/logs:/opt/airflow/logs
+      - ../data:/opt/airflow/data
+      - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
+    command: celery worker
+    restart: unless-stopped
+
+  # MLflow Tracking Server
+  mlflow:
+    image: python:3.11-slim
+    container_name: bentley-mlflow
+    depends_on:
+      - mysql
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - ../data/mlflow:/mlflow/artifacts
+    command: >
+      bash -c "pip install mlflow==2.8.1 gunicorn && 
+               mkdir -p /mlflow && 
+               mlflow server 
+               --backend-store-uri sqlite:////mlflow/mlflow.db
+               --default-artifact-root /mlflow/artifacts 
+               --host 0.0.0.0 
+               --port 5000 
+               --serve-artifacts
+               --gunicorn-opts '--bind 0.0.0.0:5000'"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Your existing Bentley Budget Bot (Streamlit app)
+  bentley-budget-bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: bentley-budget-bot
+    depends_on:
+      - mysql
+      - mlflow
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=airflow
+      - DB_PASSWORD=airflow
+      - DB_NAME=mansa_bot
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - ../data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_data:
+
+networks:
+  default:
+    name: bentley-network

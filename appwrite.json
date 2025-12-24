@@ -1,0 +1,74 @@
+APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
+APPWRITE_API_KEY=[your key from .env]
+APPWRITE_DATABASE_ID=[your database ID]APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
+APPWRITE_API_KEY=[your key from .env]
+APPWRITE_DATABASE_ID=[your database ID]APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
+APPWRITE_API_KEY=[your key from .env]
+APPWRITE_DATABASE_ID=[your database ID]APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
+APPWRITE_API_KEY=[your key from .env]
+APPWRITE_DATABASE_ID=[your database ID]{
+  "projectId": "68869ef500017ca73772",
+  "projectName": "BBBot",
+  "functions": [
+    {
+      "$id": "get-transactions-streamlit",
+      "name": "get_transactions_streamlit",
+      "runtime": "node-18.0",
+      "execute": ["any"],
+      "entrypoint": "index.js",
+      "path": "appwrite-deployments-targz/get_transactions_streamlit.tar.gz",
+      "variables": {
+        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
+        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+      }
+    },
+    {
+      "$id": "add-to-watchlist-streamlit",
+      "name": "add_to_watchlist_streamlit",
+      "runtime": "node-18.0",
+      "execute": ["any"],
+      "entrypoint": "index.js",
+      "path": "appwrite-deployments-targz/add_to_watchlist_streamlit.tar.gz",
+      "variables": {
+        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
+        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+      }
+    },
+    {
+      "$id": "get-watchlist-streamlit",
+      "name": "get_watchlist_streamlit",
+      "runtime": "node-18.0",
+      "execute": ["any"],
+      "entrypoint": "index.js",
+      "path": "appwrite-deployments-targz/get_watchlist_streamlit.tar.gz",
+      "variables": {
+        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
+        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+      }
+    },
+    {
+      "$id": "get-user-profile-streamlit",
+      "name": "get_user_profile_streamlit",
+      "runtime": "node-18.0",
+      "execute": ["any"],
+      "entrypoint": "index.js",
+      "path": "appwrite-deployments-targz/get_user_profile_streamlit.tar.gz",
+      "variables": {
+        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
+        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+      }
+    }
+  ]
+}

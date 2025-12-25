@@ -78,7 +78,7 @@ if ($choice -eq "1") {
         $confirm = Read-Host "Ready to deploy? (Y/N)"
         if ($confirm -eq "Y" -or $confirm -eq "y") {
             # Deploy using appwrite.json
-            appwrite deploy function
+            appwrite push function
             
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "`n✅ Deployment complete!" -ForegroundColor Green

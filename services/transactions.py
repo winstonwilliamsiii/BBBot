@@ -11,7 +11,7 @@ load_dotenv()
 APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://cloud.appwrite.io/v1")
 PROJECT_ID = os.getenv("APPWRITE_PROJECT_ID")
 FUNCTION_ID_CREATE_TX = os.getenv("APPWRITE_FUNCTION_ID_CREATE_TRANSACTION")
-FUNCTION_ID_GET_TX = os.getenv("APPWRITE_FUNCTION_ID_GET_TRANSACTIONS")
+FUNCTION_ID_GET_TX = os.getenv("APPWRITE_FUNCTION_ID_GET_TRANSACTIONS_STREAMLIT")
 
 
 def create_transaction(user_id: str, amount: float, date: str = None):

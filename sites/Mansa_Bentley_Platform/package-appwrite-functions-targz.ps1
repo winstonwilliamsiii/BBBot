@@ -180,6 +180,6 @@ Write-Host "   $outputPath" -ForegroundColor White
 Write-Host "`n🚀 Ready for Appwrite CLI Deployment!" -ForegroundColor Green
 Write-Host "`nNext: Use Appwrite CLI to deploy:" -ForegroundColor Cyan
 Write-Host "   cd appwrite-deployments-targz" -ForegroundColor White
-Write-Host "   appwrite deploy function" -ForegroundColor White
+Write-Host "   appwrite push function" -ForegroundColor White
 
 Write-Host ""

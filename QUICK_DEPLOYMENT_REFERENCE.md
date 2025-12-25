@@ -59,9 +59,15 @@ https://cloud.appwrite.io/console/project-68869ef500017ca73772/functions
    ```
    APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
    APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
-   APPWRITE_API_KEY=standard_2c9c722bc00cac91f896d30a41a99431fea3a4a05d1fcabeaaa48ffb16fbde45e6d540b8b52c3d902bc688f59acf95fd941c62f52e20b3bd014ad1722a3742caf279ddadf1e6eb25aa9b4c9c14d47e7f3c93822d55cae8389b89ed1bbee298a4a64a44604f972c17c22fbaa1bceee18fde8a69e852217e0d11db0c7eb32a219c
+   APPWRITE_API_KEY=your_appwrite_api_key_here
    APPWRITE_DATABASE_ID=your_database_id_here
    ```
+   
+   **⚠️ IMPORTANT:** 
+   - Replace `your_appwrite_api_key_here` with your actual API key from the Appwrite console
+   - Get your API key from: https://cloud.appwrite.io/console/project-68869ef500017ca73772/settings
+   - Never commit API keys to version control
+   - Store sensitive keys as environment variables
 
 5. **Deploy:**
    - Click "Create Deployment"

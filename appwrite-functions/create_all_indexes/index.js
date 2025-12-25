@@ -1,4 +1,4 @@
-const { createClient } = require('../_shared/appwriteClient');
+const { createClient } = require('./_shared/appwriteClient');
 
 /**
  * Utility Function to Create All Database Indexes

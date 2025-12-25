@@ -1,4 +1,4 @@
-const { createClient } = require('../_shared/appwriteClient');
+const { createClient } = require('./_shared/appwriteClient');
 
 module.exports = async function (req, res) {
     try {

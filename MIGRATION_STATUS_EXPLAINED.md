@@ -247,7 +247,7 @@ Run test script to verify StreamLit can call Appwrite Functions.
 
 ### Old Command (Deprecated):
 ```bash
-appwrite deploy function
+appwrite push function
 ```
 
 ### New Command (Current):
@@ -257,7 +257,7 @@ appwrite push function
 
 **Both do the same thing!** Appwrite just renamed the command.
 
-**Your scripts use:** `appwrite deploy` (old name)
+**Your scripts use:** `appwrite push` (correct command)
 **Should update to:** `appwrite push` (new name)
 
 **But don't worry!** Old command still works for now (deprecated but functional).

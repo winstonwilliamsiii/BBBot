@@ -237,6 +237,13 @@ def display_investment_page():
     # Sidebar configuration
     st.sidebar.header("⚙️ Analysis Configuration")
     
+    # Option to use real portfolio data
+    use_real_portfolio = st.sidebar.checkbox(
+        "📊 Use My Portfolio",
+        value=False,
+        help="Load your actual holdings from MySQL database via Appwrite"
+    )
+    
     # Mansa Capital Fund Names
     MANSA_FUNDS = {
         'IONQ': 'Mansa AI',
@@ -249,14 +256,37 @@ def display_investment_page():
         'IAU': 'Mansa Minerals'
     }
     
-    # Load tickers from config
-    if MLFLOW_AVAILABLE:
+    # Load tickers based on source
+    if use_real_portfolio and APPWRITE_SERVICES_AVAILABLE:
+        # Fetch user's actual portfolio
+        from services.portfolio import get_portfolio_holdings
+        
+        with st.spinner("Loading your portfolio from database..."):
+            user_id = st.session_state.get('user_id', 'demo_user')
+            portfolio_data = get_portfolio_holdings(user_id)
+            
+            if "error" in portfolio_data:
+                st.sidebar.warning(f"Could not load portfolio: {portfolio_data['error']}")
+                st.sidebar.info("Using demo Mansa funds instead")
+                available_tickers = list(MANSA_FUNDS.keys())
+            else:
+                # Extract tickers from user's holdings
+                holdings = portfolio_data.get('holdings', [])
+                if holdings:
+                    available_tickers = [h['ticker'] for h in holdings]
+                    st.sidebar.success(f"✅ Loaded {len(available_tickers)} holdings from your portfolio")
+                else:
+                    st.sidebar.info("No holdings found. Using demo Mansa funds.")
+                    available_tickers = list(MANSA_FUNDS.keys())
+    elif MLFLOW_AVAILABLE:
+        # Load from MLFlow config
         try:
             config = load_tickers_config()
             available_tickers = config['tickers']['all']
         except:
             available_tickers = list(MANSA_FUNDS.keys())
     else:
+        # Default demo tickers
         available_tickers = list(MANSA_FUNDS.keys())
     
     # Ticker selection with Mansa fund names

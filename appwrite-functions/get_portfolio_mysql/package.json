@@ -1,0 +1,9 @@
+{
+  "name": "get_portfolio_mysql",
+  "version": "1.0.0",
+  "description": "Appwrite Function to query MySQL for portfolio data",
+  "main": "index.js",
+  "dependencies": {
+    "mysql2": "^3.6.0"
+  }
+}

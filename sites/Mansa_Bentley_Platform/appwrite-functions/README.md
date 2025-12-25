@@ -72,7 +72,7 @@ appwrite-functions/
 
 4. **Deploy Functions:**
    ```bash
-   appwrite deploy function
+   appwrite push function
    ```
 
 ## 📋 Function Details

@@ -143,8 +143,8 @@ appwrite init function
 #### Step 4: Deploy All Functions
 ```powershell
 # Deploy each function
-appwrite deploy function --functionId get_transactions_streamlit
-appwrite deploy function --functionId add_to_watchlist_streamlit
+appwrite push function --functionId get_transactions_streamlit
+appwrite push function --functionId add_to_watchlist_streamlit
 # ... repeat for each function
 ```
 

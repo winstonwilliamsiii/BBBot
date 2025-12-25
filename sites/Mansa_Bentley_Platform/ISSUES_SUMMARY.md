@@ -111,7 +111,7 @@ npm install -g appwrite-cli
 appwrite login
 
 # Deploy each function
-appwrite deploy function --functionId get_transactions_streamlit
+appwrite push function --functionId get_transactions_streamlit
 # ... repeat for all 17 functions
 ```
 

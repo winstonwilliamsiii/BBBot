@@ -1,74 +1,726 @@
-APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
-APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
-APPWRITE_API_KEY=[your key from .env]
-APPWRITE_DATABASE_ID=[your database ID]APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
-APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
-APPWRITE_API_KEY=[your key from .env]
-APPWRITE_DATABASE_ID=[your database ID]APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
-APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
-APPWRITE_API_KEY=[your key from .env]
-APPWRITE_DATABASE_ID=[your database ID]APPWRITE_FUNCTION_ENDPOINT=https://fra.cloud.appwrite.io/v1
-APPWRITE_FUNCTION_PROJECT_ID=68869ef500017ca73772
-APPWRITE_API_KEY=[your key from .env]
-APPWRITE_DATABASE_ID=[your database ID]{
-  "projectId": "68869ef500017ca73772",
-  "projectName": "BBBot",
-  "functions": [
-    {
-      "$id": "get-transactions-streamlit",
-      "name": "get_transactions_streamlit",
-      "runtime": "node-18.0",
-      "execute": ["any"],
-      "entrypoint": "index.js",
-      "path": "appwrite-deployments-targz/get_transactions_streamlit.tar.gz",
-      "variables": {
-        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
-        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
-        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
-        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
-      }
+{
+    "projectId": "68869ef500017ca73772",
+    "endpoint": "https://fra.cloud.appwrite.io/v1",
+    "projectName": "BBBot",
+    "settings": {
+        "services": {
+            "account": true,
+            "avatars": true,
+            "databases": true,
+            "locale": true,
+            "health": true,
+            "storage": true,
+            "teams": true,
+            "users": true,
+            "sites": true,
+            "functions": true,
+            "graphql": true,
+            "messaging": true
+        },
+        "auth": {
+            "methods": {
+                "jwt": true,
+                "phone": true,
+                "invites": true,
+                "anonymous": true,
+                "email-otp": true,
+                "magic-url": true,
+                "email-password": true
+            },
+            "security": {
+                "duration": 31536000,
+                "limit": 0,
+                "sessionsLimit": 10,
+                "passwordHistory": 0,
+                "passwordDictionary": false,
+                "personalDataCheck": false,
+                "sessionAlerts": false,
+                "mockNumbers": []
+            }
+        }
     },
-    {
-      "$id": "add-to-watchlist-streamlit",
-      "name": "add_to_watchlist_streamlit",
-      "runtime": "node-18.0",
-      "execute": ["any"],
-      "entrypoint": "index.js",
-      "path": "appwrite-deployments-targz/add_to_watchlist_streamlit.tar.gz",
-      "variables": {
-        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
-        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
-        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
-        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
-      }
-    },
-    {
-      "$id": "get-watchlist-streamlit",
-      "name": "get_watchlist_streamlit",
-      "runtime": "node-18.0",
-      "execute": ["any"],
-      "entrypoint": "index.js",
-      "path": "appwrite-deployments-targz/get_watchlist_streamlit.tar.gz",
-      "variables": {
-        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
-        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
-        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
-        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
-      }
-    },
-    {
-      "$id": "get-user-profile-streamlit",
-      "name": "get_user_profile_streamlit",
-      "runtime": "node-18.0",
-      "execute": ["any"],
-      "entrypoint": "index.js",
-      "path": "appwrite-deployments-targz/get_user_profile_streamlit.tar.gz",
-      "variables": {
-        "APPWRITE_FUNCTION_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
-        "APPWRITE_FUNCTION_PROJECT_ID": "68869ef500017ca73772",
-        "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
-        "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
-      }
-    }
-  ]
+    "sites": [
+        {
+            "$id": "694ae75b002c39f5e7a6",
+            "name": "Mansa_Bentley_Platform",
+            "enabled": true,
+            "logging": true,
+            "framework": "other",
+            "timeout": 30,
+            "installCommand": "",
+            "buildCommand": "",
+            "outputDirectory": "./",
+            "specification": "s-0.5vcpu-512mb",
+            "buildRuntime": "node-22",
+            "adapter": "static",
+            "fallbackFile": "",
+            "path": "sites/Mansa_Bentley_Platform"
+        }
+    ],
+    "tablesDB": [
+        {
+            "$id": "694481eb003c0a14151d",
+            "name": "Bentley_Mansa",
+            "enabled": true
+        }
+    ],
+    "tables": [
+        {
+            "$id": "team_members",
+            "$permissions": [
+                "read(\"any\")",
+                "create(\"any\")",
+                "update(\"any\")",
+                "delete(\"any\")"
+            ],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Team Members",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [
+                {
+                    "key": "team_id",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "user_id",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": []
+        },
+        {
+            "$id": "transactions",
+            "$permissions": [
+                "read(\"any\")",
+                "create(\"any\")",
+                "update(\"any\")",
+                "delete(\"any\")"
+            ],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Transactions",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [
+                {
+                    "key": "transaction_id",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "user_id",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "amount",
+                    "type": "double",
+                    "required": true,
+                    "array": false,
+                    "min": -1.7976931348623157e+308,
+                    "max": 1.7976931348623157e+308,
+                    "default": null
+                },
+                {
+                    "key": "date",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "created_at",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "updated_at",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                }
+            ],
+            "indexes": []
+        },
+        {
+            "$id": "auditlogs",
+            "$permissions": [],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Auditlogs",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [
+                {
+                    "key": "auditId",
+                    "type": "integer",
+                    "required": true,
+                    "array": false,
+                    "min": -9223372036854775808,
+                    "max": 9223372036854775807,
+                    "default": null
+                },
+                {
+                    "key": "userId",
+                    "type": "integer",
+                    "required": true,
+                    "array": false,
+                    "min": -9223372036854775808,
+                    "max": 9223372036854775807,
+                    "default": null
+                },
+                {
+                    "key": "action",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 256,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "actionDate",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "actionDescription",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 512,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "ipAddress",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 45,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "userAgent",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 256,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": []
+        },
+        {
+            "$id": "users",
+            "$permissions": [],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Users",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [
+                {
+                    "key": "username",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 64,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "password",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 255,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "email",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "format": "email",
+                    "default": null
+                },
+                {
+                    "key": "role",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "elements": [
+                        "user",
+                        "admin",
+                        "guest"
+                    ],
+                    "format": "enum",
+                    "default": null
+                },
+                {
+                    "key": "userId",
+                    "type": "integer",
+                    "required": true,
+                    "array": false,
+                    "min": 1,
+                    "max": 9223372036854775807,
+                    "default": null
+                },
+                {
+                    "key": "status",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "elements": [
+                        "active",
+                        "inactive",
+                        "suspended"
+                    ],
+                    "format": "enum",
+                    "default": null
+                },
+                {
+                    "key": "firstName",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 64,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": []
+        },
+        {
+            "$id": "watchlist",
+            "$permissions": [],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Watchlist",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [],
+            "indexes": []
+        },
+        {
+            "$id": "permissions",
+            "$permissions": [],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Permissions",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [],
+            "indexes": []
+        },
+        {
+            "$id": "roles",
+            "$permissions": [],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Roles",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [],
+            "indexes": []
+        },
+        {
+            "$id": "payments",
+            "$permissions": [],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Payments",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [],
+            "indexes": []
+        },
+        {
+            "$id": "bot_metrics",
+            "$permissions": [],
+            "databaseId": "694481eb003c0a14151d",
+            "name": "Bot_Metrics",
+            "enabled": true,
+            "rowSecurity": false,
+            "columns": [
+                {
+                    "key": "botId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 64,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "metricName",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 128,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "metricValue",
+                    "type": "double",
+                    "required": true,
+                    "array": false,
+                    "min": -1.7976931348623157e+308,
+                    "max": 1.7976931348623157e+308,
+                    "default": null
+                },
+                {
+                    "key": "recordedDate",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "isActive",
+                    "type": "boolean",
+                    "required": false,
+                    "array": false,
+                    "default": true
+                },
+                {
+                    "key": "userId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "format": "email",
+                    "default": null
+                }
+            ],
+            "indexes": []
+        }
+    ],
+    "teams": [
+        {
+            "$id": "693eef0f001587ea194c",
+            "name": "Genius"
+        },
+        {
+            "$id": "admin_team",
+            "name": "Admin"
+        },
+        {
+            "$id": "investor_team",
+            "name": "Investor"
+        },
+        {
+            "$id": "client_team",
+            "name": "Client"
+        },
+        {
+            "$id": "analyst_team",
+            "name": "Analyst"
+        },
+        {
+            "$id": "devops_team",
+            "name": "DevOps"
+        }
+    ],
+    "functions": [
+        {
+            "$id": "get_transactions_streamlit",
+            "name": "get_transactions_streamlit",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/get_transactions_streamlit",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "include": ["../_shared"],
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "add_to_watchlist_streamlit",
+            "name": "add_to_watchlist_streamlit",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/add_to_watchlist_streamlit",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "get_watchlist_streamlit",
+            "name": "get_watchlist_streamlit",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/get_watchlist_streamlit",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "get_user_profile_streamlit",
+            "name": "get_user_profile_streamlit",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/get_user_profile_streamlit",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "create_transaction",
+            "name": "create_transaction",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/create_transaction",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "get_transactions",
+            "name": "get_transactions",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/get_transactions",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "update_transaction",
+            "name": "update_transaction",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/update_transaction",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "delete_transaction",
+            "name": "delete_transaction",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/delete_transaction",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "add_to_watchlist",
+            "name": "add_to_watchlist",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/add_to_watchlist",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "get_watchlist",
+            "name": "get_watchlist",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/get_watchlist",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "remove_from_watchlist",
+            "name": "remove_from_watchlist",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/remove_from_watchlist",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "get_auditlogs",
+            "name": "get_auditlogs",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/get_auditlogs",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "create_payment",
+            "name": "create_payment",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/create_payment",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "manage_roles",
+            "name": "manage_roles",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/manage_roles",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "manage_permissions",
+            "name": "manage_permissions",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/manage_permissions",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        },
+        {
+            "$id": "get_bot_metrics",
+            "name": "get_bot_metrics",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/get_bot_metrics",
+            "entrypoint": "index.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 15,
+            "variables": {
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
+            }
+        }
+    ]
 }

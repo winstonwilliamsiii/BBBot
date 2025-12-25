@@ -1,0 +1,12 @@
+{
+  "name": "bentley-function",
+  "version": "1.0.0",
+  "description": "BentleyBudgetBot Appwrite Function",
+  "main": "index.js",
+  "dependencies": {
+    "node-appwrite": "^13.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

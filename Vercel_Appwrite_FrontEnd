@@ -1,0 +1,58 @@
+//# Vercel will call Appwrite Functions via HTTPS
+
+export async function callAppwriteFunction(functionId, payload) {
+  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
+  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
+  const apiKey = process.env.APPWRITE_API_KEY; // keep this server-side only!
+
+  const res = await fetch(`${endpoint}/functions/${functionId}/executions`, {
+    method: "POST",
+    headers: {
+      "X-Appwrite-Project": projectId,
+      "X-Appwrite-Key": apiKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    throw new Error(`Appwrite function error: ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
+#Next.js #Vercel #Appwrite 
+# Frontend Scaffold Template
+import { useState } from "react";
+import { callAppwriteFunction } from "../lib/appwriteClient";
+
+export default function Dashboard() {
+  const [transactions, setTransactions] = useState([]);
+
+  async function fetchTransactions() {
+    try {
+      const result = await callAppwriteFunction("get_transactions_streamlit", {
+        user_id: "user123",
+        limit: 10
+      });
+      setTransactions(result.transactions);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  return (
+    <div>
+      <h1>BentleyBudgetBot Dashboard</h1>
+      <button onClick={fetchTransactions}>Load Transactions</button>
+      <ul>
+        {transactions.map(tx => (
+          <li key={tx.$id}>
+            {tx.amount} on {tx.date}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

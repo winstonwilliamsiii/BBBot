@@ -1,0 +1,127 @@
+🚀 APPWRITE FUNCTIONS DEPLOYMENT INSTRUCTIONS
+==============================================
+
+📦 Package Location: C:\Users\winst\BentleyBudgetBot\appwrite-deployments
+📋 Total Functions: 16
+📏 Total Size: 33.97 KB
+
+STEP-BY-STEP DEPLOYMENT:
+========================
+
+1. Login to Appwrite Cloud
+   URL: https://cloud.appwrite.io
+   Select your project
+
+2. Navigate to Functions
+   Click "Functions" in left sidebar
+   Click "Create Function" button
+
+3. For Each Function (16 total):
+   
+   A. Basic Configuration:
+      - Name: [function name without .zip]
+      - Runtime: Node.js 18.0 or later
+      - Execute Access: Any (or specific roles)
+   
+   B. Upload Code:
+      - Click "Settings" tab
+      - Scroll to "Deployment" section
+      - Choose "Manual" deployment
+      - Click "Upload" button
+      - Select corresponding .zip file from:
+        C:\Users\winst\BentleyBudgetBot\appwrite-deployments
+      - Entry Point: index.js
+      - Click "Create Deployment"
+   
+   C. Environment Variables:
+      Add these in "Variables" section:
+      
+      APPWRITE_FUNCTION_ENDPOINT=https://cloud.appwrite.io/v1
+      APPWRITE_FUNCTION_PROJECT_ID=[your_project_id]
+      APPWRITE_API_KEY=[your_server_api_key]
+      APPWRITE_DATABASE_ID=[your_database_id]
+      
+      Replace values in [brackets] with your actual IDs
+   
+   D. Test Function:
+      - Click "Execute" tab
+      - Add test body (JSON)
+      - Click "Execute Now"
+      - Verify response
+   
+   E. Copy Function ID:
+      - Click on function name
+      - Copy Function ID (e.g., 6abc123def456...)
+      - Save for .env file
+
+4. Update Your .env File
+   After deploying all functions, add Function IDs:
+   
+   APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+   APPWRITE_PROJECT_ID=your_project_id
+   APPWRITE_DATABASE_ID=your_database_id
+   APPWRITE_API_KEY=your_server_api_key
+   
+   # Function IDs
+   APPWRITE_FUNCTION_ID_CREATE_TRANSACTION=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_TRANSACTIONS=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_TRANSACTIONS_STREAMLIT=your_function_id_here
+   APPWRITE_FUNCTION_ID_ADD_TO_WATCHLIST_STREAMLIT=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_WATCHLIST_STREAMLIT=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_USER_PROFILE_STREAMLIT=your_function_id_here
+   APPWRITE_FUNCTION_ID_CREATE_AUDIT_LOG=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_AUDIT_LOGS=your_function_id_here
+   APPWRITE_FUNCTION_ID_CREATE_PAYMENT=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_PAYMENTS=your_function_id_here
+   APPWRITE_FUNCTION_ID_MANAGE_ROLES=your_function_id_here
+   APPWRITE_FUNCTION_ID_MANAGE_PERMISSIONS=your_function_id_here
+   APPWRITE_FUNCTION_ID_CREATE_BOT_METRIC=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_BOT_METRICS=your_function_id_here
+   APPWRITE_FUNCTION_ID_GET_BOT_METRICS_STATS=your_function_id_here
+   APPWRITE_FUNCTION_ID_CREATE_ALL_INDEXES=your_function_id_here
+
+PRIORITY DEPLOYMENT ORDER:
+=========================
+
+Deploy these first for core StreamLit functionality:
+1. get_transactions_streamlit.zip
+2. add_to_watchlist_streamlit.zip
+3. get_watchlist_streamlit.zip
+4. get_user_profile_streamlit.zip
+
+Then deploy RBAC functions:
+5. create_transaction.zip
+6. get_transactions.zip
+
+Then utilities:
+7. create_all_indexes.zip (run once after deployment)
+
+Then remaining functions as needed.
+
+ESTIMATED TIME:
+==============
+- Per Function: 2-3 minutes
+- Total Time: ~40 minutes
+
+VERIFICATION:
+============
+After each deployment:
+☑ Function shows "Active" status (green)
+☑ Latest deployment shows "Ready" (green checkmark)
+☑ Test execution returns expected response
+☑ Function ID copied to .env file
+
+TROUBLESHOOTING:
+===============
+- "Module not found": Make sure package.json is included (it is!)
+- "Cannot find _shared": Make sure _shared folder is in ZIP (it is!)
+- "Timeout": Increase timeout in Function Settings (default 15s)
+- "Invalid credentials": Check API key has correct scopes
+
+SUPPORT:
+========
+- Appwrite Docs: https://appwrite.io/docs/functions
+- Discord: https://appwrite.io/discord
+- GitHub: https://github.com/appwrite/appwrite
+
+Good luck with your deployment! 🚀

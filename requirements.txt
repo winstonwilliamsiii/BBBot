@@ -1,6 +1,7 @@
 # Bentley Budget Bot - Streamlit Cloud Requirements
 # Optimized for Streamlit Cloud deployment at bbbot305.streamlit.app
 # For local development with full features, see requirements-local.txt
+# Updated: December 25, 2025 - Fixed MySQL connector and environment loading
 
 # ============================================
 # CORE STREAMLIT APPLICATION

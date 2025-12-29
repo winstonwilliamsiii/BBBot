@@ -220,12 +220,16 @@ def render_plaid_link_button(user_id: str):
     """
     import streamlit.components.v1 as components
     
-    # Initialize session state for manual form
+    # Initialize all session state variables to prevent AttributeError
+    if 'plaid_public_token_pending' not in st.session_state:
+        st.session_state.plaid_public_token_pending = None
+    if 'plaid_institution_name' not in st.session_state:
+        st.session_state.plaid_institution_name = None
     if 'show_manual_form' not in st.session_state:
         st.session_state.show_manual_form = True
     
     # Check if we have a pending token to process
-    if 'plaid_public_token_pending' in st.session_state:
+    if st.session_state.plaid_public_token_pending:
         public_token = st.session_state.plaid_public_token_pending
         institution_name = st.session_state.get('plaid_institution_name', 'Bank')
         
@@ -251,9 +255,8 @@ def render_plaid_link_button(user_id: str):
                         st.balloons()
                         
                         # Clear pending state
-                        del st.session_state.plaid_public_token_pending
-                        if 'plaid_institution_name' in st.session_state:
-                            del st.session_state.plaid_institution_name
+                        st.session_state.plaid_public_token_pending = None
+                        st.session_state.plaid_institution_name = None
                         
                         # Wait a moment then reload
                         import time
@@ -261,12 +264,10 @@ def render_plaid_link_button(user_id: str):
                         st.rerun()
                 else:
                     st.error("Failed to exchange token. Please try again.")
-                    if 'plaid_public_token_pending' in st.session_state:
-                        del st.session_state.plaid_public_token_pending
+                    st.session_state.plaid_public_token_pending = None
             except Exception as e:
                 st.error(f"Error processing connection: {e}")
-                if 'plaid_public_token_pending' in st.session_state:
-                    del st.session_state.plaid_public_token_pending
+                st.session_state.plaid_public_token_pending = None
     
     # Try to initialize Plaid Link button
     try:

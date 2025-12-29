@@ -12,9 +12,20 @@ Features:
 - Detailed logging and progress reporting
 
 Usage:
-    python migrations/run_migrations.py
+    # Run on local databases only (mydb + mansa_bot)
+    python migrations/run_migrations.py --env local
+    
+    # Run on Railway production only
+    python migrations/run_migrations.py --env railway
+    
+    # Run on all databases
+    python migrations/run_migrations.py --env all
+    
+    # Dry run to preview changes
+    python migrations/run_migrations.py --env local --dry-run
+    
+    # Run specific database
     python migrations/run_migrations.py --database mydb
-    python migrations/run_migrations.py --dry-run
 """
 
 import os
@@ -316,10 +327,14 @@ def main():
         description="Run database migrations for Bentley Budget Bot"
     )
     parser.add_argument(
+        "--env",
+        choices=["local", "railway", "all"],
+        help="Environment to migrate: local (mydb + mansa_bot), railway (production), all (default)"
+    )
+    parser.add_argument(
         "--database",
         choices=["mydb", "mansa_bot", "railway", "all"],
-        default="all",
-        help="Which database to migrate (default: all)"
+        help="Specific database to migrate (overrides --env)"
     )
     parser.add_argument(
         "--target",
@@ -349,12 +364,30 @@ def main():
     # Determine which databases to migrate
     databases_to_run = []
     
-    if args.database == "all":
+    # --database flag takes precedence over --env
+    if args.database:
+        if args.database == "all":
+            databases_to_run = [("mydb", DATABASES["mydb"]), ("mansa_bot", DATABASES["mansa_bot"])]
+            if not args.skip_railway:
+                databases_to_run.append(("railway", DATABASES["railway"]))
+        else:
+            databases_to_run = [(args.database, DATABASES[args.database])]
+    # --env flag determines environment
+    elif args.env:
+        if args.env == "local":
+            databases_to_run = [("mydb", DATABASES["mydb"]), ("mansa_bot", DATABASES["mansa_bot"])]
+            print(f"Environment: LOCAL (mydb + mansa_bot)")
+        elif args.env == "railway":
+            databases_to_run = [("railway", DATABASES["railway"])]
+            print(f"Environment: RAILWAY (production)")
+        else:  # all
+            databases_to_run = [("mydb", DATABASES["mydb"]), ("mansa_bot", DATABASES["mansa_bot"]), ("railway", DATABASES["railway"])]
+            print(f"Environment: ALL")
+    # Default: all databases except if skip-railway is set
+    else:
         databases_to_run = [("mydb", DATABASES["mydb"]), ("mansa_bot", DATABASES["mansa_bot"])]
         if not args.skip_railway:
             databases_to_run.append(("railway", DATABASES["railway"]))
-    else:
-        databases_to_run = [(args.database, DATABASES[args.database])]
     
     # Run migrations for each database
     total_applied = 0

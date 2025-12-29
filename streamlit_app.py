@@ -533,8 +533,21 @@ def main():
             if parsed:
                 portfolio_tickers = parsed
                 st.sidebar.success(f"Loaded {len(parsed)} tickers from paste")
-    # default selection: if we loaded fetched tickers, select them; otherwise pick a few defaults
-    default_selection = portfolio_tickers if (portfolio_tickers and portfolio_tickers != default_portfolio_tickers) else ['IONQ', 'QBTS', 'SOUN', 'RGTI']
+    
+    # Define default tickers that should always be available
+    default_portfolio_tickers_fallback = ['IONQ', 'QBTS', 'SOUN', 'RGTI']
+    
+    # Ensure portfolio_tickers is not empty
+    if not portfolio_tickers:
+        portfolio_tickers = default_portfolio_tickers_fallback
+    
+    # Default selection: filter to only include tickers that exist in portfolio_tickers
+    default_selection_candidates = ['IONQ', 'QBTS', 'SOUN', 'RGTI']
+    default_selection = [t for t in default_selection_candidates if t in portfolio_tickers]
+    
+    # If no defaults match, use first few from portfolio_tickers
+    if not default_selection and portfolio_tickers:
+        default_selection = portfolio_tickers[:min(4, len(portfolio_tickers))]
     
     # Mansa Capital Fund Names for display
     MANSA_FUNDS = {

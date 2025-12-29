@@ -218,10 +218,9 @@ def render_plaid_link_button(user_id: str):
     """
     Render Plaid Link button with OAuth flow
     
-    This uses Streamlit components to embed Plaid Link
+    This uses Streamlit components to embed Plaid Link with manual token entry
     """
     import streamlit.components.v1 as components
-    import json
     
     try:
         # Initialize Plaid manager
@@ -236,8 +235,248 @@ def render_plaid_link_button(user_id: str):
         
         link_token = link_data['link_token']
         
-        # Handle postMessage callback from previous render
-        if 'plaid_public_token' in st.session_state:
+        # Check if we have a pending token to process
+        if 'plaid_public_token_pending' in st.session_state:
+            public_token = st.session_state.plaid_public_token_pending
+            institution_name = st.session_state.get('plaid_institution_name', 'Bank')
+            
+            with st.spinner(f"Connecting to {institution_name}..."):
+                # Exchange token
+                token_data = plaid_manager.exchange_public_token(public_token)
+                
+                if token_data:
+                    # Save to database
+                    success = save_plaid_item(
+                        user_id,
+                        token_data['item_id'],
+                        token_data['access_token'],
+                        institution_name
+                    )
+                    
+                    if success:
+                        st.success(f"✅ Successfully connected to {institution_name}!")
+                        st.balloons()
+                        
+                        # Clear pending state
+                        del st.session_state.plaid_public_token_pending
+                        if 'plaid_institution_name' in st.session_state:
+                            del st.session_state.plaid_institution_name
+                        
+                        # Wait a moment then reload
+                        import time
+                        time.sleep(1)
+                        st.rerun()
+        
+        # Render Plaid Link button with manual callback
+        plaid_link_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+            <style>
+                body {{ margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+                #link-button {{
+                    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    width: 100%;
+                    transition: all 0.3s ease;
+                }}
+                #link-button:hover {{
+                    transform: scale(1.02);
+                    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+                }}
+                #link-button:active {{
+                    transform: scale(0.98);
+                }}
+                #status {{
+                    margin-top: 10px;
+                    font-size: 12px;
+                    color: #666;
+                    text-align: center;
+                }}
+                #token-form {{
+                    margin-top: 15px;
+                    padding: 15px;
+                    background: #f0f9ff;
+                    border-radius: 8px;
+                    border: 2px solid #06B6D4;
+                    display: none;
+                }}
+                #token-input {{
+                    width: 100%;
+                    padding: 8px;
+                    font-size: 12px;
+                    font-family: monospace;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    margin-bottom: 10px;
+                }}
+                #institution-input {{
+                    width: 100%;
+                    padding: 8px;
+                    font-size: 14px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    margin-bottom: 10px;
+                }}
+                .form-label {{
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #333;
+                    margin-bottom: 5px;
+                }}
+                .hint {{
+                    font-size: 11px;
+                    color: #888;
+                    margin-bottom: 10px;
+                }}
+            </style>
+        </head>
+        <body>
+            <button id="link-button">
+                🔗 Connect Your Bank
+            </button>
+            <div id="status"></div>
+            
+            <div id="token-form">
+                <label class="form-label">Institution Name:</label>
+                <input type="text" id="institution-input" placeholder="e.g., Chase, Bank of America" />
+                
+                <label class="form-label">Public Token:</label>
+                <input type="text" id="token-input" placeholder="Paste public token here" />
+                <div class="hint">Copy the token from browser console after connecting</div>
+                
+                <button id="link-button" style="background: #059669; margin-top: 5px;" onclick="submitToken()">
+                    ✅ Submit Connection
+                </button>
+            </div>
+            
+            <script>
+                console.log('Plaid Link initializing...');
+                
+                var linkHandler = Plaid.create({{
+                    token: '{link_token}',
+                    onSuccess: function(public_token, metadata) {{
+                        console.log('✅ Plaid Link SUCCESS!');
+                        console.log('Institution:', metadata.institution.name);
+                        console.log('Public Token:', public_token);
+                        
+                        // Show form with pre-filled data
+                        document.getElementById('status').textContent = '✅ Connected! Copy the data below:';
+                        document.getElementById('institution-input').value = metadata.institution.name;
+                        document.getElementById('token-input').value = public_token;
+                        document.getElementById('token-form').style.display = 'block';
+                        
+                        // Alert user to submit
+                        alert('✅ Connected to ' + metadata.institution.name + '!\\n\\nPlease click "Submit Connection" below to complete setup.');
+                    }},
+                    onExit: function(err, metadata) {{
+                        if (err != null) {{
+                            console.error('❌ Plaid error:', err);
+                            document.getElementById('status').textContent = '❌ Error: ' + (err.error_message || 'Connection failed');
+                            alert('Error: ' + (err.error_message || 'Connection failed'));
+                        }} else {{
+                            console.log('User closed Plaid Link');
+                            document.getElementById('status').textContent = 'Connection cancelled';
+                        }}
+                    }},
+                    onLoad: function() {{
+                        console.log('✅ Plaid Link loaded');
+                        document.getElementById('status').textContent = 'Ready to connect';
+                    }}
+                }});
+                
+                // Open Plaid Link when button is clicked
+                document.getElementById('link-button').onclick = function() {{
+                    console.log('🔘 Opening Plaid Link...');
+                    document.getElementById('status').textContent = 'Opening Plaid Link...';
+                    try {{
+                        linkHandler.open();
+                    }} catch(e) {{
+                        console.error('❌ Error:', e);
+                        document.getElementById('status').textContent = '❌ Error: ' + e.message;
+                        alert('Error opening Plaid Link: ' + e.message);
+                    }}
+                }};
+                
+                // Handle manual token submission
+                function submitToken() {{
+                    const token = document.getElementById('token-input').value.trim();
+                    const institution = document.getElementById('institution-input').value.trim();
+                    
+                    if (!token || !institution) {{
+                        alert('Please fill in both fields');
+                        return;
+                    }}
+                    
+                    console.log('Submitting token for:', institution);
+                    
+                    // Store in localStorage for Streamlit to read
+                    localStorage.setItem('plaid_token_pending', token);
+                    localStorage.setItem('plaid_institution_pending', institution);
+                    
+                    document.getElementById('status').textContent = '⏳ Processing...';
+                    
+                    // Reload page to trigger Streamlit processing
+                    window.top.location.reload();
+                }}
+                
+                console.log('✅ Ready');
+            </script>
+        </body>
+        </html>
+        """
+        
+        # Render the Plaid Link component
+        components.html(plaid_link_html, height=200)
+        
+        # After rendering, check if user manually entered token
+        # This will run on the NEXT page load after they click submit
+        # We need a way to read localStorage - use another component for that
+        token_reader_html = """
+        <script>
+        const token = localStorage.getItem('plaid_token_pending');
+        const institution = localStorage.getItem('plaid_institution_pending');
+        
+        if (token && institution) {
+            console.log('Found pending Plaid data');
+            // Clear from localStorage
+            localStorage.removeItem('plaid_token_pending');
+            localStorage.removeItem('plaid_institution_pending');
+            
+            // Write to a visible div that Streamlit might be able to read
+            document.body.innerHTML = '<div id="plaid_data">' + JSON.stringify({token: token, institution: institution}) + '</div>';
+        }
+        </script>
+        """
+        # This won't work directly, so we need to use Streamlit's session state
+        
+        # Workaround: Show a manual form in Streamlit
+        if st.session_state.get('show_manual_form'):
+            with st.form("plaid_manual_form"):
+                st.info("✅ Copy the values from above and paste here:")
+                institution = st.text_input("Institution Name")
+                public_token = st.text_input("Public Token", type="password")
+                
+                if st.form_submit_button("Submit Connection"):
+                    if public_token and institution:
+                        st.session_state.plaid_public_token_pending = public_token
+                        st.session_state.plaid_institution_name = institution
+                        st.session_state.show_manual_form = False
+                        st.rerun()
+        
+        # Show button to reveal manual form
+        if not st.session_state.get('show_manual_form'):
+            if st.button("🔧 Manual Entry (if auto-submit doesn't work)", key=f"manual_btn_{user_id}"):
+                st.session_state.show_manual_form = True
+                st.rerun()
             public_token = st.session_state.plaid_public_token
             
             with st.spinner("Connecting to your bank..."):

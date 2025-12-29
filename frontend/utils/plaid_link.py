@@ -221,6 +221,7 @@ def render_plaid_link_button(user_id: str):
     This uses Streamlit components to embed Plaid Link
     """
     import streamlit.components.v1 as components
+    import json
     
     try:
         # Initialize Plaid manager
@@ -235,93 +236,7 @@ def render_plaid_link_button(user_id: str):
         
         link_token = link_data['link_token']
         
-        # Render Plaid Link as HTML/JS component
-        plaid_link_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-            <style>
-                body {{ margin: 0; padding: 0; }}
-                #link-button {{
-                    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
-                    color: white;
-                    border: none;
-                    padding: 12px 24px;
-                    font-size: 16px;
-                    font-weight: 600;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    width: 100%;
-                    transition: all 0.3s ease;
-                }}
-                #link-button:hover {{
-                    transform: scale(1.02);
-                    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
-                }}
-                #link-button:active {{
-                    transform: scale(0.98);
-                }}
-            </style>
-        </head>
-        <body>
-            <button id="link-button">
-                🔗 Connect Your Bank
-            </button>
-            
-            <script>
-                console.log('Plaid Link initializing with token:', '{link_token}'.substring(0, 20) + '...');
-                
-                var linkHandler = Plaid.create({{
-                    token: '{link_token}',
-                    onSuccess: function(public_token, metadata) {{
-                        console.log('Plaid Link success!');
-                        console.log('Institution:', metadata.institution.name);
-                        // Send success data to parent window
-                        window.parent.postMessage({{
-                            type: 'plaid_success',
-                            public_token: public_token,
-                            institution: metadata.institution,
-                            accounts: metadata.accounts
-                        }}, '*');
-                        alert('✅ Successfully connected to ' + metadata.institution.name);
-                    }},
-                    onExit: function(err, metadata) {{
-                        console.log('Plaid Link exited');
-                        if (err != null) {{
-                            console.error('Plaid error:', err);
-                            window.parent.postMessage({{
-                                type: 'plaid_error',
-                                error: err
-                            }}, '*');
-                        }}
-                    }},
-                    onLoad: function() {{
-                        console.log('Plaid Link loaded successfully');
-                    }}
-                }});
-                
-                // Open Plaid Link when button is clicked
-                document.getElementById('link-button').onclick = function() {{
-                    console.log('Button clicked - opening Plaid Link...');
-                    try {{
-                        linkHandler.open();
-                    }} catch(e) {{
-                        console.error('Error opening Plaid Link:', e);
-                        alert('Error opening Plaid Link: ' + e.message);
-                    }}
-                }};
-                
-                console.log('Plaid Link button ready');
-            </script>
-        </body>
-        </html>
-        """
-        
-        # Render component
-        components.html(plaid_link_html, height=60)
-        
-        # Handle postMessage callback
+        # Handle postMessage callback from previous render
         if 'plaid_public_token' in st.session_state:
             public_token = st.session_state.plaid_public_token
             
@@ -349,6 +264,141 @@ def render_plaid_link_button(user_id: str):
                             del st.session_state.plaid_institution
                         
                         st.rerun()
+        
+        # Render Plaid Link as HTML/JS component with message listener
+        plaid_link_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+            <style>
+                body {{ margin: 0; padding: 0; }}
+                #link-button {{
+                    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    width: 100%;
+                    transition: all 0.3s ease;
+                }}
+                #link-button:hover {{
+                    transform: scale(1.02);
+                    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+                }}
+                #link-button:active {{
+                    transform: scale(0.98);
+                }}
+                #status {{
+                    margin-top: 10px;
+                    font-size: 12px;
+                    color: #888;
+                    text-align: center;
+                }}
+            </style>
+        </head>
+        <body>
+            <button id="link-button">
+                🔗 Connect Your Bank
+            </button>
+            <div id="status"></div>
+            
+            <script>
+                console.log('Plaid Link initializing with token:', '{link_token}'.substring(0, 20) + '...');
+                
+                var linkHandler = Plaid.create({{
+                    token: '{link_token}',
+                    onSuccess: function(public_token, metadata) {{
+                        console.log('✅ Plaid Link success!');
+                        console.log('Institution:', metadata.institution.name);
+                        console.log('Public token received:', public_token.substring(0, 20) + '...');
+                        
+                        // Update status
+                        document.getElementById('status').textContent = '✅ Connected to ' + metadata.institution.name;
+                        
+                        // Use Streamlit's setComponentValue to send data back
+                        window.parent.postMessage({{
+                            isStreamlitMessage: true,
+                            type: 'streamlit:setComponentValue',
+                            key: 'plaid_callback',
+                            value: {{
+                                success: true,
+                                public_token: public_token,
+                                institution_name: metadata.institution.name,
+                                institution_id: metadata.institution.institution_id,
+                                accounts: metadata.accounts.map(a => ({{
+                                    id: a.id,
+                                    name: a.name,
+                                    type: a.type,
+                                    subtype: a.subtype
+                                }}))
+                            }}
+                        }}, '*');
+                    }},
+                    onExit: function(err, metadata) {{
+                        console.log('Plaid Link exited');
+                        if (err != null) {{
+                            console.error('❌ Plaid error:', err);
+                            document.getElementById('status').textContent = '❌ Error: ' + err.error_message;
+                            
+                            window.parent.postMessage({{
+                                isStreamlitMessage: true,
+                                type: 'streamlit:setComponentValue',
+                                key: 'plaid_callback',
+                                value: {{
+                                    success: false,
+                                    error: err.error_message || 'Connection cancelled'
+                                }}
+                            }}, '*');
+                        }} else {{
+                            console.log('User closed Plaid Link');
+                            document.getElementById('status').textContent = 'Connection cancelled';
+                        }}
+                    }},
+                    onLoad: function() {{
+                        console.log('✅ Plaid Link loaded successfully');
+                        document.getElementById('status').textContent = 'Ready to connect';
+                    }}
+                }});
+                
+                // Open Plaid Link when button is clicked
+                document.getElementById('link-button').onclick = function() {{
+                    console.log('🔘 Button clicked - opening Plaid Link...');
+                    document.getElementById('status').textContent = 'Opening Plaid Link...';
+                    try {{
+                        linkHandler.open();
+                    }} catch(e) {{
+                        console.error('❌ Error opening Plaid Link:', e);
+                        document.getElementById('status').textContent = '❌ Error: ' + e.message;
+                    }}
+                }};
+                
+                console.log('✅ Plaid Link button ready');
+            </script>
+        </body>
+        </html>
+        """
+        
+        # Render component with proper key and callback handling
+        callback_data = components.html(plaid_link_html, height=80, key=f"plaid_link_{user_id}")
+        
+        # Process callback data
+        if callback_data and isinstance(callback_data, dict):
+            if callback_data.get('success'):
+                # Store in session state for processing on next render
+                st.session_state.plaid_public_token = callback_data['public_token']
+                st.session_state.plaid_institution = {
+                    'name': callback_data['institution_name'],
+                    'id': callback_data['institution_id']
+                }
+                st.session_state.plaid_accounts = callback_data.get('accounts', [])
+                st.rerun()
+            elif 'error' in callback_data:
+                st.error(f"❌ Plaid connection failed: {callback_data['error']}")
+                st.info("Please try again or contact support if the issue persists.")
         
     except ValueError as e:
         st.warning(str(e))

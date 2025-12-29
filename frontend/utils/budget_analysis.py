@@ -564,28 +564,40 @@ class BudgetAnalyzer:
         
         try:
             cursor = conn.cursor(dictionary=True)
-            query = """
-                SELECT 
-                    institution_name,
-                    last_sync,
-                    COALESCE(is_active, 1) as is_active
-                FROM user_plaid_tokens
-                WHERE user_id = %s AND COALESCE(is_active, 1) = 1
-                ORDER BY last_sync DESC
-                LIMIT 1
-            """
-            cursor.execute(query, (user_id,))
-            result = cursor.fetchone()
             
-            if result:
-                return {
-                    'connected': True,
-                    'institution': result['institution_name'],
-                    'last_sync': result['last_sync'],
-                    'is_active': result['is_active']
-                }
-            else:
-                return {'connected': False}
+            # Try plaid_items table first (new structure), then fall back to user_plaid_tokens (old structure)
+            tables_to_try = [
+                ('plaid_items', 'created_at'),  # new table
+                ('user_plaid_tokens', 'last_sync')  # old table
+            ]
+            
+            for table_name, timestamp_col in tables_to_try:
+                try:
+                    query = f"""
+                        SELECT 
+                            institution_name,
+                            {timestamp_col} as last_sync,
+                            COALESCE(is_active, 1) as is_active
+                        FROM {table_name}
+                        WHERE user_id = %s AND COALESCE(is_active, 1) = 1
+                        ORDER BY {timestamp_col} DESC
+                        LIMIT 1
+                    """
+                    cursor.execute(query, (user_id,))
+                    result = cursor.fetchone()
+                    
+                    if result:
+                        return {
+                            'connected': True,
+                            'institution': result['institution_name'],
+                            'last_sync': result['last_sync'],
+                            'is_active': result['is_active']
+                        }
+                except mysql.connector.Error:
+                    # Table doesn't exist, try next one
+                    continue
+            
+            return {'connected': False}
                 
         except Exception as e:
             # More detailed error for debugging

@@ -10,5 +10,6 @@
         "**/venv/**": true,
         "**/__pycache__/**": true,
         "**/OneDrive/**": true
-    }
+    },
+    "jira-plugin.workingProject": ""
 }

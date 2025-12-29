@@ -241,49 +241,78 @@ def render_plaid_link_button(user_id: str):
         <html>
         <head>
             <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+            <style>
+                body {{ margin: 0; padding: 0; }}
+                #link-button {{
+                    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    width: 100%;
+                    transition: all 0.3s ease;
+                }}
+                #link-button:hover {{
+                    transform: scale(1.02);
+                    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+                }}
+                #link-button:active {{
+                    transform: scale(0.98);
+                }}
+            </style>
         </head>
         <body>
-            <button id="link-button" style="
-                background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                font-size: 16px;
-                font-weight: 600;
-                border-radius: 8px;
-                cursor: pointer;
-                width: 100%;
-                transition: all 0.3s ease;
-            " onmouseover="this.style.transform='scale(1.02)'" 
-               onmouseout="this.style.transform='scale(1)'">
+            <button id="link-button">
                 🔗 Connect Your Bank
             </button>
             
             <script>
+                console.log('Plaid Link initializing with token:', '{link_token}'.substring(0, 20) + '...');
+                
                 var linkHandler = Plaid.create({{
                     token: '{link_token}',
                     onSuccess: function(public_token, metadata) {{
-                        // Send public token back to Streamlit
+                        console.log('Plaid Link success!');
+                        console.log('Institution:', metadata.institution.name);
+                        // Send success data to parent window
                         window.parent.postMessage({{
                             type: 'plaid_success',
                             public_token: public_token,
                             institution: metadata.institution,
                             accounts: metadata.accounts
                         }}, '*');
+                        alert('✅ Successfully connected to ' + metadata.institution.name);
                     }},
                     onExit: function(err, metadata) {{
+                        console.log('Plaid Link exited');
                         if (err != null) {{
+                            console.error('Plaid error:', err);
                             window.parent.postMessage({{
                                 type: 'plaid_error',
                                 error: err
                             }}, '*');
                         }}
+                    }},
+                    onLoad: function() {{
+                        console.log('Plaid Link loaded successfully');
                     }}
                 }});
                 
+                // Open Plaid Link when button is clicked
                 document.getElementById('link-button').onclick = function() {{
-                    linkHandler.open();
+                    console.log('Button clicked - opening Plaid Link...');
+                    try {{
+                        linkHandler.open();
+                    }} catch(e) {{
+                        console.error('Error opening Plaid Link:', e);
+                        alert('Error opening Plaid Link: ' + e.message);
+                    }}
                 }};
+                
+                console.log('Plaid Link button ready');
             </script>
         </body>
         </html>

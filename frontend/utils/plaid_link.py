@@ -317,42 +317,33 @@ def render_plaid_link_button(user_id: str):
                         console.log('Public token received:', public_token.substring(0, 20) + '...');
                         
                         // Update status
-                        document.getElementById('status').textContent = '✅ Connected to ' + metadata.institution.name;
+                        document.getElementById('status').textContent = '✅ Connected! Processing...';
                         
-                        // Use Streamlit's setComponentValue to send data back
-                        window.parent.postMessage({{
-                            isStreamlitMessage: true,
-                            type: 'streamlit:setComponentValue',
-                            key: 'plaid_callback',
-                            value: {{
-                                success: true,
-                                public_token: public_token,
-                                institution_name: metadata.institution.name,
-                                institution_id: metadata.institution.institution_id,
-                                accounts: metadata.accounts.map(a => ({{
-                                    id: a.id,
-                                    name: a.name,
-                                    type: a.type,
-                                    subtype: a.subtype
-                                }}))
-                            }}
-                        }}, '*');
+                        // Store data in localStorage for Streamlit to read
+                        const callbackData = {{
+                            public_token: public_token,
+                            institution_name: metadata.institution.name,
+                            institution_id: metadata.institution.institution_id,
+                            accounts: metadata.accounts.map(a => ({{
+                                id: a.id,
+                                name: a.name,
+                                type: a.type,
+                                subtype: a.subtype
+                            }})),
+                            timestamp: new Date().getTime()
+                        }};
+                        
+                        // Use localStorage as bridge to Streamlit
+                        localStorage.setItem('plaid_callback', JSON.stringify(callbackData));
+                        
+                        // Trigger page reload to process the callback
+                        window.parent.location.reload();
                     }},
                     onExit: function(err, metadata) {{
                         console.log('Plaid Link exited');
                         if (err != null) {{
                             console.error('❌ Plaid error:', err);
-                            document.getElementById('status').textContent = '❌ Error: ' + err.error_message;
-                            
-                            window.parent.postMessage({{
-                                isStreamlitMessage: true,
-                                type: 'streamlit:setComponentValue',
-                                key: 'plaid_callback',
-                                value: {{
-                                    success: false,
-                                    error: err.error_message || 'Connection cancelled'
-                                }}
-                            }}, '*');
+                            document.getElementById('status').textContent = '❌ Error: ' + (err.error_message || 'Connection failed');
                         }} else {{
                             console.log('User closed Plaid Link');
                             document.getElementById('status').textContent = 'Connection cancelled';
@@ -382,23 +373,8 @@ def render_plaid_link_button(user_id: str):
         </html>
         """
         
-        # Render component with proper key and callback handling
-        callback_data = components.html(plaid_link_html, height=80, key=f"plaid_link_{user_id}")
-        
-        # Process callback data
-        if callback_data and isinstance(callback_data, dict):
-            if callback_data.get('success'):
-                # Store in session state for processing on next render
-                st.session_state.plaid_public_token = callback_data['public_token']
-                st.session_state.plaid_institution = {
-                    'name': callback_data['institution_name'],
-                    'id': callback_data['institution_id']
-                }
-                st.session_state.plaid_accounts = callback_data.get('accounts', [])
-                st.rerun()
-            elif 'error' in callback_data:
-                st.error(f"❌ Plaid connection failed: {callback_data['error']}")
-                st.info("Please try again or contact support if the issue persists.")
+        # Render component (note: components.html doesn't support 'key' parameter)
+        components.html(plaid_link_html, height=80)
         
     except ValueError as e:
         st.warning(str(e))

@@ -29,6 +29,21 @@ import mysql.connector
 from datetime import datetime
 
 
+def get_secret(key: str, default: str = None) -> str:
+    """
+    Get a secret value from Streamlit secrets (cloud) or environment variables (local).
+    """
+    # Try Streamlit secrets first (for Streamlit Cloud)
+    try:
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:
+        pass
+    
+    # Fall back to environment variables (for local development)
+    return os.getenv(key, default)
+
+
 class PlaidLinkManager:
     """Manages Plaid Link connections and token exchange"""
     
@@ -37,9 +52,10 @@ class PlaidLinkManager:
         # Reload environment one more time to be sure
         load_dotenv(override=True)
         
-        self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
-        self.secret = os.getenv('PLAID_SECRET', '').strip()
-        self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
+        # Check Streamlit secrets first, then env vars
+        self.client_id = get_secret('PLAID_CLIENT_ID', '').strip()
+        self.secret = get_secret('PLAID_SECRET', '').strip()
+        self.env = get_secret('PLAID_ENV', 'sandbox').strip()
         
         # Debug: Print what we got (masked)
         if not self.client_id or self.client_id == 'your_plaid_client_id_here':
@@ -47,12 +63,16 @@ class PlaidLinkManager:
             all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
             print(f"DEBUG: Plaid env vars found: {list(all_env.keys())}")
             raise ValueError(
-                f"PLAID_CLIENT_ID not configured in .env\n"
-                f"Found value: '{self.client_id}'\n"
-                f"Please ensure .env file has: PLAID_CLIENT_ID=your_actual_client_id"
+                f"PLAID_CLIENT_ID not configured.\n"
+                f"For Streamlit Cloud: Add to Settings → Secrets\n"
+                f"For local: Add to .env file"
             )
         if not self.secret or self.secret == 'your_plaid_secret_here':
-            raise ValueError("PLAID_SECRET not configured in .env")
+            raise ValueError(
+                f"PLAID_SECRET not configured.\n"
+                f"For Streamlit Cloud: Add to Settings → Secrets\n"
+                f"For local: Add to .env file"
+            )
         
         # Configure Plaid client
         configuration = Configuration(

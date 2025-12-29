@@ -11,7 +11,7 @@ Features:
 - Category-based analysis
 - Monthly/yearly aggregations
 
-Database: mydb (127.0.0.1:3306)
+Database: Railway MySQL (cloud) or local MySQL (development)
 """
 
 import mysql.connector
@@ -28,18 +28,35 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 
+def get_secret(key: str, default: str = None) -> str:
+    """
+    Get a secret value from Streamlit secrets (cloud) or environment variables (local).
+    Streamlit Cloud uses st.secrets, local development uses .env files.
+    """
+    # Try Streamlit secrets first (for Streamlit Cloud)
+    try:
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:
+        pass
+    
+    # Fall back to environment variables (for local development)
+    return os.getenv(key, default)
+
+
 class BudgetAnalyzer:
     """Main class for budget analysis operations."""
     
     def __init__(self):
         """Initialize database connection."""
         # Use separate budget database configuration
+        # Check Streamlit secrets first, then fall back to env vars
         self.db_config = {
-            'host': os.getenv('BUDGET_MYSQL_HOST', os.getenv('MYSQL_HOST', '127.0.0.1')),
-            'port': int(os.getenv('BUDGET_MYSQL_PORT', os.getenv('MYSQL_PORT', '3306'))),
-            'user': os.getenv('BUDGET_MYSQL_USER', os.getenv('MYSQL_USER', 'root')),
-            'password': os.getenv('BUDGET_MYSQL_PASSWORD', os.getenv('MYSQL_PASSWORD', '')),
-            'database': os.getenv('BUDGET_MYSQL_DATABASE', os.getenv('MYSQL_DATABASE', 'mydb')),
+            'host': get_secret('BUDGET_MYSQL_HOST', get_secret('MYSQL_HOST', '127.0.0.1')),
+            'port': int(get_secret('BUDGET_MYSQL_PORT', get_secret('MYSQL_PORT', '3306'))),
+            'user': get_secret('BUDGET_MYSQL_USER', get_secret('MYSQL_USER', 'root')),
+            'password': get_secret('BUDGET_MYSQL_PASSWORD', get_secret('MYSQL_PASSWORD', '')),
+            'database': get_secret('BUDGET_MYSQL_DATABASE', get_secret('MYSQL_DATABASE', 'mydb')),
             'charset': 'utf8mb4',
             'collation': 'utf8mb4_unicode_ci'
         }
@@ -60,11 +77,26 @@ class BudgetAnalyzer:
                 - Database: `{self.db_config['database']}`
                 - User: `{self.db_config['user']}`
                 
-                **Common Fixes:**
+                **For Streamlit Cloud:**
+                Add these secrets in Settings → Secrets:
+                ```toml
+                MYSQL_HOST = "nozomi.proxy.rlwy.net"
+                MYSQL_PORT = "54537"
+                MYSQL_USER = "root"
+                MYSQL_PASSWORD = "your_password"
+                MYSQL_DATABASE = "railway"
+                
+                BUDGET_MYSQL_HOST = "nozomi.proxy.rlwy.net"
+                BUDGET_MYSQL_PORT = "54537"
+                BUDGET_MYSQL_USER = "root"
+                BUDGET_MYSQL_PASSWORD = "your_password"
+                BUDGET_MYSQL_DATABASE = "railway"
+                ```
+                
+                **For Local Development:**
                 
                 1. ✅ **Check MySQL is running:**
                    ```powershell
-                   # Check if MySQL is listening on port 3306
                    netstat -an | Select-String "3306"
                    ```
                 

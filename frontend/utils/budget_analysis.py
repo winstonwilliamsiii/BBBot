@@ -568,9 +568,11 @@ class BudgetAnalyzer:
                 SELECT 
                     institution_name,
                     last_sync,
-                    is_active
+                    COALESCE(is_active, 1) as is_active
                 FROM user_plaid_tokens
-                WHERE user_id = %s AND is_active = TRUE
+                WHERE user_id = %s AND COALESCE(is_active, 1) = 1
+                ORDER BY last_sync DESC
+                LIMIT 1
             """
             cursor.execute(query, (user_id,))
             result = cursor.fetchone()
@@ -586,7 +588,12 @@ class BudgetAnalyzer:
                 return {'connected': False}
                 
         except Exception as e:
+            # More detailed error for debugging
+            import traceback
+            error_details = traceback.format_exc()
             st.error(f"Error checking Plaid connection: {e}")
+            with st.expander("🔍 Debug Details"):
+                st.code(error_details)
             return {'connected': False}
         finally:
             conn.close()

@@ -1,9 +1,18 @@
 """
-Frontend package initializer for BentleyBudgetBot Investment Analysis.
+Appwrite Client Module for BentleyBudgetBot.
 
-This file ensures the `frontend` directory is treated as a Python package.
-It centralizes common imports, configuration, and helper functions
-for Streamlit pages and Appwrite API integration.
+This is a standalone module that can be imported WITHOUT Streamlit dependencies.
+Use this for backend scripts, tests, and Streamlit pages.
+
+Usage:
+    from frontend.utils.appwrite_client import AppwriteClient, get_transactions
+    
+    # Direct client usage
+    client = AppwriteClient()
+    result = client.call_function("get_transactions", {"user_id": "123"})
+    
+    # Or use helper functions
+    transactions = get_transactions("user_123")
 """
 
 import os
@@ -11,13 +20,8 @@ import requests
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
-# Load environment variables FIRST
+# Load environment variables
 load_dotenv(override=True)
-
-# Expose key modules for easy import
-from . import components
-from . import utils
-from . import styles
 
 # ==============================================
 # APPWRITE CONFIGURATION
@@ -38,40 +42,25 @@ FUNCTION_IDS = {
     "create_payment": os.getenv("APPWRITE_FUNCTION_ID_CREATE_PAYMENT"),
     "get_payments": os.getenv("APPWRITE_FUNCTION_ID_GET_PAYMENTS"),
     "get_bot_metrics": os.getenv("APPWRITE_FUNCTION_ID_GET_BOT_METRICS"),
+    "create_audit_log": os.getenv("APPWRITE_FUNCTION_ID_CREATE_AUDIT_LOG"),
+    "get_audit_logs": os.getenv("APPWRITE_FUNCTION_ID_GET_AUDIT_LOGS"),
 }
 
-# Optional: Appwrite SDK client setup (if SDK is installed)
-client = None
-account = None
-database = None
+# Optional: Appwrite SDK availability flag
+APPWRITE_SDK_AVAILABLE = False
 
 try:
     from appwrite.client import Client
     from appwrite.services.databases import Databases
     from appwrite.services.account import Account
     from appwrite.services.functions import Functions
-    
-    # Initialize the Appwrite client
-    client = Client()
-    client.set_endpoint(APPWRITE_ENDPOINT)
-    client.set_project(APPWRITE_PROJECT_ID)
-    client.set_key(APPWRITE_API_KEY)
-    
-    # Initialize services
-    account = Account(client)
-    database = Databases(client)
-    functions = Functions(client)
-    
     APPWRITE_SDK_AVAILABLE = True
-
 except ImportError:
-    # Appwrite SDK not installed - use REST API fallback
-    APPWRITE_SDK_AVAILABLE = False
-    functions = None
+    pass
 
 
 # ==============================================
-# APPWRITE REST API CLIENT (SDK-free fallback)
+# APPWRITE REST API CLIENT
 # ==============================================
 
 class AppwriteClient:
@@ -80,15 +69,30 @@ class AppwriteClient:
     Works without the Appwrite SDK installed.
     
     Usage:
-        from frontend import appwrite_client
-        result = appwrite_client.call_function("get_transactions", {"user_id": "123"})
+        client = AppwriteClient()
+        result = client.call_function("get_transactions", {"user_id": "123"})
     """
     
-    def __init__(self):
-        self.endpoint = APPWRITE_ENDPOINT
-        self.project_id = APPWRITE_PROJECT_ID
-        self.api_key = APPWRITE_API_KEY
-        self.database_id = APPWRITE_DATABASE_ID
+    def __init__(
+        self,
+        endpoint: str = None,
+        project_id: str = None,
+        api_key: str = None,
+        database_id: str = None
+    ):
+        """
+        Initialize Appwrite client.
+        
+        Args:
+            endpoint: Appwrite endpoint (defaults to env var)
+            project_id: Project ID (defaults to env var)
+            api_key: API Key (defaults to env var)
+            database_id: Database ID (defaults to env var)
+        """
+        self.endpoint = endpoint or APPWRITE_ENDPOINT
+        self.project_id = project_id or APPWRITE_PROJECT_ID
+        self.api_key = api_key or APPWRITE_API_KEY
+        self.database_id = database_id or APPWRITE_DATABASE_ID
         
     @property
     def is_configured(self) -> bool:
@@ -107,7 +111,8 @@ class AppwriteClient:
         self, 
         function_name: str, 
         payload: Dict[str, Any] = None,
-        async_execution: bool = False
+        async_execution: bool = False,
+        timeout: int = 30
     ) -> Optional[Dict]:
         """
         Execute an Appwrite Cloud Function.
@@ -116,15 +121,17 @@ class AppwriteClient:
             function_name: Key from FUNCTION_IDS or direct function ID
             payload: Data to pass to the function
             async_execution: If True, don't wait for response
+            timeout: Request timeout in seconds
             
         Returns:
             Function execution result or None on error
         """
-        # Resolve function ID
+        # Resolve function ID from name or use directly
         function_id = FUNCTION_IDS.get(function_name) or function_name
         
         if not function_id:
-            raise ValueError(f"Unknown function: {function_name}")
+            raise ValueError(f"Unknown function: {function_name}. "
+                           f"Available: {list(FUNCTION_IDS.keys())}")
         
         url = f"{self.endpoint}/functions/{function_id}/executions"
         
@@ -133,11 +140,14 @@ class AppwriteClient:
                 url,
                 headers=self._get_headers(),
                 json={"data": payload or {}, "async": async_execution},
-                timeout=30
+                timeout=timeout
             )
             response.raise_for_status()
             return response.json()
             
+        except requests.exceptions.Timeout:
+            print(f"Appwrite function timeout after {timeout}s")
+            return None
         except requests.exceptions.RequestException as e:
             print(f"Appwrite function error: {e}")
             return None
@@ -146,24 +156,26 @@ class AppwriteClient:
         self,
         collection_id: str,
         queries: List[str] = None,
-        limit: int = 25
+        limit: int = 25,
+        offset: int = 0
     ) -> Optional[Dict]:
         """
         List documents from an Appwrite collection.
         
         Args:
             collection_id: The collection ID
-            queries: Optional list of query strings
+            queries: Optional list of query strings (e.g., ['equal("status", "active")'])
             limit: Maximum documents to return
+            offset: Number of documents to skip
             
         Returns:
             Documents list or None on error
         """
         url = f"{self.endpoint}/databases/{self.database_id}/collections/{collection_id}/documents"
         
-        params = {"limit": limit}
+        params = {"limit": limit, "offset": offset}
         if queries:
-            params["queries"] = queries
+            params["queries[]"] = queries
         
         try:
             response = requests.get(
@@ -182,8 +194,8 @@ class AppwriteClient:
     def create_document(
         self,
         collection_id: str,
-        document_id: str,
         data: Dict[str, Any],
+        document_id: str = "unique()",
         permissions: List[str] = None
     ) -> Optional[Dict]:
         """
@@ -191,8 +203,8 @@ class AppwriteClient:
         
         Args:
             collection_id: The collection ID
-            document_id: Unique document ID (use "unique()" for auto-generated)
             data: Document data
+            document_id: Unique document ID (default: auto-generated)
             permissions: Optional permissions array
             
         Returns:
@@ -241,44 +253,118 @@ class AppwriteClient:
         except requests.exceptions.RequestException as e:
             print(f"Appwrite get document error: {e}")
             return None
+    
+    def update_document(
+        self,
+        collection_id: str,
+        document_id: str,
+        data: Dict[str, Any],
+        permissions: List[str] = None
+    ) -> Optional[Dict]:
+        """Update an existing document."""
+        url = f"{self.endpoint}/databases/{self.database_id}/collections/{collection_id}/documents/{document_id}"
+        
+        body = {"data": data}
+        if permissions:
+            body["permissions"] = permissions
+        
+        try:
+            response = requests.patch(
+                url,
+                headers=self._get_headers(),
+                json=body,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Appwrite update document error: {e}")
+            return None
+    
+    def delete_document(
+        self,
+        collection_id: str,
+        document_id: str
+    ) -> bool:
+        """Delete a document. Returns True if successful."""
+        url = f"{self.endpoint}/databases/{self.database_id}/collections/{collection_id}/documents/{document_id}"
+        
+        try:
+            response = requests.delete(
+                url,
+                headers=self._get_headers(),
+                timeout=30
+            )
+            response.raise_for_status()
+            return True
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Appwrite delete document error: {e}")
+            return False
 
 
 # ==============================================
-# SERVICE WRAPPER FUNCTIONS
+# SINGLETON CLIENT INSTANCE
 # ==============================================
 
-# Initialize the REST client
-appwrite_client = AppwriteClient()
+# Global client instance
+_client: Optional[AppwriteClient] = None
 
+
+def get_client() -> AppwriteClient:
+    """Get the singleton AppwriteClient instance."""
+    global _client
+    if _client is None:
+        _client = AppwriteClient()
+    return _client
+
+
+# ==============================================
+# SERVICE HELPER FUNCTIONS
+# ==============================================
 
 def get_transactions(user_id: str, limit: int = 100) -> Optional[Dict]:
     """Get transactions for a user via Appwrite function."""
-    return appwrite_client.call_function("get_transactions", {
+    return get_client().call_function("get_transactions", {
         "user_id": user_id,
         "limit": limit
     })
 
 
-def create_transaction(user_id: str, amount: float, date: str, **kwargs) -> Optional[Dict]:
+def create_transaction(
+    user_id: str, 
+    amount: float, 
+    date: str,
+    description: str = None,
+    category: str = None,
+    **kwargs
+) -> Optional[Dict]:
     """Create a new transaction."""
-    return appwrite_client.call_function("create_transaction", {
+    payload = {
         "user_id": user_id,
         "amount": amount,
         "date": date,
-        **kwargs
-    })
+    }
+    if description:
+        payload["description"] = description
+    if category:
+        payload["category"] = category
+    payload.update(kwargs)
+    
+    return get_client().call_function("create_transaction", payload)
 
 
 def get_watchlist(user_id: str) -> Optional[Dict]:
     """Get watchlist for a user."""
-    return appwrite_client.call_function("get_watchlist", {
+    return get_client().call_function("get_watchlist", {
         "user_id": user_id
     })
 
 
 def add_to_watchlist(user_id: str, symbol: str) -> Optional[Dict]:
     """Add a symbol to user's watchlist."""
-    return appwrite_client.call_function("add_watchlist", {
+    return get_client().call_function("add_watchlist", {
         "user_id": user_id,
         "symbol": symbol
     })
@@ -286,53 +372,66 @@ def add_to_watchlist(user_id: str, symbol: str) -> Optional[Dict]:
 
 def get_user_profile(user_id: str) -> Optional[Dict]:
     """Get user profile data."""
-    return appwrite_client.call_function("get_user_profile", {
+    return get_client().call_function("get_user_profile", {
         "user_id": user_id
     })
 
 
 def get_bot_metrics(bot_id: str = None) -> Optional[Dict]:
     """Get bot metrics and statistics."""
-    return appwrite_client.call_function("get_bot_metrics", {
+    return get_client().call_function("get_bot_metrics", {
         "bot_id": bot_id
     })
 
 
+def get_payments(user_id: str, limit: int = 50) -> Optional[Dict]:
+    """Get payments for a user."""
+    return get_client().call_function("get_payments", {
+        "user_id": user_id,
+        "limit": limit
+    })
+
+
+def create_audit_log(
+    user_id: str,
+    action: str,
+    resource: str,
+    details: Dict = None
+) -> Optional[Dict]:
+    """Create an audit log entry."""
+    return get_client().call_function("create_audit_log", {
+        "user_id": user_id,
+        "action": action,
+        "resource": resource,
+        "details": details or {}
+    })
+
+
 # ==============================================
-# UTILITY FUNCTIONS
+# CONNECTION TEST
 # ==============================================
 
-PACKAGE_NAME = "frontend"
-VERSION = "0.2.0"
-
-
-def get_version() -> str:
-    """Return the current frontend package version."""
-    return VERSION
-
-
-def is_appwrite_connected() -> bool:
-    """Check if Appwrite client is properly configured."""
-    return appwrite_client.is_configured
-
-
-def test_appwrite_connection() -> Dict[str, Any]:
+def test_connection() -> Dict[str, Any]:
     """
     Test Appwrite connectivity.
     
     Returns:
         Dict with connection status and details
     """
+    client = get_client()
+    
     result = {
-        "configured": appwrite_client.is_configured,
+        "configured": client.is_configured,
         "sdk_available": APPWRITE_SDK_AVAILABLE,
         "endpoint": APPWRITE_ENDPOINT,
         "project_id": APPWRITE_PROJECT_ID[:8] + "..." if APPWRITE_PROJECT_ID else None,
+        "database_id": APPWRITE_DATABASE_ID[:8] + "..." if APPWRITE_DATABASE_ID else None,
         "functions_loaded": sum(1 for v in FUNCTION_IDS.values() if v),
+        "api_reachable": False,
     }
     
-    # Try a simple API call
-    if appwrite_client.is_configured:
+    # Try a simple health check
+    if client.is_configured:
         try:
             response = requests.get(
                 f"{APPWRITE_ENDPOINT}/health",
@@ -340,7 +439,31 @@ def test_appwrite_connection() -> Dict[str, Any]:
                 timeout=5
             )
             result["api_reachable"] = response.status_code == 200
-        except:
-            result["api_reachable"] = False
+            result["health_status"] = response.json() if response.status_code == 200 else None
+        except Exception as e:
+            result["health_error"] = str(e)
     
     return result
+
+
+# ==============================================
+# CLI TEST
+# ==============================================
+
+if __name__ == "__main__":
+    print("=" * 60)
+    print("APPWRITE CLIENT CONNECTION TEST")
+    print("=" * 60)
+    
+    result = test_connection()
+    
+    for key, value in result.items():
+        print(f"  {key}: {value}")
+    
+    print("")
+    print("Function IDs:")
+    for name, fid in FUNCTION_IDS.items():
+        status = "✅" if fid else "❌"
+        print(f"  {status} {name}: {fid[:12] + '...' if fid else 'NOT SET'}")
+    
+    print("=" * 60)

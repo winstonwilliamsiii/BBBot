@@ -260,6 +260,18 @@ def main():
     # Initialize RBAC session state
     if RBAC_AVAILABLE:
         RBACManager.init_session_state()
+    
+    # Initialize Plaid session state keys to prevent AttributeError
+    if 'plaid_public_token' not in st.session_state:
+        st.session_state.plaid_public_token = None
+    if 'plaid_public_token_pending' not in st.session_state:
+        st.session_state.plaid_public_token_pending = None
+    if 'plaid_institution_name' not in st.session_state:
+        st.session_state.plaid_institution_name = None
+    if 'plaid_institution' not in st.session_state:
+        st.session_state.plaid_institution = None
+    if 'show_manual_form' not in st.session_state:
+        st.session_state.show_manual_form = True
 
     # Additional sidebar-specific CSS with Mansa Capital styling
     st.markdown(f"""

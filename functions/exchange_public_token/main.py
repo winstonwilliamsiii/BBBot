@@ -40,8 +40,8 @@ def initialize_plaid_client():
     return plaid_api.PlaidApi(api_client)
 
 
-def save_to_database(user_id: str, item_id: str, access_token: str, institution_name: str):
-    """Save Plaid token to MySQL database"""
+def save_to_database(user_id: str, item_id: str, access_token: str, institution_name: str, tenant_id: str = None):
+    """Save Plaid token to MySQL database with RBAC tenant support"""
     try:
         conn = mysql.connector.connect(
             host=os.getenv('MYSQL_HOST'),
@@ -52,32 +52,64 @@ def save_to_database(user_id: str, item_id: str, access_token: str, institution_
         
         cursor = conn.cursor()
         
-        # Create table if not exists
+        # Create table with RBAC fields if not exists
         create_table_sql = """
             CREATE TABLE IF NOT EXISTS plaid_items (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id VARCHAR(255) NOT NULL UNIQUE,
-                item_id VARCHAR(255) NOT NULL,
-                access_token VARCHAR(500) NOT NULL,
+                
+                -- RBAC / Multi-tenant fields
+                tenant_id VARCHAR(64) NOT NULL,
+                user_id VARCHAR(64) NOT NULL,
+                
+                -- Plaid identifiers
+                item_id VARCHAR(128) NOT NULL,
+                access_token VARCHAR(512) NOT NULL,
+                institution_id VARCHAR(64),
                 institution_name VARCHAR(255),
+                
+                -- State management
+                is_active TINYINT(1) DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_user_id (user_id)
+                
+                -- Audit / raw JSON
+                raw_json JSON,
+                
+                -- Indexes for fast RBAC queries
+                INDEX idx_plaid_items_tenant_user (tenant_id, user_id),
+                INDEX idx_plaid_items_item (item_id),
+                INDEX idx_plaid_items_active (tenant_id, is_active),
+                UNIQUE KEY unique_tenant_user_item (tenant_id, user_id, item_id)
             )
         """
         cursor.execute(create_table_sql)
         
+        # Use tenant from context or environment
+        if not tenant_id:
+            tenant_id = os.getenv('APPWRITE_FUNCTION_DEPLOYMENT', 'default_tenant')
+        
         sql = """
-            INSERT INTO plaid_items (user_id, item_id, access_token, institution_name, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, NOW(), NOW())
+            INSERT INTO plaid_items (
+                tenant_id, user_id, item_id, access_token, 
+                institution_name, is_active, created_at, updated_at, raw_json
+            )
+            VALUES (%s, %s, %s, %s, %s, 1, NOW(), NOW(), %s)
             ON DUPLICATE KEY UPDATE 
                 access_token = VALUES(access_token),
                 institution_name = VALUES(institution_name),
-                item_id = VALUES(item_id),
-                updated_at = NOW()
+                is_active = 1,
+                updated_at = NOW(),
+                raw_json = VALUES(raw_json)
         """
         
-        cursor.execute(sql, (user_id, item_id, access_token, institution_name))
+        raw_json = json.dumps({
+            'item_id': item_id,
+            'institution_name': institution_name,
+            'synced_at': None,
+            'status': 'connected'
+        })
+        
+        cursor.execute(sql, (tenant_id, user_id, item_id, access_token, institution_name, raw_json))
         conn.commit()
         
         cursor.close()
@@ -96,6 +128,7 @@ def main(context):
     {
         "public_token": "public-sandbox-...",
         "user_id": "user123",
+        "tenant_id": "tenant123",  -- Optional, derives from context if not provided
         "institution_name": "Chase"
     }
     """
@@ -106,6 +139,7 @@ def main(context):
         
         public_token = payload.get('public_token')
         user_id = payload.get('user_id')
+        tenant_id = payload.get('tenant_id') or os.getenv('APPWRITE_FUNCTION_DEPLOYMENT', 'default_tenant')
         institution_name = payload.get('institution_name', 'Bank')
         
         if not public_token or not user_id:
@@ -125,7 +159,7 @@ def main(context):
         item_id = exchange_response['item_id']
         
         # Save to database (tenant-scoped by user_id)
-        save_to_database(user_id, item_id, access_token, institution_name)
+        save_to_database(user_id, item_id, access_token, institution_name, tenant_id)
         
         return context.res.json({
             'success': True,

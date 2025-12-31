@@ -61,19 +61,24 @@ class PlaidLinkManager:
         if not self.client_id or self.client_id == 'your_plaid_client_id_here':
             # Show debug info
             all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
-            print(f"DEBUG: Plaid env vars found: {list(all_env.keys())}")
+            st.error(f"❌ PLAID_CLIENT_ID not configured properly")
+            st.info(f"Found env vars: {list(all_env.keys())}")
+            st.code(f"CLIENT_ID value: {self.client_id[:8]}... (length: {len(self.client_id)})")
             raise ValueError(
                 f"PLAID_CLIENT_ID not configured.\n"
                 f"For Streamlit Cloud: Add to Settings → Secrets\n"
                 f"For local: Add to .env file"
             )
         if not self.secret or self.secret == 'your_plaid_secret_here':
+            st.error(f"❌ PLAID_SECRET not configured properly")
+            st.code(f"SECRET value: {self.secret[:8]}... (length: {len(self.secret)})")
             raise ValueError(
                 f"PLAID_SECRET not configured.\n"
                 f"For Streamlit Cloud: Add to Settings → Secrets\n"
                 f"For local: Add to .env file"
             )
         
+        # Credentials validated - continue silently
         # Configure Plaid client
         configuration = Configuration(
             host=self._get_plaid_host(),
@@ -98,6 +103,10 @@ class PlaidLinkManager:
     def create_link_token(self, user_id: str, client_name: str = "Bentley Budget Bot"):
         """
         Create a link token for Plaid Link initialization
+        
+        Returns:
+            dict: {'link_token': 'link-sandbox-...', 'expiration': '...'}
+            None: If token creation fails
         
         Args:
             user_id: Unique identifier for the user
@@ -269,6 +278,24 @@ def render_plaid_link_button(user_id: str):
                 st.error(f"Error processing connection: {e}")
                 st.session_state.plaid_public_token_pending = None
     
+    # Show configuration status
+    with st.expander("🔧 Plaid Configuration Status"):
+        plaid_client_id = get_secret('PLAID_CLIENT_ID', '')
+        plaid_secret = get_secret('PLAID_SECRET', '')
+        plaid_env = get_secret('PLAID_ENV', 'sandbox')
+        
+        if plaid_client_id and len(plaid_client_id) > 10:
+            st.success(f"✅ Client ID: {plaid_client_id[:8]}... ({len(plaid_client_id)} chars)")
+        else:
+            st.error(f"❌ Client ID: Not configured or too short")
+        
+        if plaid_secret and len(plaid_secret) > 10:
+            st.success(f"✅ Secret: {plaid_secret[:8]}... ({len(plaid_secret)} chars)")
+        else:
+            st.error(f"❌ Secret: Not configured or too short")
+        
+        st.info(f"🌍 Environment: {plaid_env}")
+    
     # Try to initialize Plaid Link button
     try:
         # Initialize Plaid manager
@@ -280,9 +307,11 @@ def render_plaid_link_button(user_id: str):
         if not link_data:
             raise ValueError("Unable to create link token")
         
-        link_token = link_data['link_token']
+        link_token = link_data.get('link_token')
+        if not link_token:
+            raise ValueError("Link token not found in response")
         
-        # Render interactive Plaid Link button
+        # Render interactive Plaid Link button with enhanced error handling
         plaid_link_html = f"""
         <!DOCTYPE html>
         <html>
@@ -313,9 +342,10 @@ def render_plaid_link_button(user_id: str):
                     box-shadow: 0 4px 12px rgba(6, 182, 212, 0.5);
                 }}
                 #link-button:disabled {{
-                    background: #ccc;
+                    background: #999;
                     cursor: not-allowed;
                     transform: none;
+                    opacity: 0.6;
                 }}
                 #status {{
                     margin-top: 12px;
@@ -323,51 +353,116 @@ def render_plaid_link_button(user_id: str):
                     color: #334155;
                     text-align: center;
                     font-weight: 500;
+                    padding: 8px;
+                    border-radius: 4px;
+                }}
+                .status-error {{
+                    background: #fee;
+                    color: #c00;
+                }}
+                .status-success {{
+                    background: #efe;
+                    color: #060;
                 }}
             </style>
         </head>
         <body>
-            <button id="link-button" onclick="openPlaid()">
+            <button id="link-button" onclick="openPlaid()" disabled>
                 🔗 Connect Your Bank
             </button>
-            <div id="status">⏳ Loading...</div>
+            <div id="status">⏳ Initializing Plaid...</div>
             
             <script>
+                console.log('[Plaid] Starting initialization...');
+                console.log('[Plaid] Token: {link_token[:20]}...');
+                
                 let linkHandler = null;
+                const statusEl = document.getElementById('status');
+                const buttonEl = document.getElementById('link-button');
+                
+                // Check if Plaid SDK loaded
+                if (typeof Plaid === 'undefined') {{
+                    console.error('[Plaid] SDK not loaded!');
+                    statusEl.textContent = '❌ Plaid SDK failed to load';
+                    statusEl.className = 'status-error';
+                    return;
+                }}
                 
                 try {{
+                    console.log('[Plaid] Creating handler...');
                     linkHandler = Plaid.create({{
                         token: '{link_token}',
                         onSuccess: function(public_token, metadata) {{
-                            console.log('[Plaid] Success:', metadata.institution.name);
-                            alert('✅ Connected!\\n\\nBank: ' + metadata.institution.name + '\\nToken: ' + public_token.substring(0, 30) + '...\\n\\nFill in the form below.');
-                            document.getElementById('status').textContent = '✅ Connected to ' + metadata.institution.name;
+                            console.log('[Plaid] ✅ Success!', metadata);
+                            statusEl.textContent = '✅ Connected to ' + metadata.institution.name + '!';
+                            statusEl.className = 'status-success';
+                            
+                            // Show alert with token
+                            alert(
+                                '✅ Bank Connected Successfully!\\n\\n' +
+                                'Bank: ' + metadata.institution.name + '\\n' +
+                                'Public Token: ' + public_token.substring(0, 30) + '...\\n\\n' +
+                                'Copy this token and paste it below:'
+                            );
+                            
+                            // Auto-fill if possible (browser security may block)
+                            try {{
+                                parent.postMessage({{
+                                    type: 'PLAID_SUCCESS',
+                                    public_token: public_token,
+                                    institution: metadata.institution
+                                }}, '*');
+                            }} catch(e) {{
+                                console.warn('[Plaid] Could not post message:', e);
+                            }}
                         }},
                         onExit: function(err, metadata) {{
+                            console.log('[Plaid] Exit:', err, metadata);
                             if (err) {{
-                                document.getElementById('status').textContent = '❌ ' + (err.error_message || 'Error');
+                                console.error('[Plaid] Error:', err);
+                                statusEl.textContent = '❌ ' + (err.error_message || err.display_message || 'Connection failed');
+                                statusEl.className = 'status-error';
                             }} else {{
-                                document.getElementById('status').textContent = 'Cancelled';
+                                statusEl.textContent = 'Connection cancelled';
                             }}
-                            document.getElementById('link-button').disabled = false;
+                            buttonEl.disabled = false;
                         }},
                         onLoad: function() {{
-                            document.getElementById('status').textContent = '✅ Ready!';
-                            document.getElementById('link-button').disabled = false;
+                            console.log('[Plaid] ✅ Loaded successfully');
+                            statusEl.textContent = '✅ Ready to connect!';
+                            buttonEl.disabled = false;
+                        }},
+                        onEvent: function(eventName, metadata) {{
+                            console.log('[Plaid] Event:', eventName, metadata);
                         }}
                     }});
+                    console.log('[Plaid] Handler created successfully');
                 }} catch(e) {{
-                    document.getElementById('status').textContent = '❌ Error: ' + e.message;
+                    console.error('[Plaid] Initialization error:', e);
+                    statusEl.textContent = '❌ Error: ' + e.message;
+                    statusEl.className = 'status-error';
+                    buttonEl.disabled = true;
                 }}
                 
                 function openPlaid() {{
-                    document.getElementById('link-button').disabled = true;
-                    document.getElementById('status').textContent = '⏳ Opening...';
+                    console.log('[Plaid] Opening Link...');
+                    buttonEl.disabled = true;
+                    statusEl.textContent = '⏳ Opening Plaid Link...';
+                    
+                    if (!linkHandler) {{
+                        alert('Plaid Link is not initialized. Please refresh the page.');
+                        buttonEl.disabled = false;
+                        return;
+                    }}
+                    
                     try {{
                         linkHandler.open();
                     }} catch(e) {{
-                        alert('Error: ' + e.message);
-                        document.getElementById('link-button').disabled = false;
+                        console.error('[Plaid] Open error:', e);
+                        alert('Error opening Plaid Link: ' + e.message);
+                        statusEl.textContent = '❌ Failed to open';
+                        statusEl.className = 'status-error';
+                        buttonEl.disabled = false;
                     }}
                 }}
             </script>

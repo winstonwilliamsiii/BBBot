@@ -35,18 +35,19 @@ if (Test-Path $venvPath) {
 # 4. Verify Streamlit is available
 Write-Host ""
 Write-Host "[4/5] Verifying Streamlit..." -ForegroundColor Yellow
-$streamlitCheck = Get-Command streamlit -ErrorAction SilentlyContinue
-if ($streamlitCheck) {
-    Write-Host "  ✓ Streamlit found: $($streamlitCheck.Source)" -ForegroundColor Green
+$venvStreamlit = & .\.venv\Scripts\python.exe -m streamlit --version 2>&1
+if ($venvStreamlit -match "Streamlit") {
+    Write-Host "  ✓ Virtual env Streamlit: $venvStreamlit" -ForegroundColor Green
 } else {
-    Write-Host "  ❌ Streamlit not found!" -ForegroundColor Red
+    Write-Host "  ❌ Streamlit not found in venv!" -ForegroundColor Red
     Write-Host "  Installing Streamlit..." -ForegroundColor Yellow
-    pip install streamlit
+    & .\.venv\Scripts\python.exe -m pip install streamlit
 }
 
 # 5. Display login info and start
 Write-Host ""
-Write-Host "[5/5] Starting Streamlit..." -ForegroundColor Yellow
+Write-Host "[5/5] Starting Streamlit with VIRTUAL ENVIRONMENT Python..." -ForegroundColor Yellow
+Write-Host "  Using: .venv\Scripts\python.exe" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Green
 Write-Host "           LOGIN CREDENTIALS" -ForegroundColor Green
@@ -67,4 +68,5 @@ Write-Host "🚀 Starting Streamlit..." -ForegroundColor Green
 Write-Host "Press Ctrl+C to stop" -ForegroundColor Gray
 Write-Host ""
 
-streamlit run streamlit_app.py
+# Use VIRTUAL ENVIRONMENT Python (Streamlit 1.52.1)
+& .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py

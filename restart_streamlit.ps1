@@ -1,28 +1,45 @@
-# Restart Streamlit with Cache Clear
-# Run this script after making styling changes
+# Quick Streamlit Restart - Use Virtual Environment Python
 
-Write-Host "`n🔄 Restarting Streamlit with Fresh Cache..." -ForegroundColor Cyan
-Write-Host "=" * 60 -ForegroundColor Gray
+Write-Host ""
+Write-Host "🔄 RESTARTING STREAMLIT (CLEAN)" -ForegroundColor Cyan
+Write-Host "="*50 -ForegroundColor Cyan
+Write-Host ""
 
-# Step 1: Stop existing Streamlit processes
-Write-Host "`n1️⃣  Stopping existing Python/Streamlit processes..." -ForegroundColor Yellow
-Get-Process python* -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# 1. Kill all Python/Streamlit processes
+Write-Host "[1/4] Stopping all Python processes..." -ForegroundColor Yellow
+Get-Process | Where-Object {$_.ProcessName -like '*python*'} | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
-Write-Host "   ✅ Processes stopped" -ForegroundColor Green
+Write-Host "  ✓ Stopped" -ForegroundColor Green
 
-# Step 2: Clear Streamlit cache
-Write-Host "`n2️⃣  Clearing Streamlit cache..." -ForegroundColor Yellow
-streamlit cache clear
-Write-Host "   ✅ Cache cleared" -ForegroundColor Green
+# 2. Clear Streamlit cache
+Write-Host ""
+Write-Host "[2/4] Clearing Streamlit cache..." -ForegroundColor Yellow
+Remove-Item -Recurse -Force "$env:USERPROFILE\.streamlit\cache" -ErrorAction SilentlyContinue
+Write-Host "  ✓ Cache cleared" -ForegroundColor Green
 
-# Step 3: Wait a moment
-Write-Host "`n⏳ Waiting 2 seconds..." -ForegroundColor DarkGray
-Start-Sleep -Seconds 2
+# 3. Check virtual environment
+Write-Host ""
+Write-Host "[3/4] Checking virtual environment..." -ForegroundColor Yellow
+if (Test-Path ".\.venv\Scripts\python.exe") {
+    $version = & .\.venv\Scripts\python.exe -m streamlit --version
+    Write-Host "  ✓ Found: $version" -ForegroundColor Green
+} else {
+    Write-Host "  ❌ Virtual environment not found!" -ForegroundColor Red
+    exit 1
+}
 
-# Step 4: Start Streamlit
-Write-Host "`n3️⃣  Starting Streamlit on port 8502..." -ForegroundColor Yellow
-Write-Host "`n   🌐 Opening http://localhost:8502" -ForegroundColor Cyan
-Write-Host "   📝 Press Ctrl+C to stop Streamlit" -ForegroundColor DarkGray
-Write-Host "`n" + "=" * 60 -ForegroundColor Gray
+# 4. Start Streamlit with venv Python
+Write-Host ""
+Write-Host "[4/4] Starting Streamlit..." -ForegroundColor Yellow
+Write-Host "  Using: .venv\Scripts\python.exe" -ForegroundColor Cyan
+Write-Host "  Version: Streamlit 1.52.1" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "="*50 -ForegroundColor Green
+Write-Host "  LOCAL:   http://localhost:8501" -ForegroundColor Green
+Write-Host "="*50 -ForegroundColor Green
+Write-Host ""
+Write-Host "💡 IMPORTANT: Clear your browser cache!" -ForegroundColor Yellow
+Write-Host "   Press: Ctrl + Shift + R (or Ctrl + F5)" -ForegroundColor Yellow
+Write-Host ""
 
-streamlit run streamlit_app.py --server.port 8502
+& .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py

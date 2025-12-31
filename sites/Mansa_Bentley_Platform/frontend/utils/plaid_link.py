@@ -196,6 +196,20 @@ def save_plaid_item(user_id: str, item_id: str, access_token: str, institution_n
 
 def render_plaid_link_button(user_id: str):
     """
+    Render Plaid Link button for bank connection
+    """
+    # Initialize all Plaid session state variables to prevent AttributeError
+    if 'plaid_public_token' not in st.session_state:
+        st.session_state.plaid_public_token = None
+    if 'plaid_public_token_pending' not in st.session_state:
+        st.session_state.plaid_public_token_pending = None
+    if 'plaid_institution_name' not in st.session_state:
+        st.session_state.plaid_institution_name = None
+    if 'plaid_institution' not in st.session_state:
+        st.session_state.plaid_institution = {}
+    if 'show_manual_form' not in st.session_state:
+        st.session_state.show_manual_form = True
+    """
     Render Plaid Link button with OAuth flow
     
     This uses Streamlit components to embed Plaid Link
@@ -272,8 +286,8 @@ def render_plaid_link_button(user_id: str):
         # Render component
         components.html(plaid_link_html, height=60)
         
-        # Handle postMessage callback
-        if 'plaid_public_token' in st.session_state:
+        # Handle postMessage callback - guard against missing or None value
+        if 'plaid_public_token' in st.session_state and st.session_state.plaid_public_token:
             public_token = st.session_state.plaid_public_token
             
             with st.spinner("Connecting to your bank..."):

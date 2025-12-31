@@ -54,16 +54,25 @@ CREATE TABLE IF NOT EXISTS alerts_log (
 
 ## Step 4: Configure Environment Variables in Railway
 
-In Railway dashboard → Variables:
+1. Go to Railway Dashboard → Your Project → Variables
+2. **Click "Add Variable"** and paste each of these:
 
 ```
 DISCORD_WEBHOOK=https://discord.com/api/webhooks/1455710847270649959/qR9mM3HNbmNyHXkdnmwGesJdpj6Ee4USysSU_DhIzzRoA1bSpGt7atqn54-5Gpol-L9Y
-MYSQL_HOST=$RAILWAY_MYSQL_HOST
-MYSQL_PORT=$RAILWAY_MYSQL_PORT
-MYSQL_USER=$RAILWAY_MYSQL_USER
-MYSQL_PASSWORD=$RAILWAY_MYSQL_PASSWORD
+MYSQL_HOST=nozomi.proxy.rlwy.net
+MYSQL_PORT=54537
+MYSQL_USER=root
+MYSQL_PASSWORD=cBlIUSygvPJCgPbNKHePJekQlClRamri
 MYSQL_DATABASE=bbbot1
+NODE_ENV=production
 ```
+
+**Connection String (for reference):**
+```
+mysql://root:cBlIUSygvPJCgPbNKHePJekQlClRamri@nozomi.proxy.rlwy.net:54537/railway
+```
+
+**Note:** After deployment, create the `alerts_log` table (see Step 3)
 
 ## Step 5: Monitor Logs
 

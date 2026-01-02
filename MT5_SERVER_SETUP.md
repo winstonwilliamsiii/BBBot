@@ -5,7 +5,6 @@
 - ✅ MetaTrader5 Python package
 - ✅ Flask (REST API framework)
 - ✅ Flask-CORS (Cross-origin support)
-
 ## 🚀 Quick Start
 
 ### Step 1: Update Your .env File
@@ -152,6 +151,7 @@ curl http://localhost:8000/Positions
 - ✅ Check firewall settings
 
 ### Python package errors
+
 ```bash
 # Reinstall packages
 pip install --upgrade MetaTrader5 flask flask-cors

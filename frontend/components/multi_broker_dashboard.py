@@ -192,8 +192,19 @@ def render_mt5_section():
                 password = st.text_input("Password", type="password", value=os.getenv("MT5_PASSWORD", ""))
                 port = st.number_input("Port", value=int(os.getenv("MT5_PORT", "443")))
             
-            if st.button("Connect", type="primary"):
-                connect_mt5()
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("Connect", type="primary", use_container_width=True):
+                    connect_mt5()
+            
+            with col_btn2:
+                if st.button("🏥 Health Check", use_container_width=True):
+                    base_url = os.getenv("MT5_API_URL", "http://localhost:8000")
+                    temp_connector = MT5Connector(base_url)
+                    if temp_connector.health_check():
+                        st.success("✅ MT5 API server is healthy")
+                    else:
+                        st.error("❌ MT5 API server is not responding")
         return
     
     # Show MT5 account info

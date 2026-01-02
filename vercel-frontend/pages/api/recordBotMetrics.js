@@ -4,7 +4,7 @@
  * Uses server-side API key for authentication with Appwrite
  */
 
-import { createBotMetricsSecure, createAuditLogSecure } from '../../lib/serverAppwriteClient.js';
+import { createAuditLogSecure, createBotMetricsSecure } from '../../lib/serverAppwriteClient.js';
 
 /**
  * Main API handler

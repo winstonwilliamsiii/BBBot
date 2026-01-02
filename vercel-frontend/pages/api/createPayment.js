@@ -4,7 +4,7 @@
  * Uses server-side API key for authentication with Appwrite
  */
 
-import { createPaymentSecure, createAuditLogSecure } from '../../lib/serverAppwriteClient.js';
+import { createAuditLogSecure, createPaymentSecure } from '../../lib/serverAppwriteClient.js';
 
 /**
  * Main API handler

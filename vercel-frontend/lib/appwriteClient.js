@@ -100,6 +100,68 @@ export async function addToWatchlist(userId, symbol, notes = '') {
 }
 
 /**
+ * Create a transaction
+ * @param {object} transactionData - Transaction details
+ * @returns {Promise<object>} - Created transaction
+ */
+export async function createTransaction(transactionData) {
+  const functionId = process.env.NEXT_PUBLIC_APPWRITE_FUNCTION_ID_CREATE_TRANSACTION;
+  
+  if (!functionId) {
+    throw new Error('NEXT_PUBLIC_APPWRITE_FUNCTION_ID_CREATE_TRANSACTION not set');
+  }
+
+  return callAppwriteFunction(functionId, transactionData);
+}
+
+/**
+ * Create a payment
+ * @param {object} paymentData - Payment details
+ * @returns {Promise<object>} - Created payment
+ */
+export async function createPayment(paymentData) {
+  const functionId = process.env.NEXT_PUBLIC_APPWRITE_FUNCTION_ID_CREATE_PAYMENT;
+  
+  if (!functionId) {
+    throw new Error('NEXT_PUBLIC_APPWRITE_FUNCTION_ID_CREATE_PAYMENT not set');
+  }
+
+  return callAppwriteFunction(functionId, paymentData);
+}
+
+/**
+ * Get bot metrics
+ * @param {string} userId - User ID
+ * @returns {Promise<object>} - Bot metrics
+ */
+export async function getBotMetrics(userId) {
+  const functionId = process.env.NEXT_PUBLIC_APPWRITE_FUNCTION_ID_GET_BOT_METRICS;
+  
+  if (!functionId) {
+    throw new Error('NEXT_PUBLIC_APPWRITE_FUNCTION_ID_GET_BOT_METRICS not set');
+  }
+
+  return callAppwriteFunction(functionId, {
+    user_id: userId
+  });
+}
+
+/**
+ * Create audit log
+ * @param {object} auditData - Audit log details
+ * @returns {Promise<object>} - Created audit log
+ */
+export async function createAuditLog(auditData) {
+  const functionId = process.env.NEXT_PUBLIC_APPWRITE_FUNCTION_ID_CREATE_AUDIT_LOG;
+  
+  if (!functionId) {
+    throw new Error('NEXT_PUBLIC_APPWRITE_FUNCTION_ID_CREATE_AUDIT_LOG not set');
+  }
+
+  return callAppwriteFunction(functionId, auditData);
+}
+
+/**
  * Get user profile
  * @param {string} userId - User ID
  * @returns {Promise<object>} - User profile data

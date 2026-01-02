@@ -8,6 +8,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@vercel/analytics": "^1.6.1",
     "node-appwrite": "^14.1.0"
   },
   "devDependencies": {

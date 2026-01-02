@@ -20,6 +20,9 @@ dbt-mysql>=1.7.0
 # Financial data
 yfinance>=0.2.0
 
+# Webull Trading API
+webull-openapi-python-sdk>=1.0.3
+
 # MLFlow integration
 mlflow>=2.8.0
 

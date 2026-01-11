@@ -15,10 +15,12 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables - use explicit path
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Import color scheme and styling from home page
 try:

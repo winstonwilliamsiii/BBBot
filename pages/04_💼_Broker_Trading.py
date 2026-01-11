@@ -8,10 +8,12 @@ import pandas as pd
 from datetime import datetime
 import sys
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables - use explicit path
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Import color scheme and styling from home page
 try:
@@ -145,12 +147,33 @@ def test_alpaca_connection():
     """Test Alpaca connection and display status"""
     st.subheader("🧪 Test Alpaca Connection")
     
+    # Debug: Show .env file location
+    env_path = Path(__file__).parent.parent / '.env'
+    st.caption(f"📂 Looking for .env at: {env_path}")
+    st.caption(f"✅ .env exists: {env_path.exists()}")
+    
     api_key = os.getenv("ALPACA_API_KEY", "")
     secret_key = os.getenv("ALPACA_SECRET_KEY", "")
     paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
     
+    # Debug: Show what was loaded
+    st.caption(f"🔑 API Key loaded: {bool(api_key)} ({api_key[:10]}... if {api_key})")
+    st.caption(f"🔐 Secret Key loaded: {bool(secret_key)} ({secret_key[:10]}... if {secret_key})")
+    
     if not api_key or not secret_key:
         st.error("❌ Alpaca credentials not configured in .env")
+        
+        # Show more diagnostic info
+        st.warning("🔍 Debugging Information:")
+        st.code(f"""
+Current directory: {os.getcwd()}
+.env path: {env_path}
+.env exists: {env_path.exists()}
+API Key loaded: {bool(api_key)}
+Secret Key loaded: {bool(secret_key)}
+        """)
+        
+        st.info("💡 Solution:")
         st.code("""
 # Add to .env:
 ALPACA_API_KEY=your_key_here

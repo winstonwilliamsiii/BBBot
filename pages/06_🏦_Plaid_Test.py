@@ -62,11 +62,18 @@ st.markdown("## ⚙️ Configuration")
 col1, col2 = st.columns(2)
 
 with col1:
+    # Check if running on Streamlit Cloud vs local
+    is_cloud = os.getenv('STREAMLIT_SHARING_MODE') is not None or 'streamlit.app' in st.get_option('browser.serverAddress')
+    default_url = "https://your-appwrite-endpoint.com/v1/functions/plaid" if is_cloud else "http://localhost:5001"
+    
     backend_url = st.text_input(
         "Backend URL",
-        value="http://localhost:5001",
-        help="Default ports: 5001 (Python), 8080 (Node), 3000 (React)"
+        value=default_url,
+        help="Use Appwrite Functions URL for production, localhost for local testing"
     )
+    
+    if 'localhost' in backend_url and is_cloud:
+        st.warning("⚠️ Running on Streamlit Cloud - localhost won't work! Deploy backend to Appwrite Functions or use ngrok.")
 
 with col2:
     user_id = st.text_input(

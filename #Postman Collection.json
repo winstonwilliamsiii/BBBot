@@ -1,0 +1,101 @@
+#Postman Collection
+#Saved set of API request from a desktop application downloaded
+
+{
+  "info": {
+    "name": "CashPro + Plaid Sandbox",
+    "description": "Test connections for Bank of America CashPro and Plaid APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "CashPro",
+      "item": [
+        {
+          "name": "Get Balances",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{cashpro_access_token}}" }
+            ],
+            "url": {
+              "raw": "{{cashpro_base_url}}/balances?accountId={{account_id}}",
+              "host": ["{{cashpro_base_url}}"],
+              "path": ["balances"],
+              "query": [{ "key": "accountId", "value": "{{account_id}}" }]
+            }
+          }
+        },
+        {
+          "name": "Initiate Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{cashpro_access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"100.00\",\n  \"currency\": \"USD\",\n  \"recipient\": \"John Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{cashpro_base_url}}/payments",
+              "host": ["{{cashpro_base_url}}"],
+              "path": ["payments"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Plaid",
+      "item": [
+        {
+          "name": "Create Link Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"user\": {\"client_user_id\": \"user123\"},\n  \"client_name\": \"BentleyBudgetBot\",\n  \"products\": [\"transactions\"],\n  \"country_codes\": [\"US\"],\n  \"language\": \"en\"\n}"
+            },
+            "url": {
+              "raw": "{{plaid_base_url}}/link/token/create",
+              "host": ["{{plaid_base_url}}"],
+              "path": ["link", "token", "create"]
+            }
+          }
+        },
+        {
+          "name": "Get Transactions",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\",\n  \"start_date\": \"2024-01-01\",\n  \"end_date\": \"2024-12-31\"\n}"
+            },
+            "url": {
+              "raw": "{{plaid_base_url}}/transactions/get",
+              "host": ["{{plaid_base_url}}"],
+              "path": ["transactions", "get"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "cashpro_base_url", "value": "https://sandbox.cashpro.bankofamerica.com/api" },
+    { "key": "cashpro_access_token", "value": "YOUR_SANDBOX_TOKEN" },
+    { "key": "account_id", "value": "123456789" },
+    { "key": "plaid_base_url", "value": "https://sandbox.plaid.com" },
+    { "key": "plaid_client_id", "value": "YOUR_PLAID_CLIENT_ID" },
+    { "key": "plaid_secret", "value": "YOUR_PLAID_SECRET" },
+    { "key": "plaid_access_token", "value": "YOUR_PLAID_ACCESS_TOKEN" }
+  ]
+}

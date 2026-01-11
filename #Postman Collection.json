@@ -3,13 +3,156 @@
 
 {
   "info": {
-    "name": "CashPro + Plaid Sandbox",
-    "description": "Test connections for Bank of America CashPro and Plaid APIs",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "name": "BBBot Plaid Integration",
+    "description": "Test Plaid APIs - Direct Sandbox + Appwrite Function endpoints for BentleyBudgetBot",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "bbbot-plaid-integration",
+    "version": "2.0.0"
   },
   "item": [
     {
-      "name": "CashPro",
+      "name": "1. Appwrite Function (Production)",
+      "description": "Test Plaid operations through Appwrite serverless functions",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{appwrite_function_url}}/api/info",
+              "host": ["{{appwrite_function_url}}"],
+              "path": ["api", "info"]
+            },
+            "description": "Verify the Appwrite function is running and check Plaid environment"
+          }
+        },
+        {
+          "name": "Create Link Token (via Appwrite)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"winston_test_123\",\n  \"products\": [\"transactions\"],\n  \"country_codes\": [\"US\"],\n  \"language\": \"en\"\n}"
+            },
+            "url": {
+              "raw": "{{appwrite_function_url}}/api/create_link_token",
+              "host": ["{{appwrite_function_url}}"],
+              "path": ["api", "create_link_token"]
+            },
+            "description": "Create a Link token through Appwrite function (required for Plaid Link UI)"
+          }
+        },
+        {
+          "name": "Exchange Public Token (via Appwrite)",
+          "request": {
+            "method": "POST",
+            "he3. Plaid Direct API (Sandbox)",
+      "description": "Direct calls to Plaid API for testing/debugging",
+      "item": [
+        {
+          "name": "Create Link Token (Direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"user\": {\"client_user_id\": \"winston_test_123\"},\n  \"client_name\": \"BentleyBudgetBot\",\n  \"products\": [\"transactions\"],\n  \"country_codes\": [\"US\"],\n  \"language\": \"en\"\n}"
+            },
+            "url": {
+              "raw": "{{plaid_base_url}}/link/token/create",
+              "host": ["{{plaid_base_url}}"],
+              "path": ["link", "token", "create"]
+            },
+            "description": "Direct Plaid API call to create link token"
+          }
+        },
+        {
+          "name": "Exchange Public Token (Direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"public_token\": \"{{plaid_public_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{plaid_base_url}}/item/public_token/exchange",
+              "host": ["{{plaid_base_url}}"],
+              "path": ["item", "public_token", "exchange"]
+            },
+            "description": "Exchange public token for permanent access token"
+          }
+        },
+        {
+          "name": "Get Account Balances (Direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{plaid_base_url}}/accounts/balance/get",
+              "host": ["{{plaid_base_url}}"],
+              "path": ["accounts", "balance", "get"]
+            },
+            "description": "Get real-time account balances"
+          }
+        },
+        {
+          "name": "Get Transactions (Direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\",\n  \"start_date\": \"2025-01-01\",\n  \"end_date\": \"2026-01-11\"\n}"
+            },
+            "url": {
+              "raw": "{{plaid_base_url}}/transactions/get",
+              "host": ["{{plaid_base_url}}"],
+              "path": ["transactions", "get"]
+            },
+            "description": "Fetch transactions directly from Plaid"
+          }
+        },
+        {
+          "name": "Get Item Info (Direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{plaid_base_url}}/item/get",
+              "host": ["{{plaid_base_url}}"],
+              "path": ["item", "get"]
+            },
+            "description": "Get information about the connected Item"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. CashPro (Future)",
+      "description": "Bank of America CashPro API - Placeholder for future integration",
       "item": [
         {
           "name": "Get Balances",
@@ -23,7 +166,8 @@
               "host": ["{{cashpro_base_url}}"],
               "path": ["balances"],
               "query": [{ "key": "accountId", "value": "{{account_id}}" }]
-            }
+            },
+            "description": "Get account balances from CashPro (not yet implemented)"
           }
         },
         {
@@ -42,7 +186,122 @@
               "raw": "{{cashpro_base_url}}/payments",
               "host": ["{{cashpro_base_url}}"],
               "path": ["payments"]
-            }
+            },
+            "description": "Initiate payment via CashPro (not yet implemented)"me": "Get Transactions (via Appwrite)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+     
+      "key": "appwrite_function_url",
+      "value": "https://fra.cloud.appwrite.io/v1/functions/YOUR_FUNCTION_ID/executions",
+      "description": "Appwrite function URL - replace YOUR_FUNCTION_ID after deployment",
+      "type": "string"
+    },
+    {
+      "key": "docker_backend_url",
+      "value": "http://localhost:5001",
+      "description": "Local Docker quickstart backend",
+      "type": "string"
+    },
+    {
+      "key": "plaid_base_url",
+      "value": "https://sandbox.plaid.com",
+      "description": "Plaid API base URL (sandbox environment)",
+      "type": "string"
+    },
+    {
+      "key": "plaid_client_id",
+      "value": "68b8718ec2f428002456a84c",
+      "description": "Your Plaid Client ID (from .env)",
+      "type": "string"
+    },
+    {
+      "key": "plaid_secret",
+      "value": "1849c4090173dfbce2bda5453e7048",
+      "description": "Your Plaid Secret (from .env) - KEEP SECURE",
+      "type": "string"
+    },
+    {
+      "key": "plaid_access_token",
+      "value": "",
+      "description": "Access token obtained after exchanging public_token - set this after token exchange",
+      "type": "string"
+    },
+    {
+      "key": "plaid_public_token",
+      "value": "",
+      "description": "Public token from Plaid Link UI - temporary, expires after exchange",
+      "type": "string"
+    },
+    {
+      "key": "cashpro_base_url",
+      "value": "https://sandbox.cashpro.bankofamerica.com/api",
+      "description": "CashPro API (future integration)",
+      "type": "string"
+    },
+    {
+      "key": "cashpro_access_token",
+      "value": "",
+      "description": "CashPro OAuth token (not yet implemented)",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "123456789",
+      "description": "Bank account ID (for CashPro testing)",
+      "type": "string"
+   
+            },
+            "description": "Fetch transactions for connected accounts"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Docker Quickstart (Local Testing)",
+      "description": "Test against local Docker quickstart backend (localhost:5001)",
+      "item": [
+        {
+          "name": "Create Link Token (Docker)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"winston_test_123\"\n}"
+            },
+            "url": {
+              "raw": "{{docker_backend_url}}/api/create_link_token",
+              "host": ["{{docker_backend_url}}"],
+              "path": ["api", "create_link_token"]
+            },
+            "description": "Test link token creation locally"
+          }
+        },
+        {
+          "name": "Exchange Token (Docker)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "public_token", "value": "{{plaid_public_token}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{docker_backend_url}}/api/set_access_token",
+              "host": ["{{docker_backend_url}}"],
+              "path": ["api", "set_access_token"]
+            },
+            "description": "Exchange token using form-encoded format (matches frontend)"
           }
         }
       ]

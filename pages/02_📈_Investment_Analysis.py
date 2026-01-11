@@ -234,6 +234,33 @@ def display_investment_page():
         else:
             show_user_info()
     
+    # Broker Integration Section
+    st.markdown("---")
+    st.subheader("🔗 Broker Integration")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("**Alpaca (Stocks/Crypto)**")
+        if st.button("Connect Alpaca", key="alpaca_invest"):
+            st.info("Navigate to **💼 Broker Trading** or **🌐 Multi-Broker Trading** to connect")
+    
+    with col2:
+        st.markdown("**MT5 (FOREX/Futures)**")
+        if st.button("Connect MT5", key="mt5_invest"):
+            st.info("Navigate to **🌐 Multi-Broker Trading** to connect")
+    
+    with col3:
+        st.markdown("**IBKR (Multi-Asset)**")
+        if st.button("Connect IBKR", key="ibkr_invest"):
+            st.info("Navigate to **🌐 Multi-Broker Trading** to connect")
+    
+    with col4:
+        st.markdown("**Future Brokers**")
+        st.caption("QuantConnect, TD Ameritrade, NinjaTrader, Binance")
+    
+    st.markdown("---")
+    
     # Sidebar configuration
     st.sidebar.header("⚙️ Analysis Configuration")
     

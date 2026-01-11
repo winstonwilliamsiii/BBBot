@@ -103,6 +103,25 @@ except ImportError:
 # Add bbbot1_pipeline to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Import broker connectors
+try:
+    from frontend.utils.alpaca_connector import AlpacaConnector
+    ALPACA_AVAILABLE = True
+except ImportError:
+    ALPACA_AVAILABLE = False
+
+try:
+    from frontend.utils.mt5_connector import MT5Connector
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+
+try:
+    from frontend.utils.ibkr_connector import IBKRConnector
+    IBKR_AVAILABLE = True
+except ImportError:
+    IBKR_AVAILABLE = False
+
 try:
     from bbbot1_pipeline.broker_api import (
         execute_trade, 
@@ -118,6 +137,58 @@ except ImportError as e:
     BROKER_IMPORT_ERROR = str(e)
 
 
+def test_alpaca_connection():
+    """Test Alpaca connection and display status"""
+    st.subheader("🧪 Test Alpaca Connection")
+    
+    api_key = os.getenv("ALPACA_API_KEY", "")
+    secret_key = os.getenv("ALPACA_SECRET_KEY", "")
+    paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+    
+    if not api_key or not secret_key:
+        st.error("❌ Alpaca credentials not configured in .env")
+        st.code("""
+# Add to .env:
+ALPACA_API_KEY=your_key_here
+ALPACA_SECRET_KEY=your_secret_here
+ALPACA_PAPER=true
+        """)
+        return
+    
+    with st.spinner("Testing Alpaca connection..."):
+        try:
+            from frontend.utils.alpaca_connector import AlpacaConnector
+            
+            alpaca = AlpacaConnector(api_key, secret_key, paper)
+            account = alpaca.get_account()
+            
+            if account:
+                st.success("✅ Alpaca Connected!")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Portfolio Value", f"${float(account.get('portfolio_value', 0)):,.2f}")
+                with col2:
+                    st.metric("Buying Power", f"${float(account.get('buying_power', 0)):,.2f}")
+                with col3:
+                    st.metric("Cash", f"${float(account.get('cash', 0)):,.2f}")
+                
+                trading_blocked = account.get('trading_blocked', False)
+                account_blocked = account.get('account_blocked', False)
+                
+                if not trading_blocked and not account_blocked:
+                    st.success("🟢 Ready to Trade!")
+                else:
+                    st.warning("⚠️ Trading Restricted")
+                
+                st.session_state.alpaca_connected = True
+                st.session_state.alpaca = alpaca
+            else:
+                st.error("❌ Failed to retrieve account information")
+        except Exception as e:
+            st.error(f"❌ Connection failed: {e}")
+
+
 def main():
     st.set_page_config(
         page_title="Broker Trading Dashboard",
@@ -126,6 +197,31 @@ def main():
     )
     
     st.title("💼 Multi-Broker Trading Dashboard")
+    st.markdown("---")
+    
+    # Connection Status Section
+    st.header("🔗 Broker Connections")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        alpaca_status = "🟢 Connected" if st.session_state.get('alpaca_connected') else "🔴 Disconnected"
+        st.metric("Alpaca (Stocks/Crypto)", alpaca_status)
+        if st.button("Test Alpaca", key="test_alpaca_main"):
+            test_alpaca_connection()
+    
+    with col2:
+        mt5_status = "🟢 Connected" if st.session_state.get('mt5_connected') else "🔴 Disconnected"
+        st.metric("MT5 (FOREX/Futures)", mt5_status)
+    
+    with col3:
+        ibkr_status = "🟢 Connected" if st.session_state.get('ibkr_connected') else "🔴 Disconnected"
+        st.metric("IBKR (Multi-Asset)", ibkr_status)
+    
+    with col4:
+        st.metric("Future Brokers", "🔜 Coming Soon")
+        st.caption("QuantConnect, TD Ameritrade, NinjaTrader, Binance")
+    
     st.markdown("---")
     
     if not BROKER_API_AVAILABLE:

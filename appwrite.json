@@ -721,6 +721,27 @@
                 "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
                 "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID"
             }
+        },
+        {
+            "$id": "plaid_quickstart",
+            "name": "plaid_quickstart",
+            "runtime": "node-18.0",
+            "path": "appwrite-functions/plaid-quickstart",
+            "entrypoint": "main.js",
+            "enabled": true,
+            "logging": true,
+            "execute": ["any"],
+            "timeout": 30,
+            "variables": {
+                "PLAID_CLIENT_ID": "$PLAID_CLIENT_ID",
+                "PLAID_SECRET": "$PLAID_SECRET",
+                "PLAID_ENV": "$PLAID_ENV",
+                "APPWRITE_FUNCTION_PROJECT_ID": "$APPWRITE_PROJECT_ID",
+                "APPWRITE_FUNCTION_ENDPOINT": "$APPWRITE_ENDPOINT",
+                "APPWRITE_API_KEY": "$APPWRITE_API_KEY",
+                "APPWRITE_DATABASE_ID": "$APPWRITE_DATABASE_ID",
+                "PLAID_ITEMS_COLLECTION_ID": "$PLAID_ITEMS_COLLECTION_ID"
+            }
         }
     ]
 }

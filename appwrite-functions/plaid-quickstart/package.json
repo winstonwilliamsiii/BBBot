@@ -1,0 +1,14 @@
+{
+  "name": "plaid-quickstart",
+  "version": "1.0.0",
+  "description": "Plaid API integration for BentleyBudgetBot",
+  "main": "main.js",
+  "type": "module",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "node-appwrite": "^13.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

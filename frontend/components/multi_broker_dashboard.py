@@ -128,12 +128,21 @@ def connect_alpaca():
     try:
         from frontend.utils.alpaca_connector import AlpacaConnector
         
-        api_key = os.getenv("ALPACA_API_KEY", "")
-        secret_key = os.getenv("ALPACA_SECRET_KEY", "")
-        paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+        # Try st.secrets first (Streamlit Cloud), then environment variables (local)
+        try:
+            api_key = st.secrets.get("ALPACA_API_KEY", "")
+            secret_key = st.secrets.get("ALPACA_SECRET_KEY", "")
+            paper = st.secrets.get("ALPACA_PAPER", "true")
+        except (AttributeError, FileNotFoundError):
+            api_key = os.getenv("ALPACA_API_KEY", "")
+            secret_key = os.getenv("ALPACA_SECRET_KEY", "")
+            paper = os.getenv("ALPACA_PAPER", "true")
+        
+        paper = str(paper).lower() == "true"
         
         if not api_key or not secret_key:
-            st.error("❌ Alpaca credentials not configured in .env")
+            st.error("❌ Alpaca credentials not configured")
+            st.info("Configure in Streamlit Secrets (Cloud) or .env file (Local)")
             return
         
         connector = AlpacaConnector(api_key, secret_key, paper)

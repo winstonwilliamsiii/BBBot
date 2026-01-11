@@ -11,9 +11,11 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables - use explicit path
+# Load environment variables - use explicit path for local development
 env_path = Path(__file__).parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+# Note: Streamlit Cloud uses st.secrets instead of .env
 
 # Import color scheme and styling from home page
 try:
@@ -147,39 +149,70 @@ def test_alpaca_connection():
     """Test Alpaca connection and display status"""
     st.subheader("🧪 Test Alpaca Connection")
     
-    # Debug: Show .env file location
-    env_path = Path(__file__).parent.parent / '.env'
-    st.caption(f"📂 Looking for .env at: {env_path}")
-    st.caption(f"✅ .env exists: {env_path.exists()}")
+    # Try to get credentials from st.secrets (Streamlit Cloud) or environment variables (local)
+    try:
+        # Streamlit Cloud: Use secrets
+        api_key = st.secrets.get("ALPACA_API_KEY", "")
+        secret_key = st.secrets.get("ALPACA_SECRET_KEY", "")
+        paper = st.secrets.get("ALPACA_PAPER", "true")
+        source = "Streamlit Secrets"
+    except (AttributeError, FileNotFoundError):
+        # Local development: Use environment variables
+        api_key = os.getenv("ALPACA_API_KEY", "")
+        secret_key = os.getenv("ALPACA_SECRET_KEY", "")
+        paper = os.getenv("ALPACA_PAPER", "true")
+        source = "Environment Variables (.env)"
     
-    api_key = os.getenv("ALPACA_API_KEY", "")
-    secret_key = os.getenv("ALPACA_SECRET_KEY", "")
-    paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+    paper = str(paper).lower() == "true"
     
-    # Debug: Show what was loaded
-    st.caption(f"🔑 API Key loaded: {bool(api_key)} ({api_key[:10]}... if {api_key})")
-    st.caption(f"🔐 Secret Key loaded: {bool(secret_key)} ({secret_key[:10]}... if {secret_key})")
+    # Show configuration source
+    st.caption(f"📋 Configuration source: {source}")
     
-    if not api_key or not secret_key:
-        st.error("❌ Alpaca credentials not configured in .env")
-        
-        # Show more diagnostic info
-        st.warning("🔍 Debugging Information:")
+    # Debug info (can be removed after testing)
+    with st.expander("🔍 Debug Information"):
+        env_path = Path(__file__).parent.parent / '.env'
         st.code(f"""
+Environment: {'Streamlit Cloud' if '/mount/src/' in str(Path.cwd()) else 'Local Development'}
 Current directory: {os.getcwd()}
 .env path: {env_path}
 .env exists: {env_path.exists()}
-API Key loaded: {bool(api_key)}
-Secret Key loaded: {bool(secret_key)}
+API Key loaded: {bool(api_key)} ({api_key[:10]}... if available)
+Secret Key loaded: {bool(secret_key)} ({secret_key[:10]}... if available)
+Configuration source: {source}
         """)
+    
+    if not api_key or not secret_key:
+        st.error("❌ Alpaca credentials not configured")
         
-        st.info("💡 Solution:")
-        st.code("""
-# Add to .env:
+        # Show appropriate instructions based on environment
+        if '/mount/src/' in str(Path.cwd()):
+            # Streamlit Cloud
+            st.warning("🌐 **Streamlit Cloud Detected**")
+            st.info("""
+            **To add credentials in Streamlit Cloud:**
+            
+            1. Go to your app dashboard: https://share.streamlit.io/
+            2. Click on your app
+            3. Click "Settings" → "Secrets"
+            4. Add the following:
+            
+            ```toml
+            ALPACA_API_KEY = "your_key_here"
+            ALPACA_SECRET_KEY = "your_secret_here"
+            ALPACA_PAPER = "true"
+            ```
+            
+            5. Click "Save" and the app will automatically restart
+            """)
+        else:
+            # Local development
+            st.info("💻 **Local Development Detected**")
+            st.code("""
+# Add to .env file:
 ALPACA_API_KEY=your_key_here
 ALPACA_SECRET_KEY=your_secret_here
 ALPACA_PAPER=true
-        """)
+            """)
         return
     
     with st.spinner("Testing Alpaca connection..."):

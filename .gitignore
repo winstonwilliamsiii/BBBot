@@ -129,5 +129,8 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+# Streamlit secrets (never commit!)
+.streamlit/secrets.toml
+
 # Directory used by Appwrite CLI for local development
 .appwrite

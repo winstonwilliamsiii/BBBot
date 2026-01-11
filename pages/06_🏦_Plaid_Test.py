@@ -64,7 +64,7 @@ col1, col2 = st.columns(2)
 with col1:
     # Check if running on Streamlit Cloud vs local
     is_cloud = os.getenv('STREAMLIT_SHARING_MODE') is not None or 'streamlit.app' in st.get_option('browser.serverAddress')
-    default_url = "https://your-appwrite-endpoint.com/v1/functions/plaid" if is_cloud else "http://localhost:5001"
+    default_url = "https://fra.cloud.appwrite.io/v1/functions/plaid_quickstart/executions" if is_cloud else "http://localhost:5001"
     
     backend_url = st.text_input(
         "Backend URL",
@@ -73,7 +73,7 @@ with col1:
     )
     
     if 'localhost' in backend_url and is_cloud:
-        st.warning("⚠️ Running on Streamlit Cloud - localhost won't work! Deploy backend to Appwrite Functions or use ngrok.")
+        st.warning("⚠️ Running on Streamlit Cloud - localhost won't work! Using deployed Appwrite Function.")
 
 with col2:
     user_id = st.text_input(

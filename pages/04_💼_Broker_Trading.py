@@ -8,6 +8,10 @@ import pandas as pd
 from datetime import datetime
 import sys
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Import color scheme and styling from home page
 try:

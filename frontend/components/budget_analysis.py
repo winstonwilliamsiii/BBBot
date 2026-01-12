@@ -53,7 +53,7 @@ class BudgetAnalyzer:
         # Check Streamlit secrets first, then fall back to env vars
         self.db_config = {
             'host': get_secret('BUDGET_MYSQL_HOST', get_secret('MYSQL_HOST', '127.0.0.1')),
-            'port': int(get_secret('BUDGET_MYSQL_PORT', get_secret('MYSQL_PORT', '3306'))),
+            'port': int(get_secret('BUDGET_MYSQL_PORT', get_secret('MYSQL_PORT', '3307'))),
             'user': get_secret('BUDGET_MYSQL_USER', get_secret('MYSQL_USER', 'root')),
             'password': get_secret('BUDGET_MYSQL_PASSWORD', get_secret('MYSQL_PASSWORD', '')),
             'database': get_secret('BUDGET_MYSQL_DATABASE', get_secret('MYSQL_DATABASE', 'mydb')),

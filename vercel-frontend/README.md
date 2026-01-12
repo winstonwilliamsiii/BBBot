@@ -1,4 +1,4 @@
-# Vercel Frontend - Bentley Budget Bot Integration
+O# Vercel Frontend - Bentley Budget Bot Integration
 
 > Complete Node.js/Next.js frontend with secure Appwrite integration for ML experiments, metrics tracking, and financial data management.
 

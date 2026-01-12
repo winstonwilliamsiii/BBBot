@@ -7,6 +7,7 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
+import { getSchwabToken, getTradeStationToken, binanceGet, httpGetWithAuth } from './lib/broker-utils'
 
 type EnvMode = 'MVP' | 'PRODUCTION'
 type AssetClass = 'equities' | 'futures' | 'options' | 'forex' | 'crypto'
@@ -130,12 +131,37 @@ async function getPositionsIBKR(): Promise<NormalizedPosition[]> {
 }
 
 // ============================================
-// SCHWAB ADAPTER (Stub)
+// SCHWAB ADAPTER
 // ============================================
 
+import { getSchwabToken, httpGetWithAuth } from './lib/broker-utils'
+
 async function getPositionsSchwab(): Promise<NormalizedPosition[]> {
-  console.warn('[Schwab] Positions adapter not yet implemented')
-  return []
+  console.log('[Schwab] Fetching positions...')
+  
+  const accountId = process.env.SCHWAB_ACCOUNT_ID
+  const apiUrl = process.env.SCHWAB_API_URL || 'https://api.schwabapi.com'
+
+  if (!accountId) {
+    throw new Error('Missing SCHWAB_ACCOUNT_ID')
+  }
+
+  const token = await getSchwabToken()
+  const url = `${apiUrl}/trader/v1/accounts/${accountId}/positions`
+  const data = await httpGetWithAuth(url, token)
+
+  const positions: NormalizedPosition[] = (data.securitiesAccount?.positions || []).map((p: any) => ({
+    broker: 'schwab',
+    symbol: p?.instrument?.symbol ?? '',
+    qty: p?.longQuantity ? Number(p.longQuantity) : (p?.shortQuantity ? -Number(p.shortQuantity) : 0),
+    avgPrice: p?.averagePrice ? Number(p.averagePrice) : undefined,
+    marketValue: p?.marketValue ? Number(p.marketValue) : undefined,
+    unrealizedPnL: p?.currentDayProfitLoss ? Number(p.currentDayProfitLoss) : undefined,
+    raw: p
+  }))
+
+  console.log(`[Schwab] Found ${positions.length} positions`)
+  return positions
 }
 
 // ============================================
@@ -154,12 +180,66 @@ async function getPositionsMT5(): Promise<NormalizedPosition[]> {
 }
 
 // ============================================
-// BINANCE ADAPTER (Stub)
+// BINANCE ADAPTER
 // ============================================
 
+import { binanceGet } from './lib/broker-utils'
+
 async function getPositionsBinance(): Promise<NormalizedPosition[]> {
-  console.warn('[Binance] Positions adapter not yet implemented')
-  return []
+  console.log('[Binance] Fetching positions...')
+  
+  // Binance uses /api/v3/account for positions
+  const accountData = await binanceGet('/api/v3/account', {})
+
+  const positions: NormalizedPosition[] = (accountData.balances || [])
+    .filter((b: any) => Number(b.free) > 0 || Number(b.locked) > 0)
+    .map((b: any) => {
+      const qty = Number(b.free) + Number(b.locked)
+      return {
+        broker: 'binance',
+        symbol: b.asset,
+        qty,
+        avgPrice: undefined, // Binance doesn't provide avg price in account endpoint
+        marketValue: undefined, // Would need to fetch current price
+        unrealizedPnL: undefined,
+        raw: b
+      }
+    })
+
+  console.log(`[Binance] Found ${positions.length} positions`)
+  return positions
+}
+
+// ============================================
+// TRADESTATION ADAPTER
+// ============================================
+
+async function getPositionsTradeStation(): Promise<NormalizedPosition[]> {
+  console.log('[TradeStation] Fetching positions...')
+  
+  const accountId = process.env.TRADESTATION_ACCOUNT_ID
+  const apiUrl = process.env.TRADESTATION_API_URL || 'https://api.tradestation.com'
+
+  if (!accountId) {
+    throw new Error('Missing TRADESTATION_ACCOUNT_ID')
+  }
+
+  const token = await getTradeStationToken()
+  const url = `${apiUrl}/v3/accounts/${accountId}/positions`
+  const data = await httpGetWithAuth(url, token)
+
+  const positions: NormalizedPosition[] = (data.Positions || []).map((p: any) => ({
+    broker: 'tradestation',
+    symbol: p?.Symbol ?? '',
+    qty: p?.Quantity ? Number(p.Quantity) : 0,
+    avgPrice: p?.AveragePrice ? Number(p.AveragePrice) : undefined,
+    marketValue: p?.MarketValue ? Number(p.MarketValue) : undefined,
+    unrealizedPnL: p?.UnrealizedProfitLoss ? Number(p.UnrealizedProfitLoss) : undefined,
+    raw: p
+  }))
+
+  console.log(`[TradeStation] Found ${positions.length} positions`)
+  return positions
 }
 
 // ============================================
@@ -221,6 +301,10 @@ export default async function handler(
       
       case 'binance':
         positions = await getPositionsBinance()
+        break
+      
+      case 'tradestation':
+        positions = await getPositionsTradeStation()
         break
       
       default:

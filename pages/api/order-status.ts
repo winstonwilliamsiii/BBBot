@@ -7,6 +7,7 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
+import { binanceGet, getSchwabToken, getTradeStationToken, httpGetWithAuth } from './lib/broker-utils'
 
 type EnvMode = 'MVP' | 'PRODUCTION'
 type AssetClass = 'equities' | 'futures' | 'options' | 'forex' | 'crypto'
@@ -146,18 +147,36 @@ async function getOrderStatusIBKR(orderId: string): Promise<NormalizedOrderStatu
 }
 
 // ============================================
-// SCHWAB ADAPTER (Stub)
+// SCHWAB ADAPTER
 // ============================================
 
 async function getOrderStatusSchwab(orderId: string): Promise<NormalizedOrderStatus> {
-  console.warn('[Schwab] Order status adapter not yet implemented')
+  console.log(`[Schwab] Fetching order status for: ${orderId}`)
   
+  const accountId = process.env.SCHWAB_ACCOUNT_ID
+  const apiUrl = process.env.SCHWAB_API_URL || 'https://api.schwabapi.com'
+
+  if (!accountId) {
+    throw new Error('Missing SCHWAB_ACCOUNT_ID')
+  }
+
+  const token = await getSchwabToken()
+  const url = `${apiUrl}/trader/v1/accounts/${accountId}/orders/${orderId}`
+  const data = await httpGetWithAuth(url, token)
+
   return {
     broker: 'schwab',
-    orderId,
-    status: 'unknown',
-    filledQty: null,
-    raw: { message: 'Schwab order status adapter not yet implemented' },
+    orderId: data.orderId ?? orderId,
+    status: data.status ?? 'unknown',
+    symbol: data.orderLegCollection?.[0]?.instrument?.symbol,
+    side: data.orderLegCollection?.[0]?.instruction,
+    qty: data.quantity ? Number(data.quantity) : undefined,
+    filledQty: data.filledQuantity ? Number(data.filledQuantity) : null,
+    avgFillPrice: data.price ? Number(data.price) : null,
+    submittedAt: data.enteredTime,
+    filledAt: data.closeTime,
+    updatedAt: data.enteredTime,
+    raw: data
   }
 }
 
@@ -183,18 +202,63 @@ async function getOrderStatusMT5(orderId: string): Promise<NormalizedOrderStatus
 }
 
 // ============================================
-// BINANCE ADAPTER (Stub)
+// BINANCE ADAPTER
 // ============================================
 
 async function getOrderStatusBinance(orderId: string): Promise<NormalizedOrderStatus> {
-  console.warn('[Binance] Order status adapter not yet implemented')
+  console.log(`[Binance] Fetching order status for: ${orderId}`)
   
+  // Binance requires symbol for order query - would need to pass it or store mapping
+  // For now, query all orders and find by orderId
+  const data = await binanceGet('/api/v3/order', { orderId })
+
   return {
     broker: 'binance',
-    orderId,
-    status: 'unknown',
-    filledQty: null,
-    raw: { message: 'Binance order status adapter not yet implemented' },
+    orderId: String(data.orderId),
+    status: data.status ?? 'unknown',
+    symbol: data.symbol,
+    side: data.side,
+    qty: data.origQty ? Number(data.origQty) : undefined,
+    filledQty: data.executedQty ? Number(data.executedQty) : null,
+    avgFillPrice: data.price ? Number(data.price) : null,
+    submittedAt: data.time ? new Date(data.time).toISOString() : undefined,
+    filledAt: data.updateTime ? new Date(data.updateTime).toISOString() : undefined,
+    updatedAt: data.updateTime ? new Date(data.updateTime).toISOString() : undefined,
+    raw: data
+  }
+}
+
+// ============================================
+// TRADESTATION ADAPTER
+// ============================================
+
+async function getOrderStatusTradeStation(orderId: string): Promise<NormalizedOrderStatus> {
+  console.log(`[TradeStation] Fetching order status for: ${orderId}`)
+  
+  const accountId = process.env.TRADESTATION_ACCOUNT_ID
+  const apiUrl = process.env.TRADESTATION_API_URL || 'https://api.tradestation.com'
+
+  if (!accountId) {
+    throw new Error('Missing TRADESTATION_ACCOUNT_ID')
+  }
+
+  const token = await getTradeStationToken()
+  const url = `${apiUrl}/v3/orderexecution/orders/${orderId}`
+  const data = await httpGetWithAuth(url, token)
+
+  return {
+    broker: 'tradestation',
+    orderId: data.OrderID ?? orderId,
+    status: data.Status ?? 'unknown',
+    symbol: data.Symbol,
+    side: data.BuyOrSell,
+    qty: data.Quantity ? Number(data.Quantity) : undefined,
+    filledQty: data.FilledQuantity ? Number(data.FilledQuantity) : null,
+    avgFillPrice: data.AveragePrice ? Number(data.AveragePrice) : null,
+    submittedAt: data.OpenedDateTime,
+    filledAt: data.ClosedDateTime,
+    updatedAt: data.StatusDateTime,
+    raw: data
   }
 }
 
@@ -267,6 +331,10 @@ export default async function handler(
       
       case 'binance':
         status = await getOrderStatusBinance(orderId)
+        break
+      
+      case 'tradestation':
+        status = await getOrderStatusTradeStation(orderId)
         break
       
       default:

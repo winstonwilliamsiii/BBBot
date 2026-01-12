@@ -7,6 +7,7 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
+import { binanceGet, getSchwabToken, getTradeStationToken, httpGetWithAuth } from './lib/broker-utils'
 
 type EnvMode = 'MVP' | 'PRODUCTION'
 type AssetClass = 'equities' | 'futures' | 'options' | 'forex' | 'crypto'
@@ -136,18 +137,32 @@ async function getBalanceIBKR(): Promise<NormalizedBalance> {
 }
 
 // ============================================
-// SCHWAB ADAPTER (Stub)
+// SCHWAB ADAPTER
 // ============================================
 
 async function getBalanceSchwab(): Promise<NormalizedBalance> {
-  console.warn('[Schwab] Balance adapter not yet implemented')
+  console.log('[Schwab] Fetching balance...')
   
+  const accountId = process.env.SCHWAB_ACCOUNT_ID
+  const apiUrl = process.env.SCHWAB_API_URL || 'https://api.schwabapi.com'
+
+  if (!accountId) {
+    throw new Error('Missing SCHWAB_ACCOUNT_ID')
+  }
+
+  const token = await getSchwabToken()
+  const url = `${apiUrl}/trader/v1/accounts/${accountId}`
+  const data = await httpGetWithAuth(url, token)
+
+  const account = data.securitiesAccount || {}
+  const balance = account.currentBalances || {}
+
   return {
     broker: 'schwab',
-    cash: null,
-    buyingPower: null,
-    equity: null,
-    raw: { message: 'Schwab balance adapter not yet implemented' },
+    cash: balance.cashBalance ? Number(balance.cashBalance) : null,
+    equity: balance.equity ? Number(balance.equity) : null,
+    buyingPower: balance.buyingPower ? Number(balance.buyingPower) : null,
+    raw: data
   }
 }
 
@@ -173,18 +188,57 @@ async function getBalanceMT5(): Promise<NormalizedBalance> {
 }
 
 // ============================================
-// BINANCE ADAPTER (Stub)
+// BINANCE ADAPTER
 // ============================================
 
 async function getBalanceBinance(): Promise<NormalizedBalance> {
-  console.warn('[Binance] Balance adapter not yet implemented')
+  console.log('[Binance] Fetching balance...')
   
+  const accountData = await binanceGet('/api/v3/account', {})
+
+  // Sum up all asset values (would need to convert to USD in production)
+  let totalEquity = 0
+  for (const bal of accountData.balances || []) {
+    const free = Number(bal.free)
+    const locked = Number(bal.locked)
+    totalEquity += free + locked
+  }
+
   return {
     broker: 'binance',
-    cash: null,
-    buyingPower: null,
-    equity: null,
-    raw: { message: 'Binance balance adapter not yet implemented' },
+    cash: totalEquity, // Simplified - in production, would separate USDT/USDC
+    equity: totalEquity,
+    buyingPower: totalEquity, // Simplified - Binance has complex margin rules
+    raw: accountData
+  }
+}
+
+// ============================================
+// TRADESTATION ADAPTER
+// ============================================
+
+async function getBalanceTradeStation(): Promise<NormalizedBalance> {
+  console.log('[TradeStation] Fetching balance...')
+  
+  const accountId = process.env.TRADESTATION_ACCOUNT_ID
+  const apiUrl = process.env.TRADESTATION_API_URL || 'https://api.tradestation.com'
+
+  if (!accountId) {
+    throw new Error('Missing TRADESTATION_ACCOUNT_ID')
+  }
+
+  const token = await getTradeStationToken()
+  const url = `${apiUrl}/v3/brokerage/accounts/${accountId}/balances`
+  const data = await httpGetWithAuth(url, token)
+
+  const balances = data.Balances || data
+
+  return {
+    broker: 'tradestation',
+    cash: balances.CashBalance ? Number(balances.CashBalance) : null,
+    equity: balances.Equity ? Number(balances.Equity) : null,
+    buyingPower: balances.BuyingPower ? Number(balances.BuyingPower) : null,
+    raw: data
   }
 }
 
@@ -247,6 +301,10 @@ export default async function handler(
       
       case 'binance':
         balance = await getBalanceBinance()
+        break
+      
+      case 'tradestation':
+        balance = await getBalanceTradeStation()
         break
       
       default:

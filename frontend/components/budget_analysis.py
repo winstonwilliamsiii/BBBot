@@ -36,12 +36,20 @@ def get_secret(key: str, default: str = None) -> str:
     # Try Streamlit secrets first (for Streamlit Cloud)
     try:
         if hasattr(st, 'secrets') and key in st.secrets:
-            return str(st.secrets[key])
-    except Exception:
-        pass
+            value = str(st.secrets[key])
+            # DEBUG: Log where the value came from
+            if key.endswith('PORT'):
+                st.sidebar.warning(f"🔍 {key} from secrets: {value}")
+            return value
+    except Exception as e:
+        if key.endswith('PORT'):
+            st.sidebar.warning(f"🔍 {key} NOT in secrets, trying env")
     
     # Fall back to environment variables (for local development)
-    return os.getenv(key, default)
+    env_value = os.getenv(key, default)
+    if key.endswith('PORT'):
+        st.sidebar.warning(f"🔍 {key} from env/default: {env_value}")
+    return env_value
 
 
 class BudgetAnalyzer:
@@ -60,6 +68,9 @@ class BudgetAnalyzer:
             'charset': 'utf8mb4',
             'collation': 'utf8mb4_unicode_ci'
         }
+        
+        # DEBUG: Show what port is being used
+        st.sidebar.info(f"🔍 DEBUG: Connecting to MySQL Port {self.db_config['port']}")
     
     def _get_connection(self):
         """Create database connection."""

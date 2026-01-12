@@ -440,6 +440,126 @@ vercel env add ALPACA_BASE_URL production
 - [ ] Error notifications set up
 - [ ] Backup broker credentials stored securely
 
+## Additional API Endpoints
+
+### Get Positions
+Retrieve current positions from broker accounts.
+
+```bash
+GET /api/positions?class=equities&broker=alpaca
+```
+
+**Query Parameters:**
+- `class` - Asset class (equities, futures, options, forex, crypto)
+- `broker` - Optional broker override
+
+**Response:**
+```json
+{
+  "broker": "alpaca",
+  "positions": [
+    {
+      "broker": "alpaca",
+      "symbol": "AAPL",
+      "qty": 10,
+      "avgPrice": 150.00,
+      "marketValue": 1520.50,
+      "unrealizedPnL": 20.50,
+      "raw": {...}
+    }
+  ]
+}
+```
+
+### Get Balance
+Retrieve account balance and buying power.
+
+```bash
+GET /api/balance?class=equities&broker=alpaca
+```
+
+**Query Parameters:**
+- `class` - Asset class (equities, futures, options, forex, crypto)
+- `broker` - Optional broker override
+
+**Response:**
+```json
+{
+  "broker": "alpaca",
+  "balance": {
+    "broker": "alpaca",
+    "cash": 10000.00,
+    "buyingPower": 40000.00,
+    "equity": 12000.00,
+    "portfolioValue": 12000.00,
+    "currency": "USD",
+    "raw": {...}
+  }
+}
+```
+
+### Get Order Status
+Check the status of a previously placed order.
+
+```bash
+GET /api/order-status?class=equities&orderId=abc-123&broker=alpaca
+```
+
+**Query Parameters:**
+- `class` - Asset class (equities, futures, options, forex, crypto)
+- `orderId` - Order ID to check (required)
+- `broker` - Optional broker override
+
+**Response:**
+```json
+{
+  "broker": "alpaca",
+  "status": {
+    "broker": "alpaca",
+    "orderId": "abc-123",
+    "status": "filled",
+    "symbol": "AAPL",
+    "side": "buy",
+    "qty": 10,
+    "filledQty": 10,
+    "avgFillPrice": 150.25,
+    "submittedAt": "2026-01-11T10:00:00Z",
+    "filledAt": "2026-01-11T10:00:05Z",
+    "updatedAt": "2026-01-11T10:00:05Z",
+    "raw": {...}
+  }
+}
+```
+
+## API Workflow Example
+
+Complete trading workflow using all endpoints:
+
+```bash
+# 1. Check account balance
+curl http://localhost:3000/api/balance?class=equities
+
+# 2. Place a trade
+curl -X POST http://localhost:3000/api/trade \
+  -H "Content-Type: application/json" \
+  -d '{
+    "class": "equities",
+    "symbol": "AAPL",
+    "qty": 10,
+    "side": "buy"
+  }'
+# Response: { "orderId": "abc-123", ... }
+
+# 3. Check order status
+curl "http://localhost:3000/api/order-status?class=equities&orderId=abc-123"
+
+# 4. View updated positions
+curl http://localhost:3000/api/positions?class=equities
+
+# 5. Check updated balance
+curl http://localhost:3000/api/balance?class=equities
+```
+
 ## Support & References
 
 - **Alpaca API Docs**: https://alpaca.markets/docs/api-references/trading-api/

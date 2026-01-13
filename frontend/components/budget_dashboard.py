@@ -66,82 +66,46 @@ def show_plaid_connection_prompt(user_id: int):
         
         st.markdown("<p style='text-align: center; font-size: 0.8rem; color: rgba(230,238,248,0.6); margin-top: 5px;'>🔒 Bank-Level Security</p>", unsafe_allow_html=True)
         
-        # Bank connection method selector
-        st.markdown("#### Choose Connection Method")
-        connection_method = st.radio(
-            "Select how to connect your bank:",
-            ["🏦 Plaid (Consumer Banks)", "💼 Bank of America CashPro"],
-            horizontal=True,
-            label_visibility="collapsed"
-        )
-        
-        if connection_method == "🏦 Plaid (Consumer Banks)":
-            # Connect Your Bank button with Plaid Link
-            try:
-                from frontend.utils.plaid_link import render_plaid_link_button
+        # Connect Your Bank button with Plaid Link
+        try:
+            from frontend.utils.plaid_link import render_plaid_link_button
+            
+            # Render Plaid Link button with OAuth flow
+            render_plaid_link_button(user_id)
+            
+        except Exception as e:
+            # Show error message and debug info
+            st.error(f"⚠️ Error loading Plaid Link: {str(e)}")
+            
+            # Show setup instructions
+            with st.expander("🔧 Setup Instructions"):
+                st.markdown("""
+                **To enable bank connections:**
                 
-                # Render Plaid Link button with OAuth flow
-                render_plaid_link_button(user_id)
+                1. 📝 **Sign up at:** https://plaid.com/dashboard
+                2. 🔑 **Get credentials:**
+                   - PLAID_CLIENT_ID
+                   - PLAID_SECRET
+                3. ⚙️ **Update .env file** with your credentials
+                4. 🔄 **Restart app** to apply changes
                 
-            except Exception as e:
-                # Show error message and debug info
-                st.error(f"⚠️ Error loading Plaid Link: {str(e)}")
+                **Current status:**
+                """)
+                import os
+                from dotenv import load_dotenv
+                load_dotenv(override=True)
                 
-                # Show setup instructions
-                with st.expander("🔧 Setup Instructions"):
-                    st.markdown("""
-                    **To enable bank connections:**
-                    
-                    1. 📝 **Sign up at:** https://plaid.com/dashboard
-                    2. 🔑 **Get credentials:**
-                       - PLAID_CLIENT_ID
-                       - PLAID_SECRET
-                    3. ⚙️ **Update .env file** with your credentials
-                    4. 🔄 **Restart app** to apply changes
-                    
-                    **Current status:**
-                    """)
-                    import os
-                    from dotenv import load_dotenv
-                    load_dotenv(override=True)
-                    
-                    plaid_client_id = os.getenv('PLAID_CLIENT_ID', '')
-                    plaid_secret = os.getenv('PLAID_SECRET', '')
-                    plaid_env = os.getenv('PLAID_ENV', 'sandbox')
-                    
-                    st.write(f"- PLAID_CLIENT_ID: {'✅ Set' if plaid_client_id and plaid_client_id != 'your_plaid_client_id_here' else '❌ Not set'}")
-                    st.write(f"- PLAID_SECRET: {'✅ Set' if plaid_secret and plaid_secret != 'your_plaid_secret_here' else '❌ Not set'}")
-                    st.write(f"- PLAID_ENV: {plaid_env}")
+                plaid_client_id = os.getenv('PLAID_CLIENT_ID', '')
+                plaid_secret = os.getenv('PLAID_SECRET', '')
+                plaid_env = os.getenv('PLAID_ENV', 'sandbox')
                 
-                with st.expander("🐛 Debug Info"):
-                    import traceback
-                    st.code(traceback.format_exc())
-        
-        else:  # Bank of America CashPro
-            try:
-                from frontend.utils.bofa_cashpro import render_bofa_connection_form
-                
-                # Render BofA CashPro connection form
-                render_bofa_connection_form(user_id)
-                
-            except Exception as e:
-                st.error(f"⚠️ Error loading BofA CashPro: {str(e)}")
-                
-                with st.expander("🔧 Setup Instructions"):
-                    st.markdown("""
-                    **To enable BofA CashPro:**
-                    
-                    1. 📝 **Contact your BofA relationship manager**
-                    2. 🔑 **Request API credentials:**
-                       - BOFA_CLIENT_ID
-                       - BOFA_CLIENT_SECRET
-                       - BOFA_API_KEY
-                    3. ⚙️ **Add to Streamlit secrets** or .env file
-                    4. 🔄 **Restart app** to apply changes
-                    
-                    **Documentation:**
-                    https://developer.bankofamerica.com/cashpro/apis
-                    """)
+                st.write(f"- PLAID_CLIENT_ID: {'✅ Set' if plaid_client_id and plaid_client_id != 'your_plaid_client_id_here' else '❌ Not set'}")
+                st.write(f"- PLAID_SECRET: {'✅ Set' if plaid_secret and plaid_secret != 'your_plaid_secret_here' else '❌ Not set'}")
+                st.write(f"- PLAID_ENV: {plaid_env}")
+            
+            with st.expander("🐛 Debug Info"):
+                import traceback
+                st.code(traceback.format_exc())
 
 
 def show_budget_summary(user_id: int, month: str = None):

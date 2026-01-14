@@ -16,7 +16,7 @@ print("=" * 60)
 
 # Import connector
 try:
-    from frontend.utils.alpaca_connector import AlpacaConnector
+    from frontend.components.alpaca_connector import AlpacaConnector
     print("✅ Alpaca connector imported successfully")
 except ImportError as e:
     print(f"❌ Failed to import Alpaca connector: {e}")

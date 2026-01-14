@@ -71,8 +71,9 @@ with col1:
         'streamlit.app' in str(os.getenv('STREAMLIT_SERVER_HEADLESS', ''))
     )
     
-    # Force Appwrite endpoint for production, localhost for local dev
-    default_url = "https://fra.cloud.appwrite.io/v1/functions/plaid_quickstart/executions" if is_cloud else "http://localhost:5001"
+    # For Appwrite functions, we need a proxy wrapper that doesn't include /executions in the base URL
+    # The client will append /api/create_link_token, /api/set_access_token, etc.
+    default_url = "https://696392de0017504ae7e5.fra.appwrite.run" if is_cloud else "http://localhost:5001"
     
     backend_url = st.text_input(
         "Backend URL",

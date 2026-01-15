@@ -185,7 +185,7 @@ try:
         show_user_info,
         show_permission_denied,
     )
-    from frontend.utils.broker_connections import (
+    from frontend.components.broker_connections import (
         display_broker_connections,
         display_webull_funds,
         display_position_analysis,

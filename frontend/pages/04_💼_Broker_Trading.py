@@ -113,7 +113,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 # Import broker connectors
 try:
-    from frontend.utils.alpaca_connector import AlpacaConnector
+    from frontend.components.alpaca_connector import AlpacaConnector
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
@@ -217,7 +217,7 @@ ALPACA_PAPER=true
     
     with st.spinner("Testing Alpaca connection..."):
         try:
-            from frontend.utils.alpaca_connector import AlpacaConnector
+            from frontend.components.alpaca_connector import AlpacaConnector
             
             alpaca = AlpacaConnector(api_key, secret_key, paper)
             account = alpaca.get_account()

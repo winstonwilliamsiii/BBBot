@@ -439,7 +439,23 @@ def main():
     try:
         # Connect to MySQL and fetch latest signals
         from sqlalchemy import create_engine
-        engine = create_engine("mysql+pymysql://root:root@127.0.0.1:3307/bbbot1")
+        
+        # Get database credentials from secrets (Streamlit Cloud) or env (local)
+        try:
+            db_host = st.secrets.get("BBBOT1_MYSQL_HOST", st.secrets.get("MYSQL_HOST", "127.0.0.1"))
+            db_port = st.secrets.get("BBBOT1_MYSQL_PORT", st.secrets.get("MYSQL_PORT", "3307"))
+            db_user = st.secrets.get("BBBOT1_MYSQL_USER", st.secrets.get("MYSQL_USER", "root"))
+            db_password = st.secrets.get("BBBOT1_MYSQL_PASSWORD", st.secrets.get("MYSQL_PASSWORD", "root"))
+            db_name = st.secrets.get("BBBOT1_MYSQL_DATABASE", "bbbot1")
+        except (AttributeError, FileNotFoundError):
+            db_host = os.getenv("BBBOT1_MYSQL_HOST", os.getenv("MYSQL_HOST", "127.0.0.1"))
+            db_port = os.getenv("BBBOT1_MYSQL_PORT", os.getenv("MYSQL_PORT", "3307"))
+            db_user = os.getenv("BBBOT1_MYSQL_USER", os.getenv("MYSQL_USER", "root"))
+            db_password = os.getenv("BBBOT1_MYSQL_PASSWORD", os.getenv("MYSQL_PASSWORD", "root"))
+            db_name = os.getenv("BBBOT1_MYSQL_DATABASE", "bbbot1")
+        
+        connection_string = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        engine = create_engine(connection_string)
         
         query = """
         SELECT 

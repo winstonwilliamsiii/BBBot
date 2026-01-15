@@ -32,6 +32,9 @@ python-dotenv>=1.0.0
 # HTTP requests
 requests>=2.28.0
 
+# Appwrite backend SDK
+appwrite>=4.0.0
+
 # ============================================
 # PLAID INTEGRATION (Personal Budget Analysis)
 # ============================================
@@ -45,6 +48,12 @@ python-dateutil>=2.8.0
 mysql-connector-python>=8.0.0
 sqlalchemy>=1.4.0
 pymysql>=1.1.0
+
+# ============================================
+# MLFLOW EXPERIMENT TRACKING (Required for Investment Analysis)
+# ============================================
+mlflow>=2.8.0
+alembic>=1.12.0
 
 # ============================================
 # AI CHATBOT (Bentley AI Assistant)
@@ -61,6 +70,9 @@ pymysql>=1.1.0
 # Excluded from cloud deployment:
 # - apache-airflow (too large, conflicts)
 # - dbt-core/dbt-mysql (local transformation only)
-# - mlflow (local experiment tracking only)
-# - broker APIs (local trading only)
+# - broker trading SDKs (local trading only - APIs work via REST)
+# 
+# INCLUDED for cloud (lightweight):
+# - mlflow (experiment tracking for Investment Analysis page)
+# - appwrite (backend SDK for database operations)
 # ============================================

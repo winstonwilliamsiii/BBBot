@@ -1,20 +1,46 @@
 """
 MLFlow Database Configuration for BentleyBot
 Centralized configuration for MLFlow tracking with MySQL backend
+Supports both local Docker (port 3307) and Railway cloud deployment
 """
 
 import os
 from typing import Optional
 
-# Updated MySQL Connection Details for MLFlow
-MLFLOW_MYSQL_CONFIG = {
-    "name": "Bentley_Budget",
-    "host": "127.0.0.1",
-    "port": 3307,  # Ensure port 3307 is used
-    "user": "root",
-    "password": "root",
-    "database": "bbbot1"  # Updated to use bbbot1
-}
+def get_mlflow_config() -> dict:
+    """
+    Get MLFlow MySQL configuration from environment variables
+    Supports both local and Railway deployments
+    
+    Returns:
+        dict: MySQL configuration for MLFlow
+    """
+    # Check for Railway/Cloud environment (Streamlit secrets or Railway env vars)
+    mlflow_host = os.getenv('MLFLOW_MYSQL_HOST')
+    
+    if mlflow_host and mlflow_host != '127.0.0.1':
+        # Railway/Cloud configuration
+        return {
+            "name": "Railway_MLFlow",
+            "host": mlflow_host,
+            "port": int(os.getenv('MLFLOW_MYSQL_PORT', '54537')),
+            "user": os.getenv('MLFLOW_MYSQL_USER', 'root'),
+            "password": os.getenv('MLFLOW_MYSQL_PASSWORD', ''),
+            "database": os.getenv('MLFLOW_MYSQL_DATABASE', 'mlflow_db')
+        }
+    else:
+        # Local Docker configuration
+        return {
+            "name": "Local_Docker",
+            "host": "127.0.0.1",
+            "port": 3307,
+            "user": "root",
+            "password": "root",
+            "database": "mlflow_db"  # Changed from bbbot1 to mlflow_db
+        }
+
+# Get configuration based on environment
+MLFLOW_MYSQL_CONFIG = get_mlflow_config()
 
 def get_mlflow_tracking_uri() -> str:
     """

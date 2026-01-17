@@ -1,0 +1,2 @@
+[console_scripts]
+bbbot1-mlflow-validate = bbbot1_pipeline.mlflow_config:validate_connection

@@ -10,6 +10,7 @@ import sys
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info, show_permission_denied
 
 # Load environment variables - use explicit path for local development
 env_path = Path(__file__).parent.parent / '.env'
@@ -24,6 +25,33 @@ try:
     
     # Apply home page styling first
     apply_custom_styling()
+    RBACManager.init_session_state()
+    show_user_info()
+    if not RBACManager.is_authenticated():
+        st.error("🔐 Authentication Required")
+        show_login_form()
+        st.stop()
+    if not RBACManager.has_permission(Permission.VIEW_BROKER_TRADING):
+        show_permission_denied("INVESTOR role with KYC + legal documents")
+        st.stop()
+    user = RBACManager.get_current_user()
+    if not (user and user.kyc_completed and user.investment_agreement_signed):
+        st.warning("⚠️ KYC and investment agreement required")
+        st.stop()
+    # Hide admin-only pages 6–8 from sidebar for non-ADMIN users
+    if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebarNav"] li:nth-child(6),
+            [data-testid="stSidebarNav"] li:nth-child(7),
+            [data-testid="stSidebarNav"] li:nth-child(8) {
+                display: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
     
     # Add page-specific enhancements
     st.markdown(f"""

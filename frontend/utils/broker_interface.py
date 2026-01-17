@@ -136,7 +136,7 @@ class AlpacaBrokerClient(BrokerClient):
     """Alpaca implementation of BrokerClient interface"""
     
     def __init__(self):
-        from frontend.utils.alpaca_connector import AlpacaConnector
+        from frontend.components.alpaca_connector import AlpacaConnector
         import os
         
         self.connector = AlpacaConnector(
@@ -253,7 +253,7 @@ class MT5BrokerClient(BrokerClient):
     """MetaTrader 5 implementation of BrokerClient interface"""
     
     def __init__(self):
-        from frontend.utils.mt5_connector import MT5Connector
+        from frontend.components.mt5_connector import MT5Connector
         import os
         
         self.connector = MT5Connector(

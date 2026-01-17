@@ -14,40 +14,42 @@ volumes:
 
 services:
   # ==================================================
-  # MLFLOW - Experiment Tracking
+  # MLFLOW - Experiment Tracking (with MySQL backend)
   # ==================================================
   mlflow:
     image: python:3.11-slim
     container_name: bentley-mlflow
     entrypoint: >
-      /bin/bash -c "pip install mlflow==2.8.0 && mlflow server
-      --backend-store-uri sqlite:///mlflow/mlflow.db
+      /bin/bash -c "pip install mlflow==2.8.1 pymysql gunicorn &&
+      mlflow server
+      --backend-store-uri mysql+pymysql://root:root@host.docker.internal:3307/mlflow_db
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
-      --port 5000"
+      --port 5000
+      --serve-artifacts"
     ports:
       - "5000:5000"
     networks:
       - bentley-network
     environment:
-      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_BACKEND_STORE_URI=mysql+pymysql://root:root@host.docker.internal:3307/mlflow_db
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
     volumes:
       - mlflow-data:/mlflow
     deploy:
       resources:
         limits:
-          memory: 1G
-          cpus: '1.0'
+          memory: 2G
+          cpus: '2.0'
         reservations:
-          memory: 512M
+          memory: 1G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
   # ==================================================
   # AIRBYTE - Data Integration Platform

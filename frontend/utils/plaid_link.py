@@ -197,7 +197,10 @@ def save_plaid_item(user_id: str, item_id: str, access_token: str, institution_n
 def render_plaid_link_button(user_id: str):
     """
     Render Plaid Link button for bank connection
+    Enhanced version with working callbacks and token exchange
     """
+    import streamlit.components.v1 as components
+    
     # Initialize all Plaid session state variables to prevent AttributeError
     if 'plaid_public_token' not in st.session_state:
         st.session_state.plaid_public_token = None
@@ -209,12 +212,6 @@ def render_plaid_link_button(user_id: str):
         st.session_state.plaid_institution = {}
     if 'show_manual_form' not in st.session_state:
         st.session_state.show_manual_form = True
-    """
-    Render Plaid Link button with OAuth flow
-    
-    This uses Streamlit components to embed Plaid Link
-    """
-    import streamlit.components.v1 as components
     
     try:
         # Initialize Plaid manager
@@ -229,92 +226,234 @@ def render_plaid_link_button(user_id: str):
         
         link_token = link_data['link_token']
         
-        # Render Plaid Link as HTML/JS component
+        # Create improved Plaid Link HTML with proper callback handling
         plaid_link_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+            <style>
+                * {{ margin: 0; padding: 0; }}
+                body {{ 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    padding: 15px;
+                }}
+                #link-button {{
+                    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+                    color: white;
+                    border: none;
+                    padding: 14px 28px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    width: 100%;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                }}
+                #link-button:hover {{
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 16px rgba(6, 182, 212, 0.4);
+                }}
+                #link-button:active {{
+                    transform: translateY(0);
+                }}
+                #link-button:disabled {{
+                    background: #999;
+                    cursor: not-allowed;
+                    opacity: 0.6;
+                    transform: none;
+                }}
+                #status {{
+                    margin-top: 10px;
+                    font-size: 13px;
+                    text-align: center;
+                    color: #666;
+                    display: none;
+                }}
+                #status.loading {{
+                    display: block;
+                    color: #3498db;
+                }}
+                #status.success {{
+                    display: block;
+                    color: #27ae60;
+                }}
+                #status.error {{
+                    display: block;
+                    color: #e74c3c;
+                }}
+            </style>
         </head>
         <body>
-            <button id="link-button" style="
-                background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                font-size: 16px;
-                font-weight: 600;
-                border-radius: 8px;
-                cursor: pointer;
-                width: 100%;
-                transition: all 0.3s ease;
-            " onmouseover="this.style.transform='scale(1.02)'" 
-               onmouseout="this.style.transform='scale(1)'">
+            <button id="link-button" onclick="openPlaidLink()">
                 🔗 Connect Your Bank
             </button>
+            <div id="status"></div>
             
             <script>
-                var linkHandler = Plaid.create({{
-                    token: '{link_token}',
-                    onSuccess: function(public_token, metadata) {{
-                        // Send public token back to Streamlit
-                        window.parent.postMessage({{
-                            type: 'plaid_success',
-                            public_token: public_token,
-                            institution: metadata.institution,
-                            accounts: metadata.accounts
-                        }}, '*');
-                    }},
-                    onExit: function(err, metadata) {{
-                        if (err != null) {{
-                            window.parent.postMessage({{
-                                type: 'plaid_error',
-                                error: err
-                            }}, '*');
-                        }}
-                    }}
-                }});
+                let linkHandler = null;
                 
-                document.getElementById('link-button').onclick = function() {{
-                    linkHandler.open();
-                }};
+                // Initialize Plaid Link
+                try {{
+                    console.log('[Plaid] Initializing with token:', '{link_token}'.substring(0, 30) + '...');
+                    
+                    linkHandler = Plaid.create({{
+                        token: '{link_token}',
+                        onSuccess: function(public_token, metadata) {{
+                            console.log('[Plaid] Success!');
+                            console.log('[Plaid] Institution:', metadata.institution.name);
+                            console.log('[Plaid] Accounts:', metadata.accounts.length);
+                            
+                            // Store in localStorage for Streamlit to pick up
+                            const data = {{
+                                type: 'PLAID_SUCCESS',
+                                public_token: public_token,
+                                institution_name: metadata.institution.name,
+                                institution_id: metadata.institution.id,
+                                accounts: metadata.accounts.map(a => ({{ id: a.id, name: a.name, type: a.type }}))
+                            }};
+                            
+                            localStorage.setItem('plaid_result', JSON.stringify(data));
+                            
+                            // Show success message
+                            const statusEl = document.getElementById('status');
+                            statusEl.className = 'success';
+                            statusEl.textContent = '✅ Successfully connected to ' + metadata.institution.name + '!';
+                            document.getElementById('link-button').disabled = false;
+                            document.getElementById('link-button').textContent = '✅ Bank Connected';
+                            
+                            // Notify Streamlit via page visibility or other mechanism
+                            // Force a page update by changing document title
+                            document.title = 'PLAID_CONNECTED_' + Date.now();
+                        }},
+                        onExit: function(err, metadata) {{
+                            console.log('[Plaid] Exit');
+                            document.getElementById('link-button').disabled = false;
+                            
+                            if (err) {{
+                                console.error('[Plaid] Error:', err);
+                                const statusEl = document.getElementById('status');
+                                statusEl.className = 'error';
+                                statusEl.textContent = '❌ Connection failed: ' + (err.display_message || err.error_message || err.error_type);
+                            }} else {{
+                                const statusEl = document.getElementById('status');
+                                statusEl.className = '';
+                                statusEl.textContent = 'Cancelled';
+                            }}
+                        }},
+                        onLoad: function() {{
+                            console.log('[Plaid] Link loaded successfully');
+                            document.getElementById('link-button').disabled = false;
+                        }},
+                        onEvent: function(eventName, metadata) {{
+                            console.log('[Plaid] Event:', eventName);
+                        }}
+                    }});
+                    
+                    console.log('[Plaid] Handler created successfully');
+                }} catch (e) {{
+                    console.error('[Plaid] Initialization error:', e);
+                    const statusEl = document.getElementById('status');
+                    statusEl.className = 'error';
+                    statusEl.textContent = '❌ Failed to load Plaid: ' + e.message;
+                    document.getElementById('link-button').disabled = true;
+                }}
+                
+                function openPlaidLink() {{
+                    if (!linkHandler) {{
+                        console.error('[Plaid] Handler not initialized');
+                        const statusEl = document.getElementById('status');
+                        statusEl.className = 'error';
+                        statusEl.textContent = '❌ Plaid not initialized';
+                        return;
+                    }}
+                    
+                    const btn = document.getElementById('link-button');
+                    const statusEl = document.getElementById('status');
+                    
+                    btn.disabled = true;
+                    statusEl.className = 'loading';
+                    statusEl.textContent = '⏳ Opening Plaid Link...';
+                    
+                    try {{
+                        console.log('[Plaid] Opening Link...');
+                        linkHandler.open();
+                    }} catch(e) {{
+                        console.error('[Plaid] Error opening Link:', e);
+                        btn.disabled = false;
+                        statusEl.className = 'error';
+                        statusEl.textContent = '❌ Error: ' + e.message;
+                    }}
+                }}
+                
+                console.log('[Plaid] Button ready');
             </script>
         </body>
         </html>
         """
         
         # Render component
-        components.html(plaid_link_html, height=60)
+        components.html(plaid_link_html, height=100)
         
-        # Handle postMessage callback - guard against missing or None value
-        if 'plaid_public_token' in st.session_state and st.session_state.plaid_public_token:
-            public_token = st.session_state.plaid_public_token
+        # Check for token in a more reliable way using a manual form
+        st.markdown("---")
+        st.subheader("Or enter manually")
+        
+        with st.form("plaid_manual_entry"):
+            st.info("If you've successfully connected your bank above, paste the public token below to complete the process.")
             
-            with st.spinner("Connecting to your bank..."):
-                # Exchange token
-                token_data = plaid_manager.exchange_public_token(public_token)
-                
-                if token_data:
-                    # Save to database
-                    institution_name = st.session_state.get('plaid_institution', {}).get('name', 'Bank')
-                    success = save_plaid_item(
-                        user_id,
-                        token_data['item_id'],
-                        token_data['access_token'],
-                        institution_name
-                    )
-                    
-                    if success:
-                        st.success(f"✅ Successfully connected to {institution_name}!")
-                        st.balloons()
-                        
-                        # Clear session state
-                        del st.session_state.plaid_public_token
-                        if 'plaid_institution' in st.session_state:
-                            del st.session_state.plaid_institution
-                        
-                        st.rerun()
-        
+            public_token = st.text_input(
+                "Public Token",
+                placeholder="public-sandbox-xxx-xxx-xxx",
+                help="Paste the public token you received after connecting your bank",
+                type="default"
+            )
+            
+            institution_name = st.text_input(
+                "Bank Name",
+                placeholder="e.g., Chase, Bank of America",
+                help="Name of the bank you connected"
+            )
+            
+            submitted = st.form_submit_button("✅ Complete Bank Connection")
+            
+            if submitted and public_token:
+                if not institution_name:
+                    st.error("Please enter the bank name")
+                else:
+                    with st.spinner("Connecting to your bank..."):
+                        try:
+                            # Exchange token
+                            token_data = plaid_manager.exchange_public_token(public_token)
+                            
+                            if token_data:
+                                # Save to database
+                                success = save_plaid_item(
+                                    user_id,
+                                    token_data['item_id'],
+                                    token_data['access_token'],
+                                    institution_name
+                                )
+                                
+                                if success:
+                                    st.success(f"✅ Successfully connected to {institution_name}!")
+                                    st.balloons()
+                                    st.session_state.plaid_public_token = None
+                                    import time
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to save bank connection")
+                            else:
+                                st.error("Failed to exchange token")
+                        except Exception as e:
+                            st.error(f"Connection error: {e}")
+    
     except ValueError as e:
         st.warning(str(e))
         st.info("""

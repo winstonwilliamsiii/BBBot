@@ -16,6 +16,10 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import requests
 import os
+import logging
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 
 class BentleyChatBot:
@@ -172,8 +176,23 @@ class BentleyChatBot:
             return "💼 You have accounts with WeBull, IBKR, Binance, NinjaTrader, and Meta5. Visit the Broker Trading page to manage your positions and execute trades."
         
         # Economic data questions
-        elif any(word in message_lower for word in ['bls', 'employment', 'census', 'economic', 'macro']):
-            return "📈 I can provide insights on economic indicators from BLS and Census data. This feature is currently being integrated. Stay tuned!"
+        elif any(word in message_lower for word in ['bls', 'employment', 'census', 'economic', 'macro', 'unemployment', 'inflation', 'cpi', 'jobs', 'release', 'gdp', 'housing']):
+            try:
+                from frontend.utils.economic_data import get_economic_fetcher
+                fetcher = get_economic_fetcher()
+                
+                # Check if user is asking about today's releases
+                if any(w in message_lower for w in ['today', 'release', 'schedule', 'happening', 'coming']):
+                    economic_summary = fetcher.format_for_chatbot(include_calendar=True)
+                else:
+                    economic_summary = fetcher.get_economic_summary()
+                
+                response = f"📈 **Economic Data Insights**\n\n{economic_summary}\n\n"
+                response += "Learn more at [BLS.gov](https://www.bls.gov) • [FRED](https://fred.stlouisfed.org) • [Census](https://www.census.gov)"
+                return response
+            except Exception as e:
+                logger.warning(f"Economic data fetch failed: {e}")
+                return f"📈 I can provide insights on economic indicators from BLS and Census data. (Technical issue: {str(e)})"
         
         # Market news
         elif any(word in message_lower for word in ['news', 'market', 'sentiment']):

@@ -48,23 +48,19 @@ class Permission(Enum):
 
 
 # Role-Permission mapping
-# Admin: Full RW access to ALL pages (1-6)
-# Clients: Pages 1-4 (Dashboard, Budget, Investment, Crypto) - KYC + Asset Management Agreement
-# Investors: Pages 1-5 (Dashboard, Budget, Investment, Crypto, Broker) - KYC + Investor Management/PPM
-# Guest: Development/Testing access
+# GUEST: Pages 1-2 only (Dashboard, Budget) - NO Login required, public access
+# CLIENT: Pages 1-4 (Dashboard, Budget, Investment Analysis, Crypto) - Must login to Mansacap.com
+# INVESTOR: Pages 1-5 (Dashboard, Budget, Investment Analysis, Crypto, Broker Trading) - KYC + Legal docs
+# ADMIN: Full RW access to ALL pages (1-8) including Trading Bot, Plaid Test, Multi-Broker
 ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
     UserRole.GUEST: {
-        # Dev/Testing: Full access during development
+        # Pages 1-2 ONLY: Dashboard, Budget (no login, public access)
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
-        Permission.VIEW_ANALYSIS,
-        Permission.VIEW_CRYPTO,
-        Permission.VIEW_BROKER_TRADING,
-        Permission.VIEW_TRADING_BOT,
     },
     UserRole.CLIENT: {
         # Pages 1-4: Dashboard, Budget, Investment Analysis, Crypto
-        # Requires: KYC + Asset Management Agreement
+        # Requires: Mansacap.com login (asset management agreement implied)
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
         Permission.VIEW_ANALYSIS,
@@ -72,8 +68,8 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
         Permission.CONNECT_BANK,
     },
     UserRole.INVESTOR: {
-        # Pages 1-5: Dashboard, Budget, Investment, Crypto, Broker Trading
-        # Requires: KYC + Investor Management Agreement OR Private Placement Memorandum
+        # Pages 1-5: Dashboard, Budget, Investment Analysis, Crypto, Broker Trading
+        # Requires: KYC + Legal documents (Investor Management Agreement or PPM)
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
         Permission.VIEW_ANALYSIS,
@@ -84,7 +80,8 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
         Permission.TRADE_EXECUTION,
     },
     UserRole.ADMIN: {
-        # Full RW access to ALL pages (1-6) + Admin panel
+        # Full RW access to ALL pages (1-8) + Admin panel
+        # Pages: Dashboard, Budget, Investment, Crypto, Broker, Trading Bot, Plaid Test, Multi-Broker
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
         Permission.VIEW_ANALYSIS,
@@ -142,7 +139,18 @@ class User:
         )
     
     def can_access_page(self, page_number: int) -> bool:
-        """Check if user can access a specific page number (1-6)"""
+        """Check if user can access a specific page number (1-8)
+        
+        Page mapping:
+        1: Dashboard (all roles)
+        2: Budget (all roles)
+        3: Investment Analysis (CLIENT+, INVESTOR, ADMIN)
+        4: Live Crypto (CLIENT+, INVESTOR, ADMIN)
+        5: Broker Trading (INVESTOR, ADMIN)
+        6: Trading Bot (ADMIN only)
+        7: Plaid Test (ADMIN only)
+        8: Multi-Broker Trading (ADMIN only)
+        """
         page_permissions = {
             1: Permission.VIEW_DASHBOARD,
             2: Permission.VIEW_BUDGET,
@@ -150,6 +158,9 @@ class User:
             4: Permission.VIEW_CRYPTO,
             5: Permission.VIEW_BROKER_TRADING,
             6: Permission.VIEW_TRADING_BOT,
+            # Pages 7-8 also require VIEW_TRADING_BOT (ADMIN only)
+            7: Permission.VIEW_TRADING_BOT,
+            8: Permission.VIEW_TRADING_BOT,
         }
         permission = page_permissions.get(page_number)
         return self.has_permission(permission) if permission else False
@@ -192,36 +203,40 @@ class RBACManager:
     """
     
     # Demo users for testing (in production, use database)
+    # GUEST: Public access (no login required) - Pages 1-2 only
+    # CLIENT: Must login to Mansacap.com - Pages 1-4
+    # INVESTOR: KYC + Legal docs - Pages 1-5
+    # ADMIN: Full access - All pages (1-8)
     DEMO_USERS = {
         'guest': {
             'password_hash': hashlib.sha256('guest123'.encode()).hexdigest(),
             'role': UserRole.GUEST,
-            'kyc_completed': True,  # Dev/testing has KYC
-            'investment_agreement_signed': True,  # Dev/testing has agreement
-            'kyc_date': datetime.now() - timedelta(days=1),
-            'agreement_date': datetime.now() - timedelta(days=1),
-            'agreement_type': 'dev_testing',
-            'email': 'dev@bentleybot.com',
+            'kyc_completed': False,  # GUEST does NOT complete KYC
+            'investment_agreement_signed': False,  # GUEST does NOT sign agreement
+            'kyc_date': None,
+            'agreement_date': None,
+            'agreement_type': None,
+            'email': 'guest@mansacap.com',  # Links to Mansacap.com
         },
         'client': {
             'password_hash': hashlib.sha256('client123'.encode()).hexdigest(),
             'role': UserRole.CLIENT,
-            'kyc_completed': True,
-            'investment_agreement_signed': True,
-            'kyc_date': datetime.now() - timedelta(days=30),
-            'agreement_date': datetime.now() - timedelta(days=30),
+            'kyc_completed': False,  # CLIENT login only (KYC optional in this version)
+            'investment_agreement_signed': False,  # Asset Mgmt agreement implied via Mansacap
+            'kyc_date': None,
+            'agreement_date': None,
             'agreement_type': 'asset_mgmt',  # Asset Management Agreement
-            'email': 'client@bentleybot.com',
+            'email': 'client@mansacap.com',  # Links to Mansacap.com
         },
         'investor': {
             'password_hash': hashlib.sha256('investor123'.encode()).hexdigest(),
             'role': UserRole.INVESTOR,
-            'kyc_completed': True,
-            'investment_agreement_signed': True,
+            'kyc_completed': True,  # INVESTOR must complete KYC
+            'investment_agreement_signed': True,  # INVESTOR must sign legal docs
             'kyc_date': datetime.now() - timedelta(days=60),
             'agreement_date': datetime.now() - timedelta(days=60),
-            'agreement_type': 'investor_mgmt',  # Investor Management Agreement
-            'email': 'investor@bentleybot.com',
+            'agreement_type': 'investor_mgmt',  # Investor Management Agreement or PPM
+            'email': 'investor@mansacap.com',
         },
         'admin': {
             'password_hash': hashlib.sha256('admin123'.encode()).hexdigest(),
@@ -231,7 +246,7 @@ class RBACManager:
             'kyc_date': datetime.now() - timedelta(days=90),
             'agreement_date': datetime.now() - timedelta(days=90),
             'agreement_type': 'admin',
-            'email': 'admin@bentleybot.com',
+            'email': 'winston@bentleybot.com',
         },
     }
     
@@ -342,26 +357,37 @@ def show_login_form():
     # Show demo credentials
     with st.sidebar.expander("🔑 Demo Credentials"):
         st.markdown("""
-        **Development/Testing:**
+        **GUEST (Public Access - Pages 1-2):**
         - Username: `guest`
         - Password: `guest123`
-        - Access: All pages (1-6)
+        - Access: Dashboard, Budget (no login via Mansacap.com)
         
-        **Client User (Pages 1-4):**
+        **CLIENT (Pages 1-4):**
         - Username: `client`
         - Password: `client123`
+        - Login: Via Mansacap.com
+        - Access: Dashboard, Budget, Investment Analysis, Crypto
         - Agreement: Asset Management
         
-        **Investor User (Pages 1-5):**
+        **INVESTOR (Pages 1-5):**
         - Username: `investor`
         - Password: `investor123`
-        - Agreement: Investor Management
+        - Requirements: KYC + Legal documents
+        - Access: Dashboard, Budget, Investment Analysis, Crypto, Broker Trading
+        - Agreement: Investor Management or PPM
         
-        **Admin (Production - GCP):**
+        **ADMIN (All Pages 1-8):**
         - Username: `admin`
         - Password: `admin123`
-        - Access: Full RW (All pages + patches)
+        - Access: All pages including Trading Bot, Plaid Test, Multi-Broker
         """)
+        
+        st.info("""
+        **Bot Performance Display:**
+        - Bot info (name & performance) will be linked on Home Page (Page 1)
+        - Full Bot management (Page 6), Plaid Test (Page 7), Multi-Broker (Page 8) - ADMIN only
+        """)
+
 
 
 def show_user_info():

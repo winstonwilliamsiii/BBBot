@@ -9,6 +9,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 
 # Import cache-busting reload function
 try:
@@ -57,6 +58,12 @@ try:
 except Exception as e:
     DB_AVAILABLE = False
     st.error(f"Database connection failed: {e}")
+RBACManager.init_session_state()
+show_user_info()
+if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+    st.error("🚫 ADMIN access required")
+    show_login_form()
+    st.stop()
 
 # Apply custom styling
 if STYLING_AVAILABLE:

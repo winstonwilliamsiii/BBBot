@@ -1,0 +1,111 @@
+# Plaid Fix - Quick Reference Card
+
+## 🚨 The Problem
+```
+error_code: "INVALID_API_KEYS"
+error_message: "invalid client_id or secret provided"
+```
+
+## ✅ The Solution
+
+### In 3 Steps:
+
+**Step 1: Get Real Credentials**
+```
+→ Go to: https://dashboard.plaid.com/
+→ Click: Settings → API Keys
+→ Copy: Client ID and Secret
+```
+
+**Step 2: Update .env File**
+```
+File: C:\Users\winst\BentleyBudgetBot\.env
+
+Find:
+PLAID_CLIENT_ID=677f5a06bfb57e001d2ca8e9
+PLAID_SECRET=7ce1f012fdd48c25854e3ecc5d1a91
+
+Replace with:
+PLAID_CLIENT_ID=<your_real_client_id>
+PLAID_SECRET=<your_real_secret>
+```
+
+**Step 3: Verify**
+```bash
+cd C:\Users\winst\BentleyBudgetBot
+python test_plaid_credentials.py
+```
+
+Expected: `✅ ALL TESTS PASSED!`
+
+---
+
+## 📋 Helpful Commands
+
+**Check current credentials:**
+```bash
+python test_plaid_credentials.py
+```
+
+**Run full diagnostic:**
+```bash
+python diagnose_plaid.py
+```
+
+**Interactive update:**
+```bash
+python update_plaid_credentials.py
+```
+
+**View your .env:**
+```bash
+notepad C:\Users\winst\BentleyBudgetBot\.env
+```
+
+---
+
+## 🔍 What to Copy from Plaid Dashboard
+
+From: https://dashboard.plaid.com/Settings/API-Keys
+
+```
+✓ Client ID      = [24-character alphanumeric string]
+✓ Secret         = [30-character alphanumeric string]  
+✓ Environment    = sandbox (for testing)
+```
+
+---
+
+## ❌ Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Credentials too short | Copy exact value from dashboard |
+| Extra spaces/quotes | Remove spaces before & after |
+| Wrong environment | Use "sandbox" for testing |
+| Old/expired credentials | Get fresh ones from dashboard |
+| Didn't restart app | Restart Streamlit after updating |
+
+---
+
+## ✨ You're Done When:
+
+- [ ] Credentials updated in `.env`
+- [ ] `python test_plaid_credentials.py` shows ✅ PASSED
+- [ ] Streamlit app restarted
+- [ ] "Connect Bank Account" button works
+- [ ] Plaid Link flow completes successfully
+
+---
+
+## 📞 Need Help?
+
+1. Run: `python diagnose_plaid.py`
+2. Read the recommendations
+3. Contact: https://support.plaid.com/
+
+---
+
+**Your current credentials location:** `.env` line 102-103  
+**Dashboard login:** https://dashboard.plaid.com/  
+**Support:** https://support.plaid.com/

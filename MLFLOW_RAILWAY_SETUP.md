@@ -120,9 +120,10 @@ APPWRITE_API_KEY = "standard_96d4a373241caa900a3bf2a3912d2faf6a87d65c2759ba1bc94
 # PLAID API (Banking Data)
 # ============================================================
 
-PLAID_CLIENT_ID = "677f5a06bfb57e001d2ca8e9"
-PLAID_SECRET = "7ce1f012fdd48c25854e3ecc5d1a91"
+PLAID_CLIENT_ID = "68b8718ec2f428002456a84c"
+PLAID_SECRET = "1849c4090173dfbce2bda5453e7048"
 PLAID_ENV = "sandbox"
+PLAID_SECRET_PRODUCTION = "b859911ae600444f480c39c90c1930"
 ```
 
 ## Code Changes Made

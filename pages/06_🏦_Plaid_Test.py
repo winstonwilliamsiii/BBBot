@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from frontend.components.plaid_quickstart_connector import PlaidQuickstartClient, render_quickstart_plaid_link
 from frontend.utils.styling import apply_custom_styling, add_footer
 from frontend.styles.colors import COLOR_SCHEME
+from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 
 # Page config
 st.set_page_config(
@@ -43,6 +44,12 @@ st.set_page_config(
 
 # Apply custom styling
 apply_custom_styling()
+RBACManager.init_session_state()
+show_user_info()
+if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+    st.error("🚫 ADMIN access required")
+    show_login_form()
+    st.stop()
 
 st.title("🏦 Plaid Quickstart Integration Test")
 

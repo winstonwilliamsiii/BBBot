@@ -1,0 +1,13 @@
+MANIFEST.in
+README.md
+config.env
+requirements.txt
+setup.py
+tickers_config.yaml
+bbbot1_pipeline.egg-info/PKG-INFO
+bbbot1_pipeline.egg-info/SOURCES.txt
+bbbot1_pipeline.egg-info/dependency_links.txt
+bbbot1_pipeline.egg-info/entry_points.txt
+bbbot1_pipeline.egg-info/requires.txt
+bbbot1_pipeline.egg-info/top_level.txt
+sql/create_indexes.sql

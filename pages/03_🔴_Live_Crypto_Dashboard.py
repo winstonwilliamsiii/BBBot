@@ -10,12 +10,7 @@ from plotly.subplots import make_subplots
 import time
 from datetime import datetime, timedelta
 
-# RBAC imports
-try:
-    from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
-    RBAC_AVAILABLE = True
-except ImportError:
-    RBAC_AVAILABLE = False
+from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 
 # Import color scheme and styling from home page
 try:
@@ -33,9 +28,26 @@ try:
     # Apply home page styling first
     apply_custom_styling()
     
-    # Initialize RBAC session state
-    if RBAC_AVAILABLE:
-        RBACManager.init_session_state()
+    RBACManager.init_session_state()
+    show_user_info()
+    if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_CRYPTO):
+        st.error("🚫 Access Denied - CLIENT role required")
+        show_login_form()
+        st.stop()
+    # Hide admin-only pages 6–8 from sidebar for non-ADMIN users
+    if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+        st.markdown(
+            f"""
+            <style>
+            [data-testid=\"stSidebarNav\"] li:nth-child(6),
+            [data-testid=\"stSidebarNav\"] li:nth-child(7),
+            [data-testid=\"stSidebarNav\"] li:nth-child(8) {{
+                display: none !important;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
     
     # Add page-specific enhancements
     st.markdown(f"""

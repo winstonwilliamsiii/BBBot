@@ -39,6 +39,25 @@ except ImportError:
 
 from frontend.utils.styling import apply_custom_styling, add_footer
 from frontend.styles.colors import COLOR_SCHEME
+apply_custom_styling()
+
+# Hide admin-only pages 6–8 from sidebar for non-ADMIN users
+if RBAC_AVAILABLE:
+    RBACManager.init_session_state()
+    if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebarNav"] li:nth-child(6),
+            [data-testid="stSidebarNav"] li:nth-child(7),
+            [data-testid="stSidebarNav"] li:nth-child(8) {
+                display: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+from frontend.styles.colors import COLOR_SCHEME
 
 
 def main():

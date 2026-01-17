@@ -1,0 +1,34 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+</head>
+<body>
+    <button id="link-button" onclick="openPlaid()">Connect Bank</button>
+    <div id="status"></div>
+    
+    <script>
+        console.log('Initializing Plaid with token:', 'link-sandbox-7dd2991e-c06e-41fa-ba51-befbdaf88ffb'.substring(0, 30) + '...');
+        
+        var linkHandler = Plaid.create({
+            token: 'link-sandbox-7dd2991e-c06e-41fa-ba51-befbdaf88ffb',
+            onSuccess: function(public_token, metadata) {
+                console.log('SUCCESS!', public_token);
+                document.getElementById('status').textContent = 'Connected to ' + metadata.institution.name;
+            },
+            onExit: function(err, metadata) {
+                if (err) console.error('ERROR:', err);
+            },
+            onLoad: function() {
+                console.log('Plaid Link loaded!');
+                document.getElementById('link-button').disabled = false;
+            }
+        });
+        
+        function openPlaid() {
+            linkHandler.open();
+        }
+    </script>
+</body>
+</html>

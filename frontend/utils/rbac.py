@@ -422,7 +422,7 @@ def show_user_info():
         }.get(user.agreement_type, 'None')
         st.sidebar.markdown(f"- Agreement: {agreement_status} ({agreement_type_display})")
         
-        if st.sidebar.button("Logout"):
+        if st.sidebar.button("Logout", key="sidebar_logout_button"):
             RBACManager.logout()
             st.rerun()
 

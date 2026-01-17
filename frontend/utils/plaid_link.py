@@ -226,17 +226,20 @@ def render_plaid_link_button(user_id: str):
         
         link_token = link_data['link_token']
         
-        # Create improved Plaid Link HTML with proper callback handling
+        # Create improved Plaid Link HTML with proper callback handling and enhanced debugging
         plaid_link_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
             <style>
-                * {{ margin: 0; padding: 0; }}
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
                 body {{ 
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     padding: 15px;
+                    min-height: 150px;
                 }}
                 #link-button {{
                     background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
@@ -269,136 +272,186 @@ def render_plaid_link_button(user_id: str):
                     transform: none;
                 }}
                 #status {{
-                    margin-top: 10px;
+                    margin-top: 12px;
+                    padding: 8px;
                     font-size: 13px;
                     text-align: center;
                     color: #666;
+                    border-radius: 4px;
                     display: none;
                 }}
                 #status.loading {{
                     display: block;
                     color: #3498db;
+                    background: #e3f2fd;
                 }}
                 #status.success {{
                     display: block;
                     color: #27ae60;
+                    background: #e8f5e9;
                 }}
                 #status.error {{
                     display: block;
                     color: #e74c3c;
+                    background: #ffebee;
+                }}
+                #debug {{
+                    margin-top: 8px;
+                    font-size: 11px;
+                    color: #999;
+                    text-align: center;
                 }}
             </style>
         </head>
         <body>
-            <button id="link-button" onclick="openPlaidLink()">
-                🔗 Connect Your Bank
+            <button id="link-button" disabled onclick="openPlaidLink()">
+                🔗 Initializing Plaid...
             </button>
-            <div id="status"></div>
+            <div id="status">Checking Plaid SDK...</div>
+            <div id="debug"></div>
             
             <script>
                 let linkHandler = null;
+                const debugEl = document.getElementById('debug');
+                const statusEl = document.getElementById('status');
+                const btn = document.getElementById('link-button');
                 
-                // Initialize Plaid Link
-                try {{
-                    console.log('[Plaid] Initializing with token:', '{link_token}'.substring(0, 30) + '...');
+                function updateDebug(msg) {{
+                    console.log('[Plaid Debug]', msg);
+                    debugEl.textContent = msg;
+                }}
+                
+                function updateStatus(msg, type) {{
+                    statusEl.textContent = msg;
+                    statusEl.className = type || '';
+                }}
+                
+                // Check if Plaid SDK loaded
+                if (typeof Plaid === 'undefined') {{
+                    updateStatus('❌ Plaid SDK failed to load', 'error');
+                    updateDebug('Plaid SDK not found. Check network/firewall.');
+                    btn.disabled = true;
+                    btn.textContent = '❌ SDK Load Failed';
+                }} else {{
+                    updateDebug('Plaid SDK detected');
                     
-                    linkHandler = Plaid.create({{
-                        token: '{link_token}',
-                        onSuccess: function(public_token, metadata) {{
-                            console.log('[Plaid] Success!');
-                            console.log('[Plaid] Institution:', metadata.institution.name);
-                            console.log('[Plaid] Accounts:', metadata.accounts.length);
-                            
-                            // Store in localStorage for Streamlit to pick up
-                            const data = {{
-                                type: 'PLAID_SUCCESS',
-                                public_token: public_token,
-                                institution_name: metadata.institution.name,
-                                institution_id: metadata.institution.id,
-                                accounts: metadata.accounts.map(a => ({{ id: a.id, name: a.name, type: a.type }}))
-                            }};
-                            
-                            localStorage.setItem('plaid_result', JSON.stringify(data));
-                            
-                            // Show success message
-                            const statusEl = document.getElementById('status');
-                            statusEl.className = 'success';
-                            statusEl.textContent = '✅ Successfully connected to ' + metadata.institution.name + '!';
-                            document.getElementById('link-button').disabled = false;
-                            document.getElementById('link-button').textContent = '✅ Bank Connected';
-                            
-                            // Notify Streamlit via page visibility or other mechanism
-                            // Force a page update by changing document title
-                            document.title = 'PLAID_CONNECTED_' + Date.now();
-                        }},
-                        onExit: function(err, metadata) {{
-                            console.log('[Plaid] Exit');
-                            document.getElementById('link-button').disabled = false;
-                            
-                            if (err) {{
-                                console.error('[Plaid] Error:', err);
-                                const statusEl = document.getElementById('status');
-                                statusEl.className = 'error';
-                                statusEl.textContent = '❌ Connection failed: ' + (err.display_message || err.error_message || err.error_type);
-                            }} else {{
-                                const statusEl = document.getElementById('status');
-                                statusEl.className = '';
-                                statusEl.textContent = 'Cancelled';
+                    // Initialize Plaid Link
+                    try {{
+                        const linkToken = '{link_token}';
+                        updateDebug('Token: ' + linkToken.substring(0, 20) + '...');
+                        
+                        linkHandler = Plaid.create({{
+                            token: linkToken,
+                            onSuccess: function(public_token, metadata) {{
+                                console.log('[Plaid] ✅ SUCCESS!');
+                                console.log('[Plaid] Public token:', public_token.substring(0, 30) + '...');
+                                console.log('[Plaid] Institution:', metadata.institution.name);
+                                console.log('[Plaid] Accounts:', metadata.accounts.length);
+                                
+                                // Store in localStorage
+                                const data = {{
+                                    type: 'PLAID_SUCCESS',
+                                    public_token: public_token,
+                                    institution_name: metadata.institution.name,
+                                    institution_id: metadata.institution.id,
+                                    accounts: metadata.accounts.map(a => ({{
+                                        id: a.id,
+                                        name: a.name,
+                                        type: a.type,
+                                        subtype: a.subtype
+                                    }})),
+                                    timestamp: Date.now()
+                                }};
+                                
+                                localStorage.setItem('plaid_result', JSON.stringify(data));
+                                console.log('[Plaid] Saved to localStorage');
+                                
+                                // Update UI
+                                updateStatus('✅ Connected to ' + metadata.institution.name + '! Copy token below.', 'success');
+                                updateDebug('Token: ' + public_token);
+                                btn.disabled = false;
+                                btn.textContent = '✅ Bank Connected';
+                                
+                                // Try to notify parent
+                                try {{
+                                    window.parent.postMessage({{
+                                        type: 'PLAID_SUCCESS',
+                                        data: data
+                                    }}, '*');
+                                }} catch (e) {{
+                                    console.log('[Plaid] PostMessage blocked (expected in iframe)');
+                                }}
+                            }},
+                            onExit: function(err, metadata) {{
+                                console.log('[Plaid] User exited');
+                                btn.disabled = false;
+                                
+                                if (err) {{
+                                    console.error('[Plaid] Error:', err);
+                                    updateStatus('❌ Connection failed: ' + (err.display_message || err.error_message || err.error_type), 'error');
+                                    updateDebug('Error code: ' + (err.error_code || 'unknown'));
+                                }} else {{
+                                    updateStatus('Connection cancelled', '');
+                                    updateDebug('User closed modal');
+                                }}
+                            }},
+                            onLoad: function() {{
+                                console.log('[Plaid] ✅ Link loaded successfully');
+                                btn.disabled = false;
+                                btn.textContent = '🔗 Connect Your Bank';
+                                updateStatus('Ready to connect', 'loading');
+                                updateDebug('Plaid Link ready');
+                            }},
+                            onEvent: function(eventName, metadata) {{
+                                console.log('[Plaid] Event:', eventName);
+                                if (eventName === 'HANDOFF') {{
+                                    updateDebug('Opening bank selection...');
+                                }}
                             }}
-                        }},
-                        onLoad: function() {{
-                            console.log('[Plaid] Link loaded successfully');
-                            document.getElementById('link-button').disabled = false;
-                        }},
-                        onEvent: function(eventName, metadata) {{
-                            console.log('[Plaid] Event:', eventName);
-                        }}
-                    }});
-                    
-                    console.log('[Plaid] Handler created successfully');
-                }} catch (e) {{
-                    console.error('[Plaid] Initialization error:', e);
-                    const statusEl = document.getElementById('status');
-                    statusEl.className = 'error';
-                    statusEl.textContent = '❌ Failed to load Plaid: ' + e.message;
-                    document.getElementById('link-button').disabled = true;
+                        }});
+                        
+                        console.log('[Plaid] ✅ Handler created successfully');
+                        updateDebug('Waiting for SDK to load...');
+                        
+                    }} catch (e) {{
+                        console.error('[Plaid] ❌ Initialization error:', e);
+                        updateStatus('❌ Failed to initialize: ' + e.message, 'error');
+                        updateDebug('Init error: ' + e.message);
+                        btn.disabled = true;
+                        btn.textContent = '❌ Init Failed';
+                    }}
                 }}
                 
                 function openPlaidLink() {{
                     if (!linkHandler) {{
                         console.error('[Plaid] Handler not initialized');
-                        const statusEl = document.getElementById('status');
-                        statusEl.className = 'error';
-                        statusEl.textContent = '❌ Plaid not initialized';
+                        updateStatus('❌ Plaid not initialized', 'error');
                         return;
                     }}
                     
-                    const btn = document.getElementById('link-button');
-                    const statusEl = document.getElementById('status');
-                    
                     btn.disabled = true;
-                    statusEl.className = 'loading';
-                    statusEl.textContent = '⏳ Opening Plaid Link...';
+                    updateStatus('⏳ Opening Plaid Link...', 'loading');
+                    updateDebug('Launching modal...');
                     
                     try {{
-                        console.log('[Plaid] Opening Link...');
                         linkHandler.open();
+                        console.log('[Plaid] Modal opened');
                     }} catch(e) {{
                         console.error('[Plaid] Error opening Link:', e);
                         btn.disabled = false;
-                        statusEl.className = 'error';
-                        statusEl.textContent = '❌ Error: ' + e.message;
+                        updateStatus('❌ Error: ' + e.message, 'error');
+                        updateDebug('Open error: ' + e.message);
                     }}
                 }}
                 
-                console.log('[Plaid] Button ready');
+                console.log('[Plaid] Script loaded and ready');
             </script>
         </body>
         </html>
         """
         
-        # Render component
-        components.html(plaid_link_html, height=100)
+        # Render component with more height for debugging info
+        components.html(plaid_link_html, height=180)
         
         # Check for token in a more reliable way using a manual form
         st.markdown("---")

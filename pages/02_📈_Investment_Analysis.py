@@ -259,8 +259,6 @@ def display_investment_page():
         if not RBACManager.is_authenticated():
             show_login_form()
             st.info("👈 Please login to access full features")
-        else:
-            show_user_info()
     
     # Broker Integration Section
     st.markdown("---")

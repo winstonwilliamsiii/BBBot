@@ -47,6 +47,13 @@ try:
 except ImportError:
     CHATBOT_AVAILABLE = False
 
+# Economic Calendar Widget import
+try:
+    from frontend.components.economic_calendar_widget import get_calendar_widget
+    ECONOMIC_CALENDAR_AVAILABLE = True
+except ImportError:
+    ECONOMIC_CALENDAR_AVAILABLE = False
+
 # Appwrite services imports
 try:
     from services.transactions import create_transaction, get_transactions
@@ -296,6 +303,23 @@ def main():
     </style>
     """, unsafe_allow_html=True)
 
+    # Hide admin-only pages 6–8 from sidebar for non-ADMIN users
+    if RBAC_AVAILABLE:
+        RBACManager.init_session_state()
+        if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+            st.markdown(
+                """
+                <style>
+                [data-testid="stSidebarNav"] li:nth-child(6),
+                [data-testid="stSidebarNav"] li:nth-child(7),
+                [data-testid="stSidebarNav"] li:nth-child(8) {
+                    display: none !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
     # Main title with Mansa Capital branding
     st.markdown(f"""
     <div style='text-align: center; margin-bottom: 2rem;'>
@@ -314,6 +338,13 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
+    st.subheader("📊 Featured Trading Bots")
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        create_metric_card("RSI-MACD Strategy", "+24.3% YTD", "Win Rate 68%")
+    with col_b2:
+        create_metric_card("Mean Reversion Alpha", "+18.7% YTD", "Win Rate 61%")
+
     # ==========================================================================
     # Bentley AI ChatBot Section - Primary Interface
     # ==========================================================================
@@ -329,6 +360,15 @@ def main():
     
     st.markdown("---")
 
+    # ==========================================================================
+    # Economic Calendar & Market Data Section
+    # ==========================================================================
+    if ECONOMIC_CALENDAR_AVAILABLE:
+        st.markdown("## 📊 Markets & Economics")
+        widget = get_calendar_widget()
+        widget.render_full_dashboard()
+        st.markdown("---")
+    
     # ==========================================================================
     # Appwrite Quick Actions Section - Transaction & Watchlist Management
     # ==========================================================================

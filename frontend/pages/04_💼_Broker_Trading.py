@@ -11,6 +11,11 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Add project root to sys.path for bbbot1_pipeline imports
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 # Load environment variables - use explicit path for local development
 env_path = Path(__file__).parent.parent / '.env'
 if env_path.exists():
@@ -438,7 +443,7 @@ def main():
     
     try:
         # Connect to MySQL and fetch latest signals
-        from sqlalchemy import create_engine
+        from sqlalchemy import create_engine, inspect, text
         
         # Get database credentials from secrets (Streamlit Cloud) or env (local)
         try:
@@ -455,60 +460,108 @@ def main():
             db_name = os.getenv("BBBOT1_MYSQL_DATABASE", "bbbot1")
         
         connection_string = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-        engine = create_engine(connection_string)
         
-        query = """
-        SELECT 
-            ticker,
-            date as signal_date,
-            close as price,
-            rsi_14,
-            macd,
-            macd_signal,
-            sentiment_score,
-            CASE 
-                WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
-                WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
-                ELSE 'HOLD'
-            END as signal
-        FROM marts.features_roi
-        WHERE date = (SELECT MAX(date) FROM marts.features_roi)
-        ORDER BY ticker
-        LIMIT 20;
-        """
-        
-        df_signals = pd.read_sql(query, engine)
-        engine.dispose()
-        
-        if not df_signals.empty:
-            # Color code signals
-            def highlight_signal(val):
-                if val == 'BUY':
-                    return 'background-color: #90EE90'
-                elif val == 'SELL':
-                    return 'background-color: #FFB6C1'
+        try:
+            engine = create_engine(connection_string)
+            
+            # Check if table exists first
+            inspector = inspect(engine)
+            tables = inspector.get_table_names()
+            
+            if 'features_roi' not in tables and 'marts.features_roi' not in [f"{s}.{t}" for s in inspector.get_schema_names() for t in inspector.get_table_names(schema=s)]:
+                st.warning("⚠️ Trading signals table not found in database.")
+                st.info("The 'marts.features_roi' table will be created once the ML pipeline runs. For now, you can create synthetic trading signals.")
+                
+                # Show sample signals
+                sample_signals = pd.DataFrame({
+                    'ticker': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+                    'signal_date': [datetime.now()] * 5,
+                    'price': [150.25, 380.50, 140.75, 165.25, 245.50],
+                    'rsi_14': [35.2, 72.1, 45.8, 62.3, 28.9],
+                    'macd': [2.5, -1.8, 0.5, 1.2, -2.1],
+                    'macd_signal': [2.1, -1.5, 0.3, 1.0, -1.9],
+                    'sentiment_score': [0.65, -0.42, 0.12, 0.38, -0.55]
+                })
+                sample_signals['signal'] = sample_signals.apply(
+                    lambda row: 'BUY' if row['rsi_14'] < 30 and row['macd'] > row['macd_signal'] else (
+                        'SELL' if row['rsi_14'] > 70 and row['macd'] < row['macd_signal'] else 'HOLD'
+                    ), axis=1
+                )
+                
+                st.dataframe(sample_signals[['ticker', 'signal_date', 'price', 'rsi_14', 'signal']], use_container_width=True)
+                col1, col2, col3 = st.columns(3)
+                col1.metric("🟢 BUY Signals", (sample_signals['signal'] == 'BUY').sum())
+                col2.metric("🔴 SELL Signals", (sample_signals['signal'] == 'SELL').sum())
+                col3.metric("⚪ HOLD Signals", (sample_signals['signal'] == 'HOLD').sum())
+            else:
+                query = """
+                SELECT 
+                    ticker,
+                    date as signal_date,
+                    close as price,
+                    rsi_14,
+                    macd,
+                    macd_signal,
+                    sentiment_score,
+                    CASE 
+                        WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
+                        WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
+                        ELSE 'HOLD'
+                    END as signal
+                FROM marts.features_roi
+                WHERE date = (SELECT MAX(date) FROM marts.features_roi)
+                ORDER BY ticker
+                LIMIT 20;
+                """
+                
+                df_signals = pd.read_sql(query, engine)
+                
+                if not df_signals.empty:
+                    # Color code signals
+                    def highlight_signal(val):
+                        if val == 'BUY':
+                            return 'background-color: #90EE90'
+                        elif val == 'SELL':
+                            return 'background-color: #FFB6C1'
+                        else:
+                            return ''
+                    
+                    styled_df = df_signals.style.applymap(
+                        highlight_signal,
+                        subset=['signal']
+                    )
+                    
+                    st.dataframe(styled_df, use_container_width=True)
+                    
+                    # Summary metrics
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("🟢 BUY Signals", (df_signals['signal'] == 'BUY').sum())
+                    col2.metric("🔴 SELL Signals", (df_signals['signal'] == 'SELL').sum())
+                    col3.metric("⚪ HOLD Signals", (df_signals['signal'] == 'HOLD').sum())
+                
                 else:
-                    return ''
+                    st.info("No trading signals available. Run the ML pipeline first.")
             
-            styled_df = df_signals.style.applymap(
-                highlight_signal,
-                subset=['signal']
-            )
+            engine.dispose()
             
-            st.dataframe(styled_df, use_container_width=True)
+        except Exception as db_error:
+            st.warning(f"⚠️ Cannot connect to database: {str(db_error)[:150]}")
+            st.info("**Local Development:** Ensure MySQL is running on localhost:3307")
+            st.info("**Streamlit Cloud:** Add BBBOT1_MYSQL_* secrets to your app settings")
             
-            # Summary metrics
-            col1, col2, col3 = st.columns(3)
-            col1.metric("🟢 BUY Signals", (df_signals['signal'] == 'BUY').sum())
-            col2.metric("🔴 SELL Signals", (df_signals['signal'] == 'SELL').sum())
-            col3.metric("⚪ HOLD Signals", (df_signals['signal'] == 'HOLD').sum())
-        
-        else:
-            st.info("No trading signals available. Run the ML pipeline first.")
+            # Show sample signals as fallback
+            st.markdown("**Sample Trading Signals (Demo Mode):**")
+            sample_signals = pd.DataFrame({
+                'ticker': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+                'signal': ['HOLD', 'SELL', 'HOLD', 'BUY', 'SELL'],
+                'price': [150.25, 380.50, 140.75, 165.25, 245.50],
+                'rsi_14': [45.2, 72.1, 48.8, 25.3, 78.9],
+                'signal_date': [datetime.now()] * 5
+            })
+            st.dataframe(sample_signals, use_container_width=True)
     
     except Exception as e:
-        st.error(f"Failed to load trading signals: {e}")
-        st.info("Make sure marts.features_roi table exists and has data")
+        st.error(f"Unexpected error in trading signals: {str(e)[:200]}")
     
     # Configuration Guide
     with st.expander("⚙️ Broker API Configuration Guide"):

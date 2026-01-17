@@ -15,8 +15,14 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Add project root to sys.path for bbbot1_pipeline imports
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 # Load environment variables - use explicit path
 env_path = Path(__file__).parent.parent / '.env'
@@ -206,14 +212,19 @@ try:
 except ImportError:
     FUNDAMENTALS_FETCHER_AVAILABLE = False
 
-# Import MLFlow tracker
+# Import MLFlow tracker with detailed error handling
 try:
-    from bbbot1_pipeline.mlflow_tracker import get_tracker
+    from bbbot1_pipeline.mlflow_tracker import get_tracker, MLFLOW_AVAILABLE as MLFLOW_PKG_AVAILABLE
     from bbbot1_pipeline import load_tickers_config
+    if not MLFLOW_PKG_AVAILABLE:
+        raise ImportError("MLflow package not installed in bbbot1_pipeline")
     MLFLOW_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     MLFLOW_AVAILABLE = False
-    st.warning("⚠️ MLFlow tracker not available. Install bbbot1_pipeline package.")
+    get_tracker = None
+    load_tickers_config = lambda: {}
+    import warnings
+    warnings.warn(f"⚠️ MLFlow tracker not available: {str(e)[:100]}")
 
 # Import yfinance if available
 try:

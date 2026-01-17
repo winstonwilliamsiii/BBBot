@@ -3,14 +3,29 @@ MLFlow Logging Module for BentleyBot
 Logs experiments, metrics, parameters, and artifacts to MLFlow
 """
 
-import mlflow
-import mlflow.sklearn
-from mlflow.tracking import MlflowClient
 import json
 import os
 from datetime import datetime
 from typing import Dict, Any, Optional
-import pandas as pd
+
+# Optional MLFlow imports with graceful fallback
+try:
+    import mlflow
+    import mlflow.sklearn
+    from mlflow.tracking import MlflowClient
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    mlflow = None
+    MlflowClient = None
+
+# Optional pandas import
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None
 
 # Import MLFlow configuration
 try:

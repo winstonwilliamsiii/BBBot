@@ -116,9 +116,10 @@ try:
     </style>
     """, unsafe_allow_html=True)
     
-except ImportError:
-    # Fallback if frontend modules not available
-    st.warning("⚠️ Styling modules not found. Using fallback styles.")
+except Exception as styling_error:
+    # Graceful fallback if styling fails
+    st.warning(f"⚠️ Styling not available: {str(styling_error)[:80]}")
+    st.title("🔴 Live Crypto Dashboard (Fallback Mode)")
 
 # Import yfinance for crypto data
 try:
@@ -128,13 +129,17 @@ except ImportError:
     YFINANCE_AVAILABLE = False
     st.error("⚠️ yfinance not available. Install with: pip install yfinance")
 
-# Import MLFlow tracker
+# Import MLFlow tracker with better error handling
 try:
-    from bbbot1_pipeline.mlflow_tracker import get_tracker
+    from bbbot1_pipeline.mlflow_tracker import get_tracker, MLFLOW_AVAILABLE as MLFLOW_PKG_AVAILABLE
     from bbbot1_pipeline.mlflow_config import print_connection_details
+    if not MLFLOW_PKG_AVAILABLE:
+        raise ImportError("MLflow not installed")
     MLFLOW_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception) as e:
     MLFLOW_AVAILABLE = False
+    import warnings
+    warnings.warn(f"⚠️ MLflow not available: {str(e)[:80]}")
 
 
 def display_live_crypto_dashboard():

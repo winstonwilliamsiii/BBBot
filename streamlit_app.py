@@ -50,8 +50,18 @@ except ImportError:
 # Economic Calendar Widget import
 try:
     from frontend.components.economic_calendar_widget import get_calendar_widget
-    ECONOMIC_CALENDAR_AVAILABLE = True
-except ImportError:
+    # Test that the widget actually initializes
+    try:
+        # Try to get widget instance to verify it works
+        _test_widget = get_calendar_widget()
+        ECONOMIC_CALENDAR_AVAILABLE = True
+    except Exception as e:
+        import warnings
+        warnings.warn(f"⚠️ Economic calendar widget initialization failed: {str(e)[:100]}")
+        ECONOMIC_CALENDAR_AVAILABLE = False
+except ImportError as e:
+    import warnings
+    warnings.warn(f"⚠️ Economic calendar import failed: {str(e)[:100]}")
     ECONOMIC_CALENDAR_AVAILABLE = False
 
 # Appwrite services imports

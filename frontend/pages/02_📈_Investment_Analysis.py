@@ -217,14 +217,21 @@ try:
     from bbbot1_pipeline.mlflow_tracker import get_tracker, MLFLOW_AVAILABLE as MLFLOW_PKG_AVAILABLE
     from bbbot1_pipeline import load_tickers_config
     if not MLFLOW_PKG_AVAILABLE:
-        raise ImportError("MLflow package not installed in bbbot1_pipeline")
+        raise ImportError("MLflow not installed - run: pip install mlflow")
     MLFLOW_AVAILABLE = True
 except ImportError as e:
     MLFLOW_AVAILABLE = False
     get_tracker = None
     load_tickers_config = lambda: {}
     import warnings
-    warnings.warn(f"⚠️ MLFlow tracker not available: {str(e)[:100]}")
+    warnings.warn(f"⚠️ MLflow unavailable (ImportError): {str(e)[:100]}")
+except Exception as e:
+    # Secondary errors (connection, database, etc.)
+    MLFLOW_AVAILABLE = False
+    get_tracker = None
+    load_tickers_config = lambda: {}
+    import warnings
+    warnings.warn(f"⚠️ MLflow error (Runtime): {str(e)[:100]}")
 
 # Import yfinance if available
 try:

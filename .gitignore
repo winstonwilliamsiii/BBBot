@@ -134,3 +134,101 @@ dist
 
 # Directory used by Appwrite CLI for local development
 .appwrite
+
+# ============================================
+# Environment-Specific Files (Dev vs Prod)
+# ============================================
+
+# Python bytecode and caches (environment-specific)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments (localhost only)
+venv/
+ENV/
+env/
+.venv
+moor_kingdom_env/
+
+# IDE and editor files (localhost only)
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database files (localhost only)
+*.db
+*.sqlite
+*.sqlite3
+*.sql.bak
+local_database/
+
+# Local development files
+.local/
+tmp/
+temp/
+*.tmp
+
+# Testing and coverage (generated during CI)
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# MLflow artifacts (environment-specific)
+mlruns/
+mlartifacts/
+.mlflow/
+
+# Local logs and debug files
+logs/
+*.log
+debug.log
+
+# OS-specific files
+Thumbs.db
+Desktop.ini
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*.ipynb
+
+# Security: Never commit credentials
+*credentials*.json
+*secrets*.json
+*private*.key
+*.pem
+.aws/
+.azure/
+
+# Local configuration overrides
+config.local.json
+settings.local.json

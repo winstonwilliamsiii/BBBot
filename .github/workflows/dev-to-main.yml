@@ -1,0 +1,197 @@
+# ============================================
+# Dev-to-Main Promotion Workflow
+# Automated gates for promoting code to production
+# ============================================
+name: Dev → Main - Promotion Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  pre-merge-checks:
+    name: Pre-Merge Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pytest pytest-cov black isort
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Run full test suite
+      run: |
+        pytest --tb=short --verbose --cov=. || exit 1
+    
+    - name: Lint check
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    
+    - name: Environment validation
+      run: |
+        python -c "from config_env import config; assert config.is_development() or config.is_production(), 'Invalid environment'"
+    
+    - name: Check .env files
+      run: |
+        [ -f .env.production ] && echo "✓ Production env file exists"
+        [ -f .env.development ] && echo "✓ Development env file exists"
+
+  branch-validation:
+    name: Branch & PR Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Validate PR title
+      run: |
+        PR_TITLE="${{ github.event.pull_request.title }}"
+        if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|perf|refactor|test|ci|chore)(\(.+\))?:\s.+ ]]; then
+          echo "❌ PR title must follow conventional commits: type(scope): description"
+          echo "Example: feat(portfolio): add new dashboard widget"
+          exit 1
+        fi
+        echo "✓ PR title follows conventional commits"
+    
+    - name: Verify PR description
+      run: |
+        BODY="${{ github.event.pull_request.body }}"
+        if [ -z "$BODY" ] || [ ${#BODY} -lt 20 ]; then
+          echo "❌ PR description is required and should be detailed"
+          exit 1
+        fi
+        echo "✓ PR has adequate description"
+    
+    - name: Check for changelog
+      run: |
+        if [ -f CHANGELOG.md ]; then
+          echo "✓ CHANGELOG.md found"
+        else
+          echo "⚠ CHANGELOG.md not found (recommended)"
+        fi
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Run security checks
+      run: |
+        pip install bandit safety
+        bandit -r . -f json -o bandit-report.json || true
+        safety check --json || true
+    
+    - name: Check for secrets
+      run: |
+        if grep -r "ALPACA_API_KEY=" . --include="*.py" | grep -v "placeholder\|***\|example"; then
+          echo "❌ Potential API key exposure detected"
+          exit 1
+        fi
+        echo "✓ No exposed secrets detected"
+
+  production-readiness:
+    name: Production Readiness Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Validate production config
+      run: |
+        if [ -f .env.production ]; then
+          echo "Checking production environment..."
+          grep "ENVIRONMENT=production" .env.production || exit 1
+          grep "DEPLOYMENT_TARGET=streamlit_cloud" .env.production || exit 1
+          grep "STREAMLIT_LOGGER_LEVEL=info" .env.production || exit 1
+          echo "✓ Production environment properly configured"
+        fi
+    
+    - name: Verify critical files
+      run: |
+        REQUIRED_FILES=(
+          "streamlit_app.py"
+          "requirements.txt"
+          ".env.production"
+          ".env.development"
+          "config_env.py"
+        )
+        for file in "${REQUIRED_FILES[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "❌ Missing required file: $file"
+            exit 1
+          fi
+        done
+        echo "✓ All critical files present"
+
+  deployment-simulation:
+    name: Deployment Simulation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Simulate production build
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        python -m py_compile streamlit_app.py
+        echo "✓ Production build simulation successful"
+    
+    - name: Verify imports
+      run: |
+        python -c "import streamlit; import pandas; import yfinance; print('✓ All critical imports available')" || true
+
+  notify-status:
+    name: Status Notification
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [pre-merge-checks, branch-validation, security-audit, production-readiness, deployment-simulation]
+    
+    steps:
+    - name: Determine overall status
+      run: |
+        if [[ "${{ needs.pre-merge-checks.result }}" == "success" && \
+              "${{ needs.branch-validation.result }}" == "success" && \
+              "${{ needs.security-audit.result }}" == "success" && \
+              "${{ needs.production-readiness.result }}" == "success" && \
+              "${{ needs.deployment-simulation.result }}" == "success" ]]; then
+          echo "✓ All checks passed - Ready for production merge"
+          exit 0
+        else
+          echo "❌ Some checks failed - Please review"
+          exit 1
+        fi

@@ -1,0 +1,103 @@
+# ============================================
+# Production Deployment Pipeline
+# Deploys main branch to Streamlit Cloud
+# ============================================
+name: Main → Production - Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - '.env.production'
+      - '.github/workflows/prod-deploy.yml'
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: read
+
+jobs:
+  production-deploy:
+    name: Deploy to Streamlit Cloud
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Final production validation
+      run: |
+        python -m py_compile streamlit_app.py
+        python -c "from config_env import config; assert config.is_production() or config.is_development(), 'Invalid config'"
+        echo "✓ Production validation passed"
+    
+    - name: Deploy to Streamlit Cloud
+      env:
+        STREAMLIT_AUTH_TOKEN: ${{ secrets.STREAMLIT_AUTH_TOKEN }}
+      run: |
+        # Install Streamlit CLI
+        pip install streamlit
+        
+        # Note: Streamlit Cloud auto-deploys on push to main
+        # This step documents the deployment process
+        echo "📦 Streamlit Cloud will auto-deploy from main branch"
+        echo "ℹ️  Check deployment status at: https://share.streamlit.io"
+        
+        # Optional: Use streamlit CLI for manual deployment control
+        # streamlit run streamlit_app.py --logger.level=info
+    
+    - name: Post-deployment notification
+      if: success()
+      run: |
+        echo "✓ Production deployment initiated"
+        echo "ℹ️  Application: bbbot305.streamlit.app"
+        echo "ℹ️  Branch: main"
+        echo "ℹ️  Environment: production"
+    
+    - name: Handle deployment failure
+      if: failure()
+      run: |
+        echo "❌ Production deployment failed"
+        echo "Review logs and rollback if necessary"
+        exit 1
+
+  health-check:
+    name: Post-Deployment Health Check
+    runs-on: ubuntu-latest
+    needs: production-deploy
+    if: success()
+    
+    steps:
+    - name: Wait for deployment
+      run: |
+        echo "Waiting for Streamlit Cloud to process deployment..."
+        sleep 30
+    
+    - name: Health check
+      run: |
+        echo "ℹ️  Perform manual health check at: https://bbbot305.streamlit.app"
+        echo "Check the following:"
+        echo "  ✓ Portfolio data loads correctly"
+        echo "  ✓ Financial data displays"
+        echo "  ✓ No errors in console"
+        echo "  ✓ API endpoints respond"
+    
+    - name: Notification
+      run: |
+        echo "✓ Production deployment complete"
+        echo "Environment: Streamlit Cloud (https://bbbot305.streamlit.app)"

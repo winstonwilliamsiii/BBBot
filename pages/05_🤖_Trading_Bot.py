@@ -39,7 +39,7 @@ try:
     
     # Reload env vars to ensure fresh database credentials
     if ENV_RELOAD_AVAILABLE:
-        reload_env(force=False)
+        reload_env()
     
     MYSQL_CONFIG = {
         'host': 'localhost',
@@ -54,10 +54,57 @@ try:
         f"{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']}"
     )
     engine = create_engine(connection_string)
+    # Test connection
+    with engine.connect() as conn:
+        conn.execute("SELECT 1")
     DB_AVAILABLE = True
 except Exception as e:
     DB_AVAILABLE = False
-    st.error(f"Database connection failed: {e}")
+    # Show helpful setup message instead of raw error
+    st.warning("💾 **Database Connection Not Available**")
+    with st.expander("🔧 Setup Instructions"):
+        st.markdown(f"""
+        **MySQL Connection Failed**
+        
+        The trading bot requires MySQL for storing signals and trade history.
+        
+        **Local Development Setup:**
+        ```bash
+        # 1. Install MySQL (if not installed)
+        # 2. Create database:
+        mysql -u root -p -e "CREATE DATABASE bentleybot;"
+        
+        # 3. Run schema setup:
+        mysql -u root -p bentleybot < scripts/setup/trading_bot_schema.sql
+        
+        # 4. Update .env file:
+        MYSQL_HOST=localhost
+        MYSQL_PORT=3306
+        MYSQL_USER=root
+        MYSQL_PASSWORD=your_password
+        MYSQL_DATABASE=bentleybot
+        ```
+        
+        **For Railway MySQL (Cloud):**
+        ```bash
+        MYSQL_HOST=nozomi.proxy.rlwy.net
+        MYSQL_PORT=54537
+        MYSQL_USER=root
+        MYSQL_PASSWORD=your_railway_password
+        MYSQL_DATABASE=railway
+        ```
+        
+        **Current Configuration:**
+        - Host: `{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}`
+        - Database: `{MYSQL_CONFIG['database']}`
+        - User: `{MYSQL_CONFIG['user']}`
+        
+        **Error Details:**
+        ```
+        {str(e)}
+        ```
+        """)
+    st.info("📊 The page will show limited functionality without database access.")
 RBACManager.init_session_state()
 show_user_info()
 if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):

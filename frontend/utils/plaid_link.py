@@ -12,7 +12,7 @@ load_dotenv(override=True)
 # Try to use config_env reload if available
 try:
     from config_env import reload_env
-    reload_env(force=True)
+    reload_env()
 except ImportError:
     pass
 

@@ -38,7 +38,7 @@ try:
     
     # Reload env vars to ensure fresh database credentials
     if ENV_RELOAD_AVAILABLE:
-        reload_env(force=False)
+        reload_env()
     
     MYSQL_CONFIG = {
         'host': 'localhost',

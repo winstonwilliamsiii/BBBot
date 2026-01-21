@@ -73,7 +73,7 @@ def main():
     
     # Reload environment variables for cache-busting
     if ENV_RELOAD_AVAILABLE:
-        reload_env(force=False)
+        reload_env()
     
     # Apply styling
     apply_custom_styling()

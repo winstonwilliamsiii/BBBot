@@ -269,7 +269,7 @@ def main():
 
     # Reload environment variables for cache-busting (ensures fresh values on every run)
     if ENV_RELOAD_AVAILABLE:
-        reload_env(force=True)  # Force override to break cache
+        reload_env()  # Override to break cache
 
     # Apply custom styling (CSS)
     apply_custom_styling()
@@ -812,31 +812,6 @@ def main():
         st.write("")
         st.header("Raw Portfolio Data")
         st.dataframe(df, use_container_width=True)
-
-    # ==========================================================================
-    # Personal Budget Analysis Section (Authenticated Users Only)
-    # ==========================================================================
-    if RBAC_AVAILABLE:
-        # Check if user is authenticated
-        if RBACManager.is_authenticated():
-            user = RBACManager.get_current_user()
-            
-            # Check if user has budget viewing permission
-            if RBACManager.has_permission(Permission.VIEW_BUDGET):
-                # Display budget summary
-                try:
-                    show_budget_summary(user.user_id)
-                except Exception as e:
-                    st.error(f"Error loading budget analysis: {e}")
-                    st.info("💡 Make sure your database is set up correctly. Run: `mysql -u root -p mydb < scripts/setup/budget_schema.sql`")
-        else:
-            # Show login prompt for unauthenticated users
-            st.markdown("---")
-            st.info("🔐 **Sign in to access Personal Budget Analysis** - Track your spending, manage budgets, and get financial insights!")
-            
-            with st.expander("🔑 Login to Continue"):
-                if show_login_form():
-                    st.rerun()
 
     # Footer
     add_footer()

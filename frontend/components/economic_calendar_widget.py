@@ -132,15 +132,13 @@ class EconomicCalendarWidget:
         """Initialize widget"""
         self.today = datetime.now().date()
     
-    @st.cache_data(ttl=3600)
-    def get_todays_releases(self) -> List[Dict]:
+    def get_todays_releases(_self) -> List[Dict]:
         """Get major economic releases for today"""
         # This would be enhanced with actual API calls
         # For now, return curated list with next occurrence
-        return self.MAJOR_RELEASES
+        return _self.MAJOR_RELEASES
     
-    @st.cache_data(ttl=3600)
-    def get_upcoming_ipos(self) -> List[Dict]:
+    def get_upcoming_ipos(_self) -> List[Dict]:
         """
         Get upcoming IPO information
         Note: yfinance doesn't directly provide IPO data,
@@ -444,7 +442,7 @@ class EconomicCalendarWidget:
         <div class="market-summary">
             <div class="summary-header">📊 Market Indices (Live)</div>
         </div>
-        """, unsafe_how_html=True)
+        """, unsafe_allow_html=True)
         
         # Fetch market indices
         indices = {

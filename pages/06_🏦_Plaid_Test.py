@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 # Add frontend to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from frontend.components.plaid_quickstart_connector import PlaidQuickstartClient, render_quickstart_plaid_link
 from frontend.utils.styling import apply_custom_styling, add_footer

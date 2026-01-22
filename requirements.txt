@@ -19,7 +19,8 @@ numpy>=1.24.0
 yfinance>=0.2.0
 
 # Webull Trading API
-webull-openapi-python-sdk>=1.0.3
+# Original package name not available on PyPI; using official `webull` client
+webull>=0.6.1
 
 # Web scraping
 beautifulsoup4>=4.11.0
@@ -46,7 +47,7 @@ google-generativeai>=0.3.0
 # ============================================
 # PLAID INTEGRATION (Personal Budget Analysis)
 # ============================================
-plaid-python>=14.0.0
+plaid-python==30.0.0
 cryptography>=41.0.0
 python-dateutil>=2.8.0
 

@@ -1,12 +1,14 @@
 {
-  "buildCommand": "pip install -r requirements.txt",
-  "installCommand": "pip install --upgrade pip && pip install -r requirements.txt",
-  "devCommand": "python api/index.py",
-  "framework": null,
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index.py"
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.py"
     }
   ]
 }

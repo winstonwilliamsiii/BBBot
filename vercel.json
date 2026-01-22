@@ -1,4 +1,8 @@
 {
+  "buildCommand": "pip install -r requirements.txt",
+  "installCommand": "pip install --upgrade pip && pip install -r requirements.txt",
+  "devCommand": "python api/index.py",
+  "framework": null,
   "rewrites": [
     {
       "source": "/(.*)",

@@ -7,6 +7,11 @@ import os
 import sys
 from dotenv import load_dotenv
 
+# Fix encoding issues on Windows
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 print("\n" + "="*70)
 print("BENTLEY BUDGET BOT - PLAID INTEGRATION CHECKLIST")
 print("="*70 + "\n")

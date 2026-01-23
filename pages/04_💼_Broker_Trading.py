@@ -466,7 +466,7 @@ def main():
     
     try:
         # Connect to MySQL and fetch latest signals
-        from sqlalchemy import create_engine
+        from sqlalchemy import create_engine, inspect, text
         
         # Get database credentials from secrets (Streamlit Cloud) or env (local)
         try:
@@ -485,30 +485,83 @@ def main():
         connection_string = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
         engine = create_engine(connection_string)
         
-        query = """
-        SELECT 
-            ticker,
-            date as signal_date,
-            close as price,
-            rsi_14,
-            macd,
-            macd_signal,
-            sentiment_score,
-            CASE 
-                WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
-                WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
-                ELSE 'HOLD'
-            END as signal
-        FROM marts.features_roi
-        WHERE date = (SELECT MAX(date) FROM marts.features_roi)
-        ORDER BY ticker
-        LIMIT 20;
-        """
+        # Check if database exists and has the required table
+        inspector = inspect(engine)
+        available_tables = inspector.get_table_names()
         
-        df_signals = pd.read_sql(query, engine)
+        # Check for marts.features_roi or trading_signals table
+        has_features_roi = 'features_roi' in available_tables
+        has_trading_signals = 'trading_signals' in available_tables
+        
+        df_signals = None
+        
+        # Try to fetch from marts.features_roi (dbt model)
+        if has_features_roi:
+            try:
+                query = """
+                SELECT 
+                    ticker,
+                    date as signal_date,
+                    close as price,
+                    rsi_14,
+                    macd,
+                    macd_signal,
+                    sentiment_score,
+                    CASE 
+                        WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
+                        WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
+                        ELSE 'HOLD'
+                    END as signal
+                FROM features_roi
+                WHERE date = (SELECT MAX(date) FROM features_roi)
+                ORDER BY ticker
+                LIMIT 20;
+                """
+                df_signals = pd.read_sql(query, engine)
+            except Exception as e:
+                st.warning(f"Could not query features_roi: {str(e)[:100]}")
+                df_signals = None
+        
+        # If no data from features_roi, try trading_signals table
+        if df_signals is None and has_trading_signals:
+            try:
+                query = """
+                SELECT 
+                    ticker,
+                    timestamp as signal_date,
+                    price,
+                    CASE 
+                        WHEN signal_type = 1 THEN 'BUY'
+                        WHEN signal_type = -1 THEN 'SELL'
+                        ELSE 'HOLD'
+                    END as signal,
+                    strategy
+                FROM trading_signals
+                WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+                ORDER BY timestamp DESC
+                LIMIT 20;
+                """
+                df_signals = pd.read_sql(query, engine)
+            except Exception as e:
+                st.warning(f"Could not query trading_signals: {str(e)[:100]}")
+                df_signals = None
+        
         engine.dispose()
         
-        if not df_signals.empty:
+        # If still no data, show demo/sample signals
+        if df_signals is None or df_signals.empty:
+            st.info("📊 No trading signals available. The ML pipeline has not run yet.")
+            st.info("To enable signals: Run dbt models and Airflow DAGs to populate marts.features_roi")
+            
+            # Show sample signals for demonstration
+            st.subheader("📈 Sample Trading Signals (Demo Mode)")
+            sample_signals = pd.DataFrame({
+                'ticker': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+                'signal_date': [pd.Timestamp.now() - pd.Timedelta(days=i) for i in range(5)],
+                'price': [150.25, 380.50, 140.75, 180.20, 250.80],
+                'signal': ['BUY', 'HOLD', 'SELL', 'BUY', 'HOLD']
+            })
+            
             # Color code signals
             def highlight_signal(val):
                 if val == 'BUY':
@@ -516,7 +569,32 @@ def main():
                 elif val == 'SELL':
                     return 'background-color: #FFB6C1'
                 else:
-                    return ''
+                    return 'background-color: #FFE4B5'
+            
+            styled_df = sample_signals.style.applymap(
+                highlight_signal,
+                subset=['signal']
+            )
+            
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Summary metrics
+            col1, col2, col3 = st.columns(3)
+            col1.metric("🟢 BUY Signals", (sample_signals['signal'] == 'BUY').sum())
+            col2.metric("🔴 SELL Signals", (sample_signals['signal'] == 'SELL').sum())
+            col3.metric("⚪ HOLD Signals", (sample_signals['signal'] == 'HOLD').sum())
+        
+        else:
+            st.subheader("📊 Latest Trading Signals")
+            
+            # Color code signals
+            def highlight_signal(val):
+                if val == 'BUY':
+                    return 'background-color: #90EE90'
+                elif val == 'SELL':
+                    return 'background-color: #FFB6C1'
+                else:
+                    return 'background-color: #FFE4B5'
             
             styled_df = df_signals.style.applymap(
                 highlight_signal,
@@ -530,20 +608,62 @@ def main():
             col1.metric("🟢 BUY Signals", (df_signals['signal'] == 'BUY').sum())
             col2.metric("🔴 SELL Signals", (df_signals['signal'] == 'SELL').sum())
             col3.metric("⚪ HOLD Signals", (df_signals['signal'] == 'HOLD').sum())
-        
-        else:
-            st.info("No trading signals available. Run the ML pipeline first.")
     
     except Exception as e:
-        st.error(f"Failed to load trading signals: {e}")
-        st.info("Make sure marts.features_roi table exists and has data")
-    
+        st.error(f"Failed to load trading signals: {type(e).__name__}: {str(e)}")
+        st.info("**Troubleshooting**:")
+        st.info("1. Check that the bbbot1 database exists and is accessible")
+        st.info("2. Ensure BBBOT1_MYSQL_* environment variables are configured")
+        st.info("3. Run the dbt pipeline to populate marts.features_roi table")
+        st.info("4. For production, verify Railway MySQL connection or configure AWS RDS")
     # Configuration Guide
     with st.expander("⚙️ Broker API Configuration Guide"):
         st.markdown("""
-        ### Setup Instructions
+        ### 📋 Setup Database for Trading Signals
         
-        #### 1. Webull (Equities & ETFs)
+        #### For Local Development:
+        1. Ensure MySQL is running on port 3307
+        2. Create the `bbbot1` database
+        3. Populate with dbt models or sample data
+        
+        #### For Production (Streamlit Cloud):
+        1. Set up MySQL on Railway, AWS RDS, or DigitalOcean
+        2. Add secrets in Streamlit Cloud settings:
+           ```
+           BBBOT1_MYSQL_HOST=your-database.com
+           BBBOT1_MYSQL_PORT=3306
+           BBBOT1_MYSQL_USER=user
+           BBBOT1_MYSQL_PASSWORD=password
+           BBBOT1_MYSQL_DATABASE=bbbot1
+           ```
+        
+        #### Creating Required Tables:
+        Run this SQL to initialize trading signals tables:
+        ```sql
+        CREATE TABLE IF NOT EXISTS marts.features_roi (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(10),
+            date DATE,
+            close DECIMAL(10, 2),
+            rsi_14 DECIMAL(5, 2),
+            macd DECIMAL(10, 4),
+            macd_signal DECIMAL(10, 4),
+            sentiment_score DECIMAL(5, 3)
+        );
+        
+        CREATE TABLE IF NOT EXISTS trading_signals (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(10),
+            signal_type INT,
+            price DECIMAL(10, 2),
+            timestamp DATETIME,
+            strategy VARCHAR(100)
+        );
+        ```
+        
+        #### Setup Instructions
+        
+        ##### 1. Webull (Equities & ETFs)
         ```bash
         pip install webull
         ```

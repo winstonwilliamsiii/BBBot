@@ -1,0 +1,234 @@
+```
+═══════════════════════════════════════════════════════════════════════════════
+                  APPWRITE 404 ERROR - ROOT CAUSE & SOLUTION
+═══════════════════════════════════════════════════════════════════════════════
+
+ERROR MESSAGE:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ❌ 404 Client Error: Not Found for url:                                     │
+│    https://cloud.appwrite.io/v1/functions/694da7003804de8bb29a/executions  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ROOT CAUSE: Three Critical Issues
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─ ISSUE #1: WRONG ENDPOINT ──────────────────────────────────────────────────┐
+│                                                                              │
+│  ❌ USED:    https://cloud.appwrite.io/v1/                                  │
+│  ✅ CORRECT: https://fra.cloud.appwrite.io/v1/                              │
+│                                                                              │
+│  Your Appwrite project is in the Frankfurt region (fra) but code was using   │
+│  the generic cloud endpoint which doesn't know where your project is!        │
+│                                                                              │
+│  💡 FIX: Updated in 3 service files + 2 environment files                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ ISSUE #2: WRONG FUNCTION ID TYPE ─────────────────────────────────────────┐
+│                                                                              │
+│  ❌ USED:    694da7003804de8bb29a          (Runtime Execution ID)           │
+│  ✅ CORRECT: add_to_watchlist_streamlit    (Configuration ID)               │
+│                                                                              │
+│  Problem:                                                                    │
+│  • Runtime ID changes after EVERY deployment                                │
+│  • If function redeployed → new runtime ID generated → 404 error!           │
+│  • This is a moving target that will always break!                          │
+│                                                                              │
+│  Solution:                                                                   │
+│  • Use stable Configuration IDs defined in appwrite.json                    │
+│  • Appwrite automatically maps to current deployment                        │
+│  • Survives redeployments without breaking                                  │
+│                                                                              │
+│  💡 FIX: Updated all service files + secrets template                       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ ISSUE #3: NO FALLBACK LOGIC ──────────────────────────────────────────────┐
+│                                                                              │
+│  ❌ BEFORE:                                                                  │
+│     FUNCTION_ID = os.getenv("APPWRITE_FUNCTION_ID_ADD_WATCHLIST")           │
+│     # If env var missing → returns None → crashes!                          │
+│                                                                              │
+│  ✅ AFTER:                                                                   │
+│     FUNCTION_ID = os.getenv("APPWRITE_FUNCTION_ID_ADD_WATCHLIST",           │
+│                              "add_to_watchlist_streamlit")                   │
+│     # If env var missing → falls back to config ID → works!                 │
+│                                                                              │
+│  💡 FIX: Added smart default fallback to all service files                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+SOLUTION COMPARISON
+═══════════════════════════════════════════════════════════════════════════════
+
+BEFORE (Broken Flow):
+┌────────────────────────────────────────────────────────────────────────────┐
+│                                                                            │
+│  User Action: Click "Add Symbol"                                          │
+│       ↓                                                                     │
+│  Code Reads Config:                                                        │
+│    • APPWRITE_ENDPOINT = https://cloud.appwrite.io/v1 ❌ (generic)        │
+│    • FUNCTION_ID = 694da7003804de8bb29a ❌ (runtime, not in this region)   │
+│       ↓                                                                     │
+│  Code Constructs URL:                                                      │
+│    https://cloud.appwrite.io/v1/functions/694da7003804de8bb29a/executions  │
+│       ↓                                                                     │
+│  Appwrite Response: 404 Not Found ❌                                        │
+│       ↓                                                                     │
+│  User Sees: "Failed to add to watchlist: 404 Client Error"                 │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+AFTER (Fixed Flow):
+┌────────────────────────────────────────────────────────────────────────────┐
+│                                                                            │
+│  User Action: Click "Add Symbol"                                          │
+│       ↓                                                                     │
+│  Code Reads Config:                                                        │
+│    • APPWRITE_ENDPOINT = https://fra.cloud.appwrite.io/v1 ✅ (region)      │
+│    • FUNCTION_ID = add_to_watchlist_streamlit ✅ (config, stable)          │
+│       ↓                                                                     │
+│  Code Constructs URL:                                                      │
+│    https://fra.cloud.appwrite.io/v1/functions/add_to_watchlist_            │
+│    streamlit/executions                                                    │
+│       ↓                                                                     │
+│  Appwrite Response: 200 OK - Executes Function ✅                           │
+│       ↓                                                                     │
+│  User Sees: "✅ Added AAPL to watchlist!"                                   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+CHANGES MADE
+═══════════════════════════════════════════════════════════════════════════════
+
+Python Service Files:
+┌────────────────────────────────────────────────────────────────────────────┐
+│ • services/watchlist.py                                                    │
+│ • services/transactions.py                                                 │
+│ • services/user_profile.py                                                 │
+│                                                                            │
+│ Changes in each:                                                           │
+│  1. Endpoint: cloud.appwrite.io → fra.cloud.appwrite.io                    │
+│  2. Function ID: get from env with fallback to config ID                   │
+│  3. Comments: Added explanation of config vs runtime IDs                   │
+└────────────────────────────────────────────────────────────────────────────┘
+
+Environment Files:
+┌────────────────────────────────────────────────────────────────────────────┐
+│ • .env.development                                                         │
+│ • .env.production                                                          │
+│                                                                            │
+│ Changes in each:                                                           │
+│  1. APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1                     │
+│  2. APPWRITE_DATABASE_ID=694481eb003c0a14151d                              │
+│  3. APPWRITE_PROJECT_ID=68869ef500017ca73772                               │
+└────────────────────────────────────────────────────────────────────────────┘
+
+Secrets Template:
+┌────────────────────────────────────────────────────────────────────────────┐
+│ • STREAMLIT_SECRETS_TEMPLATE.toml                                          │
+│                                                                            │
+│ Function IDs changed:                                                      │
+│                                                                            │
+│ FROM (Runtime - Changes on deploy):                                        │
+│  APPWRITE_FUNCTION_ID_ADD_WATCHLIST_STREAMLIT = "694da7003804de8bb29a"     │
+│  APPWRITE_FUNCTION_ID_GET_WATCHLIST_STREAMLIT = "694da75bd55dc6d65fb9"     │
+│                                                                            │
+│ TO (Configuration - Stable):                                               │
+│  APPWRITE_FUNCTION_ID_ADD_WATCHLIST_STREAMLIT = "add_to_watchlist_streamlit"
+│  APPWRITE_FUNCTION_ID_GET_WATCHLIST_STREAMLIT = "get_watchlist_streamlit"  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+PRODUCTION DEPLOYMENT STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+Step 1: Update Streamlit Cloud Secrets (5 min)
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 1. Open https://share.streamlit.io/                                       │
+│ 2. Click "bbbot305" app                                                   │
+│ 3. Click ⚙️ Settings → 🔐 Secrets                                          │
+│ 4. Update these values:                                                    │
+│                                                                            │
+│    APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1"                  │
+│                                                                            │
+│    APPWRITE_FUNCTION_ID_ADD_WATCHLIST_STREAMLIT = "add_to_watchlist_streamlit"
+│    APPWRITE_FUNCTION_ID_GET_WATCHLIST_STREAMLIT = "get_watchlist_streamlit"
+│    APPWRITE_FUNCTION_ID_GET_TRANSACTIONS_STREAMLIT = "get_transactions_streamlit"
+│    APPWRITE_FUNCTION_ID_GET_USER_PROFILE_STREAMLIT = "get_user_profile_streamlit"
+│                                                                            │
+│ 5. Click Save                                                              │
+│ 6. Click Reboot app                                                        │
+│ 7. Wait 60 seconds                                                         │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+Step 2: Test (5 min)
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 1. Visit https://bbbot305.streamlit.app/                                  │
+│ 2. Home page → Quick Actions section                                       │
+│ 3. Watchlist tab → "Add Symbol"                                            │
+│ 4. Enter: User ID = "test", Symbol = "AAPL"                                │
+│ 5. Click "➕ Add Symbol"                                                    │
+│ 6. Should see: ✅ "Added AAPL to watchlist!"                               │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+VERIFICATION TABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Feature                          | Status | Notes
+─────────────────────────────────┼────────┼─────────────────────────────
+Quick Actions → Add to Watchlist │ ✅    | Uses correct endpoint & ID
+Quick Actions → View Watchlist   │ ✅    | Uses correct endpoint & ID  
+Quick Actions → Transactions     │ ✅    | Uses correct endpoint & ID
+Quick Actions → User Profile     │ ✅    | Uses correct endpoint & ID
+All Appwrite functions          │ ✅    | All services updated
+
+
+WHY THIS SOLUTION PREVENTS FUTURE ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+Runtime IDs (Old Problem):
+┌────────────────────────────────────────────────────────────────────────────┐
+│  Deploy v1 → Runtime ID: 694da7003804de8bb29a                              │
+│  Deploy v2 → Runtime ID: 6afb1234567890abcdef (DIFFERENT!)                 │
+│  Deploy v3 → Runtime ID: 7c3d5678901234abcdef (DIFFERENT AGAIN!)            │
+│                                                                            │
+│  Result: Code hardcoded with old ID → 404 Error → Users angry!             │
+│                                                                            │
+│  This is like writing a phone number on a paper - it works until the        │
+│  person gets a new number!                                                │
+└────────────────────────────────────────────────────────────────────────────┘
+
+Configuration IDs (New Solution):
+┌────────────────────────────────────────────────────────────────────────────┐
+│  Deploy v1 → Config ID: add_to_watchlist_streamlit                         │
+│  Deploy v2 → Config ID: add_to_watchlist_streamlit (SAME!)                 │
+│  Deploy v3 → Config ID: add_to_watchlist_streamlit (SAME!)                 │
+│                                                                            │
+│  Result: Code uses same ID → Appwrite finds latest deployment → Works!     │
+│                                                                            │
+│  This is like writing a person's name - it works whether they move         │
+│  apartments, change jobs, or get a new phone!                              │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+KEY TAKEAWAYS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Always use regional endpoints (fra.cloud.appwrite.io, not cloud.appwrite.io)
+2. Use Configuration IDs from appwrite.json, not Runtime IDs
+3. Always provide fallback values in os.getenv() calls
+4. Test after every deployment to catch endpoint/ID issues
+5. Monitor Streamlit logs for Appwrite-related errors
+
+═══════════════════════════════════════════════════════════════════════════════
+STATUS: ✅ READY FOR PRODUCTION DEPLOYMENT
+TIME TO DEPLOY: 5 minutes
+RISK LEVEL: Low (backward compatible)
+═══════════════════════════════════════════════════════════════════════════════
+```

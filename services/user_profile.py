@@ -8,9 +8,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://cloud.appwrite.io/v1")
+APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://fra.cloud.appwrite.io/v1")
 PROJECT_ID = os.getenv("APPWRITE_PROJECT_ID")
-FUNCTION_ID_GET_USER_PROFILE = os.getenv("APPWRITE_FUNCTION_ID_GET_USER_PROFILE_STREAMLIT")
+# Function IDs are the configuration IDs from appwrite.json, not the runtime execution IDs
+FUNCTION_ID_GET_USER_PROFILE = os.getenv("APPWRITE_FUNCTION_ID_GET_USER_PROFILE_STREAMLIT", "get_user_profile_streamlit")
 
 
 def get_user_profile(user_id: str):

@@ -8,10 +8,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://cloud.appwrite.io/v1")
+APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://fra.cloud.appwrite.io/v1")
 PROJECT_ID = os.getenv("APPWRITE_PROJECT_ID")
-FUNCTION_ID_CREATE_TX = os.getenv("APPWRITE_FUNCTION_ID_CREATE_TRANSACTION")
-FUNCTION_ID_GET_TX = os.getenv("APPWRITE_FUNCTION_ID_GET_TRANSACTIONS_STREAMLIT")
+# Function IDs are the configuration IDs from appwrite.json, not the runtime execution IDs
+FUNCTION_ID_CREATE_TX = os.getenv("APPWRITE_FUNCTION_ID_CREATE_TRANSACTION", "create_transaction")
+FUNCTION_ID_GET_TX = os.getenv("APPWRITE_FUNCTION_ID_GET_TRANSACTIONS_STREAMLIT", "get_transactions_streamlit")
 
 
 def create_transaction(user_id: str, amount: float, date: str = None):

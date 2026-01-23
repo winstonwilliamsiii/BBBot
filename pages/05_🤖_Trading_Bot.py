@@ -42,18 +42,18 @@ try:
         reload_env()
     
     MYSQL_CONFIG = {
-        'host': 'localhost',
-        'port': 3307,
-        'user': 'root',
-        'password': os.getenv('MYSQL_PASSWORD', ''),
-        'database': 'bentleybot'
+        'host': os.getenv('DB_HOST', os.getenv('MYSQL_HOST', 'localhost')),
+        'port': int(os.getenv('DB_PORT', os.getenv('MYSQL_PORT', 3306))),
+        'user': os.getenv('DB_USER', os.getenv('MYSQL_USER', 'root')),
+        'password': os.getenv('DB_PASSWORD', os.getenv('MYSQL_PASSWORD', '')),
+        'database': os.getenv('DB_NAME', os.getenv('MYSQL_DATABASE', 'bentleybot'))
     }
     
     connection_string = (
         f"mysql+pymysql://{MYSQL_CONFIG['user']}:{MYSQL_CONFIG['password']}@"
         f"{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']}"
     )
-    engine = create_engine(connection_string)
+    engine = create_engine(connection_string, pool_pre_ping=True, pool_recycle=3600)
     # Test connection
     with engine.connect() as conn:
         conn.execute("SELECT 1")
@@ -292,7 +292,7 @@ def load_active_signals():
         return pd.DataFrame()
     
     query = """
-        SELECT ticker, signal, price, timestamp, strategy
+        SELECT ticker, signal_type as signal, price, timestamp, strategy
         FROM trading_signals
         WHERE DATE(timestamp) = CURDATE()
         ORDER BY timestamp DESC

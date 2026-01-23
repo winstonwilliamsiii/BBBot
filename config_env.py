@@ -3,8 +3,26 @@ Environment Configuration Manager
 Handles loading environment-specific configuration with proper precedence
 """
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
+
+# Critical environment variables that MUST be present
+CRITICAL_VARS = [
+    'MYSQL_HOST',
+    'MYSQL_PORT',
+    'MYSQL_USER',
+    'MYSQL_PASSWORD',
+    'MYSQL_DATABASE',
+]
+
+# Important variables that should be present but can be optional
+IMPORTANT_VARS = [
+    'PLAID_CLIENT_ID',
+    'ALPACA_API_KEY',
+    'MLFLOW_TRACKING_URI',
+    'APPWRITE_ENDPOINT',
+]
 
 class EnvironmentConfig:
     """Manages environment-specific configuration loading"""
@@ -13,6 +31,7 @@ class EnvironmentConfig:
         """Initialize configuration with proper precedence"""
         self.env_type = os.getenv('ENVIRONMENT', 'development')
         self._load_env_files()
+        self._validate_critical_vars()
     
     def _load_env_files(self):
         """
@@ -21,7 +40,8 @@ class EnvironmentConfig:
         2. .env.{ENVIRONMENT} (environment-specific)
         3. .env (default fallback)
         """
-        project_root = Path(__file__).parent.parent
+        # Use the directory where config_env.py is located, not parent
+        project_root = Path(__file__).parent
         
         # Define environment files in reverse precedence order
         env_files = [
@@ -31,10 +51,16 @@ class EnvironmentConfig:
         ]
         
         # Load each file, with later files overriding earlier ones
+        loaded_any = False
         for env_file in env_files:
             if env_file.exists():
                 load_dotenv(env_file, override=True)
                 print(f"✓ Loaded config: {env_file.name}")
+                loaded_any = True
+        
+        if not loaded_any:
+            print(f"⚠️ No .env files found in {project_root}", file=sys.stderr)
+            print(f"   Looking for: .env, .env.{self.env_type}, or .env.local", file=sys.stderr)
     
     @staticmethod
     def get(key: str, default=None):
@@ -64,6 +90,56 @@ class EnvironmentConfig:
     def is_development() -> bool:
         """Check if running in development"""
         return os.getenv('ENVIRONMENT', 'development').lower() == 'development'
+    
+    def _validate_critical_vars(self):
+        """
+        Validate that critical environment variables are set
+        Fails fast if critical variables are missing
+        """
+        missing_critical = []
+        missing_important = []
+        
+        # Check critical variables
+        for var in CRITICAL_VARS:
+            if not os.getenv(var):
+                missing_critical.append(var)
+        
+        # Check important variables (warnings only)
+        for var in IMPORTANT_VARS:
+            if not os.getenv(var):
+                missing_important.append(var)
+        
+        # Fail if critical variables are missing
+        if missing_critical:
+            error_msg = f"""
+╔════════════════════════════════════════════════════════════════╗
+║  ❌ CRITICAL CONFIGURATION ERROR                               ║
+╠════════════════════════════════════════════════════════════════╣
+║  Missing required environment variables:                       ║
+║  {', '.join(missing_critical):<58} ║
+║                                                                ║
+║  These variables MUST be set in your .env file                 ║
+║                                                                ║
+║  Quick Fix:                                                    ║
+║  1. Copy .env.example to .env                                  ║
+║     Copy-Item .env.example .env                                ║
+║  2. Fill in your actual values in .env                         ║
+║  3. Restart the application                                    ║
+╚════════════════════════════════════════════════════════════════╝
+"""
+            print(error_msg, file=sys.stderr)
+            sys.exit(1)
+        
+        # Warn about missing important variables
+        if missing_important:
+            warning_msg = f"""
+⚠️  WARNING: Missing optional but important environment variables:
+   {', '.join(missing_important)}
+   
+   Some features may not work correctly without these variables.
+   Check .env.example for reference.
+"""
+            print(warning_msg, file=sys.stderr)
 
 
 def reload_env():

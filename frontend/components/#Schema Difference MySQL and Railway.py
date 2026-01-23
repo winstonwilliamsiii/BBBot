@@ -17,7 +17,7 @@ LOCAL_DB = {
 
 RAILWAY_DB = {
     "host": "YOUR_RAILWAY_HOST",
-    "port": 3306,  # Standard MySQL port
+    "port": YOUR_RAILWAY_PORT,
     "user": "YOUR_RAILWAY_USER",
     "password": "YOUR_RAILWAY_PASSWORD",
     "database": "YOUR_RAILWAY_DATABASE",

@@ -10,16 +10,7 @@ from plotly.subplots import make_subplots
 import time
 from datetime import datetime, timedelta
 
-# Import RBAC with fallback
-try:
-    from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
-    RBAC_AVAILABLE = True
-except ImportError:
-    RBAC_AVAILABLE = False
-    RBACManager = None
-    Permission = None
-    show_login_form = lambda: None
-    show_user_info = lambda: None
+from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 
 # Import color scheme and styling from home page
 try:

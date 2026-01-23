@@ -1,0 +1,79 @@
+name: Development CI
+
+on:
+  push:
+    branches:
+      - dev
+      - feature/*
+  pull_request:
+    branches:
+      - dev
+
+jobs:
+  test:
+    name: Test Development Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest flake8 pytest-cov
+      
+      - name: Lint with flake8
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true
+      
+      - name: Run tests
+        env:
+          # Development environment variables (non-sensitive)
+          ENVIRONMENT: development
+          ALPACA_PAPER_TRADING: true
+        run: |
+          # Run pytest if tests exist
+          if [ -d "tests" ]; then
+            pytest tests/ -v --cov=. --cov-report=term-missing
+          else
+            echo "No tests directory found, skipping tests"
+          fi
+        continue-on-error: true
+      
+      - name: Check imports and dependencies
+        run: |
+          python -c "import streamlit; print('Streamlit version:', streamlit.__version__)"
+          python -c "import yfinance; print('yfinance available')" || echo "yfinance not available"
+      
+      - name: Validate Streamlit app syntax
+        run: |
+          python -m py_compile streamlit_app.py
+          python -m py_compile api/index.py
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '0'  # Don't fail on vulnerabilities in dev

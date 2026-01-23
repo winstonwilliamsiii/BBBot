@@ -8,11 +8,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://fra.cloud.appwrite.io/v1")
+APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT", "https://cloud.appwrite.io/v1")
 PROJECT_ID = os.getenv("APPWRITE_PROJECT_ID")
-# Function IDs are the configuration IDs from appwrite.json, not the runtime execution IDs
-FUNCTION_ID_ADD_WATCHLIST = os.getenv("APPWRITE_FUNCTION_ID_ADD_WATCHLIST", "add_to_watchlist_streamlit")
-FUNCTION_ID_GET_WATCHLIST = os.getenv("APPWRITE_FUNCTION_ID_GET_WATCHLIST", "get_watchlist_streamlit")
+FUNCTION_ID_ADD_WATCHLIST = os.getenv("APPWRITE_FUNCTION_ID_ADD_WATCHLIST_STREAMLIT")
+FUNCTION_ID_GET_WATCHLIST = os.getenv("APPWRITE_FUNCTION_ID_GET_WATCHLIST_STREAMLIT")
 
 
 def add_to_watchlist(user_id: str, symbol: str):
@@ -27,7 +26,7 @@ def add_to_watchlist(user_id: str, symbol: str):
         dict: Response from Appwrite Function
     """
     if not PROJECT_ID or not FUNCTION_ID_ADD_WATCHLIST:
-        return {"error": "Missing Appwrite configuration. Ensure APPWRITE_PROJECT_ID and APPWRITE_FUNCTION_ID_ADD_WATCHLIST are set in environment or use defaults."}
+        return {"error": "Missing Appwrite configuration. Set APPWRITE_PROJECT_ID and APPWRITE_FUNCTION_ID_ADD_WATCHLIST"}
     
     url = f"{APPWRITE_ENDPOINT}/functions/{FUNCTION_ID_ADD_WATCHLIST}/executions"
     headers = {

@@ -1,0 +1,92 @@
+name: Pull Request Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate PR to Main
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest flake8 pytest-cov
+      
+      - name: Check for merge conflicts
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD || {
+            echo "⚠️ Branch is behind main, please update"
+            exit 1
+          }
+      
+      - name: Run full test suite
+        env:
+          ENVIRONMENT: staging
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+          fi
+      
+      - name: Check code quality
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      
+      - name: Security scan for secrets
+        run: |
+          # Check for common secret patterns
+          if grep -rE "(APCA-API-KEY|APCA-API-SECRET|sk-|api[_-]?key|password\s*=|secret\s*=)" . \
+            --exclude-dir=".git" \
+            --exclude-dir="__pycache__" \
+            --exclude="*.md" \
+            --exclude=".env.example"; then
+            echo "⚠️ WARNING: Potential secrets detected!"
+            echo "Please verify these are not real credentials"
+            exit 1
+          fi
+      
+      - name: Check environment separation
+        run: |
+          # Ensure .env files are not committed
+          if [ -f ".env" ] || [ -f ".env.local" ]; then
+            echo "❌ ERROR: Environment files should not be committed!"
+            exit 1
+          fi
+          
+          # Ensure .env.example exists
+          if [ ! -f ".env.example" ]; then
+            echo "⚠️ WARNING: .env.example should exist as template"
+          fi
+      
+      - name: Validate Docker configuration
+        run: |
+          if [ -f "Dockerfile" ]; then
+            docker build --target builder -t bbbot-test . || {
+              echo "❌ Docker build failed"
+              exit 1
+            }
+          fi
+        continue-on-error: true
+      
+      - name: Generate PR summary
+        run: |
+          echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Code quality checks passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ No merge conflicts detected" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Security scan completed" >> $GITHUB_STEP_SUMMARY

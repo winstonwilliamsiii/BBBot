@@ -202,13 +202,6 @@ except ImportError:
     RBAC_AVAILABLE = False
     st.warning("⚠️ RBAC system not available.")
 
-# Import Appwrite services if available
-try:
-    from services.appwrite_service import AppwriteService
-    APPWRITE_SERVICES_AVAILABLE = True
-except ImportError:
-    APPWRITE_SERVICES_AVAILABLE = False
-
 # Import multi-source fundamentals fetcher
 try:
     from frontend.utils.fundamentals_fetcher import (

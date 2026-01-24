@@ -56,12 +56,19 @@ class PlaidLinkManager:
     
     def __init__(self):
         """Initialize Plaid API client"""
-        # Reload environment one more time to be sure
+        # Reload environment one more time to be sure (local only)
         load_dotenv(str(project_root / '.env'), override=True)
         
-        self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
-        self.secret = os.getenv('PLAID_SECRET', '').strip()
-        self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
+        # Try Streamlit secrets first (production), then environment variables (local dev)
+        try:
+            self.client_id = st.secrets.get('PLAID_CLIENT_ID', os.getenv('PLAID_CLIENT_ID', '')).strip()
+            self.secret = st.secrets.get('PLAID_SECRET', os.getenv('PLAID_SECRET', '')).strip()
+            self.env = st.secrets.get('PLAID_ENV', os.getenv('PLAID_ENV', 'sandbox')).strip()
+        except Exception:
+            # Fallback if st.secrets not available (shouldn't happen in Streamlit)
+            self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
+            self.secret = os.getenv('PLAID_SECRET', '').strip()
+            self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
         
         # Debug: Print what we got (masked)
         if not self.client_id:

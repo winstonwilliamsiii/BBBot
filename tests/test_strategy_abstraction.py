@@ -15,15 +15,15 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent
+# Add project root to path (now in tests/ directory, need to go up one level)
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from frontend.utils.broker_interface import create_broker_client
-from trading.strategies.example_strategies import GoldRsiStrategy, UsdCopShortStrategy
+from src.brokers.broker_interface import create_broker_client
+from src.strategies.example_strategies import GoldRsiStrategy, UsdCopShortStrategy
 
 
 def test_gold_strategy_with_alpaca():

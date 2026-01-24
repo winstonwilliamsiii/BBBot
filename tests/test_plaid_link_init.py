@@ -5,8 +5,8 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# Add frontend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'frontend'))
+# Add project root to path (now in tests/ directory, need to go up one level)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 # Load environment
 load_dotenv()

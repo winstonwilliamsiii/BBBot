@@ -1,0 +1,17 @@
+#ENVIRNOMENT WORKFLOW CI/Cloud
+
+name: Deploy to Streamlit
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - checkout code
+      - install dependencies
+      - run tests
+      - deploy to Streamlit Cloud

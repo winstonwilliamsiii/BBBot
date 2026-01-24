@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import logging
 
-from frontend.utils.broker_interface import BrokerClient, Position
+from src.brokers.broker_interface import BrokerClient, Position
 
 logger = logging.getLogger(__name__)
 

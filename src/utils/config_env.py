@@ -38,15 +38,18 @@ class EnvironmentConfig:
         Load environment files in precedence order:
         1. .env.local (machine-specific, gitignored) - HIGHEST PRIORITY
         2. .env.{ENVIRONMENT} (environment-specific)
-        3. .env (default fallback)
+        3. config/{env}/.env.{env} (new structure)
+        4. .env (default fallback)
         """
-        # Use the directory where config_env.py is located, not parent
-        project_root = Path(__file__).parent
+        # Use project root (two levels up from config_env.py in src/utils/)
+        project_root = Path(__file__).parent.parent.parent
         
         # Define environment files in reverse precedence order
+        # Check both old structure (root) and new structure (config/)
         env_files = [
             project_root / '.env',  # Base fallback
-            project_root / f'.env.{self.env_type}',  # Environment-specific
+            project_root / 'config' / self.env_type / f'.env.{self.env_type[:4]}',  # New structure (dev/prod)
+            project_root / f'.env.{self.env_type}',  # Old structure - Environment-specific
             project_root / '.env.local',  # Machine-specific (highest priority)
         ]
         
@@ -55,12 +58,12 @@ class EnvironmentConfig:
         for env_file in env_files:
             if env_file.exists():
                 load_dotenv(env_file, override=True)
-                print(f"✓ Loaded config: {env_file.name}")
+                print(f"✓ Loaded config: {env_file}")
                 loaded_any = True
         
         if not loaded_any:
             print(f"⚠️ No .env files found in {project_root}", file=sys.stderr)
-            print(f"   Looking for: .env, .env.{self.env_type}, or .env.local", file=sys.stderr)
+            print(f"   Looking for: .env, .env.{self.env_type}, config/{self.env_type}/.env.*, or .env.local", file=sys.stderr)
     
     @staticmethod
     def get(key: str, default=None):

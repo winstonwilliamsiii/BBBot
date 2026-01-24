@@ -25,8 +25,8 @@ import numpy as np
 from typing import List
 import logging
 
-from trading.strategies.base_strategy import BaseStrategy
-from frontend.utils.broker_interface import Position, HistoricalBar
+from src.strategies.base_strategy import BaseStrategy
+from src.brokers.broker_interface import Position, HistoricalBar
 
 logger = logging.getLogger(__name__)
 

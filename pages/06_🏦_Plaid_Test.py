@@ -30,10 +30,23 @@ from pathlib import Path
 # Add frontend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from frontend.components.plaid_quickstart_connector import PlaidQuickstartClient, render_quickstart_plaid_link
+# Import Plaid components with error handling
+try:
+    from frontend.components.plaid_quickstart_connector import PlaidQuickstartClient, render_quickstart_plaid_link
+    PLAID_QUICKSTART_AVAILABLE = True
+except ImportError as e:
+    st.error(f"⚠️ Plaid Quickstart module not found: {e}")
+    PLAID_QUICKSTART_AVAILABLE = False
+
 from frontend.utils.styling import apply_custom_styling, add_footer
 from frontend.styles.colors import COLOR_SCHEME
-from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
+
+# RBAC imports with error handling
+try:
+    from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
+    RBAC_AVAILABLE = True
+except ImportError:
+    RBAC_AVAILABLE = False
 
 # Page config
 st.set_page_config(
@@ -44,12 +57,15 @@ st.set_page_config(
 
 # Apply custom styling
 apply_custom_styling()
-RBACManager.init_session_state()
-show_user_info()
-if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
-    st.error("🚫 ADMIN access required")
-    show_login_form()
-    st.stop()
+
+# RBAC check (only if available)
+if RBAC_AVAILABLE:
+    RBACManager.init_session_state()
+    show_user_info()
+    if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+        st.error("🚫 ADMIN access required")
+        show_login_form()
+        st.stop()
 
 st.title("🏦 Plaid Quickstart Integration Test")
 
@@ -106,6 +122,11 @@ with col2:
 # Test connection
 st.markdown("---")
 st.markdown("## 🔍 Backend Health Check")
+
+# Check if Plaid Quickstart module is available
+if not PLAID_QUICKSTART_AVAILABLE:
+    st.error("❌ Plaid Quickstart connector module not available. Check installation.")
+    st.stop()
 
 client = PlaidQuickstartClient(backend_url)
 

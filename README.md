@@ -99,6 +99,43 @@ Bentley Budget Bot is a comprehensive financial management platform that combine
 
 ---
 
+## 🚀 Branching Strategy
+- **main/** → Production (Streamlit Cloud). Auto-deploys via GitHub Actions.
+- **dev/** → Development (localhost). Sandbox for experiments.
+- **feature/** → Experimental branches. Merged into `dev` first.
+- **hotfix/** → Emergency fixes for production.
+
+---
+
+## ⚡ Streamlit Caching
+- `@st.cache_data` used for expensive API calls.
+- Manual "🔄 Refresh Data" button clears cache when fresh data is required.
+- Ensures fast UI while keeping portfolio/trade data up-to-date.
+
+---
+
+## 🗂️ Folder Structure
+- src/                → Core trading logic
+- config/dev/         → Localhost configs (.env.dev, settings.json)
+- config/prod/        → Production configs (.env.prod, settings.json)
+- tests/              → Unit + integration tests
+- .github/workflows/  → CI/CD pipeline
+
+---
+
+## 🔐 Secrets
+- `.env.dev` → Alpaca paper keys
+- `.env.prod` → Alpaca live keys
+- Secrets managed via GitHub + Streamlit Cloud
+
+---
+
+## ✅ Deployment
+- Push to `main` → GitHub Actions runs tests + deploys to Streamlit Cloud
+- Push to `dev` → Local development only
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites

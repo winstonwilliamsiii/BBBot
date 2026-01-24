@@ -231,4 +231,4 @@ ehthumbs.db
 
 # Local configuration overrides
 config.local.json
-settings.local.json
+settings.local.json*_backup.py

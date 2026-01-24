@@ -99,6 +99,71 @@ Bentley Budget Bot is a comprehensive financial management platform that combine
 
 ---
 
+## 📁 Project Structure
+
+```
+BentleyBudgetBot/
+│
+├── src/                          # Core application source code
+│   ├── brokers/                  # Broker integration modules
+│   │   ├── broker_connections.py
+│   │   ├── broker_interface.py
+│   │   └── __init__.py
+│   ├── strategies/               # Trading strategies
+│   │   ├── base_strategy.py
+│   │   ├── example_strategies.py
+│   │   └── __init__.py
+│   ├── utils/                    # Utility functions
+│   │   ├── config_env.py        # Environment configuration
+│   │   └── __init__.py
+│   └── __init__.py
+│
+├── config/                       # Configuration files
+│   ├── dev/                      # Development config
+│   │   ├── .env.dev
+│   │   └── settings.json
+│   └── prod/                     # Production config
+│       ├── .env.prod
+│       └── settings.json
+│
+├── tests/                        # Test suite
+│   ├── test_*.py                 # Test files
+│   └── __init__.py
+│
+├── frontend/                     # Frontend components
+│   ├── components/               # Reusable UI components
+│   ├── styles/                   # CSS and styling
+│   └── utils/                    # Frontend utilities
+│
+├── api/                          # Vercel API endpoints
+│   └── index.py
+│
+├── .github/                      # GitHub workflows
+│   └── workflows/
+│
+├── streamlit_app.py             # Main application entry point
+├── requirements.txt              # Python dependencies
+├── README.md                     # This file
+└── .gitignore
+```
+
+### Key Directories
+
+- **`src/`** - Organized source code with modular structure
+  - `brokers/` - Broker API integrations (Alpaca, IBKR, etc.)
+  - `strategies/` - Trading strategy implementations
+  - `utils/` - Shared utilities and configuration management
+
+- **`config/`** - Environment-specific configuration
+  - `dev/` - Development environment settings
+  - `prod/` - Production environment settings
+
+- **`tests/`** - Comprehensive test suite for all modules
+
+- **`frontend/`** - UI components and styling (Streamlit-based)
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -133,12 +198,20 @@ pip install -r requirements.txt
 
 #### 3. Configure Environment
 ```bash
-# Copy example environment file
+# For development, use the config/dev directory
+cp config/dev/.env.dev .env.development
+
+# For production, use the config/prod directory  
+cp config/prod/.env.prod .env.production
+
+# Or copy from the example file
 cp .env.example .env
 
 # Edit .env with your credentials
 # Required: MySQL, Appwrite, Broker APIs
 ```
+
+**Note:** The application now supports both traditional root-level `.env` files and the new `config/` directory structure for better organization.
 
 #### 4. Initialize Database
 ```bash

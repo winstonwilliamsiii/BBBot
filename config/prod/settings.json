@@ -1,0 +1,23 @@
+{
+  "environment": "production",
+  "debug": false,
+  "database": {
+    "port": 3306,
+    "connection_timeout": 60,
+    "pool_size": 10
+  },
+  "api": {
+    "timeout": 60,
+    "retry_attempts": 5
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "features": {
+    "enable_chatbot": true,
+    "enable_rbac": true,
+    "enable_economic_data": true,
+    "enable_plaid": true
+  }
+}

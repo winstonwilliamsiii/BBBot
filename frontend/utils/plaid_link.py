@@ -4,16 +4,38 @@ Handles OAuth flow, token exchange, and bank connection
 """
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Force reload environment variables with cache-busting
-load_dotenv(override=True)
+# Find and load .env file explicitly
+project_root = Path(__file__).parent.parent.parent  # frontend/utils/plaid_link.py -> root
+env_file = project_root / '.env'
+
+# Force reload environment variables with explicit path
+if env_file.exists():
+    load_dotenv(str(env_file), override=True)
+else:
+    print(f"⚠️ WARNING: .env file not found at {env_file}")
+
+# Also try parent directories as fallback
+if not os.getenv('PLAID_CLIENT_ID'):
+    for fallback in ['.env', '../.env', '../../.env']:
+        try:
+            load_dotenv(fallback, override=True)
+            if os.getenv('PLAID_CLIENT_ID'):
+                print(f"✓ Loaded .env from: {fallback}")
+                break
+        except:
+            pass
 
 # Try to use config_env reload if available
 try:
     from config_env import reload_env
     reload_env()
 except ImportError:
+    pass
+except TypeError:
+    # reload_env may not accept force parameter
     pass
 
 import streamlit as st
@@ -35,24 +57,42 @@ class PlaidLinkManager:
     def __init__(self):
         """Initialize Plaid API client"""
         # Reload environment one more time to be sure
-        load_dotenv(override=True)
+        load_dotenv(str(project_root / '.env'), override=True)
         
         self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
         self.secret = os.getenv('PLAID_SECRET', '').strip()
         self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
         
         # Debug: Print what we got (masked)
-        if not self.client_id or self.client_id == 'your_plaid_client_id_here':
-            # Show debug info
+        if not self.client_id:
+            # Show detailed debug info
             all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
-            print(f"DEBUG: Plaid env vars found: {list(all_env.keys())}")
+            print(f"\n❌ ERROR: PLAID_CLIENT_ID is empty!")
+            print(f"   Environment vars found: {list(all_env.keys())}")
+            print(f"   Project root: {project_root}")
+            print(f"   .env file: {project_root / '.env'}")
+            print(f"   .env exists: {(project_root / '.env').exists()}")
+            if (project_root / '.env').exists():
+                with open(project_root / '.env', 'r') as f:
+                    lines = f.readlines()
+                    plaid_lines = [l for l in lines if 'PLAID' in l]
+                    print(f"   PLAID lines in .env: {len(plaid_lines)}")
+                    for line in plaid_lines[:3]:
+                        print(f"   - {line.strip()[:60]}...")
             raise ValueError(
-                f"PLAID_CLIENT_ID not configured in .env\n"
-                f"Found value: '{self.client_id}'\n"
-                f"Please ensure .env file has: PLAID_CLIENT_ID=your_actual_client_id"
+                f"PLAID_CLIENT_ID not found or empty in environment\n"
+                f"Please ensure .env file has valid credentials"
             )
-        if not self.secret or self.secret == 'your_plaid_secret_here':
+        elif self.client_id == 'your_plaid_client_id_here':
+            raise ValueError(
+                f"PLAID_CLIENT_ID contains placeholder value\n"
+                f"Please update .env with real credentials from Plaid Dashboard"
+            )
+        
+        if not self.secret:
             raise ValueError("PLAID_SECRET not configured in .env")
+        elif self.secret == 'your_plaid_secret_here':
+            raise ValueError("PLAID_SECRET contains placeholder value")
         
         # Configure Plaid client
         configuration = Configuration(

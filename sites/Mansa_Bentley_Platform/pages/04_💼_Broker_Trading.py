@@ -128,6 +128,54 @@ def main():
     st.title("💼 Multi-Broker Trading Dashboard")
     st.markdown("---")
     
+    # Check Alpaca credentials first
+    from frontend.utils.secrets_helper import check_credentials_status
+    
+    creds_status = check_credentials_status()
+    
+    # Display credential status banner
+    col_status1, col_status2, col_status3 = st.columns(3)
+    
+    with col_status1:
+        if creds_status['mysql']['configured']:
+            st.success(f"✅ MySQL: {creds_status['mysql']['database']}")
+        else:
+            st.error("❌ MySQL not configured")
+    
+    with col_status2:
+        if creds_status['alpaca']['configured']:
+            st.success("✅ Alpaca API")
+        else:
+            st.error("❌ Alpaca credentials not configured")
+            with st.expander("ℹ️ How to fix"):
+                st.markdown("""
+                **Streamlit Cloud:**
+                1. Go to app Settings → Secrets
+                2. Add under `[alpaca]` section:
+                ```toml
+                [alpaca]
+                ALPACA_API_KEY = "your-key"
+                ALPACA_SECRET_KEY = "your-secret"
+                ALPACA_PAPER = "true"
+                ```
+                
+                **Local Development:**
+                1. Add to your `.env` file:
+                ```
+                ALPACA_API_KEY=your-key
+                ALPACA_SECRET_KEY=your-secret
+                ALPACA_PAPER=true
+                ```
+                """)
+    
+    with col_status3:
+        if creds_status['plaid']['configured']:
+            st.success("✅ Plaid API")
+        else:
+            st.warning("⚠️ Plaid not configured")
+    
+    st.markdown("---")
+    
     if not BROKER_API_AVAILABLE:
         st.warning("🌐 **Cloud Deployment Mode**: Broker trading APIs are available in local development only.")
         st.info("""
@@ -281,9 +329,11 @@ def main():
     st.header("🤖 ML Trading Signals")
     
     try:
-        # Connect to MySQL and fetch latest signals
+        # Connect to MySQL using secrets helper (works in both cloud and local)
         from sqlalchemy import create_engine
-        engine = create_engine("mysql+pymysql://root:root@127.0.0.1:3307/bbbot1")
+        from frontend.utils.secrets_helper import get_mysql_url
+        
+        engine = create_engine(get_mysql_url())
         
         query = """
         SELECT 

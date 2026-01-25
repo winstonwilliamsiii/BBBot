@@ -65,11 +65,11 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest --tb=short --verbose 2>&1 || true
+        pytest --tb=short --verbose --cov=. --cov-report=xml --cov-report=term 2>&1 || true
     
     - name: Upload coverage reports
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-report-py${{ matrix.python-version }}
         path: coverage.xml

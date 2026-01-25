@@ -26,12 +26,12 @@ print(f"   PLAID_SECRET: {secret[:20]}... (length: {len(secret)})")
 print(f"   PLAID_ENV: {env}")
 
 if not client_id or client_id == 'your_plaid_client_id_here':
-    print("   ❌ PLAID_CLIENT_ID not configured!")
+    print("   [ERROR] PLAID_CLIENT_ID not configured!")
     sys.exit(1)
 if not secret or secret == 'your_plaid_secret_here':
-    print("   ❌ PLAID_SECRET not configured!")
+    print("   [ERROR] PLAID_SECRET not configured!")
     sys.exit(1)
-print("   ✅ Credentials found")
+print("   [OK] Credentials found")
 
 # Test 2: Import Plaid SDK
 print("\n[2] Importing Plaid SDK...")
@@ -43,9 +43,9 @@ try:
     from plaid.model.country_code import CountryCode
     from plaid.configuration import Configuration
     from plaid.api_client import ApiClient
-    print("   ✅ Plaid SDK imported successfully")
+    print("   [OK] Plaid SDK imported successfully")
 except ImportError as e:
-    print(f"   ❌ Failed to import Plaid SDK: {e}")
+    print(f"   [ERROR] Failed to import Plaid SDK: {e}")
     print("   Run: pip install plaid-python")
     sys.exit(1)
 
@@ -54,9 +54,9 @@ print("\n[3] Initializing PlaidLinkManager...")
 try:
     from utils.plaid_link import PlaidLinkManager
     plaid_manager = PlaidLinkManager()
-    print("   ✅ PlaidLinkManager initialized")
+    print("   [OK] PlaidLinkManager initialized")
 except Exception as e:
-    print(f"   ❌ Failed to initialize: {e}")
+    print(f"   [ERROR] Failed to initialize: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)
@@ -68,20 +68,20 @@ try:
     link_data = plaid_manager.create_link_token(test_user_id)
     
     if not link_data:
-        print("   ❌ create_link_token returned None or empty")
+        print("   [ERROR] create_link_token returned None or empty")
         sys.exit(1)
     
     if 'link_token' not in link_data:
-        print(f"   ❌ link_token not in response: {link_data}")
+        print(f"   [ERROR] link_token not in response: {link_data}")
         sys.exit(1)
     
     link_token = link_data['link_token']
-    print(f"   ✅ Link token created: {link_token[:30]}...")
+    print(f"   [OK] Link token created: {link_token[:30]}...")
     print(f"   Token length: {len(link_token)}")
     print(f"   Expiration: {link_data.get('expiration', 'N/A')}")
     
 except Exception as e:
-    print(f"   ❌ Failed to create link token: {e}")
+    print(f"   [ERROR] Failed to create link token: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)
@@ -89,16 +89,16 @@ except Exception as e:
 # Test 5: Validate link token format
 print("\n[5] Validating Link Token Format...")
 if link_token.startswith('link-sandbox-'):
-    print("   ✅ Token has correct sandbox prefix")
+    print("   [OK] Token has correct sandbox prefix")
 elif link_token.startswith('link-development-'):
-    print("   ✅ Token has correct development prefix")
+    print("   [OK] Token has correct development prefix")
 elif link_token.startswith('link-production-'):
-    print("   ✅ Token has correct production prefix")
+    print("   [OK] Token has correct production prefix")
 else:
-    print(f"   ⚠️ Unexpected token prefix: {link_token[:20]}")
+    print(f"   [WARNING] Unexpected token prefix: {link_token[:20]}")
 
 print("\n" + "=" * 60)
-print("✅ ALL TESTS PASSED - Plaid Link should initialize correctly")
+print("[OK] ALL TESTS PASSED - Plaid Link should initialize correctly")
 print("=" * 60)
 
 # Test 6: Generate sample HTML

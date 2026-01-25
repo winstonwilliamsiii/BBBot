@@ -1,52 +1,101 @@
-# 📖 Documentation Index - Economic Data Integration
+# 📖 Documentation Index - Bentley Budget Bot
 
-## Quick Navigation
+**Last Updated**: January 24, 2026  
+**Status**: Production-Ready ✅
 
-### 🚀 Getting Started (Start Here!)
-| File | Purpose | Time | Difficulty |
-|------|---------|------|------------|
-| **[README_ECONOMIC_DATA.md](README_ECONOMIC_DATA.md)** | Visual overview & quick start | 2 min | ⭐ Easy |
-| **[START_HERE.md](START_HERE.md)** | Main entry point with summary | 2 min | ⭐ Easy |
+## 🎯 Quick Navigation
 
-### 📋 Setup & Implementation
-| File | Purpose | Time | Difficulty |
-|------|---------|------|------------|
-| **[ECONOMIC_DATA_QUICK_START.md](ECONOMIC_DATA_QUICK_START.md)** | 5-minute setup guide | 5 min | ⭐ Easy |
-| **[ECONOMIC_DATA_IMPLEMENTATION_CHECKLIST.md](ECONOMIC_DATA_IMPLEMENTATION_CHECKLIST.md)** | Step-by-step checklist | 15 min | ⭐⭐ Medium |
+### 🚀 Start Here (New Users)
+| File | Purpose | Time |
+|------|---------|------|
+| [README.md](README.md) | Project overview & features | 3 min |
+| [QUICK_FIX_GUIDE.md](QUICK_FIX_GUIDE.md) | **Fix production errors in 3 minutes** | 3 min |
+| [START_HERE.md](START_HERE.md) | Getting started guide | 5 min |
 
-### 📚 Understanding the System
-| File | Purpose | Time | Difficulty |
-|------|---------|------|------------|
-| **[ECONOMIC_DATA_SETUP_COMPLETE.md](ECONOMIC_DATA_SETUP_COMPLETE.md)** | What you got & how it works | 10 min | ⭐⭐ Medium |
-| **[ECONOMIC_DATA_ARCHITECTURE.md](ECONOMIC_DATA_ARCHITECTURE.md)** | System design & diagrams | 10 min | ⭐⭐ Medium |
-| **[ECONOMIC_DATA_INTEGRATION_GUIDE.md](ECONOMIC_DATA_INTEGRATION_GUIDE.md)** | Full technical guide | 20 min | ⭐⭐⭐ Advanced |
+### 🔧 Production Deployment (PRIORITY)
+| File | Purpose | Status |
+|------|---------|--------|
+| **[PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md)** | **Master deployment guide** | ✅ Current |
+| **[PRODUCTION_FIXES_SUMMARY.md](PRODUCTION_FIXES_SUMMARY.md)** | Recent fixes summary | ✅ Current |
+| **[QUICK_FIX_GUIDE.md](QUICK_FIX_GUIDE.md)** | 3-minute production fixes | ✅ Current |
+| [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml) | Secrets configuration template | ✅ Current |
 
-### 📦 Reference
-| File | Purpose | Time | Difficulty |
-|------|---------|------|------------|
-| **[WHAT_WAS_DELIVERED.md](WHAT_WAS_DELIVERED.md)** | Delivery summary | 5 min | ⭐ Easy |
+### 🧪 Testing & Validation
+| File | Purpose | Status |
+|------|---------|--------|
+| [test_production_integrations.py](test_production_integrations.py) | Test MySQL, Alpaca, Plaid | ✅ Current |
+| [tests/test_api_connections.py](tests/test_api_connections.py) | API connection tests | ✅ Active |
+| [tests/test_mysql_connection.py](tests/test_mysql_connection.py) | MySQL connection tests | ✅ Active |
+
+### 📐 Architecture & Design
+| File | Purpose | Time |
+|------|---------|------|
+| [DATABASE_ARCHITECTURE.md](DATABASE_ARCHITECTURE.md) | Database design & schema | 10 min |
+| [ARCHITECTURE_DIAGRAM.md](ARCHITECTURE_DIAGRAM.md) | System architecture | 10 min |
+| [BROKER_ABSTRACTION_EXPLAINED.md](BROKER_ABSTRACTION_EXPLAINED.md) | Broker integration pattern | 8 min |
+
+### 🔐 Security & Access Control
+| File | Purpose | Status |
+|------|---------|--------|
+| [RBAC_QUICK_REFERENCE.md](RBAC_QUICK_REFERENCE.md) | Role-based access control | ✅ Current |
+| [RBAC_DOCUMENTATION_INDEX.md](RBAC_DOCUMENTATION_INDEX.md) | RBAC documentation index | ✅ Current |
+| [START_RBAC_HERE.md](START_RBAC_HERE.md) | RBAC getting started | ✅ Current |
+
+### 💰 Plaid Integration
+| File | Purpose | Status |
+|------|---------|--------|
+| [PLAID_DOCUMENTATION_INDEX.md](PLAID_DOCUMENTATION_INDEX.md) | Plaid documentation index | ✅ Current |
+| [PLAID_RESOURCES_INDEX.md](PLAID_RESOURCES_INDEX.md) | Plaid resources & links | ✅ Current |
+| [PLAID_TESTING_GUIDE.md](PLAID_TESTING_GUIDE.md) | Plaid testing guide | ✅ Current |
+| [PLAID_QUICKSTART.md](PLAID_QUICKSTART.md) | Quick start guide | ✅ Current |
+
+### 📊 Economic Data & Widgets  
+| File | Purpose | Time |
+|------|---------|------|
+| [ECONOMIC_DATA_QUICK_START.md](ECONOMIC_DATA_QUICK_START.md) | 5-minute setup guide | 5 min |
+| [ECONOMIC_DATA_ARCHITECTURE.md](ECONOMIC_DATA_ARCHITECTURE.md) | System design & diagrams | 10 min |
+| [ECONOMIC_DATA_INTEGRATION_GUIDE.md](ECONOMIC_DATA_INTEGRATION_GUIDE.md) | Full technical guide | 20 min |
+| [ECONOMIC_CALENDAR_WIDGET_GUIDE.md](ECONOMIC_CALENDAR_WIDGET_GUIDE.md) | Calendar widget usage | 8 min |
 
 ---
 
-## Choose Your Path
+## 📂 File Organization
 
-### 👶 "Just Tell Me What To Do"
-1. Read: [START_HERE.md](START_HERE.md) (2 min)
-2. Follow: [ECONOMIC_DATA_QUICK_START.md](ECONOMIC_DATA_QUICK_START.md) (5 min)
-3. Test: Run `python test_economic_integration.py`
-4. Done! ✨
+### Root Directory (Active Files Only)
+```
+PRODUCTION_DEPLOYMENT_GUIDE.md      ← MASTER deployment guide
+PRODUCTION_FIXES_SUMMARY.md         ← Current status  
+QUICK_FIX_GUIDE.md                  ← Quick fixes
+README.md                           ← Main readme
+START_HERE.md                       ← Entry point
+DATABASE_ARCHITECTURE.md            ← Architecture
+CLEANUP_PLAN.md                     ← File cleanup plan
+test_production_integrations.py    ← Integration tests
+```
 
-**Total Time: 10 minutes**
+### Archive (.archive/outdated_20260124/)
+```
+📦 44 outdated files archived on 2026-01-24:
+   - Old fix summaries (CONNECTION_FIX_SUMMARY.md, etc.)
+   - Outdated Plaid docs (PLAID_FIX_SUMMARY.md, etc.)
+   - Old test files (diagnose_*.py, test_plaid_*.py)
+   - Superseded guides (STREAMLIT_CLOUD_FIX.md, etc.)
+```
 
 ---
 
-### 🧠 "I Want to Understand Everything"
-1. Read: [README_ECONOMIC_DATA.md](README_ECONOMIC_DATA.md) (2 min)
-2. Read: [WHAT_WAS_DELIVERED.md](WHAT_WAS_DELIVERED.md) (5 min)
-3. Read: [ECONOMIC_DATA_ARCHITECTURE.md](ECONOMIC_DATA_ARCHITECTURE.md) (10 min)
-4. Read: [ECONOMIC_DATA_INTEGRATION_GUIDE.md](ECONOMIC_DATA_INTEGRATION_GUIDE.md) (20 min)
-5. Follow: [ECONOMIC_DATA_IMPLEMENTATION_CHECKLIST.md](ECONOMIC_DATA_IMPLEMENTATION_CHECKLIST.md) (10 min)
-6. Done! ✨
+## 🗺️ Choose Your Path
+
+### 🚨 "Production is broken, help!"
+1. **[QUICK_FIX_GUIDE.md](QUICK_FIX_GUIDE.md)** (3 min) ← START HERE
+2. Copy [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml)
+3. Update Streamlit Cloud secrets
+4. Test with: `python test_production_integrations.py`
+
+**Common Fixes:**
+- MySQL "Unknown database" → Update `MYSQL_DATABASE` in secrets
+- Alpaca "not configured" → Regenerate keys at alpaca.markets
+- Plaid not initializing → Add redirect URI in Plaid dashboard
 
 **Total Time: ~1 hour (very thorough)**
 

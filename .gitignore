@@ -232,3 +232,5 @@ ehthumbs.db
 # Local configuration overrides
 config.local.json
 settings.local.json*_backup.py
+venv/
+__pycache__/

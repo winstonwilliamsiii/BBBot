@@ -41,6 +41,19 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     
     - name: Final production validation
+      env:
+        ENVIRONMENT: production
+        MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+        MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+        MYSQL_USER: ${{ secrets.MYSQL_USER }}
+        MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+        PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+        PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+        PLAID_ENVIRONMENT: ${{ secrets.PLAID_ENVIRONMENT }}
+        ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+        ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL }}
       run: |
         python -m py_compile streamlit_app.py
         python -c "from config_env import config; assert config.is_production() or config.is_development(), 'Invalid config'"

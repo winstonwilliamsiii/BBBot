@@ -14,11 +14,9 @@ load_dotenv(override=True)
 
 def print_header(title):
     """Print formatted section header"""
-    print(f"
-{'='*70}")
+    print("\n" + "=" * 70)
     print(f"  {title}")
-    print(f"{'='*70}
-")
+    print("=" * 70 + "\n")
 
 def test_tiingo_api():
     """Test Tiingo API with detailed diagnostics"""
@@ -28,8 +26,8 @@ def test_tiingo_api():
     
     if not api_key:
         print("❌ TIINGO_API_KEY not found in .env file")
-        print("
 Fix:")
+            print("\nFix:")
         print("  1. Login to https://www.tiingo.com/account/api")
         print("  2. Copy your API token")
         print("  3. Add to .env: TIINGO_API_KEY=your_token_here")
@@ -38,8 +36,8 @@ Fix:")
     print(f"✅ API Key found: {api_key[:8]}...{api_key[-4:]}")
     
     # Test with direct HTTP request
-    print("
 📡 Testing API connection...")
+        print("\n📡 Testing API connection...")
     url = "https://api.tiingo.com/tiingo/daily/AAPL/prices"
     params = {"startDate": "2024-12-01"}
     headers = {"Authorization": f"Token {api_key}"}
@@ -64,10 +62,12 @@ Fix:")
             print("❌ HTTP 403 - FORBIDDEN")
             print("
 Possible causes:")
+Possible causes:")
             print("  1. API key is valid but account needs upgrade")
             print("  2. Free tier doesn't allow this endpoint")
             print("  3. Rate limit exceeded")
             print("
+Try:")
 Try:")
             print("  - Check subscription at https://www.tiingo.com/account")
             print("  - Wait a few minutes and try again")
@@ -79,7 +79,9 @@ Try:")
             print(f"   Server says: {error_msg}")
             print("
 🔴 YOUR API KEY IS INVALID!")
+🔴 YOUR API KEY IS INVALID!")
             print("
+Fix:")
 Fix:")
             print("  1. Go to https://www.tiingo.com/account/api")
             print("  2. Check if you see an API token")
@@ -90,6 +92,7 @@ Fix:")
             
             # Try to get account info
             print("
+📋 Testing account endpoint...")
 📋 Testing account endpoint...")
             account_url = "https://api.tiingo.com/api/test"
             account_response = requests.get(account_url, headers=headers, timeout=10)

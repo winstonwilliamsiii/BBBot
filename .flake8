@@ -4,6 +4,8 @@ exclude =
     .venv,
     env,
     .env,
+    .conda,
+    .vscode,
     .git,
     __pycache__,
     .pytest_cache,
@@ -14,6 +16,10 @@ exclude =
     *.egg-info,
     node_modules,
     .github,
-    sites
+    sites,
+    appwrite-functions,
+    integrations,
+    logs,
+    bbbot1_pipeline
 max-line-length = 127
 max-complexity = 10

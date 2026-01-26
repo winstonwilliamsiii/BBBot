@@ -4,3 +4,7 @@ SQLAlchemy==2.0.25
 PyMySQL==1.1.0
 numpy==1.26.4
 pandas==2.1.4
+mysql-connector-python==8.3.0
+requests==2.31.0
+textblob==0.18.0
+python-dotenv==1.0.1

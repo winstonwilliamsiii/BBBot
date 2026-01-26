@@ -48,7 +48,19 @@ jobs:
     
     - name: Deploy to Streamlit Cloud
       env:
+        ENVIRONMENT: production
         STREAMLIT_AUTH_TOKEN: ${{ secrets.STREAMLIT_AUTH_TOKEN }}
+        MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+        MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+        MYSQL_USER: ${{ secrets.MYSQL_USER }}
+        MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+        PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+        PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+        PLAID_ENVIRONMENT: ${{ secrets.PLAID_ENVIRONMENT }}
+        ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+        ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL }}
       run: |
         # Install Streamlit CLI
         pip install streamlit

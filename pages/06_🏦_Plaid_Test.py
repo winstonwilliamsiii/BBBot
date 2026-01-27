@@ -155,12 +155,12 @@ if mode == "Direct Plaid API (Cloud)":
                     st.error("❌ Failed to create link token. Check Streamlit Cloud secrets.")
 
     with colB:
-        if st.button("🔄 Reset Flow", use_container_width=True):
+        if st.button("🧹 Clear Session", use_container_width=True):
             st.session_state.link_token = None
             st.session_state.public_token = None
             st.session_state.access_token = None
             st.session_state.item_id = None
-            st.success("Flow reset")
+            st.success("Session cleared")
 
     # Render Plaid Link minimal UI when we have a link_token
     if st.session_state.link_token:
@@ -197,7 +197,11 @@ if mode == "Direct Plaid API (Cloud)":
                 if result and result.get('access_token'):
                     st.session_state.access_token = result['access_token']
                     st.session_state.item_id = result['item_id']
-                    st.success("✅ Token exchanged")
+                    st.success("✅ Token exchanged and bank connected")
+                    try:
+                        st.balloons()
+                    except Exception:
+                        pass
                     st.code(result)
                     try:
                         save_plaid_item(user_id, result['item_id'], result['access_token'], institution_name)
@@ -218,6 +222,20 @@ if mode == "Direct Plaid API (Cloud)":
                     st.info("No accounts returned or error from API")
             except Exception as e:
                 st.warning(f"Accounts fetch error: {e}")
+
+            # Connection status and quick clear
+            st.markdown("---")
+            colS1, colS2 = st.columns([1,1])
+            with colS1:
+                st.metric("Connection Status", "Connected", delta="✓")
+                st.caption(f"Item ID: {st.session_state.item_id}")
+            with colS2:
+                if st.button("🧹 Clear Session (Finish)", use_container_width=True):
+                    st.session_state.link_token = None
+                    st.session_state.public_token = None
+                    st.session_state.access_token = None
+                    st.session_state.item_id = None
+                    st.success("Session cleared. You can start a new test.")
 
     st.info("This mode uses Plaid API directly with credentials from Streamlit Cloud secrets.")
 else:

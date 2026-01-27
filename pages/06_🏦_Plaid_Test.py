@@ -38,6 +38,13 @@ except ImportError as e:
     st.error(f"⚠️ Plaid Quickstart module not found: {e}")
     PLAID_QUICKSTART_AVAILABLE = False
 
+# Direct Plaid API manager (for Cloud)
+try:
+    from frontend.utils.plaid_link import PlaidLinkManager, save_plaid_item
+    PLAID_MANAGER_AVAILABLE = True
+except ImportError:
+    PLAID_MANAGER_AVAILABLE = False
+
 from frontend.utils.styling import apply_custom_styling, add_footer
 from frontend.styles.colors import COLOR_SCHEME
 
@@ -78,73 +85,80 @@ This page tests your connection to the **Plaid quickstart Docker backend**.
 3. ✅ Backend accessible at `http://localhost:XXXX`
 """)
 
-# Configuration
+"""
+Environment & Mode
+"""
 st.markdown("---")
 st.markdown("## ⚙️ Configuration")
+
+# Detect cloud vs local
+is_cloud = (
+    os.getenv('STREAMLIT_SHARING_MODE') is not None or 
+    os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud' or
+    'streamlit.app' in str(st.get_option('browser.serverAddress')) or
+    'streamlit.app' in str(os.getenv('STREAMLIT_SERVER_HEADLESS', ''))
+)
 
 col1, col2 = st.columns(2)
 
 with col1:
-    # Check if running on Streamlit Cloud vs local
-    # Check multiple indicators for cloud deployment
-    is_cloud = (
-        os.getenv('STREAMLIT_SHARING_MODE') is not None or 
-        os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud' or
-        'streamlit.app' in str(st.get_option('browser.serverAddress')) or
-        'streamlit.app' in str(os.getenv('STREAMLIT_SERVER_HEADLESS', ''))
+    mode = st.selectbox(
+        "Test Mode",
+        options=("Direct Plaid API (Cloud)", "Quickstart Backend (Local)"),
+        index=0 if is_cloud else 1,
+        help="Use Direct Plaid on Cloud; use Quickstart when running locally"
     )
-    
-    # Force Appwrite endpoint for production, localhost for local dev
-    default_url = "https://fra.cloud.appwrite.io/v1/functions/plaid_quickstart/executions" if is_cloud else "http://localhost:5001"
-    
+with col2:
+    user_id = st.text_input("Test User ID", value="winston_test_123")
+
+# If local backend mode, configure URL
+backend_url = None
+if mode == "Quickstart Backend (Local)":
+    default_url = "http://localhost:5001"
     backend_url = st.text_input(
         "Backend URL",
         value=default_url,
-        help="🌐 Production: Appwrite Function | 💻 Local: Docker on port 5001"
+        help="Docker quickstart base URL (e.g., http://localhost:5001)"
     )
-    
-    # Show cloud status for debugging
-    if is_cloud:
-        st.info(f"🌐 Running on Streamlit Cloud - Using Appwrite Function")
-    else:
-        st.info(f"💻 Running locally - Using Docker backend")
-    
     if 'localhost' in backend_url and is_cloud:
-        st.error("⚠️ Cannot use localhost on Streamlit Cloud! Use the Appwrite Function URL.")
+        st.error("⚠️ Cannot use localhost on Streamlit Cloud! Switch to Direct Plaid API mode.")
+        st.stop()
 
-with col2:
-    user_id = st.text_input(
-        "Test User ID",
-        value="winston_test_123",
-        help="Any unique identifier for testing"
-    )
-
-# Test connection
 st.markdown("---")
-st.markdown("## 🔍 Backend Health Check")
 
-# Check if Plaid Quickstart module is available
-if not PLAID_QUICKSTART_AVAILABLE:
-    st.error("❌ Plaid Quickstart connector module not available. Check installation.")
-    st.stop()
-
-client = PlaidQuickstartClient(backend_url)
+if mode == "Direct Plaid API (Cloud)":
+    st.markdown("## 🔗 Plaid API (Streamlit Cloud)")
+    if not PLAID_MANAGER_AVAILABLE:
+        st.error("Plaid manager not available.")
+        st.stop()
+    manager = PlaidLinkManager()
+    if st.button("🪙 Create Link Token", use_container_width=True):
+        with st.spinner("Creating link token via Plaid API..."):
+            token = manager.create_link_token(user_id)
+            if token and token.get('link_token'):
+                st.success("✅ Link token created")
+                st.code(json.dumps(token, indent=2))
+            else:
+                st.error("❌ Failed to create link token. Check Streamlit Cloud secrets.")
+    st.info("This mode uses Plaid API directly with credentials from Streamlit Cloud secrets.")
+else:
+    # Local quickstart backend health & tests
+    st.markdown("## 🔍 Backend Health Check")
+    if not PLAID_QUICKSTART_AVAILABLE:
+        st.error("❌ Plaid Quickstart connector module not available. Check installation.")
+        st.stop()
+    client = PlaidQuickstartClient(backend_url)
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("🔌 Test Connection", use_container_width=True):
-        with st.spinner("Checking backend..."):
-            if client.health_check():
-                st.success("✅ Backend is running!")
-            else:
-                st.error("❌ Backend not responding")
-                st.info(f"""
-**Troubleshooting:**
-1. Check Docker: `docker ps`
-2. Check logs: `docker-compose logs`
-3. Try different port: {backend_url.replace('8000', '8080')}
-""")
+            with st.spinner("Checking backend..."):
+                if client.health_check():
+                    st.success("✅ Backend is running!")
+                else:
+                    st.error("❌ Backend not responding")
+                    st.info("Run Docker quickstart locally or switch to Direct Plaid API mode above.")
 
 with col2:
     st.metric("Backend", backend_url.split('//')[1])

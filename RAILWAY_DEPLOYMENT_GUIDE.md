@@ -25,9 +25,7 @@ BENTLEY_DB_HOST=<railway-mysql-host>
 BENTLEY_DB_USER=bentley_user
 BENTLEY_DB_PASSWORD=<secret>
 KALSHI_API_KEY=<kalshi-key>
-TWITTER_API_KEY=<optional>
-DISCORD_BOT_TOKEN=<optional>
-OPENAI_API_KEY=<optional>
+KALSHI_PRIVATE_KEY=<kalshi-private-key>
 ALPACA_API_KEY=<alpaca-key>
 ALPACA_SECRET=<alpaca-secret>
 ```

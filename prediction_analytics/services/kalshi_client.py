@@ -1,7 +1,11 @@
 """Kalshi ingestion client for REST and WebSocket feeds."""
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
+import os
+import time
 from typing import Dict, List
 
 import aiohttp
@@ -17,12 +21,34 @@ class KalshiClient:
     base_url = "https://api.kalshi.com/v1"
     ws_url = "wss://feeds.kalshi.com/v1/streamer"
 
-    def __init__(self, api_key: str = ""):
-        self.api_key = api_key
+    def __init__(self, api_key: str = "", private_key: str = ""):
+        self.api_key = api_key or os.getenv("KALSHI_API_KEY", "")
+        self.private_key = private_key or os.getenv("KALSHI_PRIVATE_KEY", "")
         self.session_factory = get_session_factory()
 
+    def _generate_signature(self, timestamp: int, method: str, path: str, body: str = "") -> str:
+        """Generate KALSHI-ACCESS-SIGNATURE using HMAC-SHA256."""
+        message = f"{timestamp}{method}{path}{body}"
+        signature = hmac.new(
+            self.private_key.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        return signature
+
+    def _get_auth_headers(self, method: str = "GET", path: str = "") -> Dict[str, str]:
+        """Generate Kalshi authentication headers."""
+        timestamp = int(time.time() * 1000)  # milliseconds
+        signature = self._generate_signature(timestamp, method, path)
+        return {
+            "KALSHI-ACCESS-KEY": self.api_key,
+            "KALSHI-ACCESS-TIMESTAMP": str(timestamp),
+            "KALSHI-ACCESS-SIGNATURE": signature,
+            "Content-Type": "application/json"
+        }
+
     async def fetch_markets(self) -> List[Dict]:
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        headers = self._get_auth_headers("GET", "/markets")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.base_url}/markets", headers=headers, timeout=30) as resp:

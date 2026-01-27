@@ -61,9 +61,8 @@ python prediction_analytics/demo_main.py
 | `BENTLEY_DB_USER` | ✅ | ❌ | `bentley_user` | Yes |
 | `BENTLEY_DB_PASSWORD` | ✅ | ❌ | `***secret***` | Yes |
 | `KALSHI_API_KEY` | ✅ | ✅ | `pk_live_...` | Yes |
-| `TWITTER_API_KEY` | ✅ | ✅ | `Bearer ***` | No |
+| `KALSHI_PRIVATE_KEY` | ✅ | ✅ | `sk_live_...` | Yes |
 | `DISCORD_BOT_TOKEN` | ✅ | ✅ | `MTA0...` | No |
-| `OPENAI_API_KEY` | ✅ | ✅ | `sk-...` | No |
 | `ALPACA_API_KEY` | ✅ | ✅ | `PK...` | Yes (for trading) |
 | `ALPACA_SECRET` | ✅ | ✅ | `***secret***` | Yes (for trading) |
 

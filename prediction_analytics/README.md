@@ -70,6 +70,8 @@ DEMO_MYSQL_PORT=3307
 DEMO_MYSQL_USER=root
 DEMO_MYSQL_PASSWORD=password
 DEMO_MYSQL_DB=Demo_Bots
+KALSHI_API_KEY=your_key_id
+KALSHI_PRIVATE_KEY=your_private_key
 ```
 
 ### Production Environment (Railway)
@@ -79,6 +81,8 @@ MYSQL_PORT=3306
 MYSQL_USER=bentley_user
 MYSQL_PASSWORD=<secret>
 MYSQL_DB=Bentley_Bot
+KALSHI_API_KEY=<key-id>
+KALSHI_PRIVATE_KEY=<private-key>
 ```
 
 ---

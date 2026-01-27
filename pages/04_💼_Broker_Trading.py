@@ -465,24 +465,12 @@ def main():
     st.header("🤖 ML Trading Signals")
     
     try:
-        # Connect to MySQL and fetch latest signals
+        # Connect to MySQL using unified secrets helper (avoids hardcoded bbbot1)
         from sqlalchemy import create_engine
-        
-        # Get database credentials from secrets (Streamlit Cloud) or env (local)
-        try:
-            db_host = st.secrets.get("BBBOT1_MYSQL_HOST", st.secrets.get("MYSQL_HOST", "127.0.0.1"))
-            db_port = st.secrets.get("BBBOT1_MYSQL_PORT", st.secrets.get("MYSQL_PORT", "3307"))
-            db_user = st.secrets.get("BBBOT1_MYSQL_USER", st.secrets.get("MYSQL_USER", "root"))
-            db_password = st.secrets.get("BBBOT1_MYSQL_PASSWORD", st.secrets.get("MYSQL_PASSWORD", "root"))
-            db_name = st.secrets.get("BBBOT1_MYSQL_DATABASE", "bbbot1")
-        except (AttributeError, FileNotFoundError):
-            db_host = os.getenv("BBBOT1_MYSQL_HOST", os.getenv("MYSQL_HOST", "127.0.0.1"))
-            db_port = os.getenv("BBBOT1_MYSQL_PORT", os.getenv("MYSQL_PORT", "3307"))
-            db_user = os.getenv("BBBOT1_MYSQL_USER", os.getenv("MYSQL_USER", "root"))
-            db_password = os.getenv("BBBOT1_MYSQL_PASSWORD", os.getenv("MYSQL_PASSWORD", "root"))
-            db_name = os.getenv("BBBOT1_MYSQL_DATABASE", "bbbot1")
-        
-        connection_string = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        from frontend.utils.secrets_helper import get_mysql_config, get_mysql_url
+
+        mysql_config = get_mysql_config()
+        connection_string = get_mysql_url()
         engine = create_engine(connection_string)
         
         query = """
@@ -535,7 +523,8 @@ def main():
             st.info("No trading signals available. Run the ML pipeline first.")
     
     except Exception as e:
-        st.error(f"Failed to load trading signals: {e}")
+        db_name = mysql_config['database'] if 'mysql_config' in locals() else 'unknown'
+        st.error(f"Failed to load trading signals (database: {db_name}): {e}")
         st.info("Make sure marts.features_roi table exists and has data")
     
     # Configuration Guide

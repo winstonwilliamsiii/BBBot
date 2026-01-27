@@ -132,14 +132,93 @@ if mode == "Direct Plaid API (Cloud)":
         st.error("Plaid manager not available.")
         st.stop()
     manager = PlaidLinkManager()
-    if st.button("🪙 Create Link Token", use_container_width=True):
-        with st.spinner("Creating link token via Plaid API..."):
-            token = manager.create_link_token(user_id)
-            if token and token.get('link_token'):
-                st.success("✅ Link token created")
-                st.code(json.dumps(token, indent=2))
-            else:
-                st.error("❌ Failed to create link token. Check Streamlit Cloud secrets.")
+    # Session state for Plaid flow
+    if 'link_token' not in st.session_state:
+        st.session_state.link_token = None
+    if 'public_token' not in st.session_state:
+        st.session_state.public_token = None
+    if 'access_token' not in st.session_state:
+        st.session_state.access_token = None
+    if 'item_id' not in st.session_state:
+        st.session_state.item_id = None
+
+    colA, colB = st.columns([1,1])
+
+    with colA:
+        if st.button("🪙 Create Link Token", use_container_width=True):
+            with st.spinner("Creating link token via Plaid API..."):
+                token = manager.create_link_token(user_id)
+                if token and token.get('link_token'):
+                    st.session_state.link_token = token.get('link_token')
+                    st.success("✅ Link token created")
+                else:
+                    st.error("❌ Failed to create link token. Check Streamlit Cloud secrets.")
+
+    with colB:
+        if st.button("🔄 Reset Flow", use_container_width=True):
+            st.session_state.link_token = None
+            st.session_state.public_token = None
+            st.session_state.access_token = None
+            st.session_state.item_id = None
+            st.success("Flow reset")
+
+    # Render Plaid Link minimal UI when we have a link_token
+    if st.session_state.link_token:
+        st.markdown("### 🚪 Open Plaid Link")
+        import streamlit.components.v1 as components
+        components.html(
+            f"""
+            <script src=\"https://cdn.plaid.com/link/v2/stable/link-initialize.js\"></script>
+            <button id=\"open-link\" style=\"padding:10px 16px;border-radius:6px;background:#0a84ff;color:white;border:none;\">Open Plaid Link</button>
+            <script>
+              var handler = Plaid.create({{
+                token: '{st.session_state.link_token}',
+                onSuccess: function(public_token, metadata) {{
+                  alert('PUBLIC_TOKEN:' + public_token);
+                }},
+                onExit: function(err, metadata) {{
+                  console.log('Plaid exit', err, metadata);
+                }}
+              }});
+              document.getElementById('open-link').onclick = function() {{ handler.open(); }};
+            </script>
+            """,
+            height=120,
+        )
+
+        st.caption("On success, an alert will show your public token. Copy it and paste below.")
+
+        st.markdown("### 🔄 Exchange Public Token")
+        st.session_state.public_token = st.text_input("Public Token", value=st.session_state.public_token or "", help="Paste token starting with public-sandbox-")
+        institution_name = st.text_input("Institution Name (optional)", value="Plaid Sandbox")
+        if st.button("✅ Exchange Token", use_container_width=True, disabled=not st.session_state.public_token):
+            with st.spinner("Exchanging token..."):
+                result = manager.exchange_public_token(st.session_state.public_token)
+                if result and result.get('access_token'):
+                    st.session_state.access_token = result['access_token']
+                    st.session_state.item_id = result['item_id']
+                    st.success("✅ Token exchanged")
+                    st.code(result)
+                    try:
+                        save_plaid_item(user_id, result['item_id'], result['access_token'], institution_name)
+                        st.success("💾 Saved Plaid item to database")
+                    except Exception as e:
+                        st.warning(f"Could not save to DB: {e}")
+                else:
+                    st.error("❌ Failed to exchange token")
+
+        if st.session_state.access_token:
+            st.markdown("### 🧾 Accounts Preview")
+            try:
+                accounts = manager.get_accounts(st.session_state.access_token)
+                if accounts:
+                    st.success(f"Found {len(accounts)} accounts")
+                    st.json(accounts)
+                else:
+                    st.info("No accounts returned or error from API")
+            except Exception as e:
+                st.warning(f"Accounts fetch error: {e}")
+
     st.info("This mode uses Plaid API directly with credentials from Streamlit Cloud secrets.")
 else:
     # Local quickstart backend health & tests

@@ -18,80 +18,124 @@ import json
 
 
 class UserRole(Enum):
-    """User roles in the system"""
-    GUEST = "guest"
-    CLIENT = "client"
-    INVESTOR = "investor"
-    ADMIN = "admin"
+    """User roles in the system with database-level access"""
+    CLIENT = "client"          # Budgets + transactions (mydb)
+    INVESTOR = "investor"      # Read-only: bbbot1 prices, fundamentals, technicals
+    ANALYST = "analyst"        # mansa_quant + mlflow_db (experiments, sentiment)
+    ADMIN = "admin"            # Full CRUD across all schemas
+    PARTNER = "partner"        # Supabase Stripe/KYC + Lovable Cloud functions
 
 
 class Permission(Enum):
-    """System permissions"""
-    # Page Access Permissions
-    VIEW_DASHBOARD = "view_dashboard"  # Page 1: Home Dashboard
-    VIEW_BUDGET = "view_budget"  # Page 2: Personal Budget
-    VIEW_ANALYSIS = "view_analysis"  # Page 3: Investment Analysis
-    VIEW_CRYPTO = "view_crypto"  # Page 4: Live Crypto Dashboard
-    VIEW_BROKER_TRADING = "view_broker_trading"  # Page 5: Broker Trading
-    VIEW_TRADING_BOT = "view_trading_bot"  # Page 6: Trading Bot
+    """Database-level and feature permissions"""
+    # CLIENT: mydb (Budgets + Transactions)
+    CLIENT_READ_BUDGETS = "client_read_budgets"
+    CLIENT_READ_TRANSACTIONS = "client_read_transactions"
+    CLIENT_WRITE_BUDGETS = "client_write_budgets"
+    CLIENT_WRITE_TRANSACTIONS = "client_write_transactions"
     
-    # Feature Permissions
-    MANAGE_BUDGET = "manage_budget"
-    CONNECT_BANK = "connect_bank"
-    TRADE_EXECUTION = "trade_execution"
-    ADMIN_PANEL = "admin_panel"
+    # INVESTOR: bbbot1 read-only (Prices, Fundamentals, Technicals)
+    INVESTOR_READ_PRICES = "investor_read_prices"  # bbbot1.prices_daily
+    INVESTOR_READ_FUNDAMENTALS = "investor_read_fundamentals"  # bbbot1.fundamentals_raw
+    INVESTOR_READ_TECHNICALS = "investor_read_technicals"  # bbbot1.technicals_raw
+    INVESTOR_READ_PERFORMANCE = "investor_read_performance"  # Bot performance metrics
     
-    # Legacy aliases for backwards compatibility
-    VIEW_PORTFOLIO = "view_dashboard"
-    VIEW_CONNECTIONS = "view_broker_trading"
-    VIEW_FUNDS = "view_analysis"
+    # ANALYST: mansa_quant + mlflow_db (Trading signals, experiments, sentiment)
+    ANALYST_READ_MANSA_QUANT = "analyst_read_mansa_quant"
+    ANALYST_WRITE_MANSA_QUANT = "analyst_write_mansa_quant"
+    ANALYST_READ_MLFLOW = "analyst_read_mlflow"  # ML experiments, metrics
+    ANALYST_WRITE_MLFLOW = "analyst_write_mlflow"
+    ANALYST_READ_SENTIMENT = "analyst_read_sentiment"  # Sentiment pipeline data
+    ANALYST_WRITE_SENTIMENT = "analyst_write_sentiment"
+    
+    # ADMIN: All databases - Full CRUD
+    ADMIN_READ_MANSA_BOT = "admin_read_mansa_bot"  # Airflow metadata
+    ADMIN_WRITE_MANSA_BOT = "admin_write_mansa_bot"
+    ADMIN_READ_BBBOT1 = "admin_read_bbbot1"  # Stock data, fundamental data
+    ADMIN_WRITE_BBBOT1 = "admin_write_bbbot1"
+    ADMIN_READ_MLFLOW = "admin_read_mlflow"  # ML experiments
+    ADMIN_WRITE_MLFLOW = "admin_write_mlflow"
+    ADMIN_READ_MANSA_QUANT = "admin_read_mansa_quant"  # Trading signals
+    ADMIN_WRITE_MANSA_QUANT = "admin_write_mansa_quant"
+    ADMIN_READ_MYDB = "admin_read_mydb"  # Budgets, transactions
+    ADMIN_WRITE_MYDB = "admin_write_mydb"
+    
+    # PARTNER: External integrations
+    PARTNER_STRIPE = "partner_stripe"  # Stripe integration for payments
+    PARTNER_KYC = "partner_kyc"  # KYC verification
+    PARTNER_LOVABLE = "partner_lovable"  # Lovable Cloud functions
+    
+    # Page access (maintained for UI navigation)
+    VIEW_DASHBOARD = "view_dashboard"
+    VIEW_BUDGET = "view_budget"
+    VIEW_ANALYSIS = "view_analysis"
+    VIEW_CRYPTO = "view_crypto"
+    VIEW_BROKER_TRADING = "view_broker_trading"
+    VIEW_TRADING_BOT = "view_trading_bot"
 
 
-# Role-Permission mapping
-# GUEST: Pages 1-2 only (Dashboard, Budget) - NO Login required, public access
-# CLIENT: Pages 1-4 (Dashboard, Budget, Investment Analysis, Crypto) - Must login to Mansacap.com
-# INVESTOR: Pages 1-5 (Dashboard, Budget, Investment Analysis, Crypto, Broker Trading) - KYC + Legal docs
-# ADMIN: Full RW access to ALL pages (1-8) including Trading Bot, Plaid Test, Multi-Broker
+# Role-Permission mapping based on database and feature access
 ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
-    UserRole.GUEST: {
-        # Pages 1-2 ONLY: Dashboard, Budget (no login, public access)
-        Permission.VIEW_DASHBOARD,
-        Permission.VIEW_BUDGET,
-    },
     UserRole.CLIENT: {
-        # Pages 1-4: Dashboard, Budget, Investment Analysis, Crypto
-        # Requires: Mansacap.com login (asset management agreement implied)
+        # mydb: Budgets + Transactions
+        Permission.CLIENT_READ_BUDGETS,
+        Permission.CLIENT_READ_TRANSACTIONS,
+        Permission.CLIENT_WRITE_BUDGETS,
+        Permission.CLIENT_WRITE_TRANSACTIONS,
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
-        Permission.VIEW_ANALYSIS,
-        Permission.VIEW_CRYPTO,
-        Permission.CONNECT_BANK,
     },
     UserRole.INVESTOR: {
-        # Pages 1-5: Dashboard, Budget, Investment Analysis, Crypto, Broker Trading
-        # Requires: KYC + Legal documents (Investor Management Agreement or PPM)
+        # bbbot1 read-only: prices, fundamentals, technicals + performance metrics
+        Permission.INVESTOR_READ_PRICES,
+        Permission.INVESTOR_READ_FUNDAMENTALS,
+        Permission.INVESTOR_READ_TECHNICALS,
+        Permission.INVESTOR_READ_PERFORMANCE,
         Permission.VIEW_DASHBOARD,
-        Permission.VIEW_BUDGET,
         Permission.VIEW_ANALYSIS,
-        Permission.VIEW_CRYPTO,
         Permission.VIEW_BROKER_TRADING,
-        Permission.MANAGE_BUDGET,
-        Permission.CONNECT_BANK,
-        Permission.TRADE_EXECUTION,
+    },
+    UserRole.ANALYST: {
+        # mansa_quant (trading signals) + mlflow_db (experiments, sentiment)
+        Permission.ANALYST_READ_MANSA_QUANT,
+        Permission.ANALYST_WRITE_MANSA_QUANT,
+        Permission.ANALYST_READ_MLFLOW,
+        Permission.ANALYST_WRITE_MLFLOW,
+        Permission.ANALYST_READ_SENTIMENT,
+        Permission.ANALYST_WRITE_SENTIMENT,
+        Permission.VIEW_DASHBOARD,
+        Permission.VIEW_ANALYSIS,
     },
     UserRole.ADMIN: {
-        # Full RW access to ALL pages (1-8) + Admin panel
-        # Pages: Dashboard, Budget, Investment, Crypto, Broker, Trading Bot, Plaid Test, Multi-Broker
+        # Full CRUD access to all databases: mansa_bot, bbbot1, mlflow_db, mansa_quant, mydb
+        # mansa_bot (Airflow metadata)
+        Permission.ADMIN_READ_MANSA_BOT,
+        Permission.ADMIN_WRITE_MANSA_BOT,
+        # bbbot1 (Stock data, fundamentals)
+        Permission.ADMIN_READ_BBBOT1,
+        Permission.ADMIN_WRITE_BBBOT1,
+        # mlflow_db (ML experiments)
+        Permission.ADMIN_READ_MLFLOW,
+        Permission.ADMIN_WRITE_MLFLOW,
+        # mansa_quant (Trading signals)
+        Permission.ADMIN_READ_MANSA_QUANT,
+        Permission.ADMIN_WRITE_MANSA_QUANT,
+        # mydb (Budgets, transactions)
+        Permission.ADMIN_READ_MYDB,
+        Permission.ADMIN_WRITE_MYDB,
+        # All page access
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
         Permission.VIEW_ANALYSIS,
         Permission.VIEW_CRYPTO,
         Permission.VIEW_BROKER_TRADING,
         Permission.VIEW_TRADING_BOT,
-        Permission.MANAGE_BUDGET,
-        Permission.CONNECT_BANK,
-        Permission.TRADE_EXECUTION,
-        Permission.ADMIN_PANEL,
+    },
+    UserRole.PARTNER: {
+        # External integrations: Stripe, KYC, Lovable Cloud functions
+        Permission.PARTNER_STRIPE,
+        Permission.PARTNER_KYC,
+        Permission.PARTNER_LOVABLE,
     },
 }
 
@@ -203,40 +247,44 @@ class RBACManager:
     """
     
     # Demo users for testing (in production, use database)
-    # GUEST: Public access (no login required) - Pages 1-2 only
-    # CLIENT: Must login to Mansacap.com - Pages 1-4
-    # INVESTOR: KYC + Legal docs - Pages 1-5
-    # ADMIN: Full access - All pages (1-8)
+    # CLIENT: mydb (budgets, transactions via Plaid)
+    # INVESTOR: bbbot1 read-only (prices, fundamentals, technicals, performance)
+    # ANALYST: mansa_quant (trading signals) + mlflow_db (experiments, sentiment)
+    # ADMIN: All databases - Full CRUD access
+    # PARTNER: External services (Stripe, KYC, Lovable)
     DEMO_USERS = {
-        'guest': {
-            'password_hash': hashlib.sha256('guest123'.encode()).hexdigest(),
-            'role': UserRole.GUEST,
-            'kyc_completed': False,  # GUEST does NOT complete KYC
-            'investment_agreement_signed': False,  # GUEST does NOT sign agreement
-            'kyc_date': None,
-            'agreement_date': None,
-            'agreement_type': None,
-            'email': 'guest@mansacap.com',  # Links to Mansacap.com
-        },
         'client': {
             'password_hash': hashlib.sha256('client123'.encode()).hexdigest(),
             'role': UserRole.CLIENT,
-            'kyc_completed': False,  # CLIENT login only (KYC optional in this version)
-            'investment_agreement_signed': False,  # Asset Mgmt agreement implied via Mansacap
+            'kyc_completed': False,
+            'investment_agreement_signed': False,
             'kyc_date': None,
             'agreement_date': None,
-            'agreement_type': 'asset_mgmt',  # Asset Management Agreement
-            'email': 'client@mansacap.com',  # Links to Mansacap.com
+            'agreement_type': 'asset_mgmt',
+            'email': 'client@bentleybot.com',
+            'databases': ['mydb'],  # Budget & transaction data only
         },
         'investor': {
             'password_hash': hashlib.sha256('investor123'.encode()).hexdigest(),
             'role': UserRole.INVESTOR,
-            'kyc_completed': True,  # INVESTOR must complete KYC
-            'investment_agreement_signed': True,  # INVESTOR must sign legal docs
+            'kyc_completed': True,
+            'investment_agreement_signed': True,
             'kyc_date': datetime.now() - timedelta(days=60),
             'agreement_date': datetime.now() - timedelta(days=60),
-            'agreement_type': 'investor_mgmt',  # Investor Management Agreement or PPM
-            'email': 'investor@mansacap.com',
+            'agreement_type': 'investor_mgmt',
+            'email': 'investor@bentleybot.com',
+            'databases': ['bbbot1'],  # Stock data read-only
+        },
+        'analyst': {
+            'password_hash': hashlib.sha256('analyst123'.encode()).hexdigest(),
+            'role': UserRole.ANALYST,
+            'kyc_completed': True,
+            'investment_agreement_signed': True,
+            'kyc_date': datetime.now() - timedelta(days=45),
+            'agreement_date': datetime.now() - timedelta(days=45),
+            'agreement_type': 'analyst',
+            'email': 'analyst@bentleybot.com',
+            'databases': ['mansa_quant', 'mlflow_db'],  # Trading signals & ML experiments
         },
         'admin': {
             'password_hash': hashlib.sha256('admin123'.encode()).hexdigest(),
@@ -247,6 +295,18 @@ class RBACManager:
             'agreement_date': datetime.now() - timedelta(days=90),
             'agreement_type': 'admin',
             'email': 'winston@bentleybot.com',
+            'databases': ['mansa_bot', 'bbbot1', 'mlflow_db', 'mansa_quant', 'mydb'],  # All databases
+        },
+        'partner': {
+            'password_hash': hashlib.sha256('partner123'.encode()).hexdigest(),
+            'role': UserRole.PARTNER,
+            'kyc_completed': True,
+            'investment_agreement_signed': True,
+            'kyc_date': datetime.now() - timedelta(days=30),
+            'agreement_date': datetime.now() - timedelta(days=30),
+            'agreement_type': 'partner',
+            'email': 'partner@bentleybot.com',
+            'databases': ['stripe', 'kyc', 'lovable'],  # External services
         },
     }
     
@@ -336,6 +396,87 @@ class RBACManager:
         
         user = RBACManager.get_current_user()
         return user.can_view_connections() if user else False
+    
+    # Database-level permission helpers
+    @staticmethod
+    def check_db_access(user: Optional[User], database: str, operation: str = 'read') -> bool:
+        """Check if user has access to a database for specific operation
+        
+        Args:
+            user: User object
+            database: Database name (mydb, bbbot1, mansa_quant, mlflow_db, mansa_bot)
+            operation: 'read' or 'write'
+        
+        Returns:
+            True if user has access, False otherwise
+        """
+        if not user:
+            return False
+        
+        # Map database to permissions
+        db_permissions = {
+            'mydb': {
+                'read': [Permission.CLIENT_READ_BUDGETS, Permission.CLIENT_READ_TRANSACTIONS, 
+                         Permission.ADMIN_READ_MYDB],
+                'write': [Permission.CLIENT_WRITE_BUDGETS, Permission.CLIENT_WRITE_TRANSACTIONS, 
+                          Permission.ADMIN_WRITE_MYDB],
+            },
+            'bbbot1': {
+                'read': [Permission.INVESTOR_READ_PRICES, Permission.INVESTOR_READ_FUNDAMENTALS,
+                         Permission.INVESTOR_READ_TECHNICALS, Permission.INVESTOR_READ_PERFORMANCE,
+                         Permission.ADMIN_READ_BBBOT1],
+                'write': [Permission.ADMIN_WRITE_BBBOT1],
+            },
+            'mansa_quant': {
+                'read': [Permission.ANALYST_READ_MANSA_QUANT, Permission.ADMIN_READ_MANSA_QUANT],
+                'write': [Permission.ANALYST_WRITE_MANSA_QUANT, Permission.ADMIN_WRITE_MANSA_QUANT],
+            },
+            'mlflow_db': {
+                'read': [Permission.ANALYST_READ_MLFLOW, Permission.ADMIN_READ_MLFLOW],
+                'write': [Permission.ANALYST_WRITE_MLFLOW, Permission.ADMIN_WRITE_MLFLOW],
+            },
+            'mansa_bot': {
+                'read': [Permission.ADMIN_READ_MANSA_BOT],
+                'write': [Permission.ADMIN_WRITE_MANSA_BOT],
+            },
+        }
+        
+        required_perms = db_permissions.get(database, {}).get(operation, [])
+        return any(user.has_permission(perm) for perm in required_perms)
+    
+    @staticmethod
+    def get_user_databases(user: Optional[User]) -> List[str]:
+        """Get list of databases user can access"""
+        if not user:
+            return []
+        
+        databases = []
+        for db in ['mydb', 'bbbot1', 'mansa_quant', 'mlflow_db', 'mansa_bot']:
+            if RBACManager.check_db_access(user, db, 'read'):
+                databases.append(db)
+        return databases
+    
+    @staticmethod
+    def get_role_databases(role: UserRole) -> Dict[str, List[str]]:
+        """Get databases accessible by a role with their operations
+        
+        Returns:
+            Dict mapping database names to ['read'] or ['read', 'write']
+        """
+        role_db_access = {
+            UserRole.CLIENT: {'mydb': ['read', 'write']},
+            UserRole.INVESTOR: {'bbbot1': ['read']},
+            UserRole.ANALYST: {'mansa_quant': ['read', 'write'], 'mlflow_db': ['read', 'write']},
+            UserRole.ADMIN: {
+                'mansa_bot': ['read', 'write'],
+                'bbbot1': ['read', 'write'],
+                'mlflow_db': ['read', 'write'],
+                'mansa_quant': ['read', 'write'],
+                'mydb': ['read', 'write'],
+            },
+            UserRole.PARTNER: {},  # External services, not databases
+        }
+        return role_db_access.get(role, {})
 
 
 def show_login_form():
@@ -357,35 +498,44 @@ def show_login_form():
     # Show demo credentials
     with st.sidebar.expander("🔑 Demo Credentials"):
         st.markdown("""
-        **GUEST (Public Access - Pages 1-2):**
-        - Username: `guest`
-        - Password: `guest123`
-        - Access: Dashboard, Budget (no login via Mansacap.com)
-        
-        **CLIENT (Pages 1-4):**
+        **CLIENT (Budget & Transactions via Plaid):**
         - Username: `client`
         - Password: `client123`
-        - Login: Via Mansacap.com
-        - Access: Dashboard, Budget, Investment Analysis, Crypto
-        - Agreement: Asset Management
+        - Database: mydb
+        - Access: Budgets, transactions
         
-        **INVESTOR (Pages 1-5):**
+        **INVESTOR (Read-Only Market Data):**
         - Username: `investor`
         - Password: `investor123`
-        - Requirements: KYC + Legal documents
-        - Access: Dashboard, Budget, Investment Analysis, Crypto, Broker Trading
-        - Agreement: Investor Management or PPM
+        - Database: bbbot1
+        - Access: Stock prices, fundamentals, technicals, performance metrics
+        - Requirement: KYC + Legal documents
         
-        **ADMIN (All Pages 1-8):**
+        **ANALYST (Trading Signals & ML Experiments):**
+        - Username: `analyst`
+        - Password: `analyst123`
+        - Databases: mansa_quant, mlflow_db
+        - Access: Trading signals, ML experiments, sentiment analysis
+        
+        **ADMIN (All Databases - Full CRUD):**
         - Username: `admin`
         - Password: `admin123`
-        - Access: All pages including Trading Bot, Plaid Test, Multi-Broker
+        - Databases: mansa_bot, bbbot1, mlflow_db, mansa_quant, mydb
+        - Access: All databases with full read/write access
+        
+        **PARTNER (External Integrations):**
+        - Username: `partner`
+        - Password: `partner123`
+        - Services: Stripe, KYC, Lovable Cloud
         """)
         
         st.info("""
-        **Bot Performance Display:**
-        - Bot info (name & performance) will be linked on Home Page (Page 1)
-        - Full Bot management (Page 6), Plaid Test (Page 7), Multi-Broker (Page 8) - ADMIN only
+        **Database Access by Role:**
+        - **CLIENT**: mydb (budgets, transactions)
+        - **INVESTOR**: bbbot1 (read-only: prices, fundamentals, technicals)
+        - **ANALYST**: mansa_quant (trading signals), mlflow_db (ML experiments)
+        - **ADMIN**: All 5 databases with full CRUD
+        - **PARTNER**: External services (Stripe/KYC/Lovable)
         """)
 
 

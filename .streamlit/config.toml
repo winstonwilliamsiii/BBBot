@@ -1,0 +1,23 @@
+[theme]
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[client]
+showErrorDetails = false
+toolbarMode = "minimal"
+maxUploadSize = 200
+
+[server]
+headless = true
+enableXsrfProtection = true
+enableCORS = false
+port = 8501
+
+[logger]
+level = "info"
+
+[mapbox]
+token = ""

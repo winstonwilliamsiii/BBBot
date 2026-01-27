@@ -1,0 +1,130 @@
+@startuml
+hide methods
+hide stereotypes
+skinparam linetype ortho
+skinparam class {
+  BackgroundColor<<PK>> LightGreen
+}
+
+entity "mansa_quant.event_contracts" as event_contracts {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100) <<UK>>
+  contract_name: VARCHAR(500)
+  source: VARCHAR(50)
+  status: VARCHAR(50)
+  yes_price: DECIMAL(5,4)
+  no_price: DECIMAL(5,4)
+  volume_24h: DECIMAL(15,2)
+  liquidity_usd: DECIMAL(15,2)
+}
+
+entity "mansa_quant.orderbook_data" as orderbook_data {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100)
+  source: VARCHAR(50)
+  feed_type: VARCHAR(50)
+  side: VARCHAR(10)
+  price: DECIMAL(5,4)
+  quantity: DECIMAL(15,2)
+  timestamp: TIMESTAMP
+}
+
+entity "mansa_quant.ingestion_log" as ingestion_log {
+  +id: BIGINT <<PK>>
+  connector_name: VARCHAR(100)
+  source: VARCHAR(50)
+  feed_type: VARCHAR(50)
+  sync_status: VARCHAR(50)
+  records_synced: INT
+  records_inserted: INT
+  records_updated: INT
+  sync_start_time: DATETIME
+  sync_end_time: DATETIME
+}
+
+entity "mansa_quant.prediction_probabilities" as prediction_probabilities {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100)
+  source: VARCHAR(50)
+  implied_probability: DECIMAL(5,2)
+  confidence_score: DECIMAL(5,2)
+}
+
+entity "mansa_quant.sentiment_signals" as sentiment_signals {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100)
+  sentiment_score: DECIMAL(5,2)
+  signal_strength: VARCHAR(50)
+}
+
+entity "mansa_quant.prediction_sentiment_analysis" as pred_sentiment_analysis {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100)
+  prediction_id: BIGINT
+  sentiment_id: BIGINT
+  combined_score: DECIMAL(5,2)
+  recommendation: VARCHAR(50)
+}
+
+entity "mansa_quant.nlp_sentiment_data" as nlp_sentiment_data {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100)
+  text_source: VARCHAR(50)
+  sentiment_score: DECIMAL(5,2)
+  emotion_labels: JSON
+}
+
+entity "mansa_quant.probability_engine_inputs" as prob_engine_inputs {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100)
+  calculation_method: VARCHAR(100)
+  yes_price: DECIMAL(5,4)
+  no_price: DECIMAL(5,4)
+}
+
+entity "mansa_quant.daily_signal_aggregates" as daily_signal_aggregates {
+  +id: BIGINT <<PK>>
+  contract_id: VARCHAR(100)
+  date_utc: DATE
+  prediction_id: BIGINT
+  sentiment_id: BIGINT
+}
+
+entity "mansa_quant.passive_income_logs" as passive_income_logs {
+  +id: BIGINT <<PK>>
+  bot_id: VARCHAR(100)
+  contract_id: VARCHAR(100)
+  prediction_id: BIGINT
+  sentiment_id: BIGINT
+  trade_action: VARCHAR(50)
+  position_size: DECIMAL(15,2)
+}
+
+entity "mansa_quant.bot_decision_audit" as bot_decision_audit {
+  +id: BIGINT <<PK>>
+  bot_id: VARCHAR(100)
+  contract_id: VARCHAR(100)
+  decision_type: VARCHAR(50)
+}
+
+entity "mansa_quant.bot_performance_metrics" as bot_performance_metrics {
+  +id: BIGINT <<PK>>
+  bot_id: VARCHAR(100)
+  date_utc: DATE
+  total_trades: INT
+  win_rate: DECIMAL(5,2)
+}
+
+orderbook_data }o--|| event_contracts : contract_id
+pred_sentiment_analysis }o--|| prediction_probabilities : prediction_id
+pred_sentiment_analysis }o--|| sentiment_signals : sentiment_id
+
+passive_income_logs }o--|| event_contracts : contract_id
+passive_income_logs }o--|| prediction_probabilities : prediction_id
+passive_income_logs }o--|| sentiment_signals : sentiment_id
+
+daily_signal_aggregates }o--|| event_contracts : contract_id
+daily_signal_aggregates }o--|| prediction_probabilities : prediction_id
+daily_signal_aggregates }o--|| sentiment_signals : sentiment_id
+
+@enduml

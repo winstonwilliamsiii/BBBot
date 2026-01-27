@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "title": "Mansa Quant ERD",
+  "entities": [
+    {
+      "name": "mansa_quant.event_contracts",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)", "unique": true},
+        {"name": "contract_name", "type": "VARCHAR(500)"},
+        {"name": "description", "type": "TEXT"},
+        {"name": "source", "type": "VARCHAR(50)"},
+        {"name": "source_connector", "type": "VARCHAR(100)"},
+        {"name": "category", "type": "VARCHAR(100)"},
+        {"name": "resolution_date", "type": "DATETIME"},
+        {"name": "status", "type": "VARCHAR(50)"},
+        {"name": "yes_price", "type": "DECIMAL(5,4)"},
+        {"name": "no_price", "type": "DECIMAL(5,4)"},
+        {"name": "volume_24h", "type": "DECIMAL(15,2)"},
+        {"name": "liquidity_usd", "type": "DECIMAL(15,2)"},
+        {"name": "external_data_source", "type": "VARCHAR(200)"},
+        {"name": "ingestion_timestamp", "type": "TIMESTAMP"},
+        {"name": "last_synced", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.orderbook_data",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "source", "type": "VARCHAR(50)"},
+        {"name": "feed_type", "type": "VARCHAR(50)"},
+        {"name": "side", "type": "VARCHAR(10)"},
+        {"name": "price", "type": "DECIMAL(5,4)"},
+        {"name": "quantity", "type": "DECIMAL(15,2)"},
+        {"name": "timestamp", "type": "TIMESTAMP"},
+        {"name": "raw_data", "type": "JSON"},
+        {"name": "ingestion_timestamp", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.ingestion_log",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "connector_name", "type": "VARCHAR(100)"},
+        {"name": "source", "type": "VARCHAR(50)"},
+        {"name": "feed_type", "type": "VARCHAR(50)"},
+        {"name": "sync_status", "type": "VARCHAR(50)"},
+        {"name": "records_synced", "type": "INT"},
+        {"name": "records_inserted", "type": "INT"},
+        {"name": "records_updated", "type": "INT"},
+        {"name": "error_message", "type": "TEXT"},
+        {"name": "sync_start_time", "type": "DATETIME"},
+        {"name": "sync_end_time", "type": "DATETIME"},
+        {"name": "duration_seconds", "type": "INT"},
+        {"name": "created_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.prediction_probabilities",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "source", "type": "VARCHAR(50)"},
+        {"name": "implied_probability", "type": "DECIMAL(5,2)"},
+        {"name": "confidence_score", "type": "DECIMAL(5,2)"},
+        {"name": "rationale", "type": "TEXT"},
+        {"name": "created_at", "type": "TIMESTAMP"},
+        {"name": "updated_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.sentiment_signals",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "sentiment_score", "type": "DECIMAL(5,2)"},
+        {"name": "signal_strength", "type": "VARCHAR(50)"},
+        {"name": "source", "type": "VARCHAR(50)"},
+        {"name": "created_at", "type": "TIMESTAMP"},
+        {"name": "updated_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.prediction_sentiment_analysis",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "prediction_id", "type": "BIGINT"},
+        {"name": "sentiment_id", "type": "BIGINT"},
+        {"name": "combined_score", "type": "DECIMAL(5,2)"},
+        {"name": "recommendation", "type": "VARCHAR(50)"},
+        {"name": "last_updated", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.nlp_sentiment_data",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "source_text", "type": "TEXT"},
+        {"name": "text_source", "type": "VARCHAR(50)"},
+        {"name": "sentiment_score", "type": "DECIMAL(5,2)"},
+        {"name": "emotion_labels", "type": "JSON"},
+        {"name": "confidence_score", "type": "DECIMAL(5,2)"},
+        {"name": "model_version", "type": "VARCHAR(50)"},
+        {"name": "author_influence_score", "type": "DECIMAL(5,2)"},
+        {"name": "analyzed_at", "type": "TIMESTAMP"},
+        {"name": "created_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.probability_engine_inputs",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "calculation_method", "type": "VARCHAR(100)"},
+        {"name": "yes_price", "type": "DECIMAL(5,4)"},
+        {"name": "no_price", "type": "DECIMAL(5,4)"},
+        {"name": "order_volume_24h", "type": "DECIMAL(15,2)"},
+        {"name": "sentiment_average", "type": "DECIMAL(5,2)"},
+        {"name": "liquidity_usd", "type": "DECIMAL(15,2)"},
+        {"name": "external_odds_source", "type": "VARCHAR(200)"},
+        {"name": "calculated_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.daily_signal_aggregates",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "date_utc", "type": "DATE"},
+        {"name": "avg_implied_probability", "type": "DECIMAL(5,2)"},
+        {"name": "avg_sentiment_score", "type": "DECIMAL(5,2)"},
+        {"name": "sentiment_signal_strength", "type": "VARCHAR(50)"},
+        {"name": "orderbook_volume_usd", "type": "DECIMAL(15,2)"},
+        {"name": "price_volatility", "type": "DECIMAL(5,4)"},
+        {"name": "tweet_volume_24h", "type": "INT"},
+        {"name": "nlp_sentiment_tweets", "type": "DECIMAL(5,2)"},
+        {"name": "prediction_id", "type": "BIGINT"},
+        {"name": "sentiment_id", "type": "BIGINT"},
+        {"name": "created_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.passive_income_logs",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "bot_id", "type": "VARCHAR(100)"},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "prediction_id", "type": "BIGINT"},
+        {"name": "sentiment_id", "type": "BIGINT"},
+        {"name": "trade_action", "type": "VARCHAR(50)"},
+        {"name": "position_size", "type": "DECIMAL(15,2)"},
+        {"name": "entry_price", "type": "DECIMAL(5,4)"},
+        {"name": "exit_price", "type": "DECIMAL(5,4)"},
+        {"name": "profit_loss", "type": "DECIMAL(15,2)"},
+        {"name": "profit_loss_pct", "type": "DECIMAL(5,2)"},
+        {"name": "trade_rationale", "type": "TEXT"},
+        {"name": "implied_probability_at_entry", "type": "DECIMAL(5,2)"},
+        {"name": "sentiment_score_at_entry", "type": "DECIMAL(5,2)"},
+        {"name": "combined_signal_score", "type": "DECIMAL(5,2)"},
+        {"name": "confidence_threshold_met", "type": "BOOLEAN"},
+        {"name": "broker", "type": "VARCHAR(50)"},
+        {"name": "trade_status", "type": "VARCHAR(50)"},
+        {"name": "execution_timestamp", "type": "TIMESTAMP"},
+        {"name": "resolution_timestamp", "type": "TIMESTAMP"},
+        {"name": "created_at", "type": "TIMESTAMP"},
+        {"name": "updated_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.bot_decision_audit",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "bot_id", "type": "VARCHAR(100)"},
+        {"name": "contract_id", "type": "VARCHAR(100)"},
+        {"name": "decision_type", "type": "VARCHAR(50)"},
+        {"name": "decision_result", "type": "VARCHAR(50)"},
+        {"name": "input_data", "type": "JSON"},
+        {"name": "output_data", "type": "JSON"},
+        {"name": "execution_time_ms", "type": "INT"},
+        {"name": "created_at", "type": "TIMESTAMP"}
+      ]
+    },
+    {
+      "name": "mansa_quant.bot_performance_metrics",
+      "columns": [
+        {"name": "id", "type": "BIGINT", "pk": true, "autoIncrement": true},
+        {"name": "bot_id", "type": "VARCHAR(100)"},
+        {"name": "date_utc", "type": "DATE"},
+        {"name": "total_trades", "type": "INT"},
+        {"name": "winning_trades", "type": "INT"},
+        {"name": "losing_trades", "type": "INT"},
+        {"name": "win_rate", "type": "DECIMAL(5,2)"},
+        {"name": "total_profit_loss", "type": "DECIMAL(15,2)"},
+        {"name": "avg_profit_per_trade", "type": "DECIMAL(15,2)"},
+        {"name": "max_drawdown", "type": "DECIMAL(15,2)"},
+        {"name": "sharpe_ratio", "type": "DECIMAL(5,2)"},
+        {"name": "contracts_traded", "type": "INT"},
+        {"name": "avg_confidence_score", "type": "DECIMAL(5,2)"},
+        {"name": "created_at", "type": "TIMESTAMP"}
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": {"entity": "mansa_quant.orderbook_data", "field": "contract_id"}, "to": {"entity": "mansa_quant.event_contracts", "field": "contract_id"}, "type": "many-to-one", "onDelete": "cascade"},
+    {"from": {"entity": "mansa_quant.daily_signal_aggregates", "field": "contract_id"}, "to": {"entity": "mansa_quant.event_contracts", "field": "contract_id"}, "type": "many-to-one", "onDelete": "cascade"},
+    {"from": {"entity": "mansa_quant.daily_signal_aggregates", "field": "prediction_id"}, "to": {"entity": "mansa_quant.prediction_probabilities", "field": "id"}, "type": "many-to-one", "onDelete": "set-null"},
+    {"from": {"entity": "mansa_quant.daily_signal_aggregates", "field": "sentiment_id"}, "to": {"entity": "mansa_quant.sentiment_signals", "field": "id"}, "type": "many-to-one", "onDelete": "set-null"},
+    {"from": {"entity": "mansa_quant.prediction_sentiment_analysis", "field": "prediction_id"}, "to": {"entity": "mansa_quant.prediction_probabilities", "field": "id"}, "type": "many-to-one", "onDelete": "set-null"},
+    {"from": {"entity": "mansa_quant.prediction_sentiment_analysis", "field": "sentiment_id"}, "to": {"entity": "mansa_quant.sentiment_signals", "field": "id"}, "type": "many-to-one", "onDelete": "set-null"},
+    {"from": {"entity": "mansa_quant.passive_income_logs", "field": "contract_id"}, "to": {"entity": "mansa_quant.event_contracts", "field": "contract_id"}, "type": "many-to-one", "onDelete": "cascade"},
+    {"from": {"entity": "mansa_quant.passive_income_logs", "field": "prediction_id"}, "to": {"entity": "mansa_quant.prediction_probabilities", "field": "id"}, "type": "many-to-one", "onDelete": "set-null"},
+    {"from": {"entity": "mansa_quant.passive_income_logs", "field": "sentiment_id"}, "to": {"entity": "mansa_quant.sentiment_signals", "field": "id"}, "type": "many-to-one", "onDelete": "set-null"}
+  ]
+}

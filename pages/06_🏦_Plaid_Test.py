@@ -76,6 +76,20 @@ if RBAC_AVAILABLE:
 
 st.title("🏦 Plaid Quickstart Integration Test")
 
+# Connected badge (shown when access token exists)
+try:
+    if st.session_state.get('access_token'):
+        st.markdown(
+            """
+            <div style="display:inline-block;padding:4px 10px;border-radius:999px;background:#16a34a;color:white;font-weight:600;font-size:0.9rem;">
+              Connected ✓
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+except Exception:
+    pass
+
 st.markdown("""
 This page tests your connection to the **Plaid quickstart Docker backend**.
 

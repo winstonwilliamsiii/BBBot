@@ -200,6 +200,11 @@ if mode == "Direct Plaid API (Cloud)":
                     st.success("✅ Token exchanged and bank connected")
                     try:
                         st.balloons()
+                        st.snow()
+                        try:
+                            st.toast("🎉 Bank connected!", icon="✅")
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                     st.code(result)

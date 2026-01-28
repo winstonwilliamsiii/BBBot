@@ -12,4 +12,9 @@ COLOR_SCHEME = {
     "primary": "#14B8A6",              # Using teal as primary
     "primary_foreground": "#0A0A0A",   # Dark background
     "card_background": "#111827",      # Dark slate overlay
+    
+    # Status colors (required for validation)
+    "success": "#28a745",              # Success state (green)
+    "danger": "#dc3545",               # Error/danger state (red)
+    "warning": "#ffc107",              # Warning state (yellow/amber)
 }

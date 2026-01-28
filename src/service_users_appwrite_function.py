@@ -1,4 +1,4 @@
-//# service users
+# service users
 from services.appwrite_client import call_function
 
 def get_user_profile(user_id):

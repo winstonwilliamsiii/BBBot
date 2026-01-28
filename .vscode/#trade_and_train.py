@@ -1,4 +1,4 @@
-#import pandas as pd
+import pandas as pd
 from indicators import calculate_rsi, calculate_macd
 from trigger_engine import evaluate_triggers
 from broker_api import execute_trade

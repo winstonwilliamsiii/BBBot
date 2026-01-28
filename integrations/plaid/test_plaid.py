@@ -18,8 +18,7 @@ def test_plaid_api():
         manager = PlaidLinkManager()
         print("✅ SUCCESS! PlaidLinkManager initialized")
         
-        print("
-Attempting to create a link token...")
+        print("\nAttempting to create a link token...")
         link_token_response = manager.create_link_token(user_id='test_user')
         
         if link_token_response and 'link_token' in link_token_response:

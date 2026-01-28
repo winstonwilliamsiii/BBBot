@@ -26,8 +26,7 @@ def test_tiingo_api():
     
     if not api_key:
         print("❌ TIINGO_API_KEY not found in .env file")
-Fix:")
-            print("\nFix:")
+        print("\nFix:")
         print("  1. Login to https://www.tiingo.com/account/api")
         print("  2. Copy your API token")
         print("  3. Add to .env: TIINGO_API_KEY=your_token_here")

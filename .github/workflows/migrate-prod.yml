@@ -164,14 +164,6 @@ jobs:
             }' \
             ${{ secrets.DISCORD_WEBHOOK_PROD }}
       
-      - name: Send Telegram Trading Signal Alert (Success)
-        if: success()
-        run: |
-          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "parse_mode=Markdown" \
-            -d "text=🚀 *PRODUCTION LIVE - Trading Signals Active*%0A%0A✅ Bentley Bot production deployment complete%0A📊 Real-money trading signals now broadcasting%0A🔗 Commit: \`${{ github.sha }}\`"
-      
       - name: Send Discord Alert (Failure)
         if: failure()
         run: |
@@ -191,14 +183,6 @@ jobs:
               }]
             }' \
             ${{ secrets.DISCORD_WEBHOOK_PROD }}
-      
-      - name: Send Telegram Alert (Failure)
-        if: failure()
-        run: |
-          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "parse_mode=Markdown" \
-            -d "text=🚨 *PRODUCTION MIGRATION FAILED*%0A%0A❌ Deployment failed - Trading signals NOT active%0A🔧 Action required: Check logs immediately%0A🔗 Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   rollback:
     runs-on: ubuntu-latest

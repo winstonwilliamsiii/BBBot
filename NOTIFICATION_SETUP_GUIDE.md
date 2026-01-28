@@ -1,6 +1,6 @@
 # Bentley Bot - Notification Setup Guide
-## Discord, Telegram, Gmail, and Appwrite Integration
-**Date**: January 27, 2026
+## Discord, Gmail, and Appwrite Integration
+**Date**: January 28, 2026
 
 ---
 
@@ -15,8 +15,7 @@ Your notification system is now configured as:
 | **Staging** | Migration failed | **Appwrite → Gmail** | Email to wwilliams@mansacap.com: "Migration failed" |
 | **Production** | Migration complete | **GitHub → Gmail** | Email to wwilliams@mansacap.com: "Production live" |
 | **Production** | Trading signals active | **Discord Webhook** | Alert to Discord server: Trade signals broadcasting |
-| **Production** | Trading signals active | **Telegram Bot** | Alert to Telegram channel: Trade signals broadcasting |
-| **Production** | Migration failed | **Discord + Telegram** | Urgent alerts to both platforms |
+| **Production** | Migration failed | **Discord** | Urgent alert on Discord platform |
 
 ---
 
@@ -57,61 +56,9 @@ curl -H "Content-Type: application/json" \
 
 ---
 
-### ✅ Step 2: Telegram Bot Setup (10 minutes)
+### ✅ Step 2: Gmail Setup for GitHub Actions (10 minutes)
 
-#### **2.1 Create Telegram Bot**
-```bash
-# In Telegram app
-1. Search for @BotFather
-2. Send: /newbot
-3. Choose name: "Bentley Bot Signals"
-4. Choose username: bentley_bot_signals_bot (must end with _bot)
-5. Copy bot token (looks like: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)
-```
-
-#### **2.2 Get Chat ID**
-```bash
-# Send a message to your bot first, then:
-curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
-
-# Response will include:
-{
-  "ok": true,
-  "result": [
-    {
-      "update_id": 123456789,
-      "message": {
-        "chat": {
-          "id": 987654321,  ← THIS IS YOUR CHAT_ID
-          "type": "private"
-        }
-      }
-    }
-  ]
-}
-```
-
-#### **2.3 Add to GitHub Secrets**
-```bash
-# Go to GitHub repository → Settings → Secrets and variables → Actions
-1. Add TELEGRAM_BOT_TOKEN = [bot token from step 2.1]
-2. Add TELEGRAM_CHAT_ID = [chat ID from step 2.2]
-```
-
-#### **2.4 Test Telegram Bot**
-```bash
-curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/sendMessage" \
-  -d "chat_id=<CHAT_ID>" \
-  -d "text=🧪 Test message from Bentley Bot"
-```
-
-**Expected**: Message appears in your Telegram chat
-
----
-
-### ✅ Step 3: Gmail Setup for GitHub Actions (10 minutes)
-
-#### **3.1 Create Gmail App Password**
+#### **2.1 Create Gmail App Password**
 ```bash
 # Go to Google Account
 1. Navigate to: https://myaccount.google.com/security
@@ -123,14 +70,14 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/sendMessage" \
 7. Copy 16-character password (looks like: abcd efgh ijkl mnop)
 ```
 
-#### **3.2 Add to GitHub Secrets**
+#### **2.2 Add to GitHub Secrets**
 ```bash
 # Go to GitHub repository → Settings → Secrets and variables → Actions
 1. Add EMAIL_USERNAME = your-gmail@gmail.com
-2. Add EMAIL_PASSWORD = [16-char app password from step 3.1]
+2. Add EMAIL_PASSWORD = [16-char app password from step 2.1]
 ```
 
-#### **3.3 Test Email**
+#### **2.3 Test Email**
 ```bash
 # You can test manually or wait for first production deployment
 # Email will be sent to: wwilliams@mansacap.com
@@ -138,9 +85,9 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/sendMessage" \
 
 ---
 
-### ✅ Step 4: Appwrite Function Setup (15 minutes)
+### ✅ Step 3: Appwrite Function Setup (15 minutes)
 
-#### **4.1 Deploy Appwrite Function**
+#### **3.1 Deploy Appwrite Function**
 ```bash
 # Navigate to Appwrite console
 1. Go to your Appwrite project
@@ -153,23 +100,23 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/sendMessage" \
    - appwrite-functions/staging-alert/package.json
 ```
 
-#### **4.2 Configure Environment Variables in Appwrite**
+#### **3.2 Configure Environment Variables in Appwrite**
 ```bash
 # In Appwrite function settings → Environment Variables
 1. GMAIL_USER = your-gmail@gmail.com
-2. GMAIL_APP_PASSWORD = [same 16-char password from Step 3.1]
+2. GMAIL_APP_PASSWORD = [same 16-char password from Step 2.1]
 ```
 
-#### **4.3 Get Appwrite Function URL**
+#### **3.3 Get Appwrite Function URL**
 ```bash
 # In Appwrite function → Settings → Domains
 Copy the function URL (looks like: https://cloud.appwrite.io/v1/functions/abc123/executions)
 ```
 
-#### **4.4 Add to GitHub Secrets**
+#### **3.4 Add to GitHub Secrets**
 ```bash
 # Go to GitHub repository → Settings → Secrets and variables → Actions
-1. Add APPWRITE_FUNCTION_URL = [function URL from step 4.3]
+1. Add APPWRITE_FUNCTION_URL = [function URL from step 3.3]
 2. Add APPWRITE_PROJECT_ID = [your Appwrite project ID]
 3. Add APPWRITE_API_KEY = [create API key in Appwrite Console → API Keys]
 ```
@@ -202,7 +149,7 @@ git push origin staging
 #   "🧠 Bentley Bot - ML Training Phase Initiated (2 Weeks)"
 ```
 
-### **Test 3: Production Environment (Discord + Telegram + Gmail)**
+### **Test 3: Production Environment (Discord + Gmail)**
 ```bash
 # Push to main branch
 git checkout main
@@ -213,7 +160,6 @@ git push origin main
 # - GitHub Actions runs (with S3 backup)
 # - Email to wwilliams@mansacap.com: "Production Migration ✅ Complete"
 # - Discord message in your server: "🚀 PRODUCTION LIVE - Trading Signals Active"
-# - Telegram message: "🚀 PRODUCTION LIVE - Trading Signals Active"
 ```
 
 ---
@@ -221,14 +167,10 @@ git push origin main
 ## 📊 REQUIRED GITHUB SECRETS SUMMARY
 
 ```bash
-# Total: 8 secrets needed
+# Total: 10 secrets needed
 
 # Discord (1 secret)
 DISCORD_WEBHOOK_PROD = https://discord.com/api/webhooks/...
-
-# Telegram (2 secrets)
-TELEGRAM_BOT_TOKEN = 123456789:ABCdef...
-TELEGRAM_CHAT_ID = 987654321
 
 # Gmail (2 secrets)
 EMAIL_USERNAME = your-gmail@gmail.com
@@ -238,11 +180,62 @@ EMAIL_PASSWORD = abcd efgh ijkl mnop
 APPWRITE_FUNCTION_URL = https://cloud.appwrite.io/v1/functions/...
 APPWRITE_PROJECT_ID = 65f1a2b3c4d5e
 APPWRITE_API_KEY = standard_abc123...
+
+# Production Database (4 secrets - REQUIRED for backup)
+DB_PROD_HOST = your-db-host.com
+DB_PROD_PORT = 3306              # ⚠️ CRITICAL: Must be set or backup will fail!
+DB_PROD_USER = your_db_user
+DB_PROD_PASSWORD = your_db_password
+```
+
+### ⚠️ **CRITICAL: Database Backup Configuration**
+
+The production migration workflow creates automatic database backups **before** running migrations. If `DB_PROD_PORT` is not set or is empty, the backup job will fail with:
+
+```
+Error: Empty value for 'port' specified
+```
+
+**Required Action:**
+1. Go to: Repository → Settings → Secrets and variables → Actions
+2. Verify these 4 secrets are configured:
+   - `DB_PROD_HOST` = Your production database hostname
+   - **`DB_PROD_PORT`** = `3306` (MySQL default) or your custom port
+   - `DB_PROD_USER` = Database username with backup privileges
+   - `DB_PROD_PASSWORD` = Database user password
+
+**Test your backup configuration:**
+```bash
+# Manually test mysqldump command
+mysqldump \
+  --host=$DB_PROD_HOST \
+  --port=$DB_PROD_PORT \
+  --user=$DB_PROD_USER \
+  --password=$DB_PROD_PASSWORD \
+  --all-databases \
+  > test_backup.sql
 ```
 
 ---
 
 ## 🔍 TROUBLESHOOTING
+
+### **Production backup failing with "Empty value for 'port' specified"**
+```bash
+# Error message in GitHub Actions:
+# mysqldump: Error: Empty value for 'port' specified
+
+# Solution:
+1. Go to: Repository → Settings → Secrets and variables → Actions
+2. Check if DB_PROD_PORT exists
+3. If missing or empty, add it:
+   - Name: DB_PROD_PORT
+   - Value: 3306 (or your database port number)
+4. Re-run the failed workflow
+
+# ⚠️ NOTE: Production migrations REQUIRE database backups
+# The backup job must succeed before migrations run
+```
 
 ### **Discord webhook not working**
 ```bash
@@ -255,19 +248,6 @@ APPWRITE_API_KEY = standard_abc123...
 curl -H "Content-Type: application/json" \
   -d '{"content": "Test"}' \
   $DISCORD_WEBHOOK_PROD
-```
-
-### **Telegram bot not working**
-```bash
-# Check:
-1. Bot token is correct (from @BotFather)
-2. Chat ID is correct (from /getUpdates)
-3. You sent at least one message to bot first
-
-# Test manually:
-curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-  -d "chat_id=$TELEGRAM_CHAT_ID" \
-  -d "text=Test"
 ```
 
 ### **Gmail not working**
@@ -313,12 +293,8 @@ GitHub Actions Workflow Triggered
    │  └─ Gmail to wwilliams@mansacap.com
    │     └─ Subject: "[BBBot] Production Migration ✅"
    │
-   ├─ Discord Webhook
-   │  └─ Discord Server: https://discord.gg/rRFyNavT
-   │     └─ Message: "🚀 PRODUCTION LIVE - Trading Signals Active"
-   │
-   └─ Telegram Bot
-      └─ Telegram Chat
+   └─ Discord Webhook
+      └─ Discord Server: https://discord.gg/rRFyNavT
          └─ Message: "🚀 PRODUCTION LIVE - Trading Signals Active"
 ```
 
@@ -326,32 +302,25 @@ GitHub Actions Workflow Triggered
 
 ## 💡 FUTURE ENHANCEMENTS
 
-### **TON Wallet Integration for Tips/Donations**
-```javascript
-// Add to Telegram bot (separate feature)
-const tonweb = require('tonweb');
-
-// When user sends /tip command:
-bot.on('message', async (msg) => {
-  if (msg.text === '/tip') {
-    await bot.sendMessage(msg.chat.id, 
-      'Send TON to: UQA123...xyz\n' +
-      'For premium signals access!'
-    );
-  }
-});
-```
-
 ### **Signal Subscription System**
-```javascript
-// Track subscribers in database
+```sql
+-- Track subscribers in database
 CREATE TABLE signal_subscribers (
   user_id INT,
-  platform VARCHAR(20), -- discord, telegram
+  platform VARCHAR(20), -- discord only
   platform_id VARCHAR(100),
   subscription_tier VARCHAR(20), -- free, basic, premium
   expiry_date DATE
 );
+```
+
+### **Discord Bot Commands**
+```javascript
+// Enhanced Discord bot for interactive alerts
+// Future: Add slash commands for subscribers
+// /subscribe - Start receiving signals
+// /status - Check portfolio status
+// /alerts - Configure alert preferences
 ```
 
 ---
@@ -362,10 +331,10 @@ If notifications aren't working:
 1. Check GitHub Actions logs: `https://github.com/winstonwilliamsiii/BBBot/actions`
 2. Check Appwrite function logs: Appwrite Console → Functions → Executions
 3. Test webhooks manually using curl commands above
-4. Verify all 8 GitHub secrets are set correctly
+4. Verify all 10 GitHub secrets are set correctly (especially `DB_PROD_PORT`!)
 
 ---
 
-**Last Updated**: January 27, 2026  
-**Status**: ✅ Ready to Deploy  
-**Next**: Set up Discord webhook, Telegram bot, and Gmail app password
+**Last Updated**: January 28, 2026  
+**Status**: ✅ Production Ready (Telegram Removed)  
+**Next**: Ensure Discord webhook and Gmail app password are configured

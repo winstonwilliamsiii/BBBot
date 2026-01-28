@@ -1,8 +1,10 @@
-# Test connections
-python airflow_pendulum_fix.py test
+# Test connections - Shell commands for testing Airflow
+# These are bash commands, not executable Python code
 
-# Initialize database 
-python airflow_pendulum_fix.py init
+# python airflow_pendulum_fix.py test
+
+# Initialize database
+# python airflow_pendulum_fix.py init
 
 # View configuration
-python airflow_pendulum_fix.py config
+# python airflow_pendulum_fix.py config

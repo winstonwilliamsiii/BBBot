@@ -32,7 +32,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import Plaid components with error handling
 try:
-    from frontend.components.plaid_quickstart_connector import PlaidQuickstartClient, render_quickstart_plaid_link
+    from frontend.components.plaid_quickstart_connector import (
+        PlaidQuickstartClient,
+        render_quickstart_plaid_link
+    )
     PLAID_QUICKSTART_AVAILABLE = True
 except ImportError as e:
     st.error(f"⚠️ Plaid Quickstart module not found: {e}")
@@ -46,11 +49,15 @@ except ImportError:
     PLAID_MANAGER_AVAILABLE = False
 
 from frontend.utils.styling import apply_custom_styling, add_footer
-from frontend.styles.colors import COLOR_SCHEME
 
 # RBAC imports with error handling
 try:
-    from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
+    from frontend.utils.rbac import (
+        RBACManager,
+        Permission,
+        show_login_form,
+        show_user_info
+    )
     RBAC_AVAILABLE = True
 except ImportError:
     RBAC_AVAILABLE = False
@@ -69,7 +76,9 @@ apply_custom_styling()
 if RBAC_AVAILABLE:
     RBACManager.init_session_state()
     show_user_info()
-    if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+    authenticated = RBACManager.is_authenticated()
+    has_perm = RBACManager.has_permission(Permission.VIEW_TRADING_BOT)
+    if not authenticated or not has_perm:
         st.error("🚫 ADMIN access required")
         show_login_form()
         st.stop()
@@ -79,12 +88,13 @@ st.title("🏦 Plaid Quickstart Integration Test")
 # Connected badge (shown when access token exists)
 try:
     if st.session_state.get('access_token'):
+        badge_style = (
+            "display:inline-block;padding:4px 10px;"
+            "border-radius:999px;background:#16a34a;"
+            "color:white;font-weight:600;font-size:0.9rem;"
+        )
         st.markdown(
-            """
-            <div style="display:inline-block;padding:4px 10px;border-radius:999px;background:#16a34a;color:white;font-weight:600;font-size:0.9rem;">
-              Connected ✓
-            </div>
-            """,
+            f'<div style="{badge_style}">Connected ✓</div>',
             unsafe_allow_html=True,
         )
 except Exception:
@@ -107,7 +117,7 @@ st.markdown("## ⚙️ Configuration")
 
 # Detect cloud vs local
 is_cloud = (
-    os.getenv('STREAMLIT_SHARING_MODE') is not None or 
+    os.getenv('STREAMLIT_SHARING_MODE') is not None or
     os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud' or
     'streamlit.app' in str(st.get_option('browser.serverAddress')) or
     'streamlit.app' in str(os.getenv('STREAMLIT_SERVER_HEADLESS', ''))
@@ -118,7 +128,10 @@ col1, col2 = st.columns(2)
 with col1:
     mode = st.selectbox(
         "Test Mode",
-        options=("Direct Plaid API (Cloud)", "Quickstart Backend (Local)"),
+        options=(
+            "Direct Plaid API (Cloud)",
+            "Quickstart Backend (Local)"
+        ),
         index=0 if is_cloud else 1,
         help="Use Direct Plaid on Cloud; use Quickstart when running locally"
     )
@@ -135,7 +148,10 @@ if mode == "Quickstart Backend (Local)":
         help="Docker quickstart base URL (e.g., http://localhost:5001)"
     )
     if 'localhost' in backend_url and is_cloud:
-        st.error("⚠️ Cannot use localhost on Streamlit Cloud! Switch to Direct Plaid API mode.")
+        st.error(
+            "⚠️ Cannot use localhost on Streamlit Cloud! "
+            "Switch to Direct Plaid API mode."
+        )
         st.stop()
 
 st.markdown("---")
@@ -156,7 +172,7 @@ if mode == "Direct Plaid API (Cloud)":
     if 'item_id' not in st.session_state:
         st.session_state.item_id = None
 
-    colA, colB = st.columns([1,1])
+    colA, colB = st.columns([1, 1])
 
     with colA:
         if st.button("🪙 Create Link Token", use_container_width=True):
@@ -166,7 +182,10 @@ if mode == "Direct Plaid API (Cloud)":
                     st.session_state.link_token = token.get('link_token')
                     st.success("✅ Link token created")
                 else:
-                    st.error("❌ Failed to create link token. Check Streamlit Cloud secrets.")
+                    st.error(
+                        "❌ Failed to create link token. "
+                        "Check Streamlit Cloud secrets."
+                    )
 
     with colB:
         if st.button("🧹 Clear Session", use_container_width=True):
@@ -180,34 +199,57 @@ if mode == "Direct Plaid API (Cloud)":
     if st.session_state.link_token:
         st.markdown("### 🚪 Open Plaid Link")
         import streamlit.components.v1 as components
-        components.html(
-            f"""
-            <script src=\"https://cdn.plaid.com/link/v2/stable/link-initialize.js\"></script>
-            <button id=\"open-link\" style=\"padding:10px 16px;border-radius:6px;background:#0a84ff;color:white;border:none;\">Open Plaid Link</button>
-            <script>
-              var handler = Plaid.create({{
-                token: '{st.session_state.link_token}',
-                onSuccess: function(public_token, metadata) {{
-                  alert('PUBLIC_TOKEN:' + public_token);
-                }},
-                onExit: function(err, metadata) {{
-                  console.log('Plaid exit', err, metadata);
-                }}
-              }});
-              document.getElementById('open-link').onclick = function() {{ handler.open(); }};
-            </script>
-            """,
-            height=120,
+        plaid_html = f"""
+        <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js">
+        </script>
+        <button id="open-link" style="
+            padding:10px 16px;
+            border-radius:6px;
+            background:#0a84ff;
+            color:white;
+            border:none;
+        ">Open Plaid Link</button>
+        <script>
+          var handler = Plaid.create({{
+            token: '{st.session_state.link_token}',
+            onSuccess: function(public_token, metadata) {{
+              alert('PUBLIC_TOKEN:' + public_token);
+            }},
+            onExit: function(err, metadata) {{
+              console.log('Plaid exit', err, metadata);
+            }}
+          }});
+          document.getElementById('open-link').onclick = function() {{
+            handler.open();
+          }};
+        </script>
+        """
+        components.html(plaid_html, height=120)
+
+        st.caption(
+            "On success, an alert will show your public token. "
+            "Copy it and paste below."
         )
 
-        st.caption("On success, an alert will show your public token. Copy it and paste below.")
-
         st.markdown("### 🔄 Exchange Public Token")
-        st.session_state.public_token = st.text_input("Public Token", value=st.session_state.public_token or "", help="Paste token starting with public-sandbox-")
-        institution_name = st.text_input("Institution Name (optional)", value="Plaid Sandbox")
-        if st.button("✅ Exchange Token", use_container_width=True, disabled=not st.session_state.public_token):
+        st.session_state.public_token = st.text_input(
+            "Public Token",
+            value=st.session_state.public_token or "",
+            help="Paste token starting with public-sandbox-"
+        )
+        institution_name = st.text_input(
+            "Institution Name (optional)",
+            value="Plaid Sandbox"
+        )
+        if st.button(
+            "✅ Exchange Token",
+            use_container_width=True,
+            disabled=not st.session_state.public_token
+        ):
             with st.spinner("Exchanging token..."):
-                result = manager.exchange_public_token(st.session_state.public_token)
+                result = manager.exchange_public_token(
+                    st.session_state.public_token
+                )
                 if result and result.get('access_token'):
                     st.session_state.access_token = result['access_token']
                     st.session_state.item_id = result['item_id']
@@ -223,7 +265,12 @@ if mode == "Direct Plaid API (Cloud)":
                         pass
                     st.code(result)
                     try:
-                        save_plaid_item(user_id, result['item_id'], result['access_token'], institution_name)
+                        save_plaid_item(
+                            user_id,
+                            result['item_id'],
+                            result['access_token'],
+                            institution_name
+                        )
                         st.success("💾 Saved Plaid item to database")
                     except Exception as e:
                         st.warning(f"Could not save to DB: {e}")
@@ -244,24 +291,33 @@ if mode == "Direct Plaid API (Cloud)":
 
             # Connection status and quick clear
             st.markdown("---")
-            colS1, colS2 = st.columns([1,1])
+            colS1, colS2 = st.columns([1, 1])
             with colS1:
                 st.metric("Connection Status", "Connected", delta="✓")
                 st.caption(f"Item ID: {st.session_state.item_id}")
             with colS2:
-                if st.button("🧹 Clear Session (Finish)", use_container_width=True):
+                if st.button(
+                    "🧹 Clear Session (Finish)",
+                    use_container_width=True
+                ):
                     st.session_state.link_token = None
                     st.session_state.public_token = None
                     st.session_state.access_token = None
                     st.session_state.item_id = None
                     st.success("Session cleared. You can start a new test.")
 
-    st.info("This mode uses Plaid API directly with credentials from Streamlit Cloud secrets.")
+    st.info(
+        "This mode uses Plaid API directly with credentials "
+        "from Streamlit Cloud secrets."
+    )
 else:
     # Local quickstart backend health & tests
     st.markdown("## 🔍 Backend Health Check")
     if not PLAID_QUICKSTART_AVAILABLE:
-        st.error("❌ Plaid Quickstart connector module not available. Check installation.")
+        st.error(
+            "❌ Plaid Quickstart connector module not available. "
+            "Check installation."
+        )
         st.stop()
     client = PlaidQuickstartClient(backend_url)
 
@@ -269,18 +325,22 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("🔌 Test Connection", use_container_width=True):
-            with st.spinner("Checking backend..."):
-                if client.health_check():
-                    st.success("✅ Backend is running!")
-                else:
-                    st.error("❌ Backend not responding")
-                    st.info("Run Docker quickstart locally or switch to Direct Plaid API mode above.")
+        with st.spinner("Checking backend..."):
+            if client.health_check():
+                st.success("✅ Backend is running!")
+            else:
+                st.error("❌ Backend not responding")
+                st.info(
+                    "Run Docker quickstart locally or switch to "
+                    "Direct Plaid API mode above."
+                )
 
 with col2:
     st.metric("Backend", backend_url.split('//')[1])
 
 with col3:
-    st.metric("User ID", user_id[:15] + "..." if len(user_id) > 15 else user_id)
+    display_id = user_id[:15] + "..." if len(user_id) > 15 else user_id
+    st.metric("User ID", display_id)
 
 # Main integration test
 st.markdown("---")
@@ -410,7 +470,10 @@ with st.expander("🐛 Debug Information"):
 
 # Footer
 st.markdown("---")
-st.caption("💡 Once this works, we'll migrate the logic to your Appwrite Functions!")
+st.caption(
+    "💡 Once this works, we'll migrate the logic to "
+    "your Appwrite Functions!"
+)
 
 # Add BBBot footer
 add_footer()

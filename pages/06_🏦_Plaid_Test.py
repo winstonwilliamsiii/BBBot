@@ -321,32 +321,32 @@ else:
         st.stop()
     client = PlaidQuickstartClient(backend_url)
 
-col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
-with col1:
-    if st.button("🔌 Test Connection", use_container_width=True):
-        with st.spinner("Checking backend..."):
-            if client.health_check():
-                st.success("✅ Backend is running!")
-            else:
-                st.error("❌ Backend not responding")
-                st.info(
-                    "Run Docker quickstart locally or switch to "
-                    "Direct Plaid API mode above."
-                )
+    with col1:
+        if st.button("🔌 Test Connection", use_container_width=True):
+            with st.spinner("Checking backend..."):
+                if client.health_check():
+                    st.success("✅ Backend is running!")
+                else:
+                    st.error("❌ Backend not responding")
+                    st.info(
+                        "Run Docker quickstart locally or switch to "
+                        "Direct Plaid API mode above."
+                    )
 
-with col2:
-    st.metric("Backend", backend_url.split('//')[1])
+    with col2:
+        st.metric("Backend", backend_url.split('//')[1])
 
-with col3:
-    display_id = user_id[:15] + "..." if len(user_id) > 15 else user_id
-    st.metric("User ID", display_id)
+    with col3:
+        display_id = user_id[:15] + "..." if len(user_id) > 15 else user_id
+        st.metric("User ID", display_id)
 
-# Main integration test
-st.markdown("---")
-st.markdown("## 🧪 Integration Test")
+    # Main integration test
+    st.markdown("---")
+    st.markdown("## 🧪 Integration Test")
 
-render_quickstart_plaid_link(user_id, backend_url)
+    render_quickstart_plaid_link(user_id, backend_url)
 
 # Instructions
 st.markdown("---")

@@ -59,13 +59,21 @@ class PlaidLinkManager:
         # Reload environment one more time to be sure (local only)
         load_dotenv(str(project_root / '.env'), override=True)
         
-        # Try Streamlit secrets first (production), then environment variables (local dev)
+        # Try Streamlit secrets first (production), then env vars (local dev)
         try:
-            self.client_id = st.secrets.get('PLAID_CLIENT_ID', os.getenv('PLAID_CLIENT_ID', '')).strip()
-            self.secret = st.secrets.get('PLAID_SECRET', os.getenv('PLAID_SECRET', '')).strip()
-            self.env = st.secrets.get('PLAID_ENV', os.getenv('PLAID_ENV', 'sandbox')).strip()
-        except Exception:
-            # Fallback if st.secrets not available (shouldn't happen in Streamlit)
+            # Access st.secrets as dict, not with .get()
+            if hasattr(st, 'secrets') and 'PLAID_CLIENT_ID' in st.secrets:
+                self.client_id = st.secrets['PLAID_CLIENT_ID'].strip()
+                self.secret = st.secrets['PLAID_SECRET'].strip()
+                self.env = st.secrets.get('PLAID_ENV', 'sandbox').strip()
+            else:
+                # Fallback to environment variables
+                self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
+                self.secret = os.getenv('PLAID_SECRET', '').strip()
+                self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
+        except Exception as e:
+            # Final fallback
+            print(f"⚠️ st.secrets access failed: {e}")
             self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
             self.secret = os.getenv('PLAID_SECRET', '').strip()
             self.env = os.getenv('PLAID_ENV', 'sandbox').strip()

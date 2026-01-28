@@ -52,16 +52,17 @@ def get_secret(key: str, default: Optional[str] = None, section: Optional[str] =
 def get_mysql_config() -> dict:
     """
     Get MySQL connection configuration from secrets or environment.
+    Checks both root level and [mysql] section for compatibility.
     
     Returns:
         dict: MySQL configuration with host, port, user, password, database
     """
     return {
-        'host': get_secret('MYSQL_HOST', section='mysql', default='127.0.0.1'),
-        'port': int(get_secret('MYSQL_PORT', section='mysql', default='3306')),
-        'user': get_secret('MYSQL_USER', section='mysql', default='root'),
-        'password': get_secret('MYSQL_PASSWORD', section='mysql', default='root'),
-        'database': get_secret('MYSQL_DATABASE', section='mysql', default='railway'),
+        'host': get_secret('MYSQL_HOST', default='127.0.0.1'),
+        'port': int(get_secret('MYSQL_PORT', default='3306')),
+        'user': get_secret('MYSQL_USER', default='root'),
+        'password': get_secret('MYSQL_PASSWORD', default='root'),
+        'database': get_secret('MYSQL_DATABASE', default='railway'),
     }
 
 

@@ -496,7 +496,7 @@ def main():
                 WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
                 WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
                 ELSE 'HOLD'
-            END as signal
+            END as trade_signal
         FROM marts.features_roi
         WHERE date = (SELECT MAX(date) FROM marts.features_roi)
         ORDER BY ticker
@@ -518,24 +518,66 @@ def main():
             
             styled_df = df_signals.style.applymap(
                 highlight_signal,
-                subset=['signal']
+                subset=['trade_signal']
             )
             
             st.dataframe(styled_df, use_container_width=True)
             
             # Summary metrics
             col1, col2, col3 = st.columns(3)
-            col1.metric("🟢 BUY Signals", (df_signals['signal'] == 'BUY').sum())
-            col2.metric("🔴 SELL Signals", (df_signals['signal'] == 'SELL').sum())
-            col3.metric("⚪ HOLD Signals", (df_signals['signal'] == 'HOLD').sum())
+            col1.metric("🟢 BUY Signals", (df_signals['trade_signal'] == 'BUY').sum())
+            col2.metric("🔴 SELL Signals", (df_signals['trade_signal'] == 'SELL').sum())
+            col3.metric("⚪ HOLD Signals", (df_signals['trade_signal'] == 'HOLD').sum())
         
         else:
             st.info("No trading signals available. Run the ML pipeline first.")
     
     except Exception as e:
-        db_name = mysql_config['database'] if 'mysql_config' in locals() else 'unknown'
-        st.error(f"Failed to load trading signals (database: {db_name}): {e}")
-        st.info("Make sure marts.features_roi table exists and has data")
+        db_name = mysql_config.get('database', 'unknown') if 'mysql_config' in locals() else 'unknown'
+        db_host = mysql_config.get('host', 'unknown') if 'mysql_config' in locals() else 'unknown'
+        
+        # Check if it's a connection error
+        error_str = str(e)
+        if "Can't connect" in error_str or "Connection refused" in error_str:
+            st.warning("⚠️ **Database Connection Failed**")
+            st.info(f"Trying to connect to: `{db_name}` on `{db_host}`")
+            
+            with st.expander("🔧 How to Fix This"):
+                st.markdown(f"""
+                ### Database Connection Error
+                
+                **Current Configuration:**
+                - Database: `{db_name}`
+                - Host: `{db_host}`
+                
+                **Solutions:**
+                
+                #### Option 1: Use Railway MySQL (Recommended for Production)
+                Add these secrets to your Streamlit Cloud or `.env` file:
+                ```toml
+                MYSQL_HOST = "nozomi.proxy.rlwy.net"
+                MYSQL_PORT = "54537"
+                MYSQL_USER = "root"
+                MYSQL_PASSWORD = "your_railway_password"
+                MYSQL_DATABASE = "railway"
+                ```
+                
+                #### Option 2: Start Local MySQL (Development)
+                ```bash
+                docker-compose up -d mysql
+                ```
+                
+                #### Option 3: Check Environment Variables
+                Make sure these are set in your `.env` or Streamlit secrets:
+                - `MYSQL_HOST`
+                - `MYSQL_PORT`
+                - `MYSQL_USER`
+                - `MYSQL_PASSWORD`
+                - `MYSQL_DATABASE`
+                """)
+        else:
+            st.error(f"Failed to load trading signals (database: {db_name}): {e}")
+            st.info("Make sure `marts.features_roi` table exists and has data")
     
     # Configuration Guide
     with st.expander("⚙️ Broker API Configuration Guide"):

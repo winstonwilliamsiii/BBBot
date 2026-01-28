@@ -104,31 +104,6 @@ def get_yfinance_data(tickers, start_date, end_date):
                 raw_df = pd.concat(frames, axis=1)
         else:
             raw_df = yf.download(tickers, start=start_date, end=end_date, threads=True, progress=False)
-        # yfinance (and Yahoo) can be flaky with a large list of tickers.
-        # To be robust, download in batches and concatenate results.
-        def _chunks(lst, n):
-            for i in range(0, len(lst), n):
-                yield lst[i:i + n]
-
-        # choose a conservative batch size; this can be tuned
-        batch_size = 8
-        if isinstance(tickers, (list, tuple)) and len(tickers) > batch_size:
-            frames = []
-            for chunk in _chunks(list(tickers), batch_size):
-                try:
-                    part = yf.download(chunk, start=start_date, end=end_date, threads=True, progress=False)
-                except Exception as e:
-                    st.warning(f"yfinance chunk download failed for {chunk}: {e}")
-                    continue
-                if part is not None and not part.empty:
-                    frames.append(part)
-            if not frames:
-                raw_df = pd.DataFrame()
-            else:
-                # align frames by index/columns carefully by concatenating along columns
-                raw_df = pd.concat(frames, axis=1)
-        else:
-            raw_df = yf.download(tickers, start=start_date, end=end_date, threads=True, progress=False)
     except Exception as e:
         # Return empty dataframe on network / yfinance errors; caller can warn.
         st.error(f"Failed to download data from yfinance: {e}")
@@ -748,18 +723,6 @@ def main():
                 avg_purchase = portfolio_df['Purchase_Price'].mean()
                 st.metric("Avg Purchase Price", f"${avg_purchase:.2f}")
 
-    # Mansa Capital Fund Names Mapping
-    MANSA_FUNDS = {
-        'IONQ': 'Mansa AI',
-        'QBTS': 'Mansa AI2',
-        'SOUN': 'Mansa Tech',
-        'RGTI': 'Mansa Jugarnaut',
-        'AMZN': 'Mansa Jugarnaut',
-        'NVDA': 'Mansa Jugarnaut',
-        'B': 'Mansa Minerals',
-        'IAU': 'Mansa Minerals'
-    }
-    
     # Fetch portfolio data
     portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
     if portfolio_data.empty:

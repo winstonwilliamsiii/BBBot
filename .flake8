@@ -20,6 +20,5 @@ exclude =
     appwrite-functions,
     integrations,
     logs,
-    bbbot1_pipeline
-max-line-length = 127
-max-complexity = 10
+    bbbot1_pipeline,
+    */frontend/components/#*

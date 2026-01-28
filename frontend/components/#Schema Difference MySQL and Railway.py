@@ -17,7 +17,7 @@ LOCAL_DB = {
 
 RAILWAY_DB = {
     "host": "YOUR_RAILWAY_HOST",
-    "port": YOUR_RAILWAY_PORT,
+    "port": 3306,  # Replace with YOUR_RAILWAY_PORT value
     "user": "YOUR_RAILWAY_USER",
     "password": "YOUR_RAILWAY_PASSWORD",
     "database": "YOUR_RAILWAY_DATABASE",

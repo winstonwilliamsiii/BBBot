@@ -244,6 +244,14 @@ except ImportError:
     YFINANCE_AVAILABLE = False
     st.warning("⚠️ yfinance not available. Install with: pip install yfinance")
 
+# Import Appwrite services
+try:
+    from services.transactions import create_transaction, get_transactions
+    from services.watchlist import add_to_watchlist, get_watchlist
+    APPWRITE_SERVICES_AVAILABLE = True
+except ImportError:
+    APPWRITE_SERVICES_AVAILABLE = False
+
 
 def display_investment_page():
     """Main investment analysis page with MLFlow integration"""

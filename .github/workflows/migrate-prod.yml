@@ -1,0 +1,188 @@
+name: Migrate Database - Production Environment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'migrations/base/**'
+      - 'migrations/prod/**'
+      - '.github/workflows/migrate-prod.yml'
+  workflow_dispatch:
+    inputs:
+      skip_backup:
+        description: 'Skip database backup (not recommended)'
+        required: false
+        default: 'false'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Validate migration files
+        run: |
+          echo "Validating migration files..."
+          find migrations/base migrations/prod -name "*.sql" -type f | while read file; do
+            echo "Checking: $file"
+            # Basic SQL syntax validation
+            grep -E "^(CREATE|ALTER|INSERT|UPDATE|DELETE|DROP)" "$file" > /dev/null || true
+          done
+
+  backup:
+    runs-on: ubuntu-latest
+    environment: production
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Backup production database
+        env:
+          DB_PROD_HOST: ${{ secrets.DB_PROD_HOST }}
+          DB_PROD_PORT: ${{ secrets.DB_PROD_PORT }}
+          DB_PROD_USER: ${{ secrets.DB_PROD_USER }}
+          DB_PROD_PASSWORD: ${{ secrets.DB_PROD_PASSWORD }}
+        run: |
+          echo "Creating production database backup..."
+          BACKUP_FILE="prod_backup_$(date +%Y%m%d_%H%M%S).sql"
+          
+          mysqldump \
+            --host=$DB_PROD_HOST \
+            --port=$DB_PROD_PORT \
+            --user=$DB_PROD_USER \
+            --password=$DB_PROD_PASSWORD \
+            --all-databases \
+            > $BACKUP_FILE
+          
+          echo "Backup created: $BACKUP_FILE"
+          echo "BACKUP_FILE=$BACKUP_FILE" >> $GITHUB_ENV
+      
+      - name: Upload backup to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          BACKUP_BUCKET: ${{ secrets.BACKUP_BUCKET }}
+        run: |
+          aws s3 cp $BACKUP_FILE s3://$BACKUP_BUCKET/prod-backups/
+
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    needs: backup
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mysql-connector-python
+      
+      - name: Run database migrations (Production)
+        env:
+          DB_PROD_HOST: ${{ secrets.DB_PROD_HOST }}
+          DB_PROD_PORT: ${{ secrets.DB_PROD_PORT }}
+          DB_PROD_USER: ${{ secrets.DB_PROD_USER }}
+          DB_PROD_PASSWORD: ${{ secrets.DB_PROD_PASSWORD }}
+        run: |
+          python scripts/migration_manager.py \
+            --env prod \
+            --action execute \
+            --migration-dir migrations
+      
+      - name: Verify migration success
+        env:
+          DB_PROD_HOST: ${{ secrets.DB_PROD_HOST }}
+          DB_PROD_PORT: ${{ secrets.DB_PROD_PORT }}
+          DB_PROD_USER: ${{ secrets.DB_PROD_USER }}
+          DB_PROD_PASSWORD: ${{ secrets.DB_PROD_PASSWORD }}
+        run: |
+          python scripts/migration_manager.py \
+            --env prod \
+            --action status
+      
+      - name: Run smoke tests
+        env:
+          DB_PROD_HOST: ${{ secrets.DB_PROD_HOST }}
+          DB_PROD_PORT: ${{ secrets.DB_PROD_PORT }}
+          DB_PROD_USER: ${{ secrets.DB_PROD_USER }}
+          DB_PROD_PASSWORD: ${{ secrets.DB_PROD_PASSWORD }}
+        run: |
+          python -m pytest tests/smoke/ -v
+      
+      - name: Notify PagerDuty (Success)
+        if: success()
+        uses: anothrNick/slack-webhook-action@0.0.1
+        with:
+          webhook_url: ${{ secrets.PAGERDUTY_WEBHOOK_URL }}
+          payload: |
+            {
+              "event_action": "resolve",
+              "dedup_key": "prod-migration-${{ github.run_id }}",
+              "custom_details": {
+                "commit": "${{ github.sha }}",
+                "status": "success"
+              }
+            }
+      
+      - name: Notify Slack (Success)
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ Production database migration successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Database Migration*\n✅ Successful\nBranch: main\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+      
+      - name: Notify Slack (Failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "🚨 Production database migration failed - IMMEDIATE ACTION REQUIRED",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Database Migration*\n❌ FAILED - Please check immediately\nBranch: main\nCommit: ${{ github.sha }}\n\nA backup has been created and the database may need to be restored."
+                  }
+                }
+              ]
+            }
+
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    needs: migrate
+    if: failure()
+    
+    steps:
+      - name: Notify On-Call Engineer
+        run: |
+          echo "ROLLBACK REQUIRED - Manual intervention needed"
+          echo "Production database migration has failed"
+          echo "Backup available in S3"

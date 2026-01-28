@@ -1,0 +1,99 @@
+name: Migrate Database - Staging Environment
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - 'migrations/base/**'
+      - 'migrations/staging/**'
+      - '.github/workflows/migrate-staging.yml'
+
+jobs:
+  migrate-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mysql-connector-python
+      
+      - name: Run database migrations (Staging)
+        env:
+          DB_STAGING_HOST: ${{ secrets.DB_STAGING_HOST }}
+          DB_STAGING_PORT: ${{ secrets.DB_STAGING_PORT }}
+          DB_STAGING_USER: ${{ secrets.DB_STAGING_USER }}
+          DB_STAGING_PASSWORD: ${{ secrets.DB_STAGING_PASSWORD }}
+        run: |
+          python scripts/migration_manager.py \
+            --env staging \
+            --action execute \
+            --migration-dir migrations
+      
+      - name: Verify migration success
+        env:
+          DB_STAGING_HOST: ${{ secrets.DB_STAGING_HOST }}
+          DB_STAGING_PORT: ${{ secrets.DB_STAGING_PORT }}
+          DB_STAGING_USER: ${{ secrets.DB_STAGING_USER }}
+          DB_STAGING_PASSWORD: ${{ secrets.DB_STAGING_PASSWORD }}
+        run: |
+          python scripts/migration_manager.py \
+            --env staging \
+            --action status
+      
+      - name: Run integration tests
+        env:
+          DB_STAGING_HOST: ${{ secrets.DB_STAGING_HOST }}
+          DB_STAGING_PORT: ${{ secrets.DB_STAGING_PORT }}
+          DB_STAGING_USER: ${{ secrets.DB_STAGING_USER }}
+          DB_STAGING_PASSWORD: ${{ secrets.DB_STAGING_PASSWORD }}
+        run: |
+          python -m pytest tests/integration/ -v
+      
+      - name: Notify Slack (Success)
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ Staging database migration successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Database Migration*\n✅ Successful\nBranch: staging\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+      
+      - name: Notify Slack (Failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ Staging database migration failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Database Migration*\n❌ Failed\nBranch: staging\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }

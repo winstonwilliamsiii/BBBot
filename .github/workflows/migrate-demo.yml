@@ -1,0 +1,90 @@
+name: Migrate Database - Demo Environment
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'migrations/base/**'
+      - 'migrations/demo/**'
+      - '.github/workflows/migrate-demo.yml'
+
+jobs:
+  migrate-demo:
+    runs-on: ubuntu-latest
+    environment: demo
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mysql-connector-python
+      
+      - name: Run database migrations (Demo)
+        env:
+          DB_DEMO_HOST: ${{ secrets.DB_DEMO_HOST }}
+          DB_DEMO_PORT: ${{ secrets.DB_DEMO_PORT }}
+          DB_DEMO_USER: ${{ secrets.DB_DEMO_USER }}
+          DB_DEMO_PASSWORD: ${{ secrets.DB_DEMO_PASSWORD }}
+        run: |
+          python scripts/migration_manager.py \
+            --env demo \
+            --action execute \
+            --migration-dir migrations
+      
+      - name: Verify migration success
+        env:
+          DB_DEMO_HOST: ${{ secrets.DB_DEMO_HOST }}
+          DB_DEMO_PORT: ${{ secrets.DB_DEMO_PORT }}
+          DB_DEMO_USER: ${{ secrets.DB_DEMO_USER }}
+          DB_DEMO_PASSWORD: ${{ secrets.DB_DEMO_PASSWORD }}
+        run: |
+          python scripts/migration_manager.py \
+            --env demo \
+            --action status
+      
+      - name: Notify Slack (Success)
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ Demo database migration successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Demo Database Migration*\n✅ Successful\nBranch: dev\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+      
+      - name: Notify Slack (Failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ Demo database migration failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Demo Database Migration*\n❌ Failed\nBranch: dev\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }

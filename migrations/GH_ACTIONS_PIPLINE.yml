@@ -1,0 +1,45 @@
+#GitHub ACTIONS CI/CD PIPELINE
+
+name: Database Migrations
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - dev
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      DB_HOST: ${{ secrets.BENTLEY_DB_HOST }}
+      DB_PORT: ${{ secrets.BENTLEY_DB_PORT }}
+      DB_USER: ${{ secrets.BENTLEY_DB_USER }}
+      DB_PASS: ${{ secrets.BENTLEY_DB_PASSWORD }}
+      BENTLEY_DB_NAME: Bentley_Bot
+      MLFLOW_DB_NAME: mlflow_db
+      BBBOT1_DB_NAME: bbbot1
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up MySQL client
+        run: sudo apt-get install -y mysql-client
+
+      - name: Run migrations for Bentley_Bot (mansa_quant)
+        run: |
+          mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASS $BENTLEY_DB_NAME < migrations/mansa_quant.sql
+
+      - name: Run migrations for bbbot1 (Equities Bulk)
+        run: |
+          mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASS $BBBOT1_DB_NAME < migrations/bbbot1.sql
+
+      - name: Run migrations for mlflow_db (ML/Tracking)
+        run: |
+          mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASS $MLFLOW_DB_NAME < migrations/mlflow_db.sql
+
+      - name: Verify migrations
+        run: |
+          mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASS -e "SHOW DATABASES;"

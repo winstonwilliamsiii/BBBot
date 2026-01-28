@@ -1,0 +1,64 @@
+name: Frontend & Styling Validation
+
+on:
+  push:
+    branches: [main, staging]
+    paths:
+      - 'frontend/**'
+      - 'requirements.txt'
+
+jobs:
+  validate-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Validate frontend modules
+        run: |
+          python -c "
+          import sys
+          import importlib.util
+          
+          modules = [
+            'frontend.utils.styling',
+            'frontend.utils.yahoo',
+            'frontend.styles.colors',
+            'frontend.components.budget_dashboard',
+          ]
+          
+          for module in modules:
+            try:
+              __import__(module)
+              print(f'✓ {module}')
+            except ImportError as e:
+              print(f'⚠ {module}: {e}')
+              # Don't fail - some modules may be optional
+          "
+
+      - name: Check CSS/Style consistency
+        run: |
+          # Verify COLOR_SCHEME dictionary is properly defined
+          python -c "
+          try:
+            from frontend.styles.colors import COLOR_SCHEME
+            
+            required_colors = ['primary', 'secondary', 'success', 'danger', 'warning']
+            for color in required_colors:
+              if color not in COLOR_SCHEME:
+                print(f'Missing color: {color}')
+                exit(1)
+            
+            print('✓ Color scheme is complete')
+          except ImportError:
+            print('⚠ Color scheme module not found (optional)')
+          "

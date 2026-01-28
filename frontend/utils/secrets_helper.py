@@ -89,9 +89,9 @@ def get_alpaca_config() -> dict:
     Raises:
         ValueError: If credentials are not configured
     """
-    api_key = get_secret('ALPACA_API_KEY', section='alpaca')
-    secret_key = get_secret('ALPACA_SECRET_KEY', section='alpaca')
-    paper = get_secret('ALPACA_PAPER', section='alpaca', default='true')
+    api_key = get_secret('ALPACA_API_KEY')
+    secret_key = get_secret('ALPACA_SECRET_KEY')
+    paper = get_secret('ALPACA_PAPER', default='true')
     
     if not api_key or api_key == 'your-alpaca-api-key-here':
         raise ValueError(

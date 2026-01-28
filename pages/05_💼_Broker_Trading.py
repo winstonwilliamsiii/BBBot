@@ -177,21 +177,31 @@ def test_alpaca_connection():
     """Test Alpaca connection and display status"""
     st.subheader("🧪 Test Alpaca Connection")
     
-    # Try to get credentials from st.secrets (Streamlit Cloud) or environment variables (local)
+    # Use the unified secrets helper for consistent credential retrieval
     try:
-        # Streamlit Cloud: Use secrets
-        api_key = st.secrets.get("ALPACA_API_KEY", "")
-        secret_key = st.secrets.get("ALPACA_SECRET_KEY", "")
-        paper = st.secrets.get("ALPACA_PAPER", "true")
-        source = "Streamlit Secrets"
-    except (AttributeError, FileNotFoundError):
-        # Local development: Use environment variables
-        api_key = os.getenv("ALPACA_API_KEY", "")
-        secret_key = os.getenv("ALPACA_SECRET_KEY", "")
-        paper = os.getenv("ALPACA_PAPER", "true")
-        source = "Environment Variables (.env)"
-    
-    paper = str(paper).lower() == "true"
+        from frontend.utils.secrets_helper import get_alpaca_config
+        config = get_alpaca_config()
+        api_key = config['api_key']
+        secret_key = config['secret_key']
+        paper = config['paper']
+        source = "Unified Secrets Helper"
+    except ValueError as e:
+        # Credentials not configured
+        st.error(f"❌ {str(e)}")
+        return
+    except ImportError:
+        # Fallback to manual retrieval if helper not available
+        try:
+            api_key = st.secrets.get("ALPACA_API_KEY", "")
+            secret_key = st.secrets.get("ALPACA_SECRET_KEY", "")
+            paper = st.secrets.get("ALPACA_PAPER", "true")
+            source = "Streamlit Secrets"
+        except (AttributeError, FileNotFoundError):
+            api_key = os.getenv("ALPACA_API_KEY", "")
+            secret_key = os.getenv("ALPACA_SECRET_KEY", "")
+            paper = os.getenv("ALPACA_PAPER", "true")
+            source = "Environment Variables (.env)"
+        paper = str(paper).lower() == "true"
     
     # Show configuration source
     st.caption(f"📋 Configuration source: {source}")

@@ -126,22 +126,17 @@ def connect_mt5():
 def connect_alpaca():
     """Connect to Alpaca"""
     try:
-        from frontend.utils.alpaca_connector import AlpacaConnector
+        from frontend.utils.secrets_helper import get_alpaca_config
+        from frontend.components.alpaca_connector import AlpacaConnector
         
-        # Try st.secrets first (Streamlit Cloud), then environment variables (local)
+        # Use the unified secrets helper for consistent credential retrieval
         try:
-            api_key = st.secrets.get("ALPACA_API_KEY", "")
-            secret_key = st.secrets.get("ALPACA_SECRET_KEY", "")
-            paper = st.secrets.get("ALPACA_PAPER", "true")
-        except (AttributeError, FileNotFoundError):
-            api_key = os.getenv("ALPACA_API_KEY", "")
-            secret_key = os.getenv("ALPACA_SECRET_KEY", "")
-            paper = os.getenv("ALPACA_PAPER", "true")
-        
-        paper = str(paper).lower() == "true"
-        
-        if not api_key or not secret_key:
-            st.error("❌ Alpaca credentials not configured")
+            config = get_alpaca_config()
+            api_key = config['api_key']
+            secret_key = config['secret_key']
+            paper = config['paper']
+        except ValueError as e:
+            st.error(f"❌ {str(e)}")
             st.info("Configure in Streamlit Secrets (Cloud) or .env file (Local)")
             return
         
@@ -156,8 +151,6 @@ def connect_alpaca():
             st.error("❌ Alpaca connection failed")
     except Exception as e:
         st.error(f"Alpaca error: {e}")
-
-
 def connect_ibkr():
     """Connect to IBKR Gateway"""
     try:

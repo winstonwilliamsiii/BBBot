@@ -1,4 +1,4 @@
--- Active: 1737943595894@@127.0.0.1@3306@mydb
+# Active: 1737943595894@@127.0.0.1@3306@mydb
 import mysql.connector
 import os
 

@@ -1,0 +1,12 @@
+{
+  "name": "mansa-bentley-platform",
+  "version": "1.0.0",
+  "description": "Bentley Budget Bot - Mansa Platform Static Site",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'Static site - no build step required'"
+  },
+  "dependencies": {
+    "node-appwrite": "^14.1.0"
+  }
+}

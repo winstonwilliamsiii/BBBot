@@ -1,0 +1,14 @@
+{
+  "name": "staging-alert",
+  "version": "1.0.0",
+  "description": "Appwrite function to send Gmail alerts for staging ML training phase",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "node-appwrite": "^11.0.0",
+    "nodemailer": "^6.9.7"
+  }
+}

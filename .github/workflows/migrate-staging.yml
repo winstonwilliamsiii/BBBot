@@ -60,40 +60,35 @@ jobs:
         run: |
           python -m pytest tests/integration/ -v
       
-      - name: Notify Slack (Success)
+      - name: Trigger Appwrite Function for Gmail Alert (Success)
         if: success()
-        uses: slackapi/slack-github-action@v1
-        with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          payload: |
-            {
-              "text": "✅ Staging database migration successful",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Staging Database Migration*\n✅ Successful\nBranch: staging\nCommit: ${{ github.sha }}"
-                  }
-                }
-              ]
-            }
+        run: |
+          curl -X POST ${{ secrets.APPWRITE_FUNCTION_URL }}/staging-alert \
+            -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
+            -H "X-Appwrite-Key: ${{ secrets.APPWRITE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "staging_migration_complete",
+              "status": "success",
+              "branch": "staging",
+              "commit": "${{ github.sha }}",
+              "message": "🧠 Deep Learning 2-Week Training Phase Initiated",
+              "recipient": "wwilliams@mansacap.com",
+              "phase": "ml_training"
+            }'
       
-      - name: Notify Slack (Failure)
+      - name: Trigger Appwrite Function for Gmail Alert (Failure)
         if: failure()
-        uses: slackapi/slack-github-action@v1
-        with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          payload: |
-            {
-              "text": "❌ Staging database migration failed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Staging Database Migration*\n❌ Failed\nBranch: staging\nCommit: ${{ github.sha }}"
-                  }
-                }
-              ]
-            }
+        run: |
+          curl -X POST ${{ secrets.APPWRITE_FUNCTION_URL }}/staging-alert \
+            -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
+            -H "X-Appwrite-Key: ${{ secrets.APPWRITE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "staging_migration_failed",
+              "status": "failure",
+              "branch": "staging",
+              "commit": "${{ github.sha }}",
+              "message": "❌ Staging Migration Failed - ML Training Delayed",
+              "recipient": "wwilliams@mansacap.com"
+            }'

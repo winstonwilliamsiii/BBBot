@@ -51,40 +51,11 @@ jobs:
             --env demo \
             --action status
       
-      - name: Notify Slack (Success)
-        if: success()
-        uses: slackapi/slack-github-action@v1
-        with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          payload: |
-            {
-              "text": "✅ Demo database migration successful",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Demo Database Migration*\n✅ Successful\nBranch: dev\nCommit: ${{ github.sha }}"
-                  }
-                }
-              ]
-            }
-      
-      - name: Notify Slack (Failure)
-        if: failure()
-        uses: slackapi/slack-github-action@v1
-        with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          payload: |
-            {
-              "text": "❌ Demo database migration failed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Demo Database Migration*\n❌ Failed\nBranch: dev\nCommit: ${{ github.sha }}"
-                  }
-                }
-              ]
-            }
+      - name: Log Demo Migration Status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Demo migration successful - No alerts (local testing)"
+          else
+            echo "❌ Demo migration failed - Check logs"
+          fi

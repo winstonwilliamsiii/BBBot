@@ -60,43 +60,53 @@ class PlaidLinkManager:
         load_dotenv(str(project_root / '.env'), override=True)
         
         # Try Streamlit secrets first (production), then env vars (local dev)
+        self.client_id = ''
+        self.secret = ''
+        self.env = 'sandbox'
+        
+        # Method 1: Try st.secrets (Streamlit Cloud)
         try:
-            # Access st.secrets as dict, not with .get()
-            if hasattr(st, 'secrets') and 'PLAID_CLIENT_ID' in st.secrets:
-                self.client_id = st.secrets['PLAID_CLIENT_ID'].strip()
-                self.secret = st.secrets['PLAID_SECRET'].strip()
-                self.env = st.secrets.get('PLAID_ENV', 'sandbox').strip()
-            else:
-                # Fallback to environment variables
-                self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
-                self.secret = os.getenv('PLAID_SECRET', '').strip()
-                self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
+            if hasattr(st, 'secrets'):
+                # Try to access secrets directly
+                self.client_id = str(st.secrets.get('PLAID_CLIENT_ID', '')).strip()
+                self.secret = str(st.secrets.get('PLAID_SECRET', '')).strip()
+                self.env = str(st.secrets.get('PLAID_ENV', 'sandbox')).strip()
+                
+                if self.client_id:
+                    print(f"✅ Loaded Plaid credentials from st.secrets")
+                    print(f"   Client ID: {self.client_id[:10]}...")
         except Exception as e:
-            # Final fallback
             print(f"⚠️ st.secrets access failed: {e}")
+        
+        # Method 2: Fallback to environment variables (local dev)
+        if not self.client_id:
             self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
             self.secret = os.getenv('PLAID_SECRET', '').strip()
             self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
+            
+            if self.client_id:
+                print(f"✅ Loaded Plaid credentials from .env")
+                print(f"   Client ID: {self.client_id[:10]}...")
         
-        # Debug: Print what we got (masked)
+        # Validation: Must have credentials
         if not self.client_id:
             # Show detailed debug info
-            all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
             print(f"\n❌ ERROR: PLAID_CLIENT_ID is empty!")
+            print(f"   Tried st.secrets: {hasattr(st, 'secrets')}")
+            if hasattr(st, 'secrets'):
+                secret_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
+                print(f"   Available secret keys: {secret_keys}")
+            
+            all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
             print(f"   Environment vars found: {list(all_env.keys())}")
             print(f"   Project root: {project_root}")
             print(f"   .env file: {project_root / '.env'}")
             print(f"   .env exists: {(project_root / '.env').exists()}")
-            if (project_root / '.env').exists():
-                with open(project_root / '.env', 'r') as f:
-                    lines = f.readlines()
-                    plaid_lines = [l for l in lines if 'PLAID' in l]
-                    print(f"   PLAID lines in .env: {len(plaid_lines)}")
-                    for line in plaid_lines[:3]:
-                        print(f"   - {line.strip()[:60]}...")
+            
             raise ValueError(
-                f"PLAID_CLIENT_ID not found or empty in environment\n"
-                f"Please ensure .env file has valid credentials"
+                "PLAID_CLIENT_ID not found in st.secrets or environment.\n"
+                "On Streamlit Cloud: Add PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV to App Secrets.\n"
+                "Locally: Ensure .env file has valid credentials."
             )
         elif self.client_id == 'your_plaid_client_id_here':
             raise ValueError(

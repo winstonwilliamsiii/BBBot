@@ -19,11 +19,11 @@ def test_mysql_connection():
     print("=" * 100)
     
     databases = [
-        ('Main Database', 'MYSQL', 'mansa_bot'),
-        ('Budget Database', 'BUDGET_MYSQL', 'mydb'),
-        ('Operational Database', 'BBBOT1_MYSQL', 'bbbot1'),
+        ('Main Database', 'MYSQL', os.getenv('MYSQL_DATABASE', 'mansa_bot')),
+        ('Budget Database', 'BUDGET_MYSQL', os.getenv('BUDGET_MYSQL_DATABASE', 'mydb')),
+        ('Operational Database', 'BBBOT1_MYSQL', os.getenv('BBBOT1_MYSQL_DATABASE', 'bbbot1')),
         ('MGR Schema', 'MYSQL', 'mgrp_schema'),
-        ('MLflow Database', 'MYSQL', 'mlflow_db')
+        ('MLflow Database', 'MLFLOW_MYSQL', os.getenv('MLFLOW_MYSQL_DATABASE', 'mlflow_db'))
     ]
     
     results = []
@@ -36,6 +36,11 @@ def test_mysql_connection():
                 port = int(os.getenv('MYSQL_PORT', '3307'))
                 user = os.getenv('MYSQL_USER', 'root')
                 password = os.getenv('MYSQL_PASSWORD', 'root')
+            elif prefix == 'MLFLOW_MYSQL':
+                host = os.getenv('MLFLOW_MYSQL_HOST', os.getenv('MYSQL_HOST', '127.0.0.1'))
+                port = int(os.getenv('MLFLOW_MYSQL_PORT', os.getenv('MYSQL_PORT', '3307')))
+                user = os.getenv('MLFLOW_MYSQL_USER', os.getenv('MYSQL_USER', 'root'))
+                password = os.getenv('MLFLOW_MYSQL_PASSWORD', os.getenv('MYSQL_PASSWORD', 'root'))
             else:
                 host = os.getenv(f'{prefix}_HOST', '127.0.0.1')
                 port = int(os.getenv(f'{prefix}_PORT', '3307'))
@@ -105,8 +110,13 @@ def test_tiingo_connection():
         
         if response.status_code == 200:
             data = response.json()
+            message = data.get('message', 'OK')
+            if isinstance(message, str) and 'not correct' in message.lower():
+                print(f"❌ Tiingo API Failed")
+                print(f"   Message: {message}")
+                return [('Tiingo', False, message)]
             print(f"✅ Tiingo API Connected")
-            print(f"   Message: {data.get('message', 'OK')}")
+            print(f"   Message: {message}")
             return [('Tiingo', True, 'Connected')]
         else:
             print(f"❌ Tiingo API Failed")
@@ -131,6 +141,7 @@ def test_alpaca_connection():
     
     api_key = os.getenv('ALPACA_API_KEY')
     api_secret = os.getenv('ALPACA_SECRET_KEY')
+    paper_mode = os.getenv('ALPACA_PAPER', 'true').lower() == 'true'
     
     if not api_key or not api_secret:
         print("❌ Alpaca credentials not configured in .env")
@@ -138,7 +149,8 @@ def test_alpaca_connection():
     
     try:
         # Test account endpoint
-        url = "https://paper-api.alpaca.markets/v2/account"
+        base_url = "https://paper-api.alpaca.markets" if paper_mode else "https://api.alpaca.markets"
+        url = f"{base_url}/v2/account"
         headers = {
             'APCA-API-KEY-ID': api_key,
             'APCA-API-SECRET-KEY': api_secret
@@ -148,7 +160,7 @@ def test_alpaca_connection():
         
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ Alpaca API Connected")
+            print(f"✅ Alpaca API Connected ({'PAPER' if paper_mode else 'LIVE'})")
             print(f"   Account Status: {data.get('status', 'UNKNOWN')}")
             print(f"   Currency: {data.get('currency', 'USD')}")
             return [('Alpaca', True, 'Connected')]

@@ -44,44 +44,28 @@ https://share.streamlit.io/
 - Select all (Ctrl+A)
 - Delete
 
-### 5️⃣ Copy & Paste This (EXACTLY)
+### 5️⃣ Copy & Paste This (EXACTLY - COMPLETE VERSION WITH ALL KEYS)
 
-```toml
-MYSQL_HOST = "nozomi.proxy.rlwy.net"
-MYSQL_PORT = "54537"
-MYSQL_USER = "root"
-MYSQL_PASSWORD = "cBlIUSygvPJCgPbNKHePJekQlClRamri"
-MYSQL_DATABASE = "mansa_bot"
+**See full file**: `STREAMLIT_CLOUD_COMPLETE_SECRETS.toml` in repository root
 
-APPWRITE_ENDPOINT = "https://cloud.appwrite.io/v1"
-APPWRITE_PROJECT_ID = "68869ef500017ca73772"
-APPWRITE_API_KEY = "standard_96d4a373241caa900a3bf2a3912d2faf6a87d65c2759ba1bc94f38949765edbcc3990a1f8e7010880b1551b1f016f730d1fbfc63d50273184508ab0fe525b57de6e7224e2260e6023f4f7b9a8b50c22a870f2752654f87b627c6b190f6de28b4980776c34bfce0d0923e7609b8080fa717a2b5eec6e39df1cf10b9ec2e187f75"
-APPWRITE_DATABASE_ID = "6944821e4f5f5f4f7d10"
+Quick copy of the complete secrets includes:
+- ✅ **ALL 4 MySQL Databases**: Main, Budget, BBBOT1, MLflow, Quant
+- ✅ **Appwrite Backend** with all function IDs
+- ✅ **All Broker APIs**: Alpaca, MetaTrader5, IBKR, Webull
+- ✅ **Banking**: Plaid + Capital One
+- ✅ **Financial Data APIs**: Tiingo, Alpha Vantage, BLS, FRED
+- ✅ **Prediction Analytics**: Kalshi keys (for prediction markets)
+- ✅ **Discord Integration**: Bot token + webhook
+- ✅ **Railway Deployment**: API keys
+- ✅ **MLflow**: ML model tracking
+- ✅ **Vercel Frontend**: Next.js app config
 
-ALPACA_API_KEY = "PKAYRIJUWUPO5VVWVTIWDXPRJ3"
-ALPACA_SECRET_KEY = "HDegV257ex4j1Wc7C3714mVBLoyircYYMTxTozZKWeaA"
-ALPACA_PAPER = "true"
-
-PLAID_CLIENT_ID = "68b8718ec2f428002456a84c"
-PLAID_SECRET = "1849c4090173dfbce2bda5453e7048"
-PLAID_ENV = "sandbox"
-PLAID_ITEMS_COLLECTION_ID = "plaid_items"
-
-TIINGO_API_KEY = "E6c794cd1e5e48519194065a2a43b2396298288b"
-ALPHA_VANTAGE_API_KEY = "C73GF4GJR1F1ARIL"
-BLS_API_KEY = "b49cf68f74214f8ba33a1a2540062ec3"
-FRED_API_KEY = ""
-
-WEBULL_USERNAME = "15615791854"
-WEBULL_PASSWORD = "Cartagena57!@"
-WEBULL_PHONE = "+15615791854"
-WEBULL_APP_KEY = "eecbf4489f460ad2f7aecef37b267618"
-WEBULL_DEVICE_ID = "8abf920a9cc3cb7af3ea5e9e03850692"
-
-RAILWAY_API_KEY = "3473c68a-7a9e-404f-85be-dbdee06956dc"
-RAILWAY_PROJECT_ID = "bb94b4b8-9905-44b4-bf52-83996d04ed97"
-RAILWAY_PROJECT_NAME = "mansa_bentley"
-```
+**To use it**:
+1. Open GitHub: `STREAMLIT_CLOUD_COMPLETE_SECRETS.toml`
+2. Select ALL content (Ctrl+A)
+3. Copy (Ctrl+C)
+4. Paste into Streamlit Cloud Secrets
+5. Click Save
 
 ### 6️⃣ Click "Save"
 ✅ App will **automatically restart** in 1-2 minutes

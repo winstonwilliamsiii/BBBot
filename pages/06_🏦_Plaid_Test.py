@@ -161,6 +161,30 @@ if mode == "Direct Plaid API (Cloud)":
     if not PLAID_MANAGER_AVAILABLE:
         st.error("Plaid manager not available.")
         st.stop()
+    
+    # Debug: Show secrets availability
+    with st.expander("🔍 Debug: Secrets Status"):
+        st.write("**Checking credential sources...**")
+        if hasattr(st, 'secrets'):
+            secret_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
+            st.success(f"✅ st.secrets available ({len(secret_keys)} keys)")
+            plaid_keys = [k for k in secret_keys if 'PLAID' in k.upper()]
+            if plaid_keys:
+                st.write(f"Found Plaid keys: {plaid_keys}")
+            else:
+                st.warning("⚠️ No PLAID_* keys found in secrets")
+                st.write(f"Available keys: {secret_keys}")
+        else:
+            st.error("❌ st.secrets not available")
+        
+        # Check env vars
+        import os
+        env_plaid_keys = [k for k in os.environ.keys() if 'PLAID' in k]
+        if env_plaid_keys:
+            st.write(f"Environment PLAID vars: {env_plaid_keys}")
+        else:
+            st.write("No PLAID_* environment variables found")
+    
     manager = PlaidLinkManager()
     # Session state for Plaid flow
     if 'link_token' not in st.session_state:

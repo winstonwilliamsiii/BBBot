@@ -476,36 +476,63 @@ def main():
     
     try:
         # Connect to MySQL using unified secrets helper (avoids hardcoded bbbot1)
-        from sqlalchemy import create_engine
+        from sqlalchemy import create_engine, inspect
         from frontend.utils.secrets_helper import get_mysql_config, get_mysql_url
 
         mysql_config = get_mysql_config()
         connection_string = get_mysql_url()
         engine = create_engine(connection_string)
-        
-        query = """
-        SELECT 
-            ticker,
-            date as signal_date,
-            close as price,
-            rsi_14,
-            macd,
-            macd_signal,
-            sentiment_score,
-            CASE 
-                WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
-                WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
-                ELSE 'HOLD'
-            END as trade_signal
-        FROM marts.features_roi
-        WHERE date = (SELECT MAX(date) FROM marts.features_roi)
-        ORDER BY ticker
-        LIMIT 20;
-        """
-        
-        df_signals = pd.read_sql(query, engine)
+
+        inspector = inspect(engine)
+        schema_names = inspector.get_schema_names()
+        has_marts_schema = 'marts' in schema_names
+
+        if has_marts_schema:
+            table_exists = 'features_roi' in inspector.get_table_names(schema='marts')
+            table_ref = 'marts.features_roi'
+        else:
+            table_exists = 'features_roi' in inspector.get_table_names()
+            table_ref = 'features_roi'
+
+        if not table_exists:
+            st.warning("⚠️ Trading signals table not found in database.")
+            st.info("The 'features_roi' table will be created once the ML pipeline runs. Showing demo signals for now.")
+            sample_signals = pd.DataFrame({
+                'ticker': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+                'signal_date': pd.to_datetime(['2026-01-28'] * 5),
+                'price': [189.32, 408.12, 152.44, 176.83, 232.19],
+                'rsi_14': [48.2, 72.1, 51.4, 29.6, 68.3],
+                'macd': [0.42, -0.11, 0.05, 0.31, -0.09],
+                'macd_signal': [0.38, -0.05, 0.02, 0.29, -0.06],
+                'sentiment_score': [0.12, -0.04, 0.08, 0.21, -0.02],
+                'trade_signal': ['HOLD', 'SELL', 'HOLD', 'BUY', 'HOLD'],
+            })
+            df_signals = sample_signals
+        else:
+            query = f"""
+            SELECT 
+                ticker,
+                date as signal_date,
+                close as price,
+                rsi_14,
+                macd,
+                macd_signal,
+                sentiment_score,
+                CASE 
+                    WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
+                    WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
+                    ELSE 'HOLD'
+                END as trade_signal
+            FROM {table_ref}
+            WHERE date = (SELECT MAX(date) FROM {table_ref})
+            ORDER BY ticker
+            LIMIT 20;
+            """
+
+            df_signals = pd.read_sql(query, engine)
+
         engine.dispose()
-        
+
         if not df_signals.empty:
             # Color code signals
             def highlight_signal(val):

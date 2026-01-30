@@ -63,15 +63,18 @@ def get_mysql_config(database: str = None) -> dict:
     # Get database from parameter, env var, or default
     if database is None:
         database = get_secret('MYSQL_DATABASE', default='mansa_bot')
-    
+
     # For production Railway, map default database names to actual databases
     host = get_secret('MYSQL_HOST', default='127.0.0.1')
-    is_railway = 'railway' in host or 'nozomi' in host
-    
-    # On Railway, mansa_bot/railway -> bbbot1 for trading features/marts tables
+    is_railway = any(x in host for x in ('railway', 'nozomi'))
+
+    # ---
+    # 🚦 AUTO-MAPPING: On Railway, mansa_bot/railway → bbbot1 for trading signals
+    # This ensures the app always uses the correct DB for ML trading signals
     if is_railway and database in ('mansa_bot', 'railway'):
         database = 'bbbot1'
-    
+    # ---
+
     return {
         'host': host,
         'port': int(get_secret('MYSQL_PORT', default='54537' if is_railway else '3306')),

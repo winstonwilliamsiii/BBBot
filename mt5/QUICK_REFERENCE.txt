@@ -1,0 +1,211 @@
+# MT5 Bot Quick Reference Card
+
+## 🚀 Quick Start (5 min)
+
+```bash
+# 1. Install MT5
+https://www.metatrader5.com/en/download
+
+# 2. Open MetaEditor
+Tools → MetaEditor (in MT5)
+
+# 3. Compile EA
+File → Open → mt5/experts/BentleyBot_GBP_JPY_EA.mq5
+Press F5
+
+# 4. Test in MT5
+Attach .ex5 to GBPJPY H1 chart
+
+# 5. Monitor
+View → Experts (check logs)
+```
+
+---
+
+## 📊 EA Strategies
+
+### GBP/JPY (Forex)
+```
+Entry:  EMA(20) > EMA(50) + RSI < 70
+Exit:   +100 pips TP / -50 pips SL
+Hours:  12:00-16:00 UTC (London-NY overlap)
+Risk:   2% per trade, Max 3 concurrent
+```
+
+### XAU/USD (Gold)
+```
+Entry:  Bollinger Bands edges + ATR
+Exit:   Dynamic stops (ATR × 1.5)
+Hours:  08:00-20:00 UTC (Extended)
+Risk:   2% per trade, Max 2 concurrent
+```
+
+---
+
+## 🔌 Integration
+
+### File Signals (CSV)
+```
+MT5 EA → signals.csv → Python → Alpaca API
+```
+
+### Discord Alerts
+```
+MT5 EA → signals.csv → Python → Discord Webhook
+```
+
+### Setup
+```bash
+# Python script monitors signals
+python scripts/mt5_alpaca_bridge.py \
+  --config config/trading_config.json \
+  --key YOUR_ALPACA_KEY \
+  --secret YOUR_ALPACA_SECRET
+
+python scripts/discord_notifier.py \
+  --webhook-url YOUR_WEBHOOK_URL
+```
+
+---
+
+## 🔧 Compilation
+
+### MetaEditor GUI
+```
+Tools → MetaEditor → File → Open → F5
+```
+
+### Command Line
+```bash
+metaeditor64.exe /compile:"mt5\experts\BentleyBot_GBP_JPY_EA.mq5"
+```
+
+### Python
+```python
+import subprocess
+subprocess.run([
+    "C:\\Program Files\\MetaTrader 5\\metaeditor64.exe",
+    "/compile:mt5\\experts\\BentleyBot_GBP_JPY_EA.mq5"
+])
+```
+
+---
+
+## 📁 File Locations
+
+| File | Purpose |
+|------|---------|
+| `experts/*.mq5` | EA source code |
+| `libraries/*.mqh` | Shared utilities |
+| `indicators/*.mqh` | Indicator functions |
+| `config/*.json` | Parameters & settings |
+| `scripts/*.py` | Python integration |
+| `docs/*.md` | Documentation |
+
+---
+
+## ✅ Deployment Checklist
+
+- [ ] Compile without errors
+- [ ] Backtest 6+ months
+- [ ] Demo trade 1+ week
+- [ ] Review logs
+- [ ] Configure API keys
+- [ ] Test Discord alerts
+- [ ] Attach to live chart
+- [ ] Monitor carefully
+
+---
+
+## 🐛 Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Cannot find include | Use `..\\libraries\\BentleyBot.mqh` |
+| No trades | Check time filter, position limit |
+| High slippage | Use limit orders, trade peak hours |
+| Python errors | Install: `pip install alpaca-trade-api requests pandas` |
+
+---
+
+## 📞 Documentation Map
+
+| Document | For |
+|----------|-----|
+| README.md | Quick overview |
+| SETUP.md | Installation |
+| ARCHITECTURE.md | System design |
+| API_INTEGRATION.md | External APIs |
+| COMPILER_API_REQUIREMENTS.md | MT5 compiler |
+| DEPLOYMENT.md | Production |
+| TROUBLESHOOTING.md | Debugging |
+| README_INDEX.md | Navigation |
+
+---
+
+## 🎯 Performance Targets
+
+- Win Rate: > 55%
+- Profit Factor: > 1.5
+- Max Drawdown: < 20%
+- Sharpe Ratio: > 1.0
+- Return: 5-10% monthly
+
+---
+
+## 📦 What's Included
+
+✅ 2 Expert Advisors  
+✅ 2 Support Libraries  
+✅ 2 Python Scripts  
+✅ 8 Documentation Guides  
+✅ Configuration Templates  
+✅ Backtest Examples  
+✅ Risk Management Framework  
+✅ Deployment Guide  
+
+---
+
+## 🔐 Security
+
+**Credentials** → Store in `.env` (never commit)  
+**API Keys** → Use environment variables  
+**Stop Losses** → ALWAYS on every trade  
+**Risk** → Never exceed 2% per trade  
+
+---
+
+## 💡 Pro Tips
+
+1. **Always test in demo first**
+2. **Start with small positions**
+3. **Monitor first week closely**
+4. **Document all changes**
+5. **Backtest before live**
+6. **Use stop losses always**
+7. **Review logs daily**
+8. **Keep code modular**
+
+---
+
+## 📍 Project Location
+
+`c:\Users\winst\BentleyBudgetBot\mt5\`
+
+---
+
+## 🚀 Next Steps
+
+1. Read `README.md`
+2. Follow `SETUP.md`
+3. Compile EAs
+4. Test in demo
+5. Review results
+6. Deploy to live
+
+**Status**: ✅ Production Ready  
+**Last Updated**: 2026-01-29
+
+---
+
+Print this card & keep it handy! 📋

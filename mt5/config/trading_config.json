@@ -1,0 +1,65 @@
+{
+  "trading_symbols": [
+    {
+      "name": "GBP/JPY",
+      "symbol": "GBPJPY",
+      "ea_file": "BentleyBot_GBP_JPY_EA.ex5",
+      "timeframe": "H1",
+      "strategy": "EMA_Crossover_RSI",
+      "enabled": true,
+      "trading_hours_utc": {
+        "start": 12,
+        "end": 16,
+        "timezone": "UTC"
+      }
+    },
+    {
+      "name": "Gold",
+      "symbol": "XAUUSD",
+      "ea_file": "BentleyBot_XAU_USD_EA.ex5",
+      "timeframe": "H1",
+      "strategy": "Volatility_Mean_Reversion",
+      "enabled": true,
+      "trading_hours_utc": {
+        "start": 8,
+        "end": 20,
+        "timezone": "UTC"
+      }
+    }
+  ],
+  "risk_management": {
+    "risk_per_trade_percent": 2.0,
+    "max_concurrent_trades": 3,
+    "max_daily_loss_percent": 5.0,
+    "min_risk_reward_ratio": 1.5,
+    "use_position_sizing": true,
+    "use_trailing_stops": true
+  },
+  "account_settings": {
+    "account_type": "demo",
+    "minimum_balance_usd": 10000,
+    "currency": "USD",
+    "leverage": 50
+  },
+  "indicators": {
+    "ema_fast": 20,
+    "ema_slow": 50,
+    "rsi_period": 14,
+    "rsi_overbought": 70,
+    "rsi_oversold": 30,
+    "atr_period": 14,
+    "atr_multiplier": 1.5,
+    "bollinger_bands_period": 20,
+    "bollinger_bands_stddev": 2.0
+  },
+  "sl_tp_settings": {
+    "GBPJPY": {
+      "stop_loss_pips": 50,
+      "take_profit_pips": 100
+    },
+    "XAUUSD": {
+      "stop_loss_pips": 100,
+      "take_profit_pips": 200
+    }
+  }
+}

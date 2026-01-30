@@ -49,31 +49,49 @@ def get_secret(key: str, default: Optional[str] = None, section: Optional[str] =
     return env_value if env_value is not None else default
 
 
-def get_mysql_config() -> dict:
+def get_mysql_config(database: str = None) -> dict:
     """
     Get MySQL connection configuration from secrets or environment.
-    Checks both root level and [mysql] section for compatibility.
+    Automatically maps databases for Railway production environment.
+    
+    Args:
+        database: Optional specific database name. If not provided, uses MYSQL_DATABASE env var.
     
     Returns:
         dict: MySQL configuration with host, port, user, password, database
     """
+    # Get database from parameter, env var, or default
+    if database is None:
+        database = get_secret('MYSQL_DATABASE', default='mansa_bot')
+    
+    # For production Railway, map default database names to actual databases
+    host = get_secret('MYSQL_HOST', default='127.0.0.1')
+    is_railway = 'railway' in host or 'nozomi' in host
+    
+    # On Railway, mansa_bot/railway -> bbbot1 for trading features/marts tables
+    if is_railway and database in ('mansa_bot', 'railway'):
+        database = 'bbbot1'
+    
     return {
-        'host': get_secret('MYSQL_HOST', default='127.0.0.1'),
-        'port': int(get_secret('MYSQL_PORT', default='3306')),
+        'host': host,
+        'port': int(get_secret('MYSQL_PORT', default='54537' if is_railway else '3306')),
         'user': get_secret('MYSQL_USER', default='root'),
         'password': get_secret('MYSQL_PASSWORD', default='root'),
-        'database': get_secret('MYSQL_DATABASE', default='railway'),
+        'database': database,
     }
 
 
-def get_mysql_url() -> str:
+def get_mysql_url(database: str = None) -> str:
     """
     Get SQLAlchemy-compatible MySQL connection URL.
+    
+    Args:
+        database (str, optional): Database name to use. If None, uses default from config.
     
     Returns:
         str: Connection URL like mysql+pymysql://user:pass@host:port/database
     """
-    config = get_mysql_config()
+    config = get_mysql_config(database=database)
     return (
         f"mysql+pymysql://{config['user']}:{config['password']}"
         f"@{config['host']}:{config['port']}/{config['database']}"

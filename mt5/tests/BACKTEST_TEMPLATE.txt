@@ -1,0 +1,67 @@
+//+------------------------------------------------------------------+
+//| Backtest Template - GBP/JPY Strategy                             |
+//| Use this template for strategy validation                        |
+//+------------------------------------------------------------------+
+
+/*
+BACKTEST PARAMETERS
+===================
+
+Strategy:           EMA Crossover + RSI Confirmation
+Symbol:             GBPJPY
+Timeframe:          H1
+Period:             2024-01-01 to 2024-12-31
+Model:              Every tick
+Initial Deposit:    $10,000
+Risk per Trade:     2%
+
+EXPECTED RESULTS
+================
+
+Win Rate:           > 55%
+Profit Factor:      > 1.5
+Max Drawdown:       < 20%
+Sharpe Ratio:       > 1.0
+
+OPTIMIZATION TARGETS
+====================
+
+1. EMA Fast Period:     5 - 30 (Step: 1)
+2. EMA Slow Period:     40 - 100 (Step: 5)
+3. RSI Period:          10 - 20 (Step: 2)
+4. RSI Overbought:      60 - 80 (Step: 5)
+5. SL/TP Ratio:         1.0 - 2.5 (Step: 0.25)
+
+EXECUTION STEPS
+===============
+
+1. Open MT5 → Tools → Strategy Tester
+2. Select "BentleyBot_GBP_JPY_EA"
+3. Set Symbol: GBPJPY, Period: H1
+4. From: 2024-01-01, To: 2024-12-31
+5. Set Account Balance: 10000
+6. Enable "Every Tick" modeling
+7. Optimize (check Optimization box)
+8. Review Results:
+   - Profit/Loss ratio
+   - Win rate
+   - Drawdown chart
+   - Trades per month
+9. Export results to CSV
+10. Analyze and iterate
+
+VALIDATION CHECKLIST
+====================
+
+□ Strategy profitable in backtest
+□ Max drawdown acceptable
+□ Number of trades sufficient (20+ per month)
+□ No curve-fitting observed
+□ Forward-test results similar to backtest
+□ Live demo account confirmed positive
+□ Ready for small live account test
+
+*/
+
+// Backtest notes go here...
+// Example: "Best parameters found after 500+ iterations"

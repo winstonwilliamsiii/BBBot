@@ -283,8 +283,22 @@ ALPACA_PAPER=true
                 st.session_state.alpaca = alpaca
             else:
                 st.error("❌ Failed to retrieve account information")
+                st.warning("**Troubleshooting:**")
+                st.info("""
+                - Check that your Alpaca API key is valid
+                - Verify API key is for Paper Trading (not live)
+                - Ensure account is funded with $0.01+ (paper trading)
+                - Check Alpaca dashboard: https://app.alpaca.markets/
+                """)
         except Exception as e:
             st.error(f"❌ Connection failed: {e}")
+            st.warning("**Check these:**")
+            st.code(f"""
+            - API Key: {api_key[:8] if api_key else 'NOT SET'}...
+            - Secret Key: {secret_key[:8] if secret_key else 'NOT SET'}...
+            - Paper Trading: {paper}
+            - Error: {str(e)}
+            """)
 
 
 def main():
@@ -479,8 +493,9 @@ def main():
         from sqlalchemy import create_engine, inspect
         from frontend.utils.secrets_helper import get_mysql_config, get_mysql_url
 
-        mysql_config = get_mysql_config()
-        connection_string = get_mysql_url()
+        # IMPORTANT: For trading signals, we need to use the 'bbbot1' database
+        mysql_config = get_mysql_config(database='bbbot1')
+        connection_string = get_mysql_url(database='bbbot1')
         engine = create_engine(connection_string)
 
         inspector = inspect(engine)
@@ -602,6 +617,19 @@ def main():
                 - `MYSQL_PASSWORD`
                 - `MYSQL_DATABASE`
                 """)
+        elif "Unknown database" in error_str or "1049" in error_str:
+            st.error(f"❌ Database not found: **{db_name}** on {db_host}")
+            st.warning("**The database doesn't exist on the server.**")
+            st.info(f"""
+            ✅ **Fix:** The database name has been automatically corrected to use **'bbbot1'** which contains the trading signals.
+            
+            **Note:** Your database configuration maps:
+            - `mansa_bot` → `bbbot1` (on Railway production)
+            - `railway` → `bbbot1` (on Railway production)
+            - Local database stays as configured
+            
+            If this persists, check that the Railway MySQL server is running and the connection credentials are correct.
+            """)
         else:
             st.error(f"Failed to load trading signals (database: {db_name}): {e}")
             st.info("Make sure `marts.features_roi` table exists and has data")

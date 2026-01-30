@@ -1,0 +1,63 @@
+# MT5 .gitignore
+
+# Compiled EAs
+*.ex5
+*.ex4
+
+# MT5 Terminal files
+*.log
+*.hst
+*.fxt
+*.chr
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.csv.tmp
+signal_temp.csv
+
+# Credentials (IMPORTANT)
+.env
+.env.local
+credentials.json
+api_keys.json
+
+# Testing artifacts
+*.backtest
+*.opt
+results/
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Cache
+.pytest_cache/
+.mypy_cache/
+
+# Don't ignore these
+!.gitkeep
+!README.md
+!SETUP.md

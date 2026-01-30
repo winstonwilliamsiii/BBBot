@@ -35,24 +35,14 @@ except ImportError:
 # Database connection
 try:
     from sqlalchemy import create_engine
-    import os
-    
+    from frontend.utils.secrets_helper import get_mysql_config, get_mysql_url
+
     # Reload env vars to ensure fresh database credentials
     if ENV_RELOAD_AVAILABLE:
         reload_env()
-    
-    MYSQL_CONFIG = {
-        'host': 'localhost',
-        'port': 3307,
-        'user': 'root',
-        'password': os.getenv('MYSQL_PASSWORD', ''),
-        'database': 'bentleybot'
-    }
-    
-    connection_string = (
-        f"mysql+pymysql://{MYSQL_CONFIG['user']}:{MYSQL_CONFIG['password']}@"
-        f"{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']}"
-    )
+
+    MYSQL_CONFIG = get_mysql_config()
+    connection_string = get_mysql_url()
     engine = create_engine(connection_string)
     # Test connection
     with engine.connect() as conn:
@@ -65,18 +55,18 @@ except Exception as e:
     with st.expander("🔧 Setup Instructions"):
         st.markdown(f"""
         **MySQL Connection Failed**
-        
+
         The trading bot requires MySQL for storing signals and trade history.
-        
+
         **Local Development Setup:**
         ```bash
         # 1. Install MySQL (if not installed)
         # 2. Create database:
         mysql -u root -p -e "CREATE DATABASE bentleybot;"
-        
+
         # 3. Run schema setup:
         mysql -u root -p bentleybot < scripts/setup/trading_bot_schema.sql
-        
+
         # 4. Update .env file:
         MYSQL_HOST=localhost
         MYSQL_PORT=3306
@@ -84,21 +74,21 @@ except Exception as e:
         MYSQL_PASSWORD=your_password
         MYSQL_DATABASE=bentleybot
         ```
-        
+
         **For Railway MySQL (Cloud):**
         ```bash
         MYSQL_HOST=nozomi.proxy.rlwy.net
         MYSQL_PORT=54537
         MYSQL_USER=root
         MYSQL_PASSWORD=your_railway_password
-        MYSQL_DATABASE=railway
+        MYSQL_DATABASE=railway  # auto-maps to bbbot1
         ```
-        
+
         **Current Configuration:**
-        - Host: `{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}`
-        - Database: `{MYSQL_CONFIG['database']}`
-        - User: `{MYSQL_CONFIG['user']}`
-        
+        - Host: `{MYSQL_CONFIG.get('host', 'unknown')}:{MYSQL_CONFIG.get('port', 'unknown')}`
+        - Database: `{MYSQL_CONFIG.get('database', 'unknown')}`
+        - User: `{MYSQL_CONFIG.get('user', 'unknown')}`
+
         **Error Details:**
         ```
         {str(e)}

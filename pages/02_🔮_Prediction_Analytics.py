@@ -226,35 +226,28 @@ st.markdown("---")
 
 # Tabs for different views
 tab1, tab2, tab3, tab4 = st.tabs([
-    "<span style='color: #F3F4F6;'>📊 Active Markets</span>",
-    "<span style='color: #F3F4F6;'>💼 My Portfolio</span>",
-    "<span style='color: #F3F4F6;'>📈 Probability Engine</span>",
-    "<span style='color: #F3F4F6;'>💬 Sentiment Analysis</span>"
+    "📊 Active Markets",
+    "💼 My Portfolio",
+    "📈 Probability Engine",
+    "💬 Sentiment Analysis"
 ])
 
 with tab1:
     st.markdown("<h3 style='color: #F3F4F6;'>Polymarket & Kalshi Contracts</h3>", unsafe_allow_html=True)
     
     if PREDICTION_MODULE_AVAILABLE:
-        st.info("🔄 Loading prediction markets...")
+        st.info("🔄 Loading your Kalshi markets...")
         
-        # Try to fetch live Kalshi data
+        # Fetch live Kalshi data only
         live_kalshi = fetch_kalshi_active_markets()
         
         if not live_kalshi.empty:
+            st.success(f"✅ Showing {len(live_kalshi)} active Kalshi markets")
             st.dataframe(live_kalshi, use_container_width=True)
         else:
-            # Sample data (will be replaced with actual API calls)
-            sample_contracts = pd.DataFrame({
-                'Contract': ['Will BTC exceed $100k by Q2?', 'Election Winner - State A', 'Tech Earnings Beat'],
-                'Platform': ['Polymarket', 'Kalshi', 'Polymarket'],
-                'Current Price': [0.72, 0.58, 0.81],
-                'Volume (24h)': ['$1.2M', '$450K', '$890K'],
-                'Expires': ['2026-04-30', '2026-02-14', '2026-03-15'],
-                'Status': ['OPEN', 'OPEN', 'OPEN']
-            })
-            
-            st.dataframe(sample_contracts, use_container_width=True)
+            st.warning("⚠️ No active Kalshi markets found. Check your API credentials.")
+            if not KALSHI_API_KEY:
+                st.error("❌ KALSHI_ACCESS_KEY not configured in environment")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -314,7 +307,7 @@ with tab2:
         2. Click the **"🔄 Sync Kalshi Account"** button above
         3. Your positions will appear here automatically
         
-        **Demo Data Available:** You can also upload a CSV file with your portfolio data:
+        **Manual Portfolio Upload:** You can also upload a CSV file with additional portfolio data:
         """)
         
         uploaded_file = st.file_uploader("Upload Kalshi Portfolio CSV", type=['csv'])
@@ -330,69 +323,30 @@ with tab2:
 with tab3:
     st.markdown("<h3 style='color: #F3F4F6;'>Probability Predictions</h3>", unsafe_allow_html=True)
     
-    if PREDICTION_MODULE_AVAILABLE:
-        st.info("📊 ML predictions for active markets")
-        
-        # Sample probability data
-        prob_data = pd.DataFrame({
-            'Contract': ['Will BTC exceed $100k by Q2?', 'Election Winner - State A', 'Tech Earnings Beat'],
-            'Market Implied': [0.72, 0.58, 0.81],
-            'ML Prediction': [0.68, 0.62, 0.79],
-            'Confidence': ['95%', '87%', '92%'],
-            'Edge': ['Bullish', 'Neutral', 'Bearish']
-        })
-        
-        st.dataframe(prob_data, use_container_width=True)
-        
-        st.markdown("""
-        <div style='color: #F3F4F6; margin-top: 1rem;'>
-            <strong>How to read:</strong><br>
-            • <strong>Market Implied:</strong> Price-based probability from market<br>
-            • <strong>ML Prediction:</strong> Our model's forecast<br>
-            • <strong>Edge:</strong> Opportunity direction (buy/sell)
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.info("Probability engine coming soon")
+    st.info("📊 ML Probability Engine - Coming Soon")
+    st.markdown("""
+    <div style='color: #F3F4F6; margin-top: 1rem;'>
+        <strong>Planned Features:</strong><br>
+        • Machine learning predictions for market outcomes<br>
+        • Confidence scores and edge detection<br>
+        • Comparison with market-implied probabilities<br>
+        • Arbitrage opportunity alerts
+    </div>
+    """, unsafe_allow_html=True)
 
 with tab4:
     st.markdown("<h3 style='color: #F3F4F6;'>Sentiment Analysis</h3>", unsafe_allow_html=True)
     
-    if PREDICTION_MODULE_AVAILABLE:
-        st.info("💬 Aggregated sentiment from news, social media, and on-chain data")
-        
-        # Sample sentiment data
-        sentiment_data = pd.DataFrame({
-            'Market': ['BTC Technical Analysis', 'Fed Policy Talk', 'Crypto Regulation News', 'On-Chain Metrics'],
-            'Sentiment': ['Bullish', 'Neutral', 'Bearish', 'Bullish'],
-            'Strength': ['Strong', 'Moderate', 'Weak', 'Strong'],
-            'Sources': [3, 5, 2, 8]
-        })
-        
-        st.dataframe(sentiment_data, use_container_width=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("""
-            <div style='color: #F3F4F6;'>
-                <strong style='color: #10B981;'>📈 Bullish Signals</strong><br>
-                • Strong technical setup<br>
-                • On-chain accumulation<br>
-                • Positive macro news
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("""
-            <div style='color: #F3F4F6;'>
-                <strong style='color: #EF4444;'>📉 Bearish Signals</strong><br>
-                • Regulatory concerns<br>
-                • Overbought conditions<br>
-                • Liquidations trending
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info("Sentiment analysis coming soon")
+    st.info("💬 Market Sentiment Engine - Coming Soon")
+    st.markdown("""
+    <div style='color: #F3F4F6; margin-top: 1rem;'>
+        <strong>Planned Features:</strong><br>
+        • News and social media sentiment aggregation<br>
+        • On-chain activity analysis<br>
+        • Sentiment strength scoring<br>
+        • Multi-source data correlation
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 

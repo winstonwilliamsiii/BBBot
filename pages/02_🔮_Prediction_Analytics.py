@@ -86,38 +86,23 @@ except Exception:
     KALSHI_EMAIL = os.getenv("KALSHI_EMAIL", "")
     KALSHI_PASSWORD = os.getenv("KALSHI_PASSWORD", "")
 
-# Debug: Show credential status
-if KALSHI_EMAIL and KALSHI_PASSWORD:
-    print(f"✅ Kalshi credentials loaded: {KALSHI_EMAIL[:20]}...")
-else:
-    print(f"❌ Kalshi credentials missing: EMAIL={bool(KALSHI_EMAIL)}, PASSWORD={bool(KALSHI_PASSWORD)}")
-
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():
     """Fetch user's Kalshi portfolio/positions using official SDK"""
-    print(f"[DEBUG] fetch_kalshi_portfolio() called")
-    print(f"[DEBUG] Credentials present: EMAIL={bool(KALSHI_EMAIL)}, PASSWORD={bool(KALSHI_PASSWORD)}")
-    
     if not KALSHI_EMAIL or not KALSHI_PASSWORD:
-        print(f"❌ Kalshi credentials not configured")
-        st.error("❌ Kalshi credentials not configured. Set KALSHI_EMAIL and KALSHI_PASSWORD in .env or Streamlit secrets.")
+        st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_EMAIL and KALSHI_PASSWORD in .env or Streamlit secrets.")
         return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
     
     try:
         # Use official Kalshi SDK with email/password authentication
-        print(f"[DEBUG] Authenticating with Kalshi SDK...")
         client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
-        print(f"[DEBUG] Client created, fetching portfolio...")
         positions = client.get_user_portfolio()
         
-        print(f"[DEBUG] API Response: {len(positions)} positions returned")
         st.info(f"📊 API Response: Found {len(positions) if positions else 0} positions")
         
         if positions:
-            print(f"[DEBUG] Processing {len(positions)} positions...")
             portfolio_list = []
             for pos in positions:
-                print(f"[DEBUG] Position data: {pos}")
                 # Extract position data from Kalshi SDK response
                 contract_name = pos.get('market_title', pos.get('ticker', pos.get('market_id', 'Unknown')))
                 quantity = pos.get('position', pos.get('quantity', 0))
@@ -139,10 +124,8 @@ def fetch_kalshi_portfolio():
                     'P&L %': f"{pnl_pct:+.2f}%"
                 })
             
-            print(f"[DEBUG] Returning {len(portfolio_list)} items")
             return pd.DataFrame(portfolio_list)
         else:
-            print(f"[DEBUG] No positions in response")
             st.info("💡 No open positions found in your Kalshi account")
     except Exception as e:
         st.error(f"❌ Error fetching Kalshi portfolio: {e}")
@@ -152,33 +135,25 @@ def fetch_kalshi_portfolio():
 @st.cache_data(ttl=300)
 def fetch_kalshi_balance():
     """Fetch user's Kalshi account balance"""
-    print(f"[DEBUG] fetch_kalshi_balance() called")
     if not KALSHI_EMAIL or not KALSHI_PASSWORD:
-        print(f"[DEBUG] Balance: credentials missing")
         return None
     
     try:
-        print(f"[DEBUG] Creating KalshiClient for balance...")
         client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
         balance = client.get_user_balance()
         print(f"✅ Balance fetched: {balance}")
         return balance
     except Exception as e:
         print(f"❌ Error fetching balance: {e}")
-        import traceback
-        traceback.print_exc()
         return None
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_trades():
     """Fetch user's Kalshi trade history (fills)"""
-    print(f"[DEBUG] fetch_kalshi_trades() called")
     if not KALSHI_EMAIL or not KALSHI_PASSWORD:
-        print(f"[DEBUG] Trades: credentials missing")
         return []
     
     try:
-        print(f"[DEBUG] Creating KalshiClient for trades...")
         client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
         trades = client.get_user_trades(limit=50)
         print(f"✅ Trades fetched: {len(trades)} fills")

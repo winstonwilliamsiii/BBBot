@@ -133,6 +133,36 @@ def fetch_kalshi_portfolio():
     return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
 
 @st.cache_data(ttl=300)
+def fetch_kalshi_balance():
+    """Fetch user's Kalshi account balance"""
+    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+        return None
+    
+    try:
+        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        balance = client.get_user_balance()
+        print(f"✅ Balance fetched: {balance}")
+        return balance
+    except Exception as e:
+        print(f"❌ Error fetching balance: {e}")
+        return None
+
+@st.cache_data(ttl=300)
+def fetch_kalshi_trades():
+    """Fetch user's Kalshi trade history (fills)"""
+    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+        return []
+    
+    try:
+        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        trades = client.get_user_trades(limit=50)
+        print(f"✅ Trades fetched: {len(trades)} fills")
+        return trades
+    except Exception as e:
+        print(f"❌ Error fetching trades: {e}")
+        return []
+
+@st.cache_data(ttl=300)
 def fetch_kalshi_active_markets():
     """Fetch active Kalshi markets using official SDK"""
     if not PREDICTION_MODULE_AVAILABLE:
@@ -295,8 +325,28 @@ with tab1:
 with tab2:
     st.markdown("<h3 style='color: #F3F4F6;'>Your Kalshi Portfolio</h3>", unsafe_allow_html=True)
     
+    # Fetch balance and trades
+    balance_info = fetch_kalshi_balance()
+    trades_history = fetch_kalshi_trades()
+    
+    # Display account balance at top
+    if balance_info:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            cash = balance_info.get('cash', 0)
+            st.metric("💰 Cash Balance", f"${cash:,.2f}")
+        
+        with col2:
+            holdings_value = balance_info.get('portfolio_value', 0)
+            st.metric("📈 Holdings Value", f"${holdings_value:,.2f}")
+        
+        with col3:
+            total = cash + holdings_value
+            st.metric("💵 Total Account Value", f"${total:,.2f}")
+    
+    # Display portfolio positions
     if not kalshi_portfolio.empty:
-        # Display portfolio positions
+        st.markdown("#### Active Positions")
         st.markdown(f"""
         <div style='background: {COLOR_SCHEME['card_background']}; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;'>
             <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;'>
@@ -316,38 +366,40 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
         
-        # Display positions table
         st.dataframe(kalshi_portfolio, use_container_width=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("📊 View Detailed P&L Analysis"):
-                st.info("Detailed analysis coming soon...")
-        with col2:
-            if st.button("🔄 Sync Kalshi Account"):
-                st.success("Account synced!")
-                st.cache_data.clear()
-                st.rerun()
     else:
-        st.info("""
-        ### 💼 Portfolio Status: Empty
-        
-        You haven't synced any Kalshi investments yet. To view your positions:
-        1. Make sure your **KALSHI_ACCESS_KEY** is configured in your environment
-        2. Click the **"🔄 Sync Kalshi Account"** button above
-        3. Your positions will appear here automatically
-        
-        **Manual Portfolio Upload:** You can also upload a CSV file with additional portfolio data:
-        """)
-        
-        uploaded_file = st.file_uploader("Upload Kalshi Portfolio CSV", type=['csv'])
-        if uploaded_file:
-            try:
-                portfolio_df = pd.read_csv(uploaded_file)
-                st.success("Portfolio uploaded successfully!")
-                st.dataframe(portfolio_df, use_container_width=True)
-                st.session_state.kalshi_portfolio = portfolio_df
-            except Exception as e:
+        st.info("💼 No active positions in your Kalshi portfolio")
+    
+    # Display trade history
+    if trades_history:
+        st.markdown("#### Recent Trades")
+        trades_df = pd.DataFrame(trades_history)
+        st.dataframe(trades_df.head(10), use_container_width=True)
+    else:
+        st.info("📊 No recent trades found")
+    
+    # Refresh buttons
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 Refresh Portfolio"):
+            st.cache_data.clear()
+            st.success("Portfolio refreshed!")
+            st.rerun()
+    
+    with col2:
+        if st.button("📥 Export Account Data"):
+            if balance_info:
+                export_data = {
+                    'Balance': [balance_info],
+                    'Positions': [kalshi_portfolio.to_dict()],
+                    'Trades': trades_history
+                }
+                st.download_button(
+                    label="Download Account Data",
+                    data=str(export_data),
+                    file_name="kalshi_account_export.txt",
+                    mime="text/plain"
+                )
                 st.error(f"Error uploading portfolio: {e}")
 
 with tab3:

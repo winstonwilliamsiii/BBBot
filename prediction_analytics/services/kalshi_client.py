@@ -91,7 +91,7 @@ class KalshiClient:
             return None
     
     def get_user_portfolio(self) -> List[Dict]:
-        """Get user's portfolio positions
+        """Get user's portfolio positions (active holdings)
         
         Returns:
             List of user's active positions
@@ -101,38 +101,73 @@ class KalshiClient:
             return []
         
         try:
-            # Official SDK method to get portfolio
-            portfolio = self.session.get_portfolio()
-            print(f"✅ Portfolio retrieved: {portfolio}")
-            
-            # Portfolio structure varies, handle different response formats
-            if isinstance(portfolio, dict):
-                positions = portfolio.get('positions', portfolio.get('portfolio', []))
-            elif isinstance(portfolio, list):
-                positions = portfolio
-            else:
-                positions = []
-            
-            print(f"✅ Found {len(positions)} positions")
+            # Official SDK method: user_get_market_positions
+            positions = self.session.user_get_market_positions()
+            print(f"✅ Found {len(positions)} active positions")
             return positions
         except Exception as e:
             print(f"❌ Error fetching portfolio: {e}")
             return []
     
     def get_user_balance(self) -> Optional[Dict]:
-        """Get user's account balance
+        """Get user's account balance and cash available
+        
+        Endpoint: GET /balance
         
         Returns:
-            Balance information or None if error
+            Balance information with cash/holdings breakdown or None if error
         """
         if not self.session:
             print("❌ Kalshi session not authenticated")
             return None
         
         try:
-            balance = self.session.get_balance()
+            # Official SDK method: user_get_balance
+            balance = self.session.user_get_balance()
             print(f"✅ Balance retrieved: {balance}")
             return balance
         except Exception as e:
             print(f"❌ Error fetching balance: {e}")
             return None
+    
+    def get_user_trades(self, limit: int = 100) -> List[Dict]:
+        """Get user's trade history (fills)
+        
+        Endpoint: GET /fills
+        
+        Returns:
+            List of executed trades/fills
+        """
+        if not self.session:
+            print("❌ Kalshi session not authenticated")
+            return []
+        
+        try:
+            # Official SDK method: user_trades_get
+            trades = self.session.user_trades_get(limit=limit)
+            print(f"✅ Retrieved {len(trades)} trades from history")
+            return trades if isinstance(trades, list) else trades.get('trades', [])
+        except Exception as e:
+            print(f"❌ Error fetching trade history: {e}")
+            return []
+    
+    def get_account_history(self) -> List[Dict]:
+        """Get user's full account transaction history
+        
+        Endpoint: GET /account-history
+        
+        Returns:
+            List of all account transactions/activities
+        """
+        if not self.session:
+            print("❌ Kalshi session not authenticated")
+            return []
+        
+        try:
+            # Official SDK method: user_get_account_history
+            history = self.session.user_get_account_history()
+            print(f"✅ Retrieved account history")
+            return history if isinstance(history, list) else history.get('history', [])
+        except Exception as e:
+            print(f"❌ Error fetching account history: {e}")
+            return []

@@ -248,39 +248,45 @@ if mode == "Direct Plaid API (Cloud)":
         st.info("""
         ⚠️ **Plaid Link CANNOT load inside Streamlit's iframe**
         
-        Click the button below to open Plaid Link in a **new window** where it can load properly.
+        Click the button below to open Plaid Link in a **standalone window** where it can load properly.
         """)
         
-        # Create a button that opens the popup page in a new tab
+        # Create button that opens plain HTML file (not Streamlit page)
+        # This HTML file is served directly, not through Streamlit's iframe
         popup_url = (
-            f"{st.session_state.get('popup_url', 'http://localhost:8502')}"
-            f"/pages/06a_🏦_Plaid_Link_Popup/?link_token={st.session_state.link_token}"
+            f"file://{Path(__file__).parent.parent / 'public' / 'plaid-link.html'}"
+            f"?link_token={st.session_state.link_token}"
         )
         
         col1, col2 = st.columns(2)
         with col1:
             # Use markdown with JavaScript to open in new window
             st.markdown(f"""
-            <a href="{popup_url}" target="_blank" rel="noopener noreferrer">
-                <button style="
-                    padding:12px 24px;
-                    border-radius:6px;
-                    background:#0a84ff;
-                    color:white;
-                    border:none;
-                    font-size:16px;
-                    font-weight:500;
-                    cursor:pointer;
-                    width:100%;
-                ">📱 Open Plaid Link in New Window</button>
-            </a>
+            <script>
+            function openPlaidLink() {{
+                const token = '{st.session_state.link_token}';
+                const url = 'file://{Path(__file__).parent.parent / "public" / "plaid-link.html"}?link_token=' + token;
+                window.open(url, 'plaid-link', 'width=800,height=700');
+            }}
+            </script>
+            <button onclick="openPlaidLink()" style="
+                padding:12px 24px;
+                border-radius:6px;
+                background:#0a84ff;
+                color:white;
+                border:none;
+                font-size:16px;
+                font-weight:500;
+                cursor:pointer;
+                width:100%;
+            ">📱 Open Plaid Link in New Window</button>
             """, unsafe_allow_html=True)
         
         with col2:
             st.write("")
         
         st.caption(
-            "1. Click the button to open Plaid Link in a new window\n"
+            "1. Click the button to open Plaid Link in a standalone window\n"
             "2. Complete the bank connection flow\n"
             "3. Copy the public token and paste it below"
         )

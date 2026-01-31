@@ -62,10 +62,10 @@ def get_mysql_config(database: str = None) -> dict:
     """
     # Get database from parameter, env var, or default
     if database is None:
-        database = get_secret('MYSQL_DATABASE', default='mansa_bot')
+        database = get_secret('MYSQL_DATABASE', default=get_secret('DB_NAME', default='mansa_bot'))
 
     # For production Railway, map default database names to actual databases
-    host = get_secret('MYSQL_HOST', default='127.0.0.1')
+    host = get_secret('MYSQL_HOST', default=get_secret('DB_HOST', default='127.0.0.1'))
     is_railway = any(x in host for x in ('railway', 'nozomi'))
 
     # ---
@@ -77,9 +77,9 @@ def get_mysql_config(database: str = None) -> dict:
 
     return {
         'host': host,
-        'port': int(get_secret('MYSQL_PORT', default='54537' if is_railway else '3306')),
-        'user': get_secret('MYSQL_USER', default='root'),
-        'password': get_secret('MYSQL_PASSWORD', default='root'),
+        'port': int(get_secret('MYSQL_PORT', default=get_secret('DB_PORT', default='54537' if is_railway else '3306'))),
+        'user': get_secret('MYSQL_USER', default=get_secret('DB_USER', default='root')),
+        'password': get_secret('MYSQL_PASSWORD', default=get_secret('DB_PASSWORD', default='root')),
         'database': database,
     }
 
@@ -113,7 +113,10 @@ def get_alpaca_config() -> dict:
     """
     api_key = get_secret('ALPACA_API_KEY')
     secret_key = get_secret('ALPACA_SECRET_KEY')
-    paper = get_secret('ALPACA_PAPER', default='true')
+    paper = get_secret('ALPACA_PAPER', default=None)
+    if paper is None:
+        env = get_secret('ALPACA_ENVIRONMENT', default='paper')
+        paper = 'true' if str(env).lower() == 'paper' else 'false'
     
     if not api_key or api_key == 'your-alpaca-api-key-here':
         raise ValueError(
@@ -149,7 +152,9 @@ def get_plaid_config() -> dict:
     """
     client_id = get_secret('PLAID_CLIENT_ID', section='plaid')
     secret = get_secret('PLAID_SECRET', section='plaid')
-    env = get_secret('PLAID_ENV', section='plaid', default='sandbox')
+    env = get_secret('PLAID_ENV', section='plaid', default=None)
+    if not env:
+        env = get_secret('PLAID_ENVIRONMENT', section='plaid', default='sandbox')
     
     if not client_id or client_id == 'your-plaid-client-id':
         raise ValueError(

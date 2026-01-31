@@ -72,3 +72,41 @@ class KalshiClient:
         except requests.RequestException as e:
             print(f"Error fetching contract {contract_id}: {e}")
             return None
+    
+    def get_user_portfolio(self) -> List[Dict]:
+        """Get user's portfolio positions (requires authenticated API key)
+        
+        Returns:
+            List of user's active positions
+        """
+        if not self.api_key:
+            print("API key required for portfolio access")
+            return []
+        
+        try:
+            # Kalshi API endpoint for portfolio/positions
+            response = self.session.get(f"{self.BASE_URL}/portfolio/positions")
+            response.raise_for_status()
+            data = response.json()
+            return data.get('positions', [])
+        except requests.RequestException as e:
+            print(f"Error fetching portfolio: {e}")
+            return []
+    
+    def get_user_balance(self) -> Optional[Dict]:
+        """Get user's account balance (requires authenticated API key)
+        
+        Returns:
+            Balance information or None if error
+        """
+        if not self.api_key:
+            print("API key required for balance access")
+            return None
+        
+        try:
+            response = self.session.get(f"{self.BASE_URL}/portfolio/balance")
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error fetching balance: {e}")
+            return None

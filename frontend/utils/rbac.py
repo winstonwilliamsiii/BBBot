@@ -345,6 +345,16 @@ class RBACManager:
             st.session_state.authenticated = False
         if 'current_user' not in st.session_state:
             st.session_state.current_user = None
+
+        # Optional dev bypass for local development
+        bypass = os.getenv('DEV_BYPASS_AUTH', '').lower() in ('1', 'true', 'yes', 'on')
+        if bypass and not st.session_state.get('authenticated', False):
+            username = os.getenv('DEV_BYPASS_USER', 'admin')
+            password = os.getenv('DEV_BYPASS_PASSWORD', 'admin123')
+            user = RBACManager.authenticate(username, password)
+            if user:
+                st.session_state.authenticated = True
+                st.session_state.current_user = user
     
     @staticmethod
     def login(username: str, password: str) -> bool:

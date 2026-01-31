@@ -14,6 +14,7 @@ import pandas as pd
 from datetime import datetime
 import sys
 from pathlib import Path
+import os
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -76,53 +77,258 @@ except ImportError as e:
     st.warning(f"⚠️ Prediction analytics module not fully available: {e}")
     PREDICTION_MODULE_AVAILABLE = False
 
-# Main content
+# Kalshi API credentials from environment
+KALSHI_API_KEY = os.getenv("KALSHI_ACCESS_KEY", "")
+KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
+
+@st.cache_data(ttl=300)
+def fetch_kalshi_portfolio():
+    """Fetch user's Kalshi portfolio/positions"""
+    if not KALSHI_API_KEY:
+        return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+    
+    try:
+        client = KalshiClient(api_key=KALSHI_API_KEY)
+        positions = client.get_user_portfolio()
+        
+        if positions:
+            portfolio_list = []
+            for pos in positions:
+                # Extract position data from Kalshi API response
+                contract_name = pos.get('market_title', pos.get('ticker', 'Unknown'))
+                quantity = pos.get('position', 0)
+                entry_price = pos.get('purchase_price', 0)
+                current_price = pos.get('current_price', entry_price)
+                
+                # Calculate P&L
+                cost_basis = quantity * entry_price
+                current_value = quantity * current_price
+                pnl = current_value - cost_basis
+                pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
+                
+                portfolio_list.append({
+                    'Contract': contract_name,
+                    'Quantity': quantity,
+                    'Entry Price': f"${entry_price:.2f}",
+                    'Current Price': f"${current_price:.2f}",
+                    'P&L': f"${pnl:.2f}",
+                    'P&L %': f"{pnl_pct:+.2f}%"
+                })
+            
+            return pd.DataFrame(portfolio_list)
+    except Exception as e:
+        st.warning(f"Could not fetch Kalshi portfolio: {e}")
+    
+    return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+
+@st.cache_data(ttl=300)
+def fetch_kalshi_active_markets():
+    """Fetch active Kalshi markets"""
+    if not PREDICTION_MODULE_AVAILABLE:
+        return pd.DataFrame()
+    
+    try:
+        client = KalshiClient(api_key=KALSHI_API_KEY)
+        markets = client.get_active_markets()
+        
+        if markets:
+            contracts_list = []
+            for market in markets[:10]:  # Limit to 10 for display
+                contracts_list.append({
+                    'Contract': market.get('title', 'N/A'),
+                    'Platform': 'Kalshi',
+                    'Current Price': market.get('close_price', 'N/A'),
+                    'Volume (24h)': market.get('volume', 'N/A'),
+                    'Expires': market.get('expiration_date', 'N/A'),
+                    'Status': market.get('status', 'N/A')
+                })
+            return pd.DataFrame(contracts_list)
+    except Exception as e:
+        st.warning(f"Could not fetch live Kalshi data: {e}")
+    
+    return pd.DataFrame()
+
+# Main content - Metrics with improved visibility
+st.markdown(f"""
+<style>
+    .metric-container {{
+        display: flex;
+        gap: 1.5rem;
+        margin: 1rem 0;
+    }}
+    .metric-card {{
+        flex: 1;
+        background: {COLOR_SCHEME['card_background']};
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        border-left: 3px solid {COLOR_SCHEME['accent_teal']};
+    }}
+    .metric-label {{
+        color: #E5E7EB;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }}
+    .metric-value {{
+        color: {COLOR_SCHEME['accent_gold']};
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 0.25rem;
+    }}
+    .metric-change {{
+        color: #10B981;
+        font-size: 0.875rem;
+    }}
+    .tab-header {{
+        color: #F3F4F6 !important;
+        font-weight: 600;
+    }}
+</style>
+""", unsafe_allow_html=True)
+
+# Fetch portfolio data
+kalshi_portfolio = fetch_kalshi_portfolio()
+portfolio_value = len(kalshi_portfolio)
+portfolio_pnl = kalshi_portfolio['P&L %'].sum() if len(kalshi_portfolio) > 0 else 0
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("Active Markets", "24", "+3")
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div class='metric-label'>Active Markets</div>
+        <div class='metric-value'>24</div>
+        <div class='metric-change'>+3 this week</div>
+    </div>
+    """, unsafe_allow_html=True)
+
 with col2:
-    st.metric("High Confidence", "8", "+2")
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div class='metric-label'>My Kalshi Positions</div>
+        <div class='metric-value'>{portfolio_value}</div>
+        <div class='metric-change'>Portfolio Active</div>
+    </div>
+    """, unsafe_allow_html=True)
+
 with col3:
-    st.metric("Bullish Sentiment", "65%", "+5%")
+    pnl_color = "#10B981" if portfolio_pnl >= 0 else "#EF4444"
+    pnl_sign = "+" if portfolio_pnl >= 0 else ""
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div class='metric-label'>Portfolio P&L</div>
+        <div class='metric-value' style='color: {pnl_color};'>{pnl_sign}{portfolio_pnl:.1f}%</div>
+        <div class='metric-change' style='color: {pnl_color};'>Real-time tracking</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
 # Tabs for different views
-tab1, tab2, tab3 = st.tabs(["📊 Active Markets", "📈 Probability Engine", "💬 Sentiment Analysis"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "<span style='color: #F3F4F6;'>📊 Active Markets</span>",
+    "<span style='color: #F3F4F6;'>💼 My Portfolio</span>",
+    "<span style='color: #F3F4F6;'>📈 Probability Engine</span>",
+    "<span style='color: #F3F4F6;'>💬 Sentiment Analysis</span>"
+])
 
 with tab1:
-    st.subheader("Polymarket & Kalshi Contracts")
+    st.markdown("<h3 style='color: #F3F4F6;'>Polymarket & Kalshi Contracts</h3>", unsafe_allow_html=True)
     
     if PREDICTION_MODULE_AVAILABLE:
         st.info("🔄 Loading prediction markets...")
         
-        # Sample data (will be replaced with actual API calls)
-        sample_contracts = pd.DataFrame({
-            'Contract': ['Will BTC exceed $100k by Q2?', 'Election Winner - State A', 'Tech Earnings Beat'],
-            'Platform': ['Polymarket', 'Kalshi', 'Polymarket'],
-            'Current Price': [0.72, 0.58, 0.81],
-            'Volume (24h)': ['$1.2M', '$450K', '$890K'],
-            'Expires': ['2026-04-30', '2026-02-14', '2026-03-15'],
-            'Status': ['OPEN', 'OPEN', 'OPEN']
-        })
+        # Try to fetch live Kalshi data
+        live_kalshi = fetch_kalshi_active_markets()
         
-        st.dataframe(sample_contracts, use_container_width=True)
+        if not live_kalshi.empty:
+            st.dataframe(live_kalshi, use_container_width=True)
+        else:
+            # Sample data (will be replaced with actual API calls)
+            sample_contracts = pd.DataFrame({
+                'Contract': ['Will BTC exceed $100k by Q2?', 'Election Winner - State A', 'Tech Earnings Beat'],
+                'Platform': ['Polymarket', 'Kalshi', 'Polymarket'],
+                'Current Price': [0.72, 0.58, 0.81],
+                'Volume (24h)': ['$1.2M', '$450K', '$890K'],
+                'Expires': ['2026-04-30', '2026-02-14', '2026-03-15'],
+                'Status': ['OPEN', 'OPEN', 'OPEN']
+            })
+            
+            st.dataframe(sample_contracts, use_container_width=True)
         
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔄 Refresh Markets"):
+                st.cache_data.clear()
                 st.success("Markets refreshed!")
                 st.rerun()
         
         with col2:
-            st.selectbox("Platform", ["All", "Polymarket", "Kalshi"])
+            platform_filter = st.selectbox("Platform", ["All", "Polymarket", "Kalshi"], key="platform_tab1")
     else:
         st.warning("⚠️ Prediction analytics module not available. Install dependencies:")
         st.code("pip install prediction-analytics", language="bash")
 
 with tab2:
-    st.subheader("Probability Predictions")
+    st.markdown("<h3 style='color: #F3F4F6;'>Your Kalshi Portfolio</h3>", unsafe_allow_html=True)
+    
+    if not kalshi_portfolio.empty:
+        # Display portfolio positions
+        st.markdown(f"""
+        <div style='background: {COLOR_SCHEME['card_background']}; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;'>
+            <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;'>
+                <div>
+                    <div style='color: #9CA3AF; font-size: 0.875rem;'>Total Positions</div>
+                    <div style='color: {COLOR_SCHEME['accent_gold']}; font-size: 1.5rem; font-weight: bold;'>{len(kalshi_portfolio)}</div>
+                </div>
+                <div>
+                    <div style='color: #9CA3AF; font-size: 0.875rem;'>Portfolio Value</div>
+                    <div style='color: {COLOR_SCHEME['accent_teal']}; font-size: 1.5rem; font-weight: bold;'>${kalshi_portfolio['Entry Price'].sum() if 'Entry Price' in kalshi_portfolio.columns else 0:,.0f}</div>
+                </div>
+                <div>
+                    <div style='color: #9CA3AF; font-size: 0.875rem;'>Total P&L</div>
+                    <div style='color: {"#10B981" if portfolio_pnl >= 0 else "#EF4444"}; font-size: 1.5rem; font-weight: bold;'>{portfolio_pnl:+.2f}%</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Display positions table
+        st.dataframe(kalshi_portfolio, use_container_width=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📊 View Detailed P&L Analysis"):
+                st.info("Detailed analysis coming soon...")
+        with col2:
+            if st.button("🔄 Sync Kalshi Account"):
+                st.success("Account synced!")
+                st.cache_data.clear()
+                st.rerun()
+    else:
+        st.info("""
+        ### 💼 Portfolio Status: Empty
+        
+        You haven't synced any Kalshi investments yet. To view your positions:
+        1. Make sure your **KALSHI_ACCESS_KEY** is configured in your environment
+        2. Click the **"🔄 Sync Kalshi Account"** button above
+        3. Your positions will appear here automatically
+        
+        **Demo Data Available:** You can also upload a CSV file with your portfolio data:
+        """)
+        
+        uploaded_file = st.file_uploader("Upload Kalshi Portfolio CSV", type=['csv'])
+        if uploaded_file:
+            try:
+                portfolio_df = pd.read_csv(uploaded_file)
+                st.success("Portfolio uploaded successfully!")
+                st.dataframe(portfolio_df, use_container_width=True)
+                st.session_state.kalshi_portfolio = portfolio_df
+            except Exception as e:
+                st.error(f"Error uploading portfolio: {e}")
+
+with tab3:
+    st.markdown("<h3 style='color: #F3F4F6;'>Probability Predictions</h3>", unsafe_allow_html=True)
     
     if PREDICTION_MODULE_AVAILABLE:
         st.info("📊 ML predictions for active markets")
@@ -138,17 +344,19 @@ with tab2:
         
         st.dataframe(prob_data, use_container_width=True)
         
-        st.markdown("**How to read:**")
         st.markdown("""
-        - **Market Implied:** Price-based probability from market
-        - **ML Prediction:** Our model's forecast
-        - **Edge:** Opportunity direction (buy/sell)
-        """)
+        <div style='color: #F3F4F6; margin-top: 1rem;'>
+            <strong>How to read:</strong><br>
+            • <strong>Market Implied:</strong> Price-based probability from market<br>
+            • <strong>ML Prediction:</strong> Our model's forecast<br>
+            • <strong>Edge:</strong> Opportunity direction (buy/sell)
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.info("Probability engine coming soon")
 
-with tab3:
-    st.subheader("Sentiment Analysis")
+with tab4:
+    st.markdown("<h3 style='color: #F3F4F6;'>Sentiment Analysis</h3>", unsafe_allow_html=True)
     
     if PREDICTION_MODULE_AVAILABLE:
         st.info("💬 Aggregated sentiment from news, social media, and on-chain data")
@@ -165,16 +373,24 @@ with tab3:
         
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**Bullish Signals** 📈")
-            st.write("- Strong technical setup")
-            st.write("- On-chain accumulation")
-            st.write("- Positive macro news")
+            st.markdown("""
+            <div style='color: #F3F4F6;'>
+                <strong style='color: #10B981;'>📈 Bullish Signals</strong><br>
+                • Strong technical setup<br>
+                • On-chain accumulation<br>
+                • Positive macro news
+            </div>
+            """, unsafe_allow_html=True)
         
         with col2:
-            st.markdown("**Bearish Signals** 📉")
-            st.write("- Regulatory concerns")
-            st.write("- Overbought conditions")
-            st.write("- Liquidations trending")
+            st.markdown("""
+            <div style='color: #F3F4F6;'>
+                <strong style='color: #EF4444;'>📉 Bearish Signals</strong><br>
+                • Regulatory concerns<br>
+                • Overbought conditions<br>
+                • Liquidations trending
+            </div>
+            """, unsafe_allow_html=True)
     else:
         st.info("Sentiment analysis coming soon")
 

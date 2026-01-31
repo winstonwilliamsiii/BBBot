@@ -88,11 +88,17 @@ class KalshiClient:
         try:
             # Kalshi API endpoint for portfolio/positions
             response = self.session.get(f"{self.BASE_URL}/portfolio/positions")
+            print(f"Kalshi API Status: {response.status_code}")
+            print(f"Kalshi API Response: {response.text[:500]}")
             response.raise_for_status()
             data = response.json()
-            return data.get('positions', [])
+            print(f"Parsed data: {data}")
+            return data.get('positions', data.get('portfolio', []))
         except requests.RequestException as e:
             print(f"Error fetching portfolio: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response text: {e.response.text}")
             return []
     
     def get_user_balance(self) -> Optional[Dict]:

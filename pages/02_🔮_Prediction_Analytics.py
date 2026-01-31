@@ -96,8 +96,12 @@ def fetch_kalshi_portfolio():
     try:
         # Use official Kalshi SDK with email/password authentication
         client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        if not client.authenticated:
+            st.error(f"❌ Kalshi authentication failed: {client.last_error}")
+            return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+
         positions = client.get_user_portfolio()
-        
+
         st.info(f"📊 API Response: Found {len(positions) if positions else 0} positions")
         
         if positions:
@@ -140,6 +144,9 @@ def fetch_kalshi_balance():
     
     try:
         client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        if not client.authenticated:
+            st.error(f"❌ Kalshi authentication failed: {client.last_error}")
+            return None
         balance = client.get_user_balance()
         print(f"✅ Balance fetched: {balance}")
         return balance
@@ -155,6 +162,9 @@ def fetch_kalshi_trades():
     
     try:
         client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        if not client.authenticated:
+            st.error(f"❌ Kalshi authentication failed: {client.last_error}")
+            return []
         trades = client.get_user_trades(limit=50)
         print(f"✅ Trades fetched: {len(trades)} fills")
         return trades
@@ -175,6 +185,9 @@ def fetch_kalshi_active_markets():
     
     try:
         client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        if not client.authenticated:
+            st.error(f"❌ Kalshi authentication failed: {client.last_error}")
+            return pd.DataFrame()
         markets = client.get_active_markets()
         
         st.info(f"📊 API Response: Found {len(markets) if markets else 0} active markets")

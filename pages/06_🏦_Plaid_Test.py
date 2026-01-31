@@ -241,55 +241,62 @@ if mode == "Direct Plaid API (Cloud)":
             st.session_state.item_id = None
             st.success("Session cleared")
 
-    # Render Plaid Link in a NEW WINDOW (not iframe)
-    # This fixes the "Waiting for SDK to load..." issue
+    # Manual Plaid Link (works everywhere - no iframe issues)
     if st.session_state.link_token:
-        st.markdown("### 🚪 Open Plaid Link")
-        st.info("""
-        ⚠️ **Plaid Link CANNOT load inside Streamlit's iframe**
+        st.markdown("### 🔗 Connect Your Bank Account")
         
-        Click the button below to open Plaid Link in a **standalone window** where it can load properly.
+        st.warning("""
+        ⚠️ **Plaid Link Cannot Load in Streamlit's Iframe**
+        
+        Due to security restrictions, Plaid Link won't initialize inside Streamlit. 
+        **Use the manual link below** to open Plaid in a new browser tab.
         """)
         
-        # Create button that opens plain HTML file (not Streamlit page)
-        # This HTML file is served directly, not through Streamlit's iframe
-        popup_url = (
-            f"file://{Path(__file__).parent.parent / 'public' / 'plaid-link.html'}"
-            f"?link_token={st.session_state.link_token}"
-        )
+        # Create a direct Plaid Link URL (opens in new tab, not iframe)
+        plaid_url = f"https://cdn.plaid.com/link/v2/stable/link.html?key={st.session_state.link_token}"
         
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([2, 1])
         with col1:
-            # Use markdown with JavaScript to open in new window
             st.markdown(f"""
-            <script>
-            function openPlaidLink() {{
-                const token = '{st.session_state.link_token}';
-                const url = 'file://{Path(__file__).parent.parent / "public" / "plaid-link.html"}?link_token=' + token;
-                window.open(url, 'plaid-link', 'width=800,height=700');
-            }}
-            </script>
-            <button onclick="openPlaidLink()" style="
-                padding:12px 24px;
-                border-radius:6px;
-                background:#0a84ff;
-                color:white;
-                border:none;
-                font-size:16px;
-                font-weight:500;
-                cursor:pointer;
-                width:100%;
-            ">📱 Open Plaid Link in New Window</button>
+            <a href="{plaid_url}" target="_blank" rel="noopener noreferrer" style="text-decoration: none;">
+                <button style="
+                    padding:14px 28px;
+                    border-radius:8px;
+                    background:#0a84ff;
+                    color:white;
+                    border:none;
+                    font-size:16px;
+                    font-weight:600;
+                    cursor:pointer;
+                    width:100%;
+                    box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
+                    transition: all 0.2s;
+                " onmouseover="this.style.background='#0066dd'" onmouseout="this.style.background='#0a84ff'">
+                    🏦 Open Plaid Link in New Tab
+                </button>
+            </a>
             """, unsafe_allow_html=True)
         
         with col2:
-            st.write("")
+            if st.button("📋 Copy Link Token", use_container_width=True):
+                st.code(st.session_state.link_token, language="text")
         
-        st.caption(
-            "1. Click the button to open Plaid Link in a standalone window\n"
-            "2. Complete the bank connection flow\n"
-            "3. Copy the public token and paste it below"
-        )
+        st.markdown("---")
+        st.markdown("**📝 Instructions:**")
+        st.markdown("""
+        1. Click **"Open Plaid Link in New Tab"** above
+        2. Complete the bank connection flow in the new tab
+        3. After success, Plaid will show your `public_token`
+        4. Copy the public token and paste it below
+        5. Click "Exchange Token" to complete the connection
+        """)
+        
+        st.info("""
+        💡 **Alternative Method (If button doesn't work):**
+        
+        Copy the link token above and visit: https://my.plaid.com/link
+        Then paste your link_token when prompted.
+        """)
 
         st.markdown("### 🔄 Exchange Public Token")
         st.session_state.public_token = st.text_input(

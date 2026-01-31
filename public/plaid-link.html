@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plaid Link</title>
+    <title>Plaid Link - Not in iframe</title>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <!-- Explicitly allow this page to be opened in full window, not iframe -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <style>
         * {
             margin: 0;
@@ -66,8 +68,18 @@
             background: #fee2e2;
             color: #991b1b;
         }
-        
-        button {
+                .debug-info {
+            background: #f3f4f6;
+            border-left: 4px solid #6b7280;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-family: monospace;
+            font-size: 0.875rem;
+            max-height: 200px;
+            overflow-y: auto;
+            color: #374151;
+        }
+                button {
             width: 100%;
             padding: 12px 24px;
             background: #0a84ff;

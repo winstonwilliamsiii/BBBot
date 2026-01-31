@@ -92,13 +92,28 @@ def handler(request):
             },
         )
 
+    # Plaid Link Token endpoint
+    if path == "/api/plaid/link_token":
+        try:
+            # Get link_token from Streamlit session via environment
+            # In production, this would call Plaid API
+            link_token = os.getenv("PLAID_LINK_TOKEN")
+            if not link_token:
+                return _response(
+                    500,
+                    {"error": "Link token not available. Create one in Streamlit first."},
+                )
+            return _response(200, {"link_token": link_token})
+        except Exception as e:
+            return _response(500, {"error": str(e)})
+
     # 404
     return _response(
         404,
         {
             "error": "Endpoint not found",
             "path": path,
-            "available_endpoints": ["/health", "/status", "/api/portfolio"],
+            "available_endpoints": ["/health", "/status", "/api/portfolio", "/api/plaid/link_token"],
         },
     )
 

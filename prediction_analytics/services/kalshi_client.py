@@ -22,17 +22,35 @@ class KalshiClient:
         self.session = None
         self.email = email
         self.password = password
+        self.authenticated = False
+        self.last_error: Optional[str] = None
         
         if email and password:
             try:
                 # Official Kalshi SDK uses email/password authentication
                 # Endpoint: https://api.elections.kalshi.com
-                self.session = Session(email=email, password=password, 
+                self.session = Session(email=email, password=password,
                                      endpoint='https://api.elections.kalshi.com/v1')
-                print(f"✅ Kalshi SDK authenticated successfully")
+                self.authenticated = True
+                self.last_error = None
+                print("✅ Kalshi SDK authenticated successfully")
             except Exception as e:
+                self.last_error = str(e)
                 print(f"❌ Kalshi authentication failed: {e}")
                 self.session = None
+        else:
+            self.last_error = "Missing Kalshi email or password"
+
+    @staticmethod
+    def _normalize_list(data: object, keys: List[str]) -> List[Dict]:
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            for key in keys:
+                value = data.get(key)
+                if isinstance(value, list):
+                    return value
+        return []
     
     def get_active_markets(self) -> List[Dict]:
         """Fetch active prediction markets
@@ -103,8 +121,9 @@ class KalshiClient:
         try:
             # Official SDK method: user_get_market_positions
             positions = self.session.user_get_market_positions()
-            print(f"✅ Found {len(positions)} active positions")
-            return positions
+            normalized = self._normalize_list(positions, ["market_positions", "positions", "portfolio"])
+            print(f"✅ Found {len(normalized)} active positions")
+            return normalized
         except Exception as e:
             print(f"❌ Error fetching portfolio: {e}")
             return []
@@ -124,8 +143,10 @@ class KalshiClient:
         try:
             # Official SDK method: user_get_balance
             balance = self.session.user_get_balance()
+            if isinstance(balance, dict) and "balance" in balance:
+                balance = balance.get("balance")
             print(f"✅ Balance retrieved: {balance}")
-            return balance
+            return balance if isinstance(balance, dict) else None
         except Exception as e:
             print(f"❌ Error fetching balance: {e}")
             return None
@@ -145,8 +166,9 @@ class KalshiClient:
         try:
             # Official SDK method: user_trades_get
             trades = self.session.user_trades_get(limit=limit)
-            print(f"✅ Retrieved {len(trades)} trades from history")
-            return trades if isinstance(trades, list) else trades.get('trades', [])
+            normalized = self._normalize_list(trades, ["trades", "fills", "orders"])
+            print(f"✅ Retrieved {len(normalized)} trades from history")
+            return normalized
         except Exception as e:
             print(f"❌ Error fetching trade history: {e}")
             return []

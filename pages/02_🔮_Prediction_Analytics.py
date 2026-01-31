@@ -77,9 +77,14 @@ except ImportError as e:
     st.warning(f"⚠️ Prediction analytics module not fully available: {e}")
     PREDICTION_MODULE_AVAILABLE = False
 
-# Kalshi API credentials from environment
-KALSHI_API_KEY = os.getenv("KALSHI_ACCESS_KEY", "")
-KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
+# Kalshi API credentials from Streamlit secrets or environment
+try:
+    KALSHI_API_KEY = st.secrets.get("KALSHI_ACCESS_KEY", "") or os.getenv("KALSHI_ACCESS_KEY", "")
+    KALSHI_PRIVATE_KEY = st.secrets.get("KALSHI_PRIVATE_KEY", "") or os.getenv("KALSHI_PRIVATE_KEY", "")
+except Exception:
+    # Fallback to environment variables only
+    KALSHI_API_KEY = os.getenv("KALSHI_ACCESS_KEY", "")
+    KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():

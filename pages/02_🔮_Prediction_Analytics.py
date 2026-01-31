@@ -390,6 +390,20 @@ with tab2:
         st.dataframe(trades_df.head(10), use_container_width=True)
     else:
         st.info("📊 No recent trades found")
+
+    with st.expander("Kalshi Debug"):
+        if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+            st.info("Kalshi credentials not configured.")
+        else:
+            debug_client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+            st.write({"authenticated": debug_client.authenticated, "error": debug_client.last_error})
+            if debug_client.authenticated:
+                st.write({
+                    "profile": debug_client.get_user_profile(),
+                    "balance": debug_client.get_user_balance(),
+                    "positions_count": len(debug_client.get_user_portfolio()),
+                    "trades_count": len(debug_client.get_user_trades(limit=5))
+                })
     
     # Refresh buttons
     col1, col2 = st.columns(2)

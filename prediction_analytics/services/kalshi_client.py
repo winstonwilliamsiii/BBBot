@@ -193,3 +193,21 @@ class KalshiClient:
         except Exception as e:
             print(f"❌ Error fetching account history: {e}")
             return []
+
+    def get_user_profile(self) -> Optional[Dict]:
+        """Get user's account profile information
+
+        Returns:
+            Profile information or None if error
+        """
+        if not self.session:
+            print("❌ Kalshi session not authenticated")
+            return None
+
+        try:
+            profile = self.session.user_get_profile()
+            print("✅ Profile retrieved")
+            return profile if isinstance(profile, dict) else None
+        except Exception as e:
+            print(f"❌ Error fetching profile: {e}")
+            return None

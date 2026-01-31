@@ -169,10 +169,6 @@ def fetch_kalshi_active_markets():
         st.error(f"❌ Error fetching Kalshi markets: {e}")
     
     return pd.DataFrame()
-    except Exception as e:
-        st.warning(f"Could not fetch live Kalshi data: {e}")
-    
-    return pd.DataFrame()
 
 # Main content - Metrics with improved visibility
 st.markdown(f"""

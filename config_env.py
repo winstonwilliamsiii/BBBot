@@ -61,6 +61,18 @@ class EnvironmentConfig:
         if not loaded_any:
             print(f"⚠️ No .env files found in {project_root}", file=sys.stderr)
             print(f"   Looking for: .env, .env.{self.env_type}, or .env.local", file=sys.stderr)
+
+        # Backfill MYSQL_* from DB_* if present (dev compatibility)
+        db_to_mysql = {
+            'DB_HOST': 'MYSQL_HOST',
+            'DB_PORT': 'MYSQL_PORT',
+            'DB_USER': 'MYSQL_USER',
+            'DB_PASSWORD': 'MYSQL_PASSWORD',
+            'DB_NAME': 'MYSQL_DATABASE',
+        }
+        for db_key, mysql_key in db_to_mysql.items():
+            if not os.getenv(mysql_key) and os.getenv(db_key):
+                os.environ[mysql_key] = os.getenv(db_key)
     
     @staticmethod
     def get(key: str, default=None):
@@ -127,8 +139,13 @@ class EnvironmentConfig:
 ║  3. Restart the application                                    ║
 ╚════════════════════════════════════════════════════════════════╝
 """
-            print(error_msg, file=sys.stderr)
-            sys.exit(1)
+            if self.is_production():
+                print(error_msg, file=sys.stderr)
+                sys.exit(1)
+            else:
+                # In development, warn but allow the app to start
+                print(error_msg, file=sys.stderr)
+                print("⚠️  Development mode: continuing without required vars.", file=sys.stderr)
         
         # Warn about missing important variables
         if missing_important:

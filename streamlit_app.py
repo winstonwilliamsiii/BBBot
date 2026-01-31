@@ -25,6 +25,13 @@ from frontend.utils.styling import (
 from frontend.styles.colors import COLOR_SCHEME
 from frontend.utils.yahoo import fetch_portfolio_list, fetch_portfolio_tickers
 
+# Optional MySQL helper (for dev health checks)
+try:
+    from frontend.utils.secrets_helper import get_mysql_config
+    MYSQL_HELPER_AVAILABLE = True
+except ImportError:
+    MYSQL_HELPER_AVAILABLE = False
+
 # Import cache-busting reload function
 try:
     from config_env import reload_env
@@ -164,6 +171,139 @@ def get_yfinance_data(tickers, start_date, end_date):
     return df_long
 
 
+def _get_mysql_config_fallback():
+    if MYSQL_HELPER_AVAILABLE:
+        return get_mysql_config(database=os.getenv("MYSQL_DATABASE", os.getenv("DB_NAME", "bentley_bot_dev")))
+    return {
+        "host": os.getenv("MYSQL_HOST", os.getenv("DB_HOST", "127.0.0.1")),
+        "port": int(os.getenv("MYSQL_PORT", os.getenv("DB_PORT", "3306"))),
+        "user": os.getenv("MYSQL_USER", os.getenv("DB_USER", "root")),
+        "password": os.getenv("MYSQL_PASSWORD", os.getenv("DB_PASSWORD", "")),
+        "database": os.getenv("MYSQL_DATABASE", os.getenv("DB_NAME", "bentley_bot_dev")),
+    }
+
+
+def test_mysql_connection():
+    """Quick MySQL connection test for dev UI."""
+    try:
+        import mysql.connector
+    except Exception as e:
+        return {"ok": False, "error": f"mysql-connector-python not installed: {e}"}
+
+    config = _get_mysql_config_fallback()
+    try:
+        conn = mysql.connector.connect(**config)
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        conn.close()
+        return {"ok": True, "config": config}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "config": config}
+
+
+def ensure_dev_schema():
+    """Auto-create dev schema (optional) on startup."""
+    if os.getenv("ENVIRONMENT", "development").lower() != "development":
+        return
+    if os.getenv("AUTO_CREATE_DEV_SCHEMA", "").lower() not in ("1", "true", "yes", "on"):
+        return
+
+    try:
+        import mysql.connector
+    except Exception:
+        return
+
+    config = _get_mysql_config_fallback()
+    db_name = config.get("database") or "bentley_bot_dev"
+
+    # Try connecting with database; if it fails, skip schema creation
+    try:
+        conn = mysql.connector.connect(**config)
+    except Exception as e:
+        # MySQL connection failed - skip schema creation (optional feature)
+        print(f"⚠️  MySQL not available for dev schema creation: {e}")
+        return
+
+    # Connection successful - proceed with schema creation
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    username VARCHAR(50) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    email VARCHAR(100),
+                    role VARCHAR(20) DEFAULT 'VIEWER',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP NULL,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    user_id INT NOT NULL,
+                    account_id VARCHAR(100),
+                    amount DECIMAL(10, 2) NOT NULL,
+                    category VARCHAR(50),
+                    date DATE NOT NULL,
+                    description TEXT,
+                    merchant_name VARCHAR(100),
+                    plaid_transaction_id VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS plaid_items (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    user_id INT NOT NULL,
+                    plaid_item_id VARCHAR(100) UNIQUE NOT NULL,
+                    access_token VARCHAR(255) NOT NULL,
+                    institution_id VARCHAR(100),
+                    institution_name VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_synced TIMESTAMP NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS stock_prices_yf (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                ticker VARCHAR(10) NOT NULL,
+                date DATE NOT NULL,
+                open DECIMAL(10, 2),
+                high DECIMAL(10, 2),
+                low DECIMAL(10, 2),
+                close DECIMAL(10, 2),
+                volume BIGINT,
+                adj_close DECIMAL(10, 2),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY ticker_date (ticker, date)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT IGNORE INTO users (username, password_hash, email, role)
+                VALUES ('admin', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqQqZ5wQ5u', 'admin@localhost', 'ADMIN')
+                """
+            )
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️  Error creating dev schema: {e}")
+    finally:
+        conn.close()
+
+
 def calculate_portfolio_metrics(portfolio_df):
     """Calculate portfolio metrics from uploaded CSV data."""
     if portfolio_df is None or portfolio_df.empty:
@@ -235,6 +375,9 @@ def main():
     # Reload environment variables for cache-busting (ensures fresh values on every run)
     if ENV_RELOAD_AVAILABLE:
         reload_env()  # Override to break cache
+
+    # Optional dev schema auto-create
+    ensure_dev_schema()
 
     # Apply custom styling (CSS)
     apply_custom_styling()
@@ -424,6 +567,22 @@ def main():
         st.markdown("---")
 
     # Sidebar controls
+    if os.getenv("ENVIRONMENT", "development").lower() == "development":
+        with st.sidebar.expander("Dev: Database Health"):
+            if st.button("Test MySQL Connection"):
+                result = test_mysql_connection()
+                if result.get("ok"):
+                    st.success("MySQL connection OK")
+                else:
+                    st.error(f"MySQL connection failed: {result.get('error')}")
+                if "config" in result:
+                    st.code(
+                        f"host={result['config'].get('host')}\n"
+                        f"port={result['config'].get('port')}\n"
+                        f"database={result['config'].get('database')}\n"
+                        f"user={result['config'].get('user')}"
+                    )
+
     st.sidebar.header("Portfolio Data Upload")
     
     # Option to upload a full portfolio CSV

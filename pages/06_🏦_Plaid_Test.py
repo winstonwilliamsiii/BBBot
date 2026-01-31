@@ -156,6 +156,28 @@ if mode == "Quickstart Backend (Local)":
 
 st.markdown("---")
 
+# Show explanation about iframe issue
+with st.expander("ℹ️ Why Plaid Link opens in a new window"):
+    st.markdown("""
+    ### The Iframe Problem
+    
+    **Plaid Link CANNOT load inside an iframe** (which is what Streamlit uses).
+    
+    When you try to load Plaid Link in Streamlit, you get:
+    > ⏳ "Waiting for SDK to load…"
+    
+    This happens because:
+    1. Streamlit embeds the app in an iframe for security
+    2. Plaid Link's JavaScript SDK refuses to initialize in cross-origin iframes
+    3. The SDK never loads, so the button never becomes interactive
+    
+    **Solution:** Open Plaid Link in a **new window** where it can run as a standalone page.
+    
+    This is the standard workaround for Streamlit + Plaid integration.
+    """)
+
+st.markdown("---")
+
 if mode == "Direct Plaid API (Cloud)":
     st.markdown("## 🔗 Plaid API (Streamlit Cloud)")
     if not PLAID_MANAGER_AVAILABLE:
@@ -219,40 +241,48 @@ if mode == "Direct Plaid API (Cloud)":
             st.session_state.item_id = None
             st.success("Session cleared")
 
-    # Render Plaid Link minimal UI when we have a link_token
+    # Render Plaid Link in a NEW WINDOW (not iframe)
+    # This fixes the "Waiting for SDK to load..." issue
     if st.session_state.link_token:
         st.markdown("### 🚪 Open Plaid Link")
-        import streamlit.components.v1 as components
-        plaid_html = f"""
-        <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js">
-        </script>
-        <button id="open-link" style="
-            padding:10px 16px;
-            border-radius:6px;
-            background:#0a84ff;
-            color:white;
-            border:none;
-        ">Open Plaid Link</button>
-        <script>
-          var handler = Plaid.create({{
-            token: '{st.session_state.link_token}',
-            onSuccess: function(public_token, metadata) {{
-              alert('PUBLIC_TOKEN:' + public_token);
-            }},
-            onExit: function(err, metadata) {{
-              console.log('Plaid exit', err, metadata);
-            }}
-          }});
-          document.getElementById('open-link').onclick = function() {{
-            handler.open();
-          }};
-        </script>
-        """
-        components.html(plaid_html, height=120)
-
+        st.info("""
+        ⚠️ **Plaid Link CANNOT load inside Streamlit's iframe**
+        
+        Click the button below to open Plaid Link in a **new window** where it can load properly.
+        """)
+        
+        # Create a button that opens the popup page in a new tab
+        popup_url = (
+            f"{st.session_state.get('popup_url', 'http://localhost:8502')}"
+            f"/pages/06a_🏦_Plaid_Link_Popup/?link_token={st.session_state.link_token}"
+        )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            # Use markdown with JavaScript to open in new window
+            st.markdown(f"""
+            <a href="{popup_url}" target="_blank" rel="noopener noreferrer">
+                <button style="
+                    padding:12px 24px;
+                    border-radius:6px;
+                    background:#0a84ff;
+                    color:white;
+                    border:none;
+                    font-size:16px;
+                    font-weight:500;
+                    cursor:pointer;
+                    width:100%;
+                ">📱 Open Plaid Link in New Window</button>
+            </a>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.write("")
+        
         st.caption(
-            "On success, an alert will show your public token. "
-            "Copy it and paste below."
+            "1. Click the button to open Plaid Link in a new window\n"
+            "2. Complete the bank connection flow\n"
+            "3. Copy the public token and paste it below"
         )
 
         st.markdown("### 🔄 Exchange Public Token")

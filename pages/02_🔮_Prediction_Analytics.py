@@ -306,8 +306,8 @@ with tab1:
             st.dataframe(live_kalshi, use_container_width=True)
         else:
             st.warning("⚠️ No active Kalshi markets found. Check your API credentials.")
-            if not KALSHI_API_KEY:
-                st.error("❌ KALSHI_ACCESS_KEY not configured in environment")
+            if not KALSHI_EMAIL:
+                st.error("❌ KALSHI_EMAIL not configured in environment")
         
         col1, col2 = st.columns(2)
         with col1:

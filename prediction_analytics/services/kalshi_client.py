@@ -1,31 +1,38 @@
 """
 Kalshi API Client
 =================
-Handles interaction with Kalshi prediction market API
+Handles interaction with Kalshi prediction market API using official SDK
 """
 
-import requests
+from kalshi import Session
 from typing import Dict, List, Optional
-from datetime import datetime
+import streamlit as st
 
 
 class KalshiClient:
-    """Client for Kalshi API interactions"""
+    """Client for Kalshi API interactions using official SDK"""
     
-    BASE_URL = "https://api.kalshi.com"
-    
-    def __init__(self, api_key: Optional[str] = None, private_key: Optional[str] = None):
-        """Initialize Kalshi client
+    def __init__(self, email: Optional[str] = None, password: Optional[str] = None):
+        """Initialize Kalshi client with official SDK
         
         Args:
-            api_key: Optional API key for authenticated requests
-            private_key: Optional private key for signing requests
+            email: Kalshi account email
+            password: Kalshi account password
         """
-        self.api_key = api_key
-        self.private_key = private_key
-        self.session = requests.Session()
-        if api_key:
-            self.session.headers.update({"Authorization": f"Bearer {api_key}"})
+        self.session = None
+        self.email = email
+        self.password = password
+        
+        if email and password:
+            try:
+                # Official Kalshi SDK uses email/password authentication
+                # Endpoint: https://api.elections.kalshi.com
+                self.session = Session(email=email, password=password, 
+                                     endpoint='https://api.elections.kalshi.com/v1')
+                print(f"✅ Kalshi SDK authenticated successfully")
+            except Exception as e:
+                print(f"❌ Kalshi authentication failed: {e}")
+                self.session = None
     
     def get_active_markets(self) -> List[Dict]:
         """Fetch active prediction markets
@@ -33,12 +40,16 @@ class KalshiClient:
         Returns:
             List of active market contracts
         """
+        if not self.session:
+            print("❌ Kalshi session not authenticated")
+            return []
+        
         try:
-            response = self.session.get(f"{self.BASE_URL}/markets")
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print(f"Error fetching markets: {e}")
+            markets = self.session.get_markets()
+            print(f"✅ Fetched {len(markets)} active markets")
+            return markets
+        except Exception as e:
+            print(f"❌ Error fetching markets: {e}")
             return []
     
     def get_market_details(self, market_id: str) -> Optional[Dict]:
@@ -50,12 +61,14 @@ class KalshiClient:
         Returns:
             Market details or None if not found
         """
+        if not self.session:
+            return None
+        
         try:
-            response = self.session.get(f"{self.BASE_URL}/markets/{market_id}")
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print(f"Error fetching market {market_id}: {e}")
+            market = self.session.get_market(market_id)
+            return market
+        except Exception as e:
+            print(f"❌ Error fetching market {market_id}: {e}")
             return None
     
     def get_contract_details(self, contract_id: str) -> Optional[Dict]:
@@ -67,54 +80,59 @@ class KalshiClient:
         Returns:
             Contract details or None if not found
         """
+        if not self.session:
+            return None
+        
         try:
-            response = self.session.get(f"{self.BASE_URL}/contracts/{contract_id}")
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print(f"Error fetching contract {contract_id}: {e}")
+            contract = self.session.get_contract(contract_id)
+            return contract
+        except Exception as e:
+            print(f"❌ Error fetching contract {contract_id}: {e}")
             return None
     
     def get_user_portfolio(self) -> List[Dict]:
-        """Get user's portfolio positions (requires authenticated API key)
+        """Get user's portfolio positions
         
         Returns:
             List of user's active positions
         """
-        if not self.api_key:
-            print("API key required for portfolio access")
+        if not self.session:
+            print("❌ Kalshi session not authenticated")
             return []
         
         try:
-            # Kalshi API endpoint for portfolio/positions
-            response = self.session.get(f"{self.BASE_URL}/portfolio/positions")
-            print(f"Kalshi API Status: {response.status_code}")
-            print(f"Kalshi API Response: {response.text[:500]}")
-            response.raise_for_status()
-            data = response.json()
-            print(f"Parsed data: {data}")
-            return data.get('positions', data.get('portfolio', []))
-        except requests.RequestException as e:
-            print(f"Error fetching portfolio: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                print(f"Response status: {e.response.status_code}")
-                print(f"Response text: {e.response.text}")
+            # Official SDK method to get portfolio
+            portfolio = self.session.get_portfolio()
+            print(f"✅ Portfolio retrieved: {portfolio}")
+            
+            # Portfolio structure varies, handle different response formats
+            if isinstance(portfolio, dict):
+                positions = portfolio.get('positions', portfolio.get('portfolio', []))
+            elif isinstance(portfolio, list):
+                positions = portfolio
+            else:
+                positions = []
+            
+            print(f"✅ Found {len(positions)} positions")
+            return positions
+        except Exception as e:
+            print(f"❌ Error fetching portfolio: {e}")
             return []
     
     def get_user_balance(self) -> Optional[Dict]:
-        """Get user's account balance (requires authenticated API key)
+        """Get user's account balance
         
         Returns:
             Balance information or None if error
         """
-        if not self.api_key:
-            print("API key required for balance access")
+        if not self.session:
+            print("❌ Kalshi session not authenticated")
             return None
         
         try:
-            response = self.session.get(f"{self.BASE_URL}/portfolio/balance")
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print(f"Error fetching balance: {e}")
+            balance = self.session.get_balance()
+            print(f"✅ Balance retrieved: {balance}")
+            return balance
+        except Exception as e:
+            print(f"❌ Error fetching balance: {e}")
             return None

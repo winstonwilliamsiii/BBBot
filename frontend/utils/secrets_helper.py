@@ -69,10 +69,10 @@ def get_mysql_config(database: str = None) -> dict:
     is_railway = any(x in host for x in ('railway', 'nozomi'))
 
     # ---
-    # 🚦 AUTO-MAPPING: On Railway, mansa_bot/railway → bbbot1 for trading signals
-    # This ensures the app always uses the correct DB for ML trading signals
-    if is_railway and database in ('mansa_bot', 'railway'):
-        database = 'bbbot1'
+    # 🚦 AUTO-MAPPING DISABLED: Use 'mansa_bot' directly (bbbot1 doesn't exist)
+    # Trading signals will be stored in the mansa_bot database
+    # if is_railway and database in ('mansa_bot', 'railway'):
+    #     database = 'bbbot1'
     # ---
 
     return {

@@ -77,40 +77,33 @@ except ImportError as e:
     st.warning(f"⚠️ Prediction analytics module not fully available: {e}")
     PREDICTION_MODULE_AVAILABLE = False
 
-# Kalshi API credentials from Streamlit secrets or environment
+# Kalshi credentials from Streamlit secrets or environment
 try:
-    KALSHI_API_KEY = st.secrets.get("KALSHI_ACCESS_KEY", "") or os.getenv("KALSHI_ACCESS_KEY", "")
-    KALSHI_PRIVATE_KEY = st.secrets.get("KALSHI_PRIVATE_KEY", "") or os.getenv("KALSHI_PRIVATE_KEY", "")
+    KALSHI_EMAIL = st.secrets.get("KALSHI_EMAIL", "") or os.getenv("KALSHI_EMAIL", "")
+    KALSHI_PASSWORD = st.secrets.get("KALSHI_PASSWORD", "") or os.getenv("KALSHI_PASSWORD", "")
 except Exception:
     # Fallback to environment variables only
-    KALSHI_API_KEY = os.getenv("KALSHI_ACCESS_KEY", "")
-    KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
+    KALSHI_EMAIL = os.getenv("KALSHI_EMAIL", "")
+    KALSHI_PASSWORD = os.getenv("KALSHI_PASSWORD", "")
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():
-    """Fetch user's Kalshi portfolio/positions"""
-    if not KALSHI_API_KEY:
-        st.info("ℹ️ Kalshi API credentials not configured")
+    """Fetch user's Kalshi portfolio/positions using official SDK"""
+    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+        st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_EMAIL and KALSHI_PASSWORD in .env or Streamlit secrets.")
         return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
     
     try:
-        client = KalshiClient(api_key=KALSHI_API_KEY)
+        # Use official Kalshi SDK with email/password authentication
+        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
         positions = client.get_user_portfolio()
         
-        # Debug: Show what we got from API
         st.info(f"📊 API Response: Found {len(positions) if positions else 0} positions")
-        
-        # DEBUG: Show actual API response structure
-        if positions:
-            st.code(f"Raw API Response (first position): {positions[0]}")
         
         if positions:
             portfolio_list = []
             for pos in positions:
-                # Debug: Show all available keys
-                st.write(f"Position keys: {list(pos.keys())}")
-                
-                # Extract position data from Kalshi API response
+                # Extract position data from Kalshi SDK response
                 contract_name = pos.get('market_title', pos.get('ticker', pos.get('market_id', 'Unknown')))
                 quantity = pos.get('position', pos.get('quantity', 0))
                 entry_price = pos.get('purchase_price', pos.get('cost_basis', 0))
@@ -136,26 +129,24 @@ def fetch_kalshi_portfolio():
             st.info("💡 No open positions found in your Kalshi account")
     except Exception as e:
         st.error(f"❌ Error fetching Kalshi portfolio: {e}")
-        st.error(f"Debug info: API Key present: {bool(KALSHI_API_KEY)}, Private Key present: {bool(KALSHI_PRIVATE_KEY)}")
     
     return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_active_markets():
-    """Fetch active Kalshi markets"""
+    """Fetch active Kalshi markets using official SDK"""
     if not PREDICTION_MODULE_AVAILABLE:
         st.warning("⚠️ Prediction analytics module not available")
         return pd.DataFrame()
     
-    if not KALSHI_API_KEY:
-        st.info("ℹ️ Kalshi API credentials not configured")
+    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+        st.info("ℹ️ Kalshi credentials not configured")
         return pd.DataFrame()
     
     try:
-        client = KalshiClient(api_key=KALSHI_API_KEY)
+        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
         markets = client.get_active_markets()
         
-        # Debug: Show what we got
         st.info(f"📊 API Response: Found {len(markets) if markets else 0} active markets")
         
         if markets:

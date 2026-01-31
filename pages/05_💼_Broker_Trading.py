@@ -12,6 +12,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info, show_permission_denied
 
+# Page config MUST be first Streamlit command
+st.set_page_config(
+    page_title="Multi-Broker Trading | BBBot",
+    page_icon="💼",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Load environment variables - use explicit path for local development
 env_path = Path(__file__).parent.parent / '.env'
 if env_path.exists():

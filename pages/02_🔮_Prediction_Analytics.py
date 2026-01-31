@@ -90,11 +90,15 @@ except Exception:
 def fetch_kalshi_portfolio():
     """Fetch user's Kalshi portfolio/positions"""
     if not KALSHI_API_KEY:
+        st.info("ℹ️ Kalshi API credentials not configured")
         return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
     
     try:
-        client = KalshiClient(api_key=KALSHI_API_KEY)
+        client = KalshiClient(api_key=KALSHI_API_KEY, private_key=KALSHI_PRIVATE_KEY)
         positions = client.get_user_portfolio()
+        
+        # Debug: Show what we got from API
+        st.info(f"📊 API Response: Found {len(positions) if positions else 0} positions")
         
         if positions:
             portfolio_list = []
@@ -121,8 +125,11 @@ def fetch_kalshi_portfolio():
                 })
             
             return pd.DataFrame(portfolio_list)
+        else:
+            st.info("💡 No open positions found in your Kalshi account")
     except Exception as e:
-        st.warning(f"Could not fetch Kalshi portfolio: {e}")
+        st.error(f"❌ Error fetching Kalshi portfolio: {e}")
+        st.error(f"Debug info: API Key present: {bool(KALSHI_API_KEY)}, Private Key present: {bool(KALSHI_PRIVATE_KEY)}")
     
     return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
 
@@ -130,11 +137,19 @@ def fetch_kalshi_portfolio():
 def fetch_kalshi_active_markets():
     """Fetch active Kalshi markets"""
     if not PREDICTION_MODULE_AVAILABLE:
+        st.warning("⚠️ Prediction analytics module not available")
+        return pd.DataFrame()
+    
+    if not KALSHI_API_KEY:
+        st.info("ℹ️ Kalshi API credentials not configured")
         return pd.DataFrame()
     
     try:
-        client = KalshiClient(api_key=KALSHI_API_KEY)
+        client = KalshiClient(api_key=KALSHI_API_KEY, private_key=KALSHI_PRIVATE_KEY)
         markets = client.get_active_markets()
+        
+        # Debug: Show what we got
+        st.info(f"📊 API Response: Found {len(markets) if markets else 0} active markets")
         
         if markets:
             contracts_list = []
@@ -148,6 +163,12 @@ def fetch_kalshi_active_markets():
                     'Status': market.get('status', 'N/A')
                 })
             return pd.DataFrame(contracts_list)
+        else:
+            st.info("💡 No active markets available")
+    except Exception as e:
+        st.error(f"❌ Error fetching Kalshi markets: {e}")
+    
+    return pd.DataFrame()
     except Exception as e:
         st.warning(f"Could not fetch live Kalshi data: {e}")
     

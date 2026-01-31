@@ -473,3 +473,262 @@ with st.expander("🔍 Debug Info"):
     st.write(f"Link Token: {st.session_state.plaid_link_token[:20] if st.session_state.plaid_link_token else 'None'}...")
     st.write(f"Access Token: {st.session_state.plaid_access_token[:20] if st.session_state.plaid_access_token else 'None'}...")
     st.write(f"Item ID: {st.session_state.plaid_item_id or 'None'}")
+
+
+def generate_plaid_html(link_token: str) -> str:
+    """Generate HTML that fetches link_token dynamically with proper async/await"""
+    
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plaid Link</title>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        
+        .plaid-container {{
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }}
+        
+        h1 {{
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+            font-size: 1.875rem;
+        }}
+        
+        .subtitle {{
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+            font-size: 1rem;
+        }}
+        
+        .status {{
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }}
+        
+        .status.loading {{
+            background: #dbeafe;
+            color: #1e40af;
+        }}
+        
+        .status.success {{
+            background: #dcfce7;
+            color: #15803d;
+        }}
+        
+        .status.error {{
+            background: #fee2e2;
+            color: #991b1b;
+        }}
+        
+        button {{
+            width: 100%;
+            padding: 12px 24px;
+            background: #0a84ff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+            transition: background 0.2s;
+        }}
+        
+        button:hover:not(:disabled) {{
+            background: #0066dd;
+        }}
+        
+        button:disabled {{
+            background: #d1d5db;
+            cursor: not-allowed;
+        }}
+        
+        .spinner {{
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: currentColor;
+            animation: spin 0.8s linear infinite;
+        }}
+        
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        
+        code {{
+            background: #f3f4f6;
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            word-break: break-all;
+            display: block;
+            margin: 1rem 0;
+        }}
+    </style>
+</head>
+<body>
+    <div class="plaid-container">
+        <h1>🏦 Plaid Link</h1>
+        <p class="subtitle">Connect your bank account</p>
+        
+        <div id="status" class="status loading">
+            <span class="spinner"></span>
+            <span id="status-text">Initializing Plaid SDK...</span>
+        </div>
+        
+        <button id="open-link" disabled style="margin-top: 1rem;">
+            Open Bank Connection
+        </button>
+        
+        <div id="result" style="display: none; margin-top: 2rem;">
+            <h3 style="color: #15803d; margin-bottom: 1rem;">✅ Success!</h3>
+            <p><strong>Your Public Token:</strong></p>
+            <code id="token-display"></code>
+            <p style="color: #6b7280; font-size: 0.875rem; line-height: 1.5;">
+                This token has been sent to the parent window. You can close this window.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        console.log('🔍 Plaid window opened - NOT in iframe');
+        
+        // Initialize Plaid with proper async/await
+        (async function initPlaid() {{
+            try {{
+                // Method 1: Use embedded token from Python
+                const linkToken = '{link_token}';
+                
+                if (!linkToken || linkToken === 'None' || linkToken.length === 0) {{
+                    throw new Error('Link token missing from Python');
+                }}
+                
+                console.log('✅ Link token available (method 1 - embedded):', linkToken.substring(0, 20) + '...');
+                
+                // Now initialize Plaid with the resolved token
+                initializeHandler(linkToken);
+                
+            }} catch (embeddedError) {{
+                console.warn('Embedded token unavailable, trying fetch:', embeddedError.message);
+                
+                // Method 2: Fallback to fetch from API
+                try {{
+                    const response = await fetch('/api/plaid/link_token');
+                    
+                    if (!response.ok) {{
+                        throw new Error(`API error: ${{response.status}}`);
+                    }}
+                    
+                    const {{ link_token }} = await response.json();
+                    
+                    if (!link_token) {{
+                        throw new Error('No link_token in API response');
+                    }}
+                    
+                    console.log('✅ Link token fetched from API:', link_token.substring(0, 20) + '...');
+                    initializeHandler(link_token);
+                    
+                }} catch (fetchError) {{
+                    console.error('❌ Both methods failed:', fetchError);
+                    updateStatus('error', 'Failed to load Plaid: ' + fetchError.message);
+                }}
+            }}
+        }})();
+        
+        function updateStatus(className, message) {{
+            const status = document.getElementById('status');
+            status.className = 'status ' + className;
+            document.getElementById('status-text').textContent = message;
+        }}
+        
+        function initializeHandler(linkToken) {{
+            console.log('Creating Plaid handler with token:', linkToken.substring(0, 20) + '...');
+            
+            try {{
+                const handler = Plaid.create({{
+                    token: linkToken,
+                    
+                    onLoad: function() {{
+                        console.log('✅ Plaid Link SDK fully loaded (onLoad callback)');
+                        updateStatus('success', '✅ Ready! Click button below.');
+                        document.getElementById('open-link').disabled = false;
+                    }},
+                    
+                    onSuccess: function(public_token, metadata) {{
+                        console.log('✅ Success:', public_token.substring(0, 20) + '...', metadata);
+                        
+                        // Update UI
+                        updateStatus('success', '✅ Connected!');
+                        document.getElementById('result').style.display = 'block';
+                        document.getElementById('token-display').textContent = public_token;
+                        
+                        // Send to parent window
+                        if (window.opener) {{
+                            window.opener.postMessage({{
+                                type: 'plaid_success',
+                                public_token: public_token,
+                                metadata: metadata
+                            }}, '*');
+                            console.log('Sent public_token to parent window');
+                        }}
+                    }},
+                    
+                    onExit: function(err, metadata) {{
+                        console.log('User exited Plaid:', err, metadata);
+                        if (err) {{
+                            updateStatus('error', '❌ Error or cancelled');
+                        }}
+                    }},
+                    
+                    onEvent: function(eventName, metadata) {{
+                        console.log('Event:', eventName, metadata);
+                    }}
+                }});
+                
+                console.log('✅ Handler created successfully');
+                
+                // Button click
+                document.getElementById('open-link').addEventListener('click', function() {{
+                    console.log('Opening Plaid Link...');
+                    handler.open();
+                }});
+                
+            }} catch (error) {{
+                console.error('❌ Failed to create handler:', error);
+                updateStatus('error', 'Error: ' + error.message);
+            }}
+        }}
+    </script>
+</body>
+</html>"""
+    
+    return html

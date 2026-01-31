@@ -14,13 +14,15 @@ class KalshiClient:
     
     BASE_URL = "https://api.kalshi.com"
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, private_key: Optional[str] = None):
         """Initialize Kalshi client
         
         Args:
             api_key: Optional API key for authenticated requests
+            private_key: Optional private key for signing requests
         """
         self.api_key = api_key
+        self.private_key = private_key
         self.session = requests.Session()
         if api_key:
             self.session.headers.update({"Authorization": f"Bearer {api_key}"})

@@ -94,7 +94,7 @@ def fetch_kalshi_portfolio():
         return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
     
     try:
-        client = KalshiClient(api_key=KALSHI_API_KEY, private_key=KALSHI_PRIVATE_KEY)
+        client = KalshiClient(api_key=KALSHI_API_KEY)
         positions = client.get_user_portfolio()
         
         # Debug: Show what we got from API
@@ -145,7 +145,7 @@ def fetch_kalshi_active_markets():
         return pd.DataFrame()
     
     try:
-        client = KalshiClient(api_key=KALSHI_API_KEY, private_key=KALSHI_PRIVATE_KEY)
+        client = KalshiClient(api_key=KALSHI_API_KEY)
         markets = client.get_active_markets()
         
         # Debug: Show what we got

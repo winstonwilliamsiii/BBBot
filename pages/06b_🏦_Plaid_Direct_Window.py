@@ -344,6 +344,11 @@ with col1:
                 
                 # Generate HTML with embedded token
                 html_content = generate_plaid_html(token_data['link_token'])
+                # Encode as base64 to avoid escaping issues
+                try:
+                    encoded_html = base64.b64encode(html_content.encode('utf-8')).decode('ascii')
+                except Exception:
+                    encoded_html = ""
                 
                 # Store in session for serving
                 st.session_state.plaid_html = html_content
@@ -353,37 +358,21 @@ with col1:
                 <script>
                 // Small delay to ensure page ready
                 setTimeout(function() {{
-                    // Create a blob from the HTML
-                    const htmlStr = `{html_content.replace("`", r"\`")}`;
-                    const blob = new Blob([htmlStr], {{type: 'text/html'}});
-                    const url = URL.createObjectURL(blob);
-                    
-                    // Open in new window
-                    const newWindow = window.open(url, 'PlaidLink', 'width=600,height=700,resizable=yes,scrollbars=yes');
-                    
+                    // Open as a data URL to avoid blob/escaping issues
+                    const dataUrl = 'data:text/html;base64,{encoded_html}';
+                    const newWindow = window.open(dataUrl, 'PlaidLink', 'width=600,height=700,resizable=yes,scrollbars=yes');
                     if (!newWindow) {{
                         alert('⚠️ Popup blocked! Please allow popups for this site.');
                     }} else {{
                         console.log('✅ Plaid window opened');
-                        
                         // Listen for messages from the Plaid window
                         window.addEventListener('message', function(event) {{
                             if (event.data && event.data.type === 'plaid_success') {{
                                 console.log('Received public token:', event.data.public_token);
-                                
-                                // Send to Streamlit via custom component
-                                if (window.streamlitAddComponentComplete) {{
-                                    const msg = {{
-                                        'public_token': event.data.public_token,
-                                        'metadata': event.data.metadata
-                                    }};
-                                    // This triggers Streamlit to rerun
-                                    console.log('Public token ready for exchange');
-                                }}
                             }}
                         }});
                     }}
-                }}, 100);
+                }}, 150);
                 </script>
                 """, unsafe_allow_html=True)
             else:

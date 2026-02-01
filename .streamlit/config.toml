@@ -8,16 +8,16 @@ font = "sans serif"
 [client]
 showErrorDetails = false
 toolbarMode = "minimal"
-maxUploadSize = 200
+# Note: maxUploadSize moved to [server] per Streamlit config
 
 [server]
 headless = true
 enableXsrfProtection = true
-enableCORS = false
+enableCORS = true
 port = 8501
+maxUploadSize = 200
 
 [logger]
 level = "info"
 
-[mapbox]
-token = ""
+# Mapbox token config deprecated; use MAPBOX_API_KEY env var or pydeck api_keys

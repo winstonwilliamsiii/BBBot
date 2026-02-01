@@ -106,7 +106,9 @@ def connect_mt5():
     try:
         from frontend.utils.mt5_connector import MT5Connector
         
-        connector = MT5Connector(os.getenv("MT5_API_URL", "http://localhost:8000"))
+        # Use MT5_API_URL or MT5_REST_API_URL (fallback to 8002, not 8000 which is Airbyte)
+        api_url = os.getenv("MT5_API_URL") or os.getenv("MT5_REST_API_URL", "http://localhost:8002")
+        connector = MT5Connector(api_url)
         
         if connector.connect(
             user=os.getenv("MT5_USER", ""),
@@ -118,9 +120,12 @@ def connect_mt5():
             st.success("✅ MT5 Connected!")
             st.rerun()
         else:
-            st.error("❌ MT5 connection failed")
+            st.error("❌ MT5 connection failed - Check if MT5 REST server is running")
+            st.info("💡 Run: START_MT5_SERVER.bat to start the MT5 API server")
     except Exception as e:
-        st.error(f"MT5 error: {e}")
+        st.error(f"❌ MT5 API server is not responding")
+        st.info(f"Error details: {e}")
+        st.warning("🔧 **Quick Fix:**\n1. Make sure MT5 desktop is logged in\n2. Run `START_MT5_SERVER.bat` to start the API bridge\n3. Try connecting again")
 
 
 def connect_alpaca():

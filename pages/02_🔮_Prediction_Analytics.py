@@ -79,23 +79,23 @@ except ImportError as e:
 
 # Kalshi credentials from Streamlit secrets or environment
 try:
-    KALSHI_EMAIL = st.secrets.get("KALSHI_EMAIL", "") or os.getenv("KALSHI_EMAIL", "")
-    KALSHI_PASSWORD = st.secrets.get("KALSHI_PASSWORD", "") or os.getenv("KALSHI_PASSWORD", "")
+    KALSHI_API_KEY = st.secrets.get("KALSHI_ACCESS_KEY", "") or os.getenv("KALSHI_ACCESS_KEY", "")
+    KALSHI_PRIVATE_KEY = st.secrets.get("KALSHI_PRIVATE_KEY", "") or os.getenv("KALSHI_PRIVATE_KEY", "")
 except Exception:
     # Fallback to environment variables only
-    KALSHI_EMAIL = os.getenv("KALSHI_EMAIL", "")
-    KALSHI_PASSWORD = os.getenv("KALSHI_PASSWORD", "")
+    KALSHI_API_KEY = os.getenv("KALSHI_ACCESS_KEY", "")
+    KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():
     """Fetch user's Kalshi portfolio/positions using official SDK"""
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
-        st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_EMAIL and KALSHI_PASSWORD in .env or Streamlit secrets.")
+    if not KALSHI_API_KEY or not KALSHI_PRIVATE_KEY:
+        st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_ACCESS_KEY and KALSHI_PRIVATE_KEY in .env or Streamlit secrets.")
         return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
     
     try:
-        # Use official Kalshi SDK with email/password authentication
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        # Use official Kalshi SDK with API key authentication
+        client = KalshiClient(api_key=KALSHI_API_KEY, private_key=KALSHI_PRIVATE_KEY)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])

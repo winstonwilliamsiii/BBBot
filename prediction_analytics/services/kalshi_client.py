@@ -1,45 +1,56 @@
 """
 Kalshi API Client
 =================
-Handles interaction with Kalshi prediction market API using official SDK
+Handles interaction with Kalshi prediction market API using official SDK v3+
 """
 
-from kalshi import Session
+from kalshi_python_sync import KalshiClient as KalshiSDK, KalshiAuth, Configuration
 from typing import Dict, List, Optional
 import streamlit as st
 
 
 class KalshiClient:
-    """Client for Kalshi API interactions using official SDK"""
+    """Client for Kalshi API interactions using official SDK v3+"""
     
-    def __init__(self, email: Optional[str] = None, password: Optional[str] = None):
-        """Initialize Kalshi client with official SDK
+    def __init__(self, api_key: Optional[str] = None, private_key: Optional[str] = None):
+        """Initialize Kalshi client with API key authentication
         
         Args:
-            email: Kalshi account email
-            password: Kalshi account password
+            api_key: Kalshi API key ID (ACCESS_KEY)
+            private_key: RSA private key in PEM format (PRIVATE_KEY) - can be with or without headers
         """
-        self.session = None
-        self.email = email
-        self.password = password
+        self.client = None
+        self.api_key = api_key
         self.authenticated = False
         self.last_error: Optional[str] = None
         
-        if email and password:
+        if api_key and private_key:
             try:
-                # Official Kalshi SDK uses email/password authentication
-                # Endpoint: https://api.elections.kalshi.com
-                self.session = Session(email=email, password=password,
-                                     endpoint='https://api.elections.kalshi.com/v1')
+                # Format private key as proper PEM if it's not already
+                if not private_key.startswith('-----BEGIN'):
+                    # Add PEM headers and format with newlines (64 chars per line)
+                    key_body = private_key.strip()
+                    formatted_key = "-----BEGIN RSA PRIVATE KEY-----\n"
+                    # Split into 64-character lines
+                    for i in range(0, len(key_body), 64):
+                        formatted_key += key_body[i:i+64] + "\n"
+                    formatted_key += "-----END RSA PRIVATE KEY-----"
+                    private_key = formatted_key
+                
+                # Official Kalshi SDK v3+ uses API key authentication
+                # API endpoint: https://api.elections.kalshi.com
+                auth = KalshiAuth(key_id=api_key, private_key_pem=private_key)
+                config = Configuration(host='https://api.elections.kalshi.com')
+                self.client = KalshiSDK(auth=auth, configuration=config)
                 self.authenticated = True
                 self.last_error = None
-                print("✅ Kalshi SDK authenticated successfully")
+                print("✅ Kalshi SDK v3+ authenticated successfully")
             except Exception as e:
                 self.last_error = str(e)
                 print(f"❌ Kalshi authentication failed: {e}")
-                self.session = None
+                self.client = None
         else:
-            self.last_error = "Missing Kalshi email or password"
+            self.last_error = "Missing Kalshi API key or private key"
 
     @staticmethod
     def _normalize_list(data: object, keys: List[str]) -> List[Dict]:
@@ -58,55 +69,43 @@ class KalshiClient:
         Returns:
             List of active market contracts
         """
-        if not self.session:
-            print("❌ Kalshi session not authenticated")
+        if not self.client:
+            print("❌ Kalshi client not authenticated")
             return []
         
         try:
-            markets = self.session.get_markets()
+            response = self.client.market_api.get_markets()
+            markets = response.markets if hasattr(response, 'markets') else []
             print(f"✅ Fetched {len(markets)} active markets")
-            return markets
+            return [market.to_dict() if hasattr(market, 'to_dict') else market for market in markets]
         except Exception as e:
             print(f"❌ Error fetching markets: {e}")
             return []
     
-    def get_market_details(self, market_id: str) -> Optional[Dict]:
+    def get_market_details(self, market_ticker: str) -> Optional[Dict]:
         """Get detailed information for a specific market
         
         Args:
-            market_id: The market contract ID
+            market_ticker: The market ticker symbol
             
         Returns:
             Market details or None if not found
         """
-        if not self.session:
+        if not self.client:
             return None
         
         try:
-            market = self.session.get_market(market_id)
-            return market
+            response = self.client.market_api.get_market(ticker=market_ticker)
+            market = response.market if hasattr(response, 'market') else response
+            return market.to_dict() if hasattr(market, 'to_dict') else market
         except Exception as e:
-            print(f"❌ Error fetching market {market_id}: {e}")
+            print(f"❌ Error fetching market {market_ticker}: {e}")
             return None
     
-    def get_contract_details(self, contract_id: str) -> Optional[Dict]:
-        """Get details for a specific contract
-        
-        Args:
-            contract_id: The contract ID
-            
-        Returns:
-            Contract details or None if not found
-        """
-        if not self.session:
-            return None
-        
-        try:
-            contract = self.session.get_contract(contract_id)
-            return contract
-        except Exception as e:
-            print(f"❌ Error fetching contract {contract_id}: {e}")
-            return None
+    # Removed methods that don't exist in SDK v3:
+    # - get_contract_details (use get_market_details instead)
+    # - get_account_history (not available in current SDK)
+    # - get_user_profile (not available in current SDK)
     
     def get_user_portfolio(self) -> List[Dict]:
         """Get user's portfolio positions (active holdings)
@@ -114,16 +113,15 @@ class KalshiClient:
         Returns:
             List of user's active positions
         """
-        if not self.session:
-            print("❌ Kalshi session not authenticated")
+        if not self.client:
+            print("❌ Kalshi client not authenticated")
             return []
         
         try:
-            # Official SDK method: user_get_market_positions
-            positions = self.session.user_get_market_positions()
-            normalized = self._normalize_list(positions, ["market_positions", "positions", "portfolio"])
-            print(f"✅ Found {len(normalized)} active positions")
-            return normalized
+            response = self.client.portfolio_api.get_positions()
+            positions = response.market_positions if hasattr(response, 'market_positions') else []
+            print(f"✅ Found {len(positions)} active positions")
+            return [pos.to_dict() if hasattr(pos, 'to_dict') else pos for pos in positions]
         except Exception as e:
             print(f"❌ Error fetching portfolio: {e}")
             return []
@@ -131,22 +129,18 @@ class KalshiClient:
     def get_user_balance(self) -> Optional[Dict]:
         """Get user's account balance and cash available
         
-        Endpoint: GET /balance
-        
         Returns:
             Balance information with cash/holdings breakdown or None if error
         """
-        if not self.session:
-            print("❌ Kalshi session not authenticated")
+        if not self.client:
+            print("❌ Kalshi client not authenticated")
             return None
         
         try:
-            # Official SDK method: user_get_balance
-            balance = self.session.user_get_balance()
-            if isinstance(balance, dict) and "balance" in balance:
-                balance = balance.get("balance")
-            print(f"✅ Balance retrieved: {balance}")
-            return balance if isinstance(balance, dict) else None
+            response = self.client.portfolio_api.get_balance()
+            balance = response.balance if hasattr(response, 'balance') else response
+            print(f"✅ Balance retrieved")
+            return balance.to_dict() if hasattr(balance, 'to_dict') else balance
         except Exception as e:
             print(f"❌ Error fetching balance: {e}")
             return None
@@ -154,60 +148,23 @@ class KalshiClient:
     def get_user_trades(self, limit: int = 100) -> List[Dict]:
         """Get user's trade history (fills)
         
-        Endpoint: GET /fills
-        
         Returns:
             List of executed trades/fills
         """
-        if not self.session:
-            print("❌ Kalshi session not authenticated")
+        if not self.client:
+            print("❌ Kalshi client not authenticated")
             return []
         
         try:
-            # Official SDK method: user_trades_get
-            trades = self.session.user_trades_get(limit=limit)
-            normalized = self._normalize_list(trades, ["trades", "fills", "orders"])
-            print(f"✅ Retrieved {len(normalized)} trades from history")
-            return normalized
+            response = self.client.portfolio_api.get_fills(limit=limit)
+            fills = response.fills if hasattr(response, 'fills') else []
+            print(f"✅ Retrieved {len(fills)} trades from history")
+            return [fill.to_dict() if hasattr(fill, 'to_dict') else fill for fill in fills]
         except Exception as e:
             print(f"❌ Error fetching trade history: {e}")
             return []
     
-    def get_account_history(self) -> List[Dict]:
-        """Get user's full account transaction history
-        
-        Endpoint: GET /account-history
-        
-        Returns:
-            List of all account transactions/activities
-        """
-        if not self.session:
-            print("❌ Kalshi session not authenticated")
-            return []
-        
-        try:
-            # Official SDK method: user_get_account_history
-            history = self.session.user_get_account_history()
-            print(f"✅ Retrieved account history")
-            return history if isinstance(history, list) else history.get('history', [])
-        except Exception as e:
-            print(f"❌ Error fetching account history: {e}")
-            return []
-
-    def get_user_profile(self) -> Optional[Dict]:
-        """Get user's account profile information
-
-        Returns:
-            Profile information or None if error
-        """
-        if not self.session:
-            print("❌ Kalshi session not authenticated")
-            return None
-
-        try:
-            profile = self.session.user_get_profile()
-            print("✅ Profile retrieved")
-            return profile if isinstance(profile, dict) else None
-        except Exception as e:
-            print(f"❌ Error fetching profile: {e}")
-            return None
+# Removed methods that don't exist in SDK v3:
+    # - get_contract_details (use get_market_details instead)
+    # - get_account_history (not available in current SDK)
+    # - get_user_profile (not available in current SDK)

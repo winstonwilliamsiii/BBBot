@@ -1,4 +1,9 @@
-"""Kalshi API wrapper using official SDK with email/password authentication."""
+#!/usr/bin/env python
+"""
+Script to fix KalshiClient - replace old implementation with new one using official SDK
+"""
+
+new_content = '''"""Kalshi API wrapper using official SDK with email/password authentication."""
 import os
 import logging
 from typing import Dict, List, Any, Optional
@@ -138,3 +143,11 @@ class KalshiClient:
         except Exception as e:
             logger.error(f"❌ Failed to get markets: {e}")
             return []
+'''
+
+# Write the file
+file_path = r"prediction_analytics\services\kalshi_client.py"
+with open(file_path, 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(f"✅ {file_path} updated successfully")

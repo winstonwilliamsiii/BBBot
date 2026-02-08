@@ -1,4 +1,9 @@
+#!/usr/bin/env python
 """
+Script to update Polymarket API client with flexible endpoint handling
+"""
+
+new_content = '''"""
 Polymarket API Client
 ====================
 Synchronous client for Polymarket API interaction (MansaCap)
@@ -227,3 +232,11 @@ class PolymarketAPIClient:
                     return data[key]
         
         return []
+'''
+
+# Write the file
+file_path = r"prediction_analytics\services\polymarket_api_client.py"
+with open(file_path, 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(f"✅ {file_path} updated with flexible endpoint handling")

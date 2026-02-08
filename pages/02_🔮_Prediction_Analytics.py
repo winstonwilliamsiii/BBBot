@@ -50,7 +50,7 @@ if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
 st.markdown(f"""
 <div style='text-align: center; margin-bottom: 2rem;'>
     <h1 style='color: {COLOR_SCHEME['text']}; margin-bottom: 0.5rem;'>
-        <span style='color: {COLOR_SCHEME['accent_teal']}'>🔮</span> 
+        <span style='color: {COLOR_SCHEME['accent_teal']}'>🔮</span>
         Prediction Analytics
     </h1>
     <p style='color: rgba(255,255,255,0.9); font-size: 1rem;'>
@@ -69,46 +69,68 @@ if 'last_refresh' not in st.session_state:
 
 # Try to load prediction analytics module
 try:
-    from prediction_analytics.services.polymarket_client import PolymarketClient
+    from prediction_analytics.services.polymarket_api_client import PolymarketAPIClient
     from prediction_analytics.services.kalshi_client import KalshiClient
-    from prediction_analytics.services.probability_engine import ProbabilityEngine
     PREDICTION_MODULE_AVAILABLE = True
 except ImportError as e:
     st.warning(f"⚠️ Prediction analytics module not fully available: {e}")
     PREDICTION_MODULE_AVAILABLE = False
 
-# Kalshi credentials from Streamlit secrets or environment
+# ============================================
+# KALSHI CREDENTIALS & SETUP
+# ============================================
 try:
-    KALSHI_API_KEY = st.secrets.get("KALSHI_ACCESS_KEY", "") or os.getenv("KALSHI_ACCESS_KEY", "")
-    KALSHI_PRIVATE_KEY = st.secrets.get("KALSHI_PRIVATE_KEY", "") or os.getenv("KALSHI_PRIVATE_KEY", "")
+    KALSHI_API_KEY_ID = st.secrets.get("KALSHI_API_KEY_ID", "") or os.getenv(
+        "KALSHI_API_KEY_ID", ""
+    ) or os.getenv("KALSHI_ACCESS_KEY", "")
+    KALSHI_PRIVATE_KEY = st.secrets.get("KALSHI_PRIVATE_KEY", "") or os.getenv(
+        "KALSHI_PRIVATE_KEY", ""
+    )
 except Exception:
-    # Fallback to environment variables only
-    KALSHI_API_KEY = os.getenv("KALSHI_ACCESS_KEY", "")
+    KALSHI_API_KEY_ID = os.getenv("KALSHI_API_KEY_ID", "") or os.getenv(
+        "KALSHI_ACCESS_KEY", ""
+    )
     KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
+
+# ============================================
+# POLYMARKET CREDENTIALS & SETUP
+# ============================================
+try:
+    POLYMARKET_API_KEY = st.secrets.get("POLYMARKET_API_KEY", "") or os.getenv(
+        "POLYMARKET_API_KEY", ""
+    )
+    POLYMARKET_SECRET_KEY = st.secrets.get("POLYMARKET_SECRET_KEY", "") or os.getenv(
+        "POLYMARKET_SECRET_KEY", ""
+    )
+except Exception:
+    POLYMARKET_API_KEY = os.getenv("POLYMARKET_API_KEY", "")
+    POLYMARKET_SECRET_KEY = os.getenv("POLYMARKET_SECRET_KEY", "")
+
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():
-    """Fetch user's Kalshi portfolio/positions using official SDK"""
-    if not KALSHI_API_KEY or not KALSHI_PRIVATE_KEY:
-        st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_ACCESS_KEY and KALSHI_PRIVATE_KEY in .env or Streamlit secrets.")
-        return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
-    
+    """Fetch user's Kalshi portfolio/positions using RSA API key authentication"""
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY:
+        st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY.")
+        return pd.DataFrame(
+            columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %']
+        )
+
     try:
-        # Use official Kalshi SDK with API key authentication
-        client = KalshiClient(api_key=KALSHI_API_KEY, private_key=KALSHI_PRIVATE_KEY)
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key=KALSHI_PRIVATE_KEY)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
-            return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+            return pd.DataFrame(
+                columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %']
+            )
 
         positions = client.get_user_portfolio()
-
-        st.info(f"📊 API Response: Found {len(positions) if positions else 0} positions")
         
         if positions:
             portfolio_list = []
             for pos in positions:
-                # Extract position data from Kalshi SDK response
-                contract_name = pos.get('market_title', pos.get('ticker', pos.get('market_id', 'Unknown')))
+                # Extract position data from Kalshi API response
+                contract_name = pos.get('market_title', pos.get('ticker', pos.get('contract_ticker', 'Unknown')))
                 quantity = pos.get('position', pos.get('quantity', 0))
                 entry_price = pos.get('purchase_price', pos.get('cost_basis', 0))
                 current_price = pos.get('current_price', pos.get('market_price', entry_price))
@@ -120,30 +142,35 @@ def fetch_kalshi_portfolio():
                 pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
                 
                 portfolio_list.append({
+                    'Exchange': 'Kalshi',
                     'Contract': contract_name,
                     'Quantity': quantity,
-                    'Entry Price': f"${entry_price:.2f}",
-                    'Current Price': f"${current_price:.2f}",
+                    'Entry Price': f"${entry_price:.4f}",
+                    'Current Price': f"${current_price:.4f}",
                     'P&L': f"${pnl:.2f}",
                     'P&L %': f"{pnl_pct:+.2f}%"
                 })
             
             return pd.DataFrame(portfolio_list)
         else:
-            st.info("💡 No open positions found in your Kalshi account")
+            st.info("💡 No open Kalshi positions found")
+        except Exception as e:
+        st.error(f"❌ Error fetching Kalshi portfolio: {e}")
+    
+            st.info("💡 No open Kalshi positions found")
     except Exception as e:
         st.error(f"❌ Error fetching Kalshi portfolio: {e}")
     
-    return pd.DataFrame(columns=['Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+    return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_balance():
     """Fetch user's Kalshi account balance"""
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY:
         return None
     
     try:
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key=KALSHI_PRIVATE_KEY)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return None
@@ -157,11 +184,11 @@ def fetch_kalshi_balance():
 @st.cache_data(ttl=300)
 def fetch_kalshi_trades():
     """Fetch user's Kalshi trade history (fills)"""
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY:
         return []
     
     try:
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key=KALSHI_PRIVATE_KEY)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return []
@@ -174,17 +201,17 @@ def fetch_kalshi_trades():
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_active_markets():
-    """Fetch active Kalshi markets using official SDK"""
+    """Fetch active Kalshi markets using RSA API key authentication"""
     if not PREDICTION_MODULE_AVAILABLE:
         st.warning("⚠️ Prediction analytics module not available")
         return pd.DataFrame()
     
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY:
         st.info("ℹ️ Kalshi credentials not configured")
         return pd.DataFrame()
     
     try:
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key=KALSHI_PRIVATE_KEY)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return pd.DataFrame()
@@ -210,6 +237,114 @@ def fetch_kalshi_active_markets():
         st.error(f"❌ Error fetching Kalshi markets: {e}")
     
     return pd.DataFrame()
+
+# ====================== POLYMARKET FUNCTIONS ======================
+
+@st.cache_data(ttl=300)
+def fetch_polymarket_portfolio():
+    """Fetch user's Polymarket portfolio (positions)"""
+    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
+        st.info("ℹ️ Polymarket credentials not configured")
+        return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+    
+    try:
+        client = PolymarketAPIClient(api_key=POLYMARKET_API_KEY, secret_key=POLYMARKET_SECRET_KEY)
+        positions = client.get_user_portfolio()
+        
+        if positions and len(positions) > 0:
+            portfolio_list = []
+            for pos in positions:
+                contract_name = pos.get('market', pos.get('asset', 'Unknown'))
+                quantity = pos.get('balance', pos.get('quantity', 0))
+                entry_price = pos.get('avg_price', pos.get('cost_basis', 0))
+                current_price = pos.get('current_price', pos.get('market_price', entry_price))
+                
+                # Calculate P&L
+                cost_basis = quantity * entry_price if quantity > 0 else 0
+                current_value = quantity * current_price if quantity > 0 else 0
+                pnl = current_value - cost_basis
+                pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
+                
+                portfolio_list.append({
+                    'Exchange': 'Polymarket',
+                    'Contract': contract_name,
+                    'Quantity': quantity,
+                    'Entry Price': f"${entry_price:.4f}",
+                    'Current Price': f"${current_price:.4f}",
+                    'P&L': f"${pnl:.2f}",
+                    'P&L %': f"{pnl_pct:+.2f}%"
+                })
+            return pd.DataFrame(portfolio_list)
+        else:
+            st.info("💡 No open Polymarket positions found (demo data)")
+            # Return empty DataFrame with correct columns
+            return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+    except Exception as e:
+        st.error(f"❌ Error fetching Polymarket portfolio: {e}")
+        return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+
+@st.cache_data(ttl=300)
+def fetch_polymarket_balance():
+    """Fetch user's Polymarket account balance"""
+    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
+        return None
+    
+    try:
+        client = PolymarketAPIClient(api_key=POLYMARKET_API_KEY, secret_key=POLYMARKET_SECRET_KEY)
+        balance = client.get_user_balance()
+        print(f"✅ Polymarket balance fetched: {balance}")
+        return balance
+    except Exception as e:
+        print(f"❌ Error fetching Polymarket balance: {e}")
+        # Return dummy data since no funds transferred
+        return {"cash": 0.0, "portfolio_value": 0.0, "total_balance": 0.0}
+
+@st.cache_data(ttl=300)
+def fetch_polymarket_trades():
+    """Fetch user's Polymarket trade history"""
+    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
+        return []
+    
+    try:
+        client = PolymarketAPIClient(api_key=POLYMARKET_API_KEY, secret_key=POLYMARKET_SECRET_KEY)
+        trades = client.get_user_trades(limit=50)
+        print(f"✅ Polymarket trades fetched: {len(trades) if trades else 0} trades")
+        return trades if trades else []
+    except Exception as e:
+        print(f"❌ Error fetching Polymarket trades: {e}")
+        return []
+
+@st.cache_data(ttl=300)
+def fetch_polymarket_active_markets():
+    """Fetch active Polymarket markets"""
+    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
+        st.info("ℹ️ Polymarket credentials not configured")
+        return pd.DataFrame()
+    
+    try:
+        client = PolymarketAPIClient(api_key=POLYMARKET_API_KEY, secret_key=POLYMARKET_SECRET_KEY)
+        markets = client.get_active_markets(limit=10)
+        
+        if markets and len(markets) > 0:
+            contracts_list = []
+            for market in markets:
+                contracts_list.append({
+                    'Contract': market.get('question', market.get('title', 'N/A')),
+                    'Platform': 'Polymarket',
+                    'Current Price': f"${market.get('price', 'N/A')}",
+                    'Volume (24h)': market.get('volume_24h', 'N/A'),
+                    'Expires': market.get('end_date', 'N/A'),
+                    'Status': market.get('status', 'N/A')
+                })
+            return pd.DataFrame(contracts_list)
+        else:
+            st.info("💡 No active Polymarket markets available")
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ Error fetching Polymarket markets: {e}")
+        return pd.DataFrame()
+
+# ================================================================
 
 # Main content - Metrics with improved visibility
 st.markdown(f"""
@@ -261,8 +396,21 @@ st.markdown(f"""
 
 # Fetch portfolio data
 kalshi_portfolio = fetch_kalshi_portfolio()
-portfolio_value = len(kalshi_portfolio)
-portfolio_pnl = kalshi_portfolio['P&L %'].sum() if len(kalshi_portfolio) > 0 else 0
+polymarket_portfolio = fetch_polymarket_portfolio()
+
+# Combine portfolios
+if not polymarket_portfolio.empty:
+    combined_portfolio = pd.concat(
+        [kalshi_portfolio, polymarket_portfolio], ignore_index=True
+    )
+else:
+    combined_portfolio = kalshi_portfolio
+
+portfolio_value = len(combined_portfolio)
+if len(combined_portfolio) > 0 and 'P&L %' in combined_portfolio.columns:
+    portfolio_pnl = combined_portfolio['P&L %'].str.rstrip('%').astype(float).sum()
+else:
+    portfolio_pnl = 0
 
 col1, col2, col3 = st.columns(3)
 
@@ -276,9 +424,9 @@ with col1:
     """, unsafe_allow_html=True)
 
 with col2:
-    st.markdown(f"""
+    st.markdown("""
     <div class='metric-card'>
-        <div class='metric-label'>My Kalshi Positions</div>
+        <div class='metric-label'>My Positions</div>
         <div class='metric-value'>{portfolio_value}</div>
         <div class='metric-change'>Portfolio Active</div>
     </div>
@@ -306,23 +454,42 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 with tab1:
-    st.markdown("<h3 style='color: #F3F4F6;'>Polymarket & Kalshi Contracts</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #F3F4F6;'>Active Prediction Markets</h3>", unsafe_allow_html=True)
+    
+    # Platform filter
+    platform_filter = st.selectbox("Filter by Platform", ["All", "Kalshi", "Polymarket"], key="platform_tab1")
     
     if PREDICTION_MODULE_AVAILABLE:
-        st.info("🔄 Loading your Kalshi markets...")
+        # Fetch markets based on filter
+        kalshi_markets = pd.DataFrame()
+        polymarket_markets = pd.DataFrame()
         
-        # Fetch live Kalshi data only
-        live_kalshi = fetch_kalshi_active_markets()
+        if platform_filter in ["All", "Kalshi"]:
+            kalshi_markets = fetch_kalshi_active_markets()
         
-        if not live_kalshi.empty:
-            st.success(f"✅ Showing {len(live_kalshi)} active Kalshi markets")
-            st.dataframe(live_kalshi, use_container_width=True)
+        if platform_filter in ["All", "Polymarket"]:
+            polymarket_markets = fetch_polymarket_active_markets()
+        
+        # Combine markets
+        if not kalshi_markets.empty or not polymarket_markets.empty:
+            combined_markets = pd.concat([kalshi_markets, polymarket_markets], ignore_index=True)
+            
+            if not combined_markets.empty:
+                st.success(f"✅ Showing {len(combined_markets)} active markets")
+                st.dataframe(combined_markets, use_container_width=True)
+            else:
+                st.info("💡 No markets found matching your filter")
         else:
-            st.warning("⚠️ No active Kalshi markets found. Check your API credentials.")
-            if not KALSHI_EMAIL:
-                st.error("❌ KALSHI_EMAIL not configured in environment")
+            st.warning("⚠️ No markets available. Check your API credentials.")
+            
+            if platform_filter in ["All", "Kalshi"] and not KALSHI_API_KEY_ID:
+                st.error("❌ KALSHI_API_KEY_ID not configured in environment")
+            
+            if platform_filter in ["All", "Polymarket"] and not POLYMARKET_API_KEY:
+                st.error("❌ POLYMARKET_API_KEY not configured in environment")
         
-        col1, col2 = st.columns(2)
+        # Refresh button
+        col1, col2 = st.columns([1, 3])
         with col1:
             if st.button("🔄 Refresh Markets"):
                 st.cache_data.clear()
@@ -330,46 +497,61 @@ with tab1:
                 st.rerun()
         
         with col2:
-            platform_filter = st.selectbox("Platform", ["All", "Polymarket", "Kalshi"], key="platform_tab1")
+            st.markdown("*Last updated: Real-time*")
     else:
         st.warning("⚠️ Prediction analytics module not available. Install dependencies:")
         st.code("pip install prediction-analytics", language="bash")
 
 with tab2:
-    st.markdown("<h3 style='color: #F3F4F6;'>Your Kalshi Portfolio</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #F3F4F6;'>Your Prediction Market Portfolio</h3>", unsafe_allow_html=True)
     
-    # Fetch balance and trades
-    balance_info = fetch_kalshi_balance()
-    trades_history = fetch_kalshi_trades()
+    # Exchange selector
+    exchange_filter = st.selectbox("Filter by Exchange", ["All", "Kalshi", "Polymarket"], key="exchange_tab2")
     
-    # Display account balance at top
-    if balance_info:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            cash = balance_info.get('cash', 0)
-            st.metric("💰 Cash Balance", f"${cash:,.2f}")
-        
-        with col2:
-            holdings_value = balance_info.get('portfolio_value', 0)
-            st.metric("📈 Holdings Value", f"${holdings_value:,.2f}")
-        
-        with col3:
-            total = cash + holdings_value
-            st.metric("💵 Total Account Value", f"${total:,.2f}")
+    # Fetch balance data for both exchanges
+    kalshi_balance = fetch_kalshi_balance()
+    polymarket_balance = fetch_polymarket_balance()
+    
+    # Display account balances
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        kalshi_cash = kalshi_balance.get('cash', 0) if kalshi_balance else 0
+        polymarket_cash = polymarket_balance.get('cash', 0) if polymarket_balance else 0
+        total_cash = kalshi_cash + polymarket_cash
+        st.metric("💰 Total Cash", f"${total_cash:,.2f}")
+    
+    with col2:
+        kalshi_holdings = kalshi_balance.get('portfolio_value', 0) if kalshi_balance else 0
+        polymarket_holdings = polymarket_balance.get('portfolio_value', 0) if polymarket_balance else 0
+        total_holdings = kalshi_holdings + polymarket_holdings
+        st.metric("📈 Total Holdings Value", f"${total_holdings:,.2f}")
+    
+    with col3:
+        total_account = total_cash + total_holdings
+        st.metric("💵 Total Account Value", f"${total_account:,.2f}")
+    
+    # Filter and display portfolio
+    if exchange_filter == "All":
+        display_portfolio = combined_portfolio
+    elif exchange_filter == "Kalshi":
+        display_portfolio = kalshi_portfolio
+    else:  # Polymarket
+        display_portfolio = polymarket_portfolio
     
     # Display portfolio positions
-    if not kalshi_portfolio.empty:
+    if not display_portfolio.empty:
         st.markdown("#### Active Positions")
         st.markdown(f"""
         <div style='background: {COLOR_SCHEME['card_background']}; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;'>
             <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;'>
                 <div>
                     <div style='color: #9CA3AF; font-size: 0.875rem;'>Total Positions</div>
-                    <div style='color: {COLOR_SCHEME['accent_gold']}; font-size: 1.5rem; font-weight: bold;'>{len(kalshi_portfolio)}</div>
+                    <div style='color: {COLOR_SCHEME['accent_gold']}; font-size: 1.5rem; font-weight: bold;'>{len(display_portfolio)}</div>
                 </div>
                 <div>
                     <div style='color: #9CA3AF; font-size: 0.875rem;'>Portfolio Value</div>
-                    <div style='color: {COLOR_SCHEME['accent_teal']}; font-size: 1.5rem; font-weight: bold;'>${kalshi_portfolio['Entry Price'].sum() if 'Entry Price' in kalshi_portfolio.columns else 0:,.0f}</div>
+                    <div style='color: {COLOR_SCHEME['accent_teal']}; font-size: 1.5rem; font-weight: bold;'>${total_holdings:,.0f}</div>
                 </div>
                 <div>
                     <div style='color: #9CA3AF; font-size: 0.875rem;'>Total P&L</div>
@@ -379,31 +561,66 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
         
-        st.dataframe(kalshi_portfolio, use_container_width=True)
+        st.dataframe(display_portfolio, use_container_width=True)
     else:
-        st.info("💼 No active positions in your Kalshi portfolio")
+        exchange_label = f"{exchange_filter} " if exchange_filter != "All" else ""
+        st.info(f"💼 No active positions in your {exchange_label}portfolio")
     
     # Display trade history
-    if trades_history:
-        st.markdown("#### Recent Trades")
-        trades_df = pd.DataFrame(trades_history)
-        st.dataframe(trades_df.head(10), use_container_width=True)
-    else:
-        st.info("📊 No recent trades found")
-
-    with st.expander("Kalshi Debug"):
-        if not KALSHI_EMAIL or not KALSHI_PASSWORD:
-            st.info("Kalshi credentials not configured.")
+    st.markdown("#### Recent Trades")
+    
+    if exchange_filter in ["All", "Kalshi"]:
+        kalshi_trades = fetch_kalshi_trades()
+        if kalshi_trades:
+            st.subheader("Kalshi Trades")
+            trades_df = pd.DataFrame(kalshi_trades)
+            st.dataframe(trades_df.head(10), use_container_width=True)
         else:
-            debug_client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
-            st.write({"authenticated": debug_client.authenticated, "error": debug_client.last_error})
-            if debug_client.authenticated:
-                st.write({
-                    "profile": debug_client.get_user_profile(),
-                    "balance": debug_client.get_user_balance(),
-                    "positions_count": len(debug_client.get_user_portfolio()),
-                    "trades_count": len(debug_client.get_user_trades(limit=5))
-                })
+            st.info("📊 No Kalshi trades found")
+    
+    if exchange_filter in ["All", "Polymarket"]:
+        polymarket_trades = fetch_polymarket_trades()
+        if polymarket_trades:
+            st.subheader("Polymarket Trades")
+            trades_df = pd.DataFrame(polymarket_trades)
+            st.dataframe(trades_df.head(10), use_container_width=True)
+        else:
+            st.info("📊 No Polymarket trades found")
+    
+    # Debug panel
+    with st.expander("🔧 Connection Debug"):
+        debug_cols = st.columns(2)
+        
+        with debug_cols[0]:
+            st.subheader("Kalshi Status")
+            if KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY:
+                try:
+                    debug_client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key=KALSHI_PRIVATE_KEY)
+                    if debug_client.authenticated:
+                        st.success("✅ Authenticated")
+                        profile = debug_client.get_user_profile()
+                        st.write(f"**User**: {profile.get('user_id', 'N/A') if profile else 'N/A'}")
+                        positions = debug_client.get_user_portfolio()
+                        st.write(f"**Positions**: {len(positions)}")
+                    else:
+                        st.error(f"❌ Auth Failed: {debug_client.last_error}")
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+            else:
+                st.warning("ℹ️ Credentials not configured")
+        
+        with debug_cols[1]:
+            st.subheader("Polymarket Status")
+            if POLYMARKET_API_KEY and POLYMARKET_SECRET_KEY:
+                try:
+                    pm_client = PolymarketAPIClient(api_key=POLYMARKET_API_KEY, secret_key=POLYMARKET_SECRET_KEY)
+                    st.success("✅ Client configured")
+                    st.write(f"**API Key**: {POLYMARKET_API_KEY[:10]}...")
+                    st.write("**Note**: No funds transferred (demo mode)")
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+            else:
+                st.warning("ℹ️ Credentials not configured")
     
     # Refresh buttons
     col1, col2 = st.columns(2)
@@ -415,19 +632,27 @@ with tab2:
     
     with col2:
         if st.button("📥 Export Account Data"):
-            if balance_info:
+            try:
                 export_data = {
-                    'Balance': [balance_info],
-                    'Positions': [kalshi_portfolio.to_dict()],
-                    'Trades': trades_history
+                    'Kalshi': {
+                        'Balance': kalshi_balance,
+                        'Positions': kalshi_portfolio.to_dict() if not kalshi_portfolio.empty else {},
+                        'Trades': kalshi_trades if 'kalshi_trades' in locals() else []
+                    },
+                    'Polymarket': {
+                        'Balance': polymarket_balance,
+                        'Positions': polymarket_portfolio.to_dict() if not polymarket_portfolio.empty else {},
+                        'Trades': polymarket_trades if 'polymarket_trades' in locals() else []
+                    }
                 }
                 st.download_button(
                     label="Download Account Data",
                     data=str(export_data),
-                    file_name="kalshi_account_export.txt",
+                    file_name="prediction_markets_export.txt",
                     mime="text/plain"
                 )
-                st.error(f"Error uploading portfolio: {e}")
+            except Exception as e:
+                st.error(f"Error preparing export: {e}")
 
 with tab3:
     st.markdown("<h3 style='color: #F3F4F6;'>Probability Predictions</h3>", unsafe_allow_html=True)

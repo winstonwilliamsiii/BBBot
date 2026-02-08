@@ -1,0 +1,17 @@
+{
+  "name": "prediction-dashboard",
+  "runtime": "python-3.11",
+  "entrypoint": "main.py",
+  "execute": ["main"],
+  "timeout": 15,
+  "path": "/api/prediction-dashboard",
+  "events": [],
+  "schedule": "",
+  "scopes": ["databases.read"],
+  "vars": {
+    "BENTLEY_DB_HOST": "",
+    "BENTLEY_DB_PORT": "3306",
+    "BENTLEY_DB_USER": "",
+    "BENTLEY_DB_PASSWORD": ""
+  }
+}

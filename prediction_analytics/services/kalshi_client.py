@@ -1,170 +1,227 @@
-"""
-Kalshi API Client
-=================
-Handles interaction with Kalshi prediction market API using official SDK v3+
-"""
+"""Kalshi API wrapper using RSA API key authentication."""
+import os
+import logging
+import base64
+import time
+from typing import Dict, List, Any, Optional
+from pathlib import Path
 
-from kalshi_python_sync import KalshiClient as KalshiSDK, KalshiAuth, Configuration
-from typing import Dict, List, Optional
-import streamlit as st
+import requests
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.backends import default_backend
+
+logger = logging.getLogger(__name__)
 
 
 class KalshiClient:
-    """Client for Kalshi API interactions using official SDK v3+"""
-    
-    def __init__(self, api_key: Optional[str] = None, private_key: Optional[str] = None):
-        """Initialize Kalshi client with API key authentication
-        
-        Args:
-            api_key: Kalshi API key ID (ACCESS_KEY)
-            private_key: RSA private key in PEM format (PRIVATE_KEY) - can be with or without headers
+    """
+    Wrapper around Kalshi API using RSA API key authentication.
+    Bypasses MFA/2FA by using API keys instead of email/password.
+    Endpoint: https://trading-api.kalshi.com
+    """
+
+    def __init__(
+        self,
+        api_key_id: str = "",
+        private_key: str = "",
+        private_key_path: str = "",
+    ):
         """
-        self.client = None
-        self.api_key = api_key
+        Initialize Kalshi client with RSA API key authentication.
+
+        Args:
+            api_key_id: Kalshi API Key ID (or KALSHI_API_KEY_ID env var)
+            private_key: RSA private key in PEM format
+            private_key_path: Path to RSA private key file (or KALSHI_PRIVATE_KEY_PATH env var)
+        """
+        self.api_key_id = api_key_id or os.getenv("KALSHI_API_KEY_ID", "") or os.getenv(
+            "KALSHI_ACCESS_KEY", ""
+        )
+        self.private_key = private_key or os.getenv("KALSHI_PRIVATE_KEY", "")
+        self.private_key_path = private_key_path or os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
+        self.base_url = os.getenv("KALSHI_BASE_URL", "https://trading-api.kalshi.com")
         self.authenticated = False
         self.last_error: Optional[str] = None
-        
-        if api_key and private_key:
+        self._rsa_private_key = None
+
+        if self.api_key_id and (self.private_key or self.private_key_path):
             try:
-                # Format private key as proper PEM if it's not already
-                if not private_key.startswith('-----BEGIN'):
-                    # Add PEM headers and format with newlines (64 chars per line)
-                    key_body = private_key.strip()
-                    formatted_key = "-----BEGIN RSA PRIVATE KEY-----\n"
-                    # Split into 64-character lines
-                    for i in range(0, len(key_body), 64):
-                        formatted_key += key_body[i:i+64] + "\n"
-                    formatted_key += "-----END RSA PRIVATE KEY-----"
-                    private_key = formatted_key
-                
-                # Official Kalshi SDK v3+ uses API key authentication
-                # API endpoint: https://api.elections.kalshi.com
-                auth = KalshiAuth(key_id=api_key, private_key_pem=private_key)
-                config = Configuration(host='https://api.elections.kalshi.com')
-                self.client = KalshiSDK(auth=auth, configuration=config)
+                if self.private_key:
+                    self._rsa_private_key = self._load_private_key_from_pem(self.private_key)
+                else:
+                    self._rsa_private_key = self._load_private_key_from_file(self.private_key_path)
                 self.authenticated = True
-                self.last_error = None
-                print("✅ Kalshi SDK v3+ authenticated successfully")
+                logger.info(f"✅ Kalshi API key loaded: {self.api_key_id[:10]}...")
             except Exception as e:
+                self.authenticated = False
                 self.last_error = str(e)
-                print(f"❌ Kalshi authentication failed: {e}")
-                self.client = None
+                logger.error(f"❌ Kalshi API key loading failed: {e}")
         else:
-            self.last_error = "Missing Kalshi API key or private key"
+            self.last_error = "API Key ID and Private Key required"
+            logger.warning("⚠️ Kalshi credentials not provided")
+
+    def _load_private_key_from_file(self, private_key_path: str):
+        """Load RSA private key from file."""
+        key_path = Path(private_key_path)
+        if not key_path.exists():
+            raise FileNotFoundError(f"Private key file not found: {private_key_path}")
+
+        with open(key_path, "rb") as key_file:
+            return serialization.load_pem_private_key(
+                key_file.read(),
+                password=None,
+                backend=default_backend(),
+            )
+
+    def _load_private_key_from_pem(self, private_key: str):
+        """Load RSA private key from a PEM string."""
+        pem_value = private_key.replace("\\n", "\n").strip()
+        if not pem_value.startswith("-----BEGIN"):
+            key_body = "".join(pem_value.split())
+            formatted_key = ["-----BEGIN RSA PRIVATE KEY-----"]
+            for i in range(0, len(key_body), 64):
+                formatted_key.append(key_body[i : i + 64])
+            formatted_key.append("-----END RSA PRIVATE KEY-----")
+            pem_value = "\n".join(formatted_key)
+
+        return serialization.load_pem_private_key(
+            pem_value.encode("utf-8"),
+            password=None,
+            backend=default_backend(),
+        )
+
+    def _sign_request(self, method: str, path: str) -> Dict[str, str]:
+        """Generate signed headers for Kalshi API request."""
+        if not self._rsa_private_key:
+            raise ValueError("Private key not loaded")
+
+        timestamp_ms = int(time.time() * 1000)
+        timestamp_str = str(timestamp_ms)
+        path_without_query = path.split("?")[0]
+        msg_string = timestamp_str + method + path_without_query
+        message = msg_string.encode("utf-8")
+
+        signature = self._rsa_private_key.sign(
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        signature_b64 = base64.b64encode(signature).decode("utf-8")
+
+        return {
+            "KALSHI-ACCESS-KEY": self.api_key_id,
+            "KALSHI-ACCESS-SIGNATURE": signature_b64,
+            "KALSHI-ACCESS-TIMESTAMP": timestamp_str,
+            "Content-Type": "application/json",
+        }
+
+    def _make_request(self, method: str, path: str, **kwargs) -> Optional[Dict]:
+        """Make authenticated request to Kalshi API."""
+        if not self.authenticated:
+            logger.error("Not authenticated")
+            return None
+
+        try:
+            headers = self._sign_request(method, path)
+            url = self.base_url + path
+            response = requests.request(method, url, headers=headers, **kwargs)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Request failed: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                logger.error(f"Response: {e.response.text}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Unexpected error: {e}")
+            return None
 
     @staticmethod
-    def _normalize_list(data: object, keys: List[str]) -> List[Dict]:
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            for key in keys:
-                value = data.get(key)
-                if isinstance(value, list):
-                    return value
+    def _normalize_list(response: Any) -> List[Dict]:
+        """Normalize API response to list format."""
+        if response is None:
+            return []
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            for key in ["data", "items", "results", "markets", "positions", "trades", "market_positions"]:
+                if key in response and isinstance(response[key], list):
+                    return response[key]
+            return [response]
         return []
-    
-    def get_active_markets(self) -> List[Dict]:
-        """Fetch active prediction markets
-        
-        Returns:
-            List of active market contracts
-        """
-        if not self.client:
-            print("❌ Kalshi client not authenticated")
-            return []
-        
-        try:
-            response = self.client.market_api.get_markets()
-            markets = response.markets if hasattr(response, 'markets') else []
-            print(f"✅ Fetched {len(markets)} active markets")
-            return [market.to_dict() if hasattr(market, 'to_dict') else market for market in markets]
-        except Exception as e:
-            print(f"❌ Error fetching markets: {e}")
-            return []
-    
-    def get_market_details(self, market_ticker: str) -> Optional[Dict]:
-        """Get detailed information for a specific market
-        
-        Args:
-            market_ticker: The market ticker symbol
-            
-        Returns:
-            Market details or None if not found
-        """
-        if not self.client:
-            return None
-        
-        try:
-            response = self.client.market_api.get_market(ticker=market_ticker)
-            market = response.market if hasattr(response, 'market') else response
-            return market.to_dict() if hasattr(market, 'to_dict') else market
-        except Exception as e:
-            print(f"❌ Error fetching market {market_ticker}: {e}")
-            return None
-    
-    # Removed methods that don't exist in SDK v3:
-    # - get_contract_details (use get_market_details instead)
-    # - get_account_history (not available in current SDK)
-    # - get_user_profile (not available in current SDK)
-    
+
     def get_user_portfolio(self) -> List[Dict]:
-        """Get user's portfolio positions (active holdings)
-        
-        Returns:
-            List of user's active positions
-        """
-        if not self.client:
-            print("❌ Kalshi client not authenticated")
+        """Get user's open market positions."""
+        if not self.authenticated:
+            logger.warning("Not authenticated")
             return []
-        
+
         try:
-            response = self.client.portfolio_api.get_positions()
-            positions = response.market_positions if hasattr(response, 'market_positions') else []
-            print(f"✅ Found {len(positions)} active positions")
-            return [pos.to_dict() if hasattr(pos, 'to_dict') else pos for pos in positions]
+            response = self._make_request("GET", "/trade-api/v2/portfolio/positions")
+            return self._normalize_list(response)
         except Exception as e:
-            print(f"❌ Error fetching portfolio: {e}")
+            logger.error(f"❌ Failed to get portfolio: {e}")
             return []
-    
+
     def get_user_balance(self) -> Optional[Dict]:
-        """Get user's account balance and cash available
-        
-        Returns:
-            Balance information with cash/holdings breakdown or None if error
-        """
-        if not self.client:
-            print("❌ Kalshi client not authenticated")
+        """Get user's account balance."""
+        if not self.authenticated:
             return None
-        
+
         try:
-            response = self.client.portfolio_api.get_balance()
-            balance = response.balance if hasattr(response, 'balance') else response
-            print(f"✅ Balance retrieved")
-            return balance.to_dict() if hasattr(balance, 'to_dict') else balance
+            return self._make_request("GET", "/trade-api/v2/portfolio/balance")
         except Exception as e:
-            print(f"❌ Error fetching balance: {e}")
+            logger.error(f"❌ Failed to get balance: {e}")
             return None
-    
+
     def get_user_trades(self, limit: int = 100) -> List[Dict]:
-        """Get user's trade history (fills)
-        
-        Returns:
-            List of executed trades/fills
-        """
-        if not self.client:
-            print("❌ Kalshi client not authenticated")
+        """Get user's trade history (fills)."""
+        if not self.authenticated:
             return []
-        
+
         try:
-            response = self.client.portfolio_api.get_fills(limit=limit)
-            fills = response.fills if hasattr(response, 'fills') else []
-            print(f"✅ Retrieved {len(fills)} trades from history")
-            return [fill.to_dict() if hasattr(fill, 'to_dict') else fill for fill in fills]
+            response = self._make_request("GET", f"/trade-api/v2/portfolio/fills?limit={limit}")
+            return self._normalize_list(response)
         except Exception as e:
-            print(f"❌ Error fetching trade history: {e}")
+            logger.error(f"❌ Failed to get trades: {e}")
             return []
-    
-# Removed methods that don't exist in SDK v3:
-    # - get_contract_details (use get_market_details instead)
-    # - get_account_history (not available in current SDK)
-    # - get_user_profile (not available in current SDK)
+
+    def get_user_profile(self) -> Optional[Dict]:
+        """Get user's profile information."""
+        if not self.authenticated:
+            return None
+
+        try:
+            return self._make_request("GET", "/trade-api/v2/users/me")
+        except Exception as e:
+            logger.error(f"❌ Failed to get profile: {e}")
+            return None
+
+    def get_account_history(self) -> List[Dict]:
+        """Get user's account history."""
+        if not self.authenticated:
+            return []
+
+        try:
+            response = self._make_request("GET", "/trade-api/v2/portfolio/history")
+            return self._normalize_list(response)
+        except Exception as e:
+            logger.error(f"❌ Failed to get account history: {e}")
+            return []
+
+    def get_active_markets(self, limit: int = 50) -> List[Dict]:
+        """Get active prediction markets."""
+        if not self.authenticated:
+            return []
+
+        try:
+            response = self._make_request("GET", f"/trade-api/v2/markets?limit={limit}&status=open")
+            return self._normalize_list(response)
+        except Exception as e:
+            logger.error(f"❌ Failed to get markets: {e}")
+            return []

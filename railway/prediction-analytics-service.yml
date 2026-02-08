@@ -1,0 +1,186 @@
+# Railway Configuration for Prediction Analytics Microservices
+# Service: bentley-prediction-analytics
+# Branch: feature/prediction-analytics
+
+services:
+  # ============================================================================
+  # Ingestion Service - Polymarket & Kalshi Data Feeds
+  # ============================================================================
+  ingestion-worker:
+    name: bentley-ingestion-worker
+    region: us-west
+    builder: NIXPACKS
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestion
+    schedule:
+      # Run every 10 minutes for real-time data
+      cron: "*/10 * * * *"
+    healthcheck:
+      path: /health
+      interval: 60
+      timeout: 10
+      retries: 3
+    env:
+      SERVICE_NAME: ingestion-worker
+      DB_HOST: ${{BENTLEY_DB_HOST}}
+      DB_PORT: 3306
+      DB_NAME: Bentley_Bot
+      DB_USER: ${{BENTLEY_DB_USER}}
+      DB_PASSWORD: ${{BENTLEY_DB_PASSWORD}}
+      POLYMARKET_API_URL: https://api.polymarket.com
+      KALSHI_API_URL: https://api.kalshi.com
+      KALSHI_API_KEY: ${{KALSHI_API_KEY}}
+      LOG_LEVEL: INFO
+    resources:
+      # Lightweight - just API polling and database writes
+      cpu: 0.5
+      memory: 512Mi
+    deploy:
+      replicas: 1
+      restart_policy: on-failure
+
+  # ============================================================================
+  # Probability Engine Service - Calculate Implied Probabilities
+  # ============================================================================
+  probability-engine:
+    name: bentley-probability-engine
+    region: us-west
+    builder: NIXPACKS
+    build:
+      context: .
+      dockerfile: Dockerfile.probability
+    schedule:
+      # Run every 15 minutes (after ingestion)
+      cron: "5,20,35,50 * * * *"
+    healthcheck:
+      path: /health
+      interval: 60
+      timeout: 15
+      retries: 3
+    env:
+      SERVICE_NAME: probability-engine
+      DB_HOST: ${{BENTLEY_DB_HOST}}
+      DB_PORT: 3306
+      DB_NAME: Bentley_Bot
+      DB_USER: ${{BENTLEY_DB_USER}}
+      DB_PASSWORD: ${{BENTLEY_DB_PASSWORD}}
+      CALCULATION_METHODS: lmsr,amm,orderbook
+      CONFIDENCE_THRESHOLD: 0.7
+      LOG_LEVEL: INFO
+    resources:
+      # Moderate compute for probability calculations
+      cpu: 1.0
+      memory: 1Gi
+    deploy:
+      replicas: 1
+      restart_policy: on-failure
+
+  # ============================================================================
+  # Sentiment Analysis Service - NLP Processing
+  # ============================================================================
+  sentiment-analyzer:
+    name: bentley-sentiment-analyzer
+    region: us-west
+    builder: NIXPACKS
+    build:
+      context: .
+      dockerfile: Dockerfile.sentiment
+    schedule:
+      # Run every 30 minutes (NLP is more resource-intensive)
+      cron: "15,45 * * * *"
+    healthcheck:
+      path: /health
+      interval: 60
+      timeout: 20
+      retries: 3
+    env:
+      SERVICE_NAME: sentiment-analyzer
+      DB_HOST: ${{BENTLEY_DB_HOST}}
+      DB_PORT: 3306
+      DB_NAME: Bentley_Bot
+      DB_USER: ${{BENTLEY_DB_USER}}
+      DB_PASSWORD: ${{BENTLEY_DB_PASSWORD}}
+      NLP_MODEL_PATH: /models/sentiment-v2.1
+      TWITTER_API_KEY: ${{TWITTER_API_KEY}}
+      DISCORD_BOT_TOKEN: ${{DISCORD_BOT_TOKEN}}
+      OPENAI_API_KEY: ${{OPENAI_API_KEY}}  # Optional: For GPT-based sentiment
+      LOG_LEVEL: INFO
+    resources:
+      # Higher resources for NLP model inference
+      cpu: 2.0
+      memory: 2Gi
+    deploy:
+      replicas: 1
+      restart_policy: on-failure
+
+  # ============================================================================
+  # Bot Consumer Service - Trade Decision Engine
+  # ============================================================================
+  bot-consumer:
+    name: bentley-bot-consumer
+    region: us-west
+    builder: NIXPACKS
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    schedule:
+      # Run continuously (long-running process)
+      cron: ""
+    healthcheck:
+      path: /health
+      interval: 30
+      timeout: 10
+      retries: 5
+    env:
+      SERVICE_NAME: bot-consumer
+      DB_HOST: ${{BENTLEY_DB_HOST}}
+      DB_PORT: 3306
+      DB_NAME: Bentley_Bot
+      DB_USER: ${{BENTLEY_DB_USER}}
+      DB_PASSWORD: ${{BENTLEY_DB_PASSWORD}}
+      BOT_ID: passive-income-bot-v1
+      CONFIDENCE_THRESHOLD: 0.75
+      MIN_SENTIMENT_SCORE: 0.3
+      MAX_POSITION_SIZE: 100.00
+      TRADE_ENABLED: "true"
+      PAPER_TRADING: "true"  # Set to false for live trading
+      ALPACA_API_KEY: ${{ALPACA_API_KEY}}
+      ALPACA_SECRET: ${{ALPACA_SECRET}}
+      LOG_LEVEL: INFO
+    resources:
+      # Lightweight - decision logic only
+      cpu: 0.5
+      memory: 512Mi
+    deploy:
+      replicas: 1
+      restart_policy: always
+
+# ============================================================================
+# Shared Database Connection
+# ============================================================================
+# Note: Railway automatically provisions shared DB access
+# All services connect to the same Bentley_Bot database (mansa_quant schema)
+
+# ============================================================================
+# Environment Variables (Railway Secrets)
+# ============================================================================
+# Required secrets in Railway dashboard:
+# - BENTLEY_DB_HOST
+# - BENTLEY_DB_USER
+# - BENTLEY_DB_PASSWORD
+# - KALSHI_API_KEY
+# - TWITTER_API_KEY
+# - DISCORD_BOT_TOKEN
+# - OPENAI_API_KEY (optional)
+# - ALPACA_API_KEY
+# - ALPACA_SECRET
+
+# ============================================================================
+# Deployment Strategy
+# ============================================================================
+# 1. Push to feature/prediction-analytics branch
+# 2. Railway auto-detects branch and creates preview environment
+# 3. Run migrations: railway run python -m alembic upgrade head
+# 4. Validate services in Railway dashboard
+# 5. Merge to main → auto-deploy to production (bentley-core)

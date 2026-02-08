@@ -59,6 +59,11 @@ cryptography>=41.0.0
 python-dateutil>=2.8.0
 
 # ============================================
+# PREDICTION MARKETS (Kalshi & Polymarket)
+# ============================================
+cryptography>=41.0.0  # RSA signing for Kalshi API authentication
+
+# ============================================
 # DATABASE CONNECTIVITY (Required for Budget Features)
 # ============================================
 mysql-connector-python>=8.0.0

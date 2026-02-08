@@ -40,7 +40,7 @@ class KalshiClient:
         )
         self.private_key = private_key or os.getenv("KALSHI_PRIVATE_KEY", "")
         self.private_key_path = private_key_path or os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
-        self.base_url = os.getenv("KALSHI_BASE_URL", "https://trading-api.kalshi.com")
+        self.base_url = os.getenv("KALSHI_BASE_URL", "https://api.elections.kalshi.com")
         self.authenticated = False
         self.last_error: Optional[str] = None
         self._rsa_private_key = None

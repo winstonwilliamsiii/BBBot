@@ -152,16 +152,16 @@ def fetch_kalshi_portfolio():
                 })
             
             return pd.DataFrame(portfolio_list)
-        else:
-            st.info("💡 No open Kalshi positions found")
-        except Exception as e:
-        st.error(f"❌ Error fetching Kalshi portfolio: {e}")
-    
-            st.info("💡 No open Kalshi positions found")
+
+        st.info("💡 No open Kalshi positions found")
+        return pd.DataFrame(
+            columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %']
+        )
     except Exception as e:
         st.error(f"❌ Error fetching Kalshi portfolio: {e}")
-    
-    return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
+        return pd.DataFrame(
+            columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %']
+        )
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_balance():

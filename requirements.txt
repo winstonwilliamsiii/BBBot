@@ -52,6 +52,11 @@ cryptography>=41.0.0
 python-dateutil>=2.8.0
 
 # ============================================
+# PREDICTION MARKETS (Kalshi & Polymarket)
+# ============================================
+kalshi>=0.2.0  # Official Kalshi SDK for prediction market trading
+
+# ============================================
 # DATABASE CONNECTIVITY (Required for Budget Features)
 # ============================================
 mysql-connector-python>=8.0.0

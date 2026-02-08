@@ -170,7 +170,16 @@ class KalshiClient:
         if isinstance(response, list):
             return response
         if isinstance(response, dict):
-            for key in ["data", "items", "results", "markets", "positions", "trades", "market_positions"]:
+            for key in [
+                "data",
+                "items",
+                "results",
+                "markets",
+                "positions",
+                "trades",
+                "market_positions",
+                "fills",
+            ]:
                 if key in response and isinstance(response[key], list):
                     return response[key]
             return [response]
@@ -207,7 +216,15 @@ class KalshiClient:
 
         try:
             response = self._make_request("GET", f"/trade-api/v2/portfolio/fills?limit={limit}")
-            return self._normalize_list(response)
+            normalized = self._normalize_list(response)
+            if normalized and isinstance(normalized, list):
+                flattened: List[Dict] = []
+                for item in normalized:
+                    if isinstance(item, dict) and isinstance(item.get("fills"), list):
+                        flattened.extend(item.get("fills", []))
+                if flattened:
+                    return flattened
+            return normalized
         except Exception as e:
             logger.error(f"❌ Failed to get trades: {e}")
             return []

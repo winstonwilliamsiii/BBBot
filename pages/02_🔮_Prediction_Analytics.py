@@ -112,10 +112,13 @@ def fetch_kalshi_portfolio():
             return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
         
         positions = client.get_user_portfolio()
+        print(f"🔍 DEBUG: Kalshi positions type: {type(positions)}, length: {len(positions) if positions else 0}")
+        print(f"🔍 DEBUG: Kalshi positions content: {positions}")
         
         if positions:
             portfolio_list = []
             for pos in positions:
+                print(f"🔍 DEBUG: Processing position: {pos}")
                 # Extract position data from Kalshi SDK response
                 contract_name = pos.get('market_title', pos.get('ticker', pos.get('contract_ticker', 'Unknown')))
                 quantity = pos.get('position', pos.get('quantity', 0))
@@ -388,9 +391,12 @@ if not polymarket_portfolio.empty:
     )
 else:
     combined_portfolio = kalshi_portfolio
+
 portfolio_value = len(combined_portfolio)
-pnl_pct_values = combined_portfolio['P&L %'].str.rstrip('%').astype(float)
-portfolio_pnl = pnl_pct_values.sum() if len(combined_portfolio) > 0 else 0
+if len(combined_portfolio) > 0 and 'P&L %' in combined_portfolio.columns:
+    portfolio_pnl = combined_portfolio['P&L %'].str.rstrip('%').astype(float).sum()
+else:
+    portfolio_pnl = 0
 
 col1, col2, col3 = st.columns(3)
 

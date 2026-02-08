@@ -70,13 +70,28 @@ class KalshiClient:
     def get_user_portfolio(self) -> List[Dict]:
         """Get user's open market positions."""
         if not self.authenticated or not self.session:
+            logger.warning("Not authenticated or no session")
             return []
         
         try:
-            positions = self.session.user_get_market_positions()
-            return self._normalize_list(positions)
+            # Get positions from the API
+            raw_response = self.session.user_get_market_positions()
+            logger.info(f"📊 Kalshi positions raw response type: {type(raw_response)}")
+            logger.info(f"📊 Kalshi positions raw response: {raw_response}")
+            
+            # If response is empty or None, also try getting fills to see recent activity
+            normalized = self._normalize_list(raw_response)
+            
+            if not normalized:
+                logger.info("No positions found, checking recent fills...")
+                fills = self.session.user_trades_get(limit=10)
+                logger.info(f"📊 Recent fills: {fills}")
+            
+            return normalized
         except Exception as e:
             logger.error(f"❌ Failed to get portfolio: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return []
     
     def get_user_balance(self) -> Optional[Dict]:

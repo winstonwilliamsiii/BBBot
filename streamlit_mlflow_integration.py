@@ -8,6 +8,13 @@ from typing import Dict, Any, Optional
 import time
 from datetime import datetime
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+
+MLFLOW_INTEGRATION_AVAILABLE = False
 
 try:
     from mlflow_config import (
@@ -15,10 +22,18 @@ try:
         log_data_ingestion, 
         mlflow_client
     )
-    MLFLOW_INTEGRATION_AVAILABLE = True
-except ImportError:
-    MLFLOW_INTEGRATION_AVAILABLE = False
-    print("⚠️ MLflow config not available - metrics will be logged to console only")
+    # Test that imports work
+    if mlflow_client and mlflow_client.available:
+        MLFLOW_INTEGRATION_AVAILABLE = True
+        print("✅ MLflow integration available")
+    else:
+        print("⚠️ MLflow client not available - metrics will be logged locally")
+except ImportError as e:
+    logger.warning(f"⚠️ MLflow config import failed: {e}")
+    print("⚠️ MLflow integration unavailable - metrics will be logged locally")
+except Exception as e:
+    logger.warning(f"⚠️ Error initializing MLflow: {e}")
+    print("⚠️ MLflow integration unavailable - metrics will be logged locally")
 
 
 class StreamlitMLflowTracker:

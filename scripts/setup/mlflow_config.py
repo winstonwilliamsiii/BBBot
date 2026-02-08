@@ -8,6 +8,10 @@ import mlflow
 from typing import Dict, Any, Optional
 import logging
 
+# Set short connection timeout to prevent hanging when MLflow server is unavailable
+os.environ['MLFLOW_GRPC_REQUEST_TIMEOUT'] = '5'  # 5 seconds
+os.environ['MLFLOW_HTTP_REQUEST_TIMEOUT'] = '5'  # 5 seconds
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,7 +23,7 @@ class BentleyMLflowClient:
                  tracking_uri: str = None,
                  experiment_name: str = "BentleyBudgetBot-Production"):
         """
-        Initialize MLflow client
+        Initialize MLflow client with graceful degradation on failure
         
         Args:
             tracking_uri: MLflow tracking server URI
@@ -30,20 +34,36 @@ class BentleyMLflowClient:
             'MLFLOW_TRACKING_URI', 
             'http://localhost:5000'
         )
+        self.client = None
+        self.available = False
+        self.experiment_name = experiment_name
         
         try:
             mlflow.set_tracking_uri(self.tracking_uri)
-            self.client = mlflow.tracking.MlflowClient()
-            self.experiment_name = experiment_name
+            logger.info(f"📍 Attempting MLflow initialization with URI: {self.tracking_uri}")
             
-            # Create experiment if it doesn't exist
-            self._ensure_experiment_exists()
+            # Try to initialize the client
+            try:
+                self.client = mlflow.tracking.MlflowClient()
+            except Exception as client_init_error:
+                logger.warning(f"⚠️ MLflow client initialization failed: {client_init_error}")
+                logger.info("💡 Continuing with graceful MLflow degradation mode")
+                self.available = False
+                return
             
-            logger.info(f"✅ MLflow client initialized with URI: {self.tracking_uri}")
+            # Try to create experiment if it doesn't exist
+            try:
+                self._ensure_experiment_exists()
+            except Exception as exp_error:
+                logger.warning(f"⚠️ Could not create experiment: {exp_error}")
+                # Continue anyway - we can still log metrics
+            
+            logger.info(f"✅ MLflow client initialized successfully")
             self.available = True
             
         except Exception as e:
-            logger.error(f"❌ Failed to initialize MLflow: {e}")
+            logger.warning(f"⚠️ Failed to initialize MLflow: {e}")
+            logger.info("💡 Metrics will be logged locally instead")
             self.available = False
     
     def _ensure_experiment_exists(self):
@@ -190,24 +210,41 @@ class BentleyMLflowClient:
             logger.error(f"❌ Error retrieving runs: {e}")
             return []
 
-# Global MLflow client instance
-mlflow_client = BentleyMLflowClient()
+# Global MLflow client instance - initialized with error handling
+try:
+    logger.info("Initializing MLflow client...")
+    mlflow_client = BentleyMLflowClient()
+except Exception as e:
+    logger.warning(f"⚠️ Failed to initialize global MLflow client: {e}")
+    mlflow_client = None
 
 # Convenience functions for easy import
 def log_portfolio_metrics(portfolio_data: Dict[str, Any], run_name: str = None):
     """Convenience function to log portfolio metrics"""
+    if mlflow_client is None:
+        logger.warning("MLflow client unavailable - skipping metric logging")
+        return None
     return mlflow_client.log_portfolio_metrics(portfolio_data, run_name or "portfolio_analysis")
 
 def log_trading_signals(signals_data: Dict[str, Any], run_name: str = None):
     """Convenience function to log trading signals"""
+    if mlflow_client is None:
+        logger.warning("MLflow client unavailable - skipping signal logging")
+        return None
     return mlflow_client.log_trading_signals(signals_data, run_name or "trading_signals")
 
 def log_data_ingestion(ingestion_stats: Dict[str, Any], run_name: str = None):
     """Convenience function to log data ingestion stats"""
+    if mlflow_client is None:
+        logger.warning("MLflow client unavailable - skipping ingestion logging")
+        return None
     return mlflow_client.log_data_ingestion(ingestion_stats, run_name or "data_ingestion")
 
 def start_run(run_name: str = None, experiment_name: str = None, tags: Dict[str, str] = None):
     """Convenience function to start MLflow run"""
+    if mlflow_client is None:
+        logger.warning("MLflow client unavailable - skipping run creation")
+        return None
     return mlflow_client.start_run(run_name, experiment_name, tags)
 
 # Example usage functions for testing

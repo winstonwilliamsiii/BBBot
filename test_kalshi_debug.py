@@ -18,19 +18,23 @@ def test_kalshi_connection():
     print("=" * 60)
     
     # Get credentials
-    email = os.getenv('KALSHI_EMAIL')
-    password = os.getenv('KALSHI_PASSWORD')
+    api_key_id = os.getenv('KALSHI_API_KEY_ID')
+    private_key_path = os.getenv('KALSHI_PRIVATE_KEY_PATH')
     
-    print(f"\n📧 Email: {email}")
-    print(f"🔑 Password: {'*' * len(password) if password else 'NOT SET'}")
+    print(f"\n🔑 API Key ID: {api_key_id[:20] + '...' if api_key_id else 'NOT SET'}")
+    print(f"📄 Private Key Path: {private_key_path}")
     
-    if not email or not password:
-        print("\n❌ ERROR: Kalshi credentials not found in .env.development")
+    if not api_key_id or not private_key_path:
+        print("\n❌ ERROR: Kalshi API credentials not found in .env.development")
+        print("\n📝 Required credentials:")
+        print("   KALSHI_API_KEY_ID=your-key-id-here")
+        print("   KALSHI_PRIVATE_KEY_PATH=./kalshi-private-key.key")
+        print("\n🔗 Generate keys at: https://kalshi.com/account/profile")
         return
     
     # Initialize client
     print("\n🔄 Initializing Kalshi client...")
-    client = KalshiClient(email=email, password=password)
+    client = KalshiClient(api_key_id=api_key_id, private_key_path=private_key_path)
     
     print(f"✅ Authenticated: {client.authenticated}")
     if not client.authenticated:

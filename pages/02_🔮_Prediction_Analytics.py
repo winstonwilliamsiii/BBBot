@@ -50,7 +50,7 @@ if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
 st.markdown(f"""
 <div style='text-align: center; margin-bottom: 2rem;'>
     <h1 style='color: {COLOR_SCHEME['text']}; margin-bottom: 0.5rem;'>
-        <span style='color: {COLOR_SCHEME['accent_teal']}'>🔮</span> 
+        <span style='color: {COLOR_SCHEME['accent_teal']}'>🔮</span>
         Prediction Analytics
     </h1>
     <p style='color: rgba(255,255,255,0.9); font-size: 1rem;'>
@@ -71,7 +71,6 @@ if 'last_refresh' not in st.session_state:
 try:
     from prediction_analytics.services.polymarket_api_client import PolymarketAPIClient
     from prediction_analytics.services.kalshi_client import KalshiClient
-    from prediction_analytics.services.probability_engine import ProbabilityEngine
     PREDICTION_MODULE_AVAILABLE = True
 except ImportError as e:
     st.warning(f"⚠️ Prediction analytics module not fully available: {e}")
@@ -81,11 +80,11 @@ except ImportError as e:
 # KALSHI CREDENTIALS & SETUP
 # ============================================
 try:
-    KALSHI_EMAIL = st.secrets.get("KALSHI_EMAIL", "") or os.getenv("KALSHI_EMAIL", "")
-    KALSHI_PASSWORD = st.secrets.get("KALSHI_PASSWORD", "") or os.getenv("KALSHI_PASSWORD", "")
+    KALSHI_API_KEY_ID = st.secrets.get("KALSHI_API_KEY_ID", "") or os.getenv("KALSHI_API_KEY_ID", "")
+    KALSHI_PRIVATE_KEY_PATH = st.secrets.get("KALSHI_PRIVATE_KEY_PATH", "") or os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
 except Exception:
-    KALSHI_EMAIL = os.getenv("KALSHI_EMAIL", "")
-    KALSHI_PASSWORD = os.getenv("KALSHI_PASSWORD", "")
+    KALSHI_API_KEY_ID = os.getenv("KALSHI_API_KEY_ID", "")
+    KALSHI_PRIVATE_KEY_PATH = os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
 
 # ============================================
 # POLYMARKET CREDENTIALS & SETUP
@@ -99,14 +98,14 @@ except Exception:
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():
-    """Fetch user's Kalshi portfolio/positions using official SDK"""
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
-        st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_EMAIL and KALSHI_PASSWORD in .env or Streamlit secrets.")
+    """Fetch user's Kalshi portfolio/positions using RSA API key authentication"""
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY_PATH:
+        st.info("ℹ️ Kalshi credentials not configured. Generate API keys at https://kalshi.com/account/profile")
         return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
     
     try:
-        # Use official Kalshi SDK with email/password authentication
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        # Use RSA API key authentication
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key_path=KALSHI_PRIVATE_KEY_PATH)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
@@ -152,11 +151,11 @@ def fetch_kalshi_portfolio():
 @st.cache_data(ttl=300)
 def fetch_kalshi_balance():
     """Fetch user's Kalshi account balance"""
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY_PATH:
         return None
     
     try:
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key_path=KALSHI_PRIVATE_KEY_PATH)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return None
@@ -170,11 +169,11 @@ def fetch_kalshi_balance():
 @st.cache_data(ttl=300)
 def fetch_kalshi_trades():
     """Fetch user's Kalshi trade history (fills)"""
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY_PATH:
         return []
     
     try:
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key_path=KALSHI_PRIVATE_KEY_PATH)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return []
@@ -187,17 +186,17 @@ def fetch_kalshi_trades():
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_active_markets():
-    """Fetch active Kalshi markets using official SDK"""
+    """Fetch active Kalshi markets using RSA API key authentication"""
     if not PREDICTION_MODULE_AVAILABLE:
         st.warning("⚠️ Prediction analytics module not available")
         return pd.DataFrame()
     
-    if not KALSHI_EMAIL or not KALSHI_PASSWORD:
+    if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY_PATH:
         st.info("ℹ️ Kalshi credentials not configured")
         return pd.DataFrame()
     
     try:
-        client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+        client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key_path=KALSHI_PRIVATE_KEY_PATH)
         if not client.authenticated:
             st.error(f"❌ Kalshi authentication failed: {client.last_error}")
             return pd.DataFrame()
@@ -410,9 +409,9 @@ with col1:
     """, unsafe_allow_html=True)
 
 with col2:
-    st.markdown(f"""
+    st.markdown("""
     <div class='metric-card'>
-        <div class='metric-label'>My Kalshi Positions</div>
+        <div class='metric-label'>My Positions</div>
         <div class='metric-value'>{portfolio_value}</div>
         <div class='metric-change'>Portfolio Active</div>
     </div>
@@ -468,8 +467,8 @@ with tab1:
         else:
             st.warning("⚠️ No markets available. Check your API credentials.")
             
-            if platform_filter in ["All", "Kalshi"] and not KALSHI_EMAIL:
-                st.error("❌ KALSHI_EMAIL not configured in environment")
+            if platform_filter in ["All", "Kalshi"] and not KALSHI_API_KEY_ID:
+                st.error("❌ KALSHI_API_KEY_ID not configured in environment")
             
             if platform_filter in ["All", "Polymarket"] and not POLYMARKET_API_KEY:
                 st.error("❌ POLYMARKET_API_KEY not configured in environment")
@@ -579,13 +578,13 @@ with tab2:
         
         with debug_cols[0]:
             st.subheader("Kalshi Status")
-            if KALSHI_EMAIL and KALSHI_PASSWORD:
+            if KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PATH:
                 try:
-                    debug_client = KalshiClient(email=KALSHI_EMAIL, password=KALSHI_PASSWORD)
+                    debug_client = KalshiClient(api_key_id=KALSHI_API_KEY_ID, private_key_path=KALSHI_PRIVATE_KEY_PATH)
                     if debug_client.authenticated:
                         st.success("✅ Authenticated")
                         profile = debug_client.get_user_profile()
-                        st.write(f"**User**: {profile.get('user_id', 'N/A')}")
+                        st.write(f"**User**: {profile.get('user_id', 'N/A') if profile else 'N/A'}")
                         positions = debug_client.get_user_portfolio()
                         st.write(f"**Positions**: {len(positions)}")
                     else:

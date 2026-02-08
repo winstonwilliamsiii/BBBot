@@ -110,6 +110,11 @@ except Exception:
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():
     """Fetch user's Kalshi portfolio/positions using RSA API key authentication"""
+    if not PREDICTION_MODULE_AVAILABLE:
+        st.warning("⚠️ Prediction analytics module not available")
+        return pd.DataFrame(
+            columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %']
+        )
     if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY:
         st.info("ℹ️ Kalshi credentials not configured. Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY.")
         return pd.DataFrame(
@@ -166,6 +171,8 @@ def fetch_kalshi_portfolio():
 @st.cache_data(ttl=300)
 def fetch_kalshi_balance():
     """Fetch user's Kalshi account balance"""
+    if not PREDICTION_MODULE_AVAILABLE:
+        return None
     if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY:
         return None
     
@@ -184,6 +191,8 @@ def fetch_kalshi_balance():
 @st.cache_data(ttl=300)
 def fetch_kalshi_trades():
     """Fetch user's Kalshi trade history (fills)"""
+    if not PREDICTION_MODULE_AVAILABLE:
+        return []
     if not KALSHI_API_KEY_ID or not KALSHI_PRIVATE_KEY:
         return []
     

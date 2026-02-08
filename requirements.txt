@@ -62,6 +62,7 @@ python-dateutil>=2.8.0
 # PREDICTION MARKETS (Kalshi & Polymarket)
 # ============================================
 cryptography>=41.0.0  # RSA signing for Kalshi API authentication
+aiohttp>=3.9.0
 
 # ============================================
 # DATABASE CONNECTIVITY (Required for Budget Features)

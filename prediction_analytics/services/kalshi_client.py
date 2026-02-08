@@ -76,14 +76,35 @@ class KalshiClient:
 
     def _load_private_key_from_pem(self, private_key: str):
         """Load RSA private key from a PEM string."""
-        pem_value = private_key.replace("\\n", "\n").strip()
-        if not pem_value.startswith("-----BEGIN"):
+        pem_value = private_key.strip().strip('"').strip("'")
+        pem_value = pem_value.replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n").strip()
+
+        if "BEGIN" in pem_value:
+            lines = [line.strip() for line in pem_value.split("\n") if line.strip()]
+            header = next((line for line in lines if line.startswith("-----BEGIN")), None)
+            footer = next((line for line in lines if line.startswith("-----END")), None)
+            key_body = "".join(
+                line for line in lines if not line.startswith("-----BEGIN") and not line.startswith("-----END")
+            ).replace(" ", "")
+        else:
+            header = None
+            footer = None
             key_body = "".join(pem_value.split())
-            formatted_key = ["-----BEGIN RSA PRIVATE KEY-----"]
-            for i in range(0, len(key_body), 64):
-                formatted_key.append(key_body[i : i + 64])
-            formatted_key.append("-----END RSA PRIVATE KEY-----")
-            pem_value = "\n".join(formatted_key)
+
+        if not header:
+            header = "-----BEGIN RSA PRIVATE KEY-----"
+        if not footer:
+            footer = "-----END RSA PRIVATE KEY-----"
+
+        padding_needed = (-len(key_body)) % 4
+        if padding_needed:
+            key_body = key_body + ("=" * padding_needed)
+
+        formatted_key = [header]
+        for i in range(0, len(key_body), 64):
+            formatted_key.append(key_body[i : i + 64])
+        formatted_key.append(footer)
+        pem_value = "\n".join(formatted_key)
 
         return serialization.load_pem_private_key(
             pem_value.encode("utf-8"),

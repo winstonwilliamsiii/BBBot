@@ -18,7 +18,8 @@
         "cashpro",
         "DEEPSEEK",
         "FOREX",
-        "IBKR"
+        "IBKR",
+        "KALSHI"
     ],
     "sqltools.connections": [
         {

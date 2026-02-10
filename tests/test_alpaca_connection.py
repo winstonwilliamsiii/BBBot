@@ -5,6 +5,11 @@ Validates Alpaca API credentials and connection status
 
 import os
 import sys
+import pathlib
+# Ensure project root is in sys.path for import
+project_root = pathlib.Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -172,6 +177,31 @@ except Exception as e:
 print("\n" + "=" * 60)
 print("✅ CONNECTION TEST COMPLETE")
 print("=" * 60)
+
+print("\n" + "=" * 60)
+print("STEP 7: Place SUPX Buy Order @ $16.50")
+print("=" * 60)
+try:
+    order = alpaca.place_order(
+        symbol="SUPX",
+        qty=1,
+        side="buy",
+        order_type="limit",
+        time_in_force="day",
+        limit_price=16.50
+    )
+    if order:
+        print(f"✅ Order placed! ID: {order.get('id', 'N/A')}")
+        print(f"   Symbol: {order.get('symbol', 'N/A')}")
+        print(f"   Side: {order.get('side', 'N/A')}")
+        print(f"   Type: {order.get('type', 'N/A')}")
+        print(f"   Limit Price: {order.get('limit_price', 'N/A')}")
+        print(f"   Status: {order.get('status', 'N/A')}")
+    else:
+        print("❌ Order failed (no response)")
+except Exception as e:
+    print(f"❌ Order error: {e}")
+
 print("\nAlpaca is ready for:")
 print("  ✅ Bentley Bot Investment Page")
 print("  ✅ Brokerage Dashboard")

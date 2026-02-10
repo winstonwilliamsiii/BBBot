@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",
-    "node-appwrite": "^14.1.0"
+    "node-appwrite": "^14.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "prettier": "^3.2.5"

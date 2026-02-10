@@ -36,6 +36,8 @@ def render_multi_broker_dashboard():
     
     st.title("🌐 Multi-Broker Trading Hub")
     st.markdown("Manage all your trading accounts in one place")
+        from frontend.utils.styling import apply_custom_styling
+        apply_custom_styling()
     
     # Initialize session state
     if 'brokers' not in st.session_state:
@@ -95,6 +97,23 @@ def render_broker_status():
         ibkr_connected = st.session_state.brokers['ibkr'] is not None
         status = "🟢 Connected" if ibkr_connected else "🔴 Disconnected"
         st.metric("IBKR (Multi-Asset)", status)
+                # Show open orders
+                st.subheader("📬 Open Alpaca Orders")
+                orders = connector.get_orders(status="open")
+                if orders and len(orders) > 0:
+                    order_data = [{
+                        'Order ID': o.get('id', '')[:8],
+                        'Symbol': o.get('symbol', ''),
+                        'Side': o.get('side', ''),
+                        'Type': o.get('type', ''),
+                        'Qty': o.get('qty', ''),
+                        'Limit Price': o.get('limit_price', ''),
+                        'Status': o.get('status', ''),
+                        'Submitted At': o.get('submitted_at', '')
+                    } for o in orders]
+                    st.dataframe(pd.DataFrame(order_data), use_container_width=True, hide_index=True)
+                else:
+                    st.info("No open orders")
         
         if not ibkr_connected and IBKR_AVAILABLE:
             if st.button("Connect IBKR", key="connect_ibkr_main"):

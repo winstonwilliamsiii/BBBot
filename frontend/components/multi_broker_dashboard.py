@@ -5,7 +5,6 @@ Integrates MT5 (FOREX/Futures), Alpaca (Stocks/Crypto), and IBKR (All Assets)
 
 import streamlit as st
 import pandas as pd
-from typing import Optional, Dict, List
 import os
 from dotenv import load_dotenv
 
@@ -36,8 +35,8 @@ def render_multi_broker_dashboard():
     
     st.title("🌐 Multi-Broker Trading Hub")
     st.markdown("Manage all your trading accounts in one place")
-        from frontend.utils.styling import apply_custom_styling
-        apply_custom_styling()
+    from frontend.utils.styling import apply_custom_styling
+    apply_custom_styling()
     
     # Initialize session state
     if 'brokers' not in st.session_state:
@@ -74,46 +73,50 @@ def render_broker_status():
     st.subheader("🔗 Broker Connections")
     
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         mt5_connected = st.session_state.brokers['mt5'] is not None
         status = "🟢 Connected" if mt5_connected else "🔴 Disconnected"
         st.metric("MT5 (FOREX/Futures)", status)
-        
         if not mt5_connected and MT5_AVAILABLE:
             if st.button("Connect MT5", key="connect_mt5_main"):
                 connect_mt5()
-    
+
     with col2:
         alpaca_connected = st.session_state.brokers['alpaca'] is not None
         status = "🟢 Connected" if alpaca_connected else "🔴 Disconnected"
         st.metric("Alpaca (Stocks/Crypto)", status)
-        
         if not alpaca_connected and ALPACA_AVAILABLE:
             if st.button("Connect Alpaca", key="connect_alpaca_main"):
                 connect_alpaca()
-    
+
     with col3:
         ibkr_connected = st.session_state.brokers['ibkr'] is not None
         status = "🟢 Connected" if ibkr_connected else "🔴 Disconnected"
         st.metric("IBKR (Multi-Asset)", status)
-                # Show open orders
-                st.subheader("📬 Open Alpaca Orders")
-                orders = connector.get_orders(status="open")
-                if orders and len(orders) > 0:
-                    order_data = [{
-                        'Order ID': o.get('id', '')[:8],
-                        'Symbol': o.get('symbol', ''),
-                        'Side': o.get('side', ''),
-                        'Type': o.get('type', ''),
-                        'Qty': o.get('qty', ''),
-                        'Limit Price': o.get('limit_price', ''),
-                        'Status': o.get('status', ''),
-                        'Submitted At': o.get('submitted_at', '')
-                    } for o in orders]
-                    st.dataframe(pd.DataFrame(order_data), use_container_width=True, hide_index=True)
-                else:
-                    st.info("No open orders")
+        if not ibkr_connected and IBKR_AVAILABLE:
+            if st.button("Connect IBKR", key="connect_ibkr_main"):
+                connect_ibkr()
+
+    # Show open Alpaca orders below broker status
+    if ALPACA_AVAILABLE and st.session_state.brokers['alpaca'] is not None:
+        connector = st.session_state.brokers['alpaca']
+        st.subheader("📬 Open Alpaca Orders")
+        orders = connector.get_orders(status="open")
+        if orders and len(orders) > 0:
+            order_data = [{
+                'Order ID': o.get('id', '')[:8],
+                'Symbol': o.get('symbol', ''),
+                'Side': o.get('side', ''),
+                'Type': o.get('type', ''),
+                'Qty': o.get('qty', ''),
+                'Limit Price': o.get('limit_price', ''),
+                'Status': o.get('status', ''),
+                'Submitted At': o.get('submitted_at', '')
+            } for o in orders]
+            st.dataframe(pd.DataFrame(order_data), use_container_width=True, hide_index=True)
+        else:
+            st.info("No open orders")
         
         if not ibkr_connected and IBKR_AVAILABLE:
             if st.button("Connect IBKR", key="connect_ibkr_main"):

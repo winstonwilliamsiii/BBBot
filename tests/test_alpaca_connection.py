@@ -197,6 +197,23 @@ try:
         print(f"   Type: {order.get('type', 'N/A')}")
         print(f"   Limit Price: {order.get('limit_price', 'N/A')}")
         print(f"   Status: {order.get('status', 'N/A')}")
+        # Send Discord notification
+        try:
+            from frontend.utils.discord_alpaca import send_discord_trade_notification
+            sent = send_discord_trade_notification(
+                symbol=order.get('symbol', 'SUPX'),
+                side=order.get('side', 'buy'),
+                qty=order.get('qty', 1),
+                order_type=order.get('type', 'limit'),
+                limit_price=order.get('limit_price', 16.50),
+                status=order.get('status', 'pending_new')
+            )
+            if sent:
+                print("✅ Discord notification sent.")
+            else:
+                print("⚠️ Discord notification failed (check webhook URL)")
+        except Exception as e:
+            print(f"⚠️ Discord notification error: {e}")
     else:
         print("❌ Order failed (no response)")
 except Exception as e:

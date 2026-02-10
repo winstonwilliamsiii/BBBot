@@ -52,7 +52,12 @@ def render_multi_broker_dashboard():
     st.markdown("---")
     
     # Tabs for each broker
-    tabs = st.tabs(["🔌 MT5 (FOREX/Futures)", "📈 Alpaca (Stocks/Crypto)", "🏦 IBKR (Multi-Asset)", "📊 Combined View"])
+    tabs = st.tabs([
+        "🔌 MT5 (FOREX/Futures)",
+        "📈 Alpaca (Stocks/Crypto)",
+        "🏦 IBKR (Multi-Asset)",
+        "📊 Combined View"
+    ])
     
     with tabs[0]:
         render_mt5_section()
@@ -79,7 +84,7 @@ def render_broker_status():
         status = "🟢 Connected" if mt5_connected else "🔴 Disconnected"
         st.metric("MT5 (FOREX/Futures)", status)
         if not mt5_connected and MT5_AVAILABLE:
-            if st.button("Connect MT5", key="connect_mt5_main"):
+            if st.button("Connect MT5", key="connect_mt5_main_dashboard"):
                 connect_mt5()
 
     with col2:
@@ -87,7 +92,7 @@ def render_broker_status():
         status = "🟢 Connected" if alpaca_connected else "🔴 Disconnected"
         st.metric("Alpaca (Stocks/Crypto)", status)
         if not alpaca_connected and ALPACA_AVAILABLE:
-            if st.button("Connect Alpaca", key="connect_alpaca_main"):
+            if st.button("Connect Alpaca", key="connect_alpaca_main_dashboard"):
                 connect_alpaca()
 
     with col3:
@@ -95,7 +100,7 @@ def render_broker_status():
         status = "🟢 Connected" if ibkr_connected else "🔴 Disconnected"
         st.metric("IBKR (Multi-Asset)", status)
         if not ibkr_connected and IBKR_AVAILABLE:
-            if st.button("Connect IBKR", key="connect_ibkr_main"):
+            if st.button("Connect IBKR", key="connect_ibkr_main_dashboard"):
                 connect_ibkr()
 
     # Show open Alpaca orders below broker status
@@ -114,7 +119,38 @@ def render_broker_status():
                 'Status': o.get('status', ''),
                 'Submitted At': o.get('submitted_at', '')
             } for o in orders]
-            st.dataframe(pd.DataFrame(order_data), use_container_width=True, hide_index=True)
+            df_orders = pd.DataFrame(order_data)
+            st.dataframe(
+                df_orders,
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No open orders")
+
+
+    # Show open Alpaca orders below broker status
+    if ALPACA_AVAILABLE and st.session_state.brokers['alpaca'] is not None:
+        connector = st.session_state.brokers['alpaca']
+        st.subheader("📬 Open Alpaca Orders")
+        orders = connector.get_orders(status="open")
+        if orders and len(orders) > 0:
+            order_data = [{
+                'Order ID': o.get('id', '')[:8],
+                'Symbol': o.get('symbol', ''),
+                'Side': o.get('side', ''),
+                'Type': o.get('type', ''),
+                'Qty': o.get('qty', ''),
+                'Limit Price': o.get('limit_price', ''),
+                'Status': o.get('status', ''),
+                'Submitted At': o.get('submitted_at', '')
+            } for o in orders]
+            df_orders = pd.DataFrame(order_data)
+            st.dataframe(
+                df_orders,
+                use_container_width=True,
+                hide_index=True
+            )
         else:
             st.info("No open orders")
         
@@ -129,7 +165,8 @@ def connect_mt5():
         from frontend.utils.mt5_connector import MT5Connector
         
         # Use MT5_API_URL or MT5_REST_API_URL (fallback to 8002, not 8000 which is Airbyte)
-        api_url = os.getenv("MT5_API_URL") or os.getenv("MT5_REST_API_URL", "http://localhost:8002")
+        default_url = "http://localhost:8002"
+        api_url = os.getenv("MT5_API_URL") or os.getenv("MT5_REST_API_URL", default_url)
         connector = MT5Connector(api_url)
         
         if connector.connect(
@@ -142,12 +179,19 @@ def connect_mt5():
             st.success("✅ MT5 Connected!")
             st.rerun()
         else:
-            st.error("❌ MT5 connection failed - Check if MT5 REST server is running")
+            st.error(
+                "❌ MT5 connection failed - Check if MT5 REST server is running"
+            )
             st.info("💡 Run: START_MT5_SERVER.bat to start the MT5 API server")
     except Exception as e:
-        st.error(f"❌ MT5 API server is not responding")
+        st.error("❌ MT5 API server is not responding")
         st.info(f"Error details: {e}")
-        st.warning("🔧 **Quick Fix:**\n1. Make sure MT5 desktop is logged in\n2. Run `START_MT5_SERVER.bat` to start the API bridge\n3. Try connecting again")
+        st.warning(
+            "🔧 **Quick Fix:**\n"
+            "1. Make sure MT5 desktop is logged in\n"
+            "2. Run `START_MT5_SERVER.bat` to start the API bridge\n"
+            "3. Try connecting again"
+        )
 
 
 def connect_alpaca():
@@ -172,7 +216,10 @@ def connect_alpaca():
         
         if account:
             st.session_state.brokers['alpaca'] = connector
-            st.success(f"✅ Alpaca Connected! Portfolio: ${float(account['portfolio_value']):,.2f}")
+            portfolio_val = float(account['portfolio_value']) if account and 'portfolio_value' in account else 0.0
+            st.success(
+                f"✅ Alpaca Connected! Portfolio: ${portfolio_val:,.2f}"
+            )
             st.rerun()
         else:
             st.error("❌ Alpaca connection failed")
@@ -190,10 +237,15 @@ def connect_ibkr():
         if connector.is_authenticated():
             st.session_state.brokers['ibkr'] = connector
             accounts = connector.get_accounts()
-            st.success(f"✅ IBKR Connected! Accounts: {', '.join(accounts) if accounts else 'None'}")
+            accounts_str = ', '.join(accounts) if accounts else 'None'
+            st.success(
+                f"✅ IBKR Connected! Accounts: {accounts_str}"
+            )
             st.rerun()
         else:
-            st.error("❌ IBKR Gateway not authenticated. Make sure Gateway is running.")
+            st.error(
+                "❌ IBKR Gateway not authenticated. Make sure Gateway is running."
+            )
     except Exception as e:
         st.error(f"IBKR error: {e}")
 
@@ -208,7 +260,9 @@ def render_mt5_section():
     connector = st.session_state.brokers.get('mt5')
     
     if not connector:
-        st.info("👆 Connect to MT5 to access FOREX and Commodities Futures trading")
+        st.info(
+            "👆 Connect to MT5 to access FOREX and Commodities Futures trading"
+        )
         
         with st.expander("🔗 MT5 Connection"):
             col1, col2 = st.columns(2)

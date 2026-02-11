@@ -53,8 +53,15 @@ jobs:
     
     - name: Check .env files
       run: |
-        [ -f .env.production ] && echo "✓ Production env file exists"
-        [ -f .env.development ] && echo "✓ Development env file exists"
+        # Create .env files from templates for CI
+        if [ -f .env.production.example ]; then
+          cp .env.production.example .env.production
+          echo "✓ Production env file created from template"
+        fi
+        if [ -f .env.development.example ]; then
+          cp .env.development.example .env.development
+          echo "✓ Development env file created from template"
+        fi
 
   branch-validation:
     name: Branch & PR Validation
@@ -123,6 +130,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
+    - name: Setup environment files
+      run: |
+        # Create .env files from templates
+        if [ -f .env.production.example ]; then
+          cp .env.production.example .env.production
+          echo "✓ Production env created from template"
+        fi
+        if [ -f .env.development.example ]; then
+          cp .env.development.example .env.development
+          echo "✓ Development env created from template"
+        fi
+    
     - name: Validate production config
       run: |
         if [ -f .env.production ]; then
@@ -138,8 +157,8 @@ jobs:
         REQUIRED_FILES=(
           "streamlit_app.py"
           "requirements.txt"
-          ".env.production"
-          ".env.development"
+          ".env.production.example"
+          ".env.development.example"
           "config_env.py"
         )
         for file in "${REQUIRED_FILES[@]}"; do

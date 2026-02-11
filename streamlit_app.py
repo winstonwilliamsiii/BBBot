@@ -583,209 +583,46 @@ def main():
                         f"user={result['config'].get('user')}"
                     )
 
-    st.sidebar.header("Portfolio Data Upload")
+    st.sidebar.header("Mansa Capital Funds")
     
-    # Option to upload a full portfolio CSV
-    st.sidebar.subheader("📄 Upload Portfolio CSV")
-    
-    # Add information about CSV format
-    with st.sidebar.expander("ℹ️ CSV Format Help"):
-        st.write("""
-        **Required columns:**
-        - `Symbol`: Stock ticker (e.g., AAPL, MSFT)
-        - `Quantity`: Number of shares owned
-        
-        **Optional columns:**
-        - `Purchase_Price`: Price paid per share
-        - `Purchase_Date`: Date purchased (YYYY-MM-DD)
-        - `Current_Price`: Current price per share
-        """)
-    
-    portfolio_csv = st.sidebar.file_uploader(
-        "Upload your portfolio data (CSV)",
-        type=["csv"],
-        help="CSV should contain columns: Symbol, Quantity, Purchase_Price (optional: Purchase_Date, Current_Price)"
-    )
-    
-    # Initialize portfolio_data in session state if not exists
-    if 'portfolio_data' not in st.session_state:
-        st.session_state.portfolio_data = None
-        
-    if portfolio_csv is not None:
-        try:
-            # Read the uploaded CSV
-            portfolio_df = pd.read_csv(portfolio_csv)
-            
-            # Validate required columns
-            required_cols = ['Symbol', 'Quantity']
-            if all(col in portfolio_df.columns for col in required_cols):
-                st.session_state.portfolio_data = portfolio_df
-                st.sidebar.success(f"✅ Portfolio loaded: {len(portfolio_df)} holdings")
-                
-                # Display a preview
-                st.sidebar.write("**Preview:**")
-                st.sidebar.dataframe(portfolio_df.head(3), use_container_width=True)
-            else:
-                st.sidebar.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
-                
-        except Exception as e:
-            st.sidebar.error(f"❌ Error reading CSV: {str(e)}")
-    
-    # CSV Template Download
-    if st.sidebar.button("📥 Download CSV Template"):
-        # Create sample CSV data
-        sample_data = {
-            'Symbol': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
-            'Quantity': [10, 5, 3, 8, 2],
-            'Purchase_Price': [150.00, 280.00, 2500.00, 3200.00, 800.00],
-            'Purchase_Date': ['2023-01-15', '2023-02-10', '2023-03-05', '2023-01-20', '2023-02-28']
-        }
-        sample_df = pd.DataFrame(sample_data)
-        
-        # Convert to CSV
-        csv_content = sample_df.to_csv(index=False)
-        
-        st.sidebar.download_button(
-            label="Download portfolio_template.csv",
-            data=csv_content,
-            file_name="portfolio_template.csv",
-            mime="text/csv"
-        )
-    
-    st.sidebar.markdown("---")
-    st.sidebar.header("Portfolio Selection")
-    # default tickers (fallback)
-    default_portfolio_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA']
-
-    # Allow user to enter a Yahoo Finance portfolio root page (public portfolios)
-    yahoo_root = st.sidebar.text_input(
-        "Yahoo portfolios page URL",
-        value="https://finance.yahoo.com/portfolio",
-        help="Enter a Yahoo Finance portfolio page (for example: https://finance.yahoo.com/portfolio)",
-    )
-
-    @st.cache_data
-    def _cached_fetch(url: str):
-        return fetch_portfolio_list(url)
-
-    portfolios = []
-    if yahoo_root:
-        portfolios = _cached_fetch(yahoo_root)
-
-    if portfolios:
-        # map display names
-        names = [p["name"] for p in portfolios]
-        selected_portfolio_idx = st.sidebar.selectbox(
-            "Choose a Yahoo portfolio:",
-            options=list(range(len(names))),
-            format_func=lambda i: names[i],
-        )
-        selected_portfolio = portfolios[selected_portfolio_idx]
-        st.sidebar.markdown(f"**Selected:** [{selected_portfolio['name']}]({selected_portfolio['url']})")
-
-        # Try to fetch tickers from the selected portfolio and use them as the
-        # available portfolio_tickers for the multiselect below.
-        @st.cache_data
-        def _cached_fetch_holdings(url: str):
-            try:
-                return fetch_portfolio_tickers(url)
-            except Exception:
-                return []
-
-        fetched_tickers = _cached_fetch_holdings(selected_portfolio["url"])
-        if fetched_tickers:
-            portfolio_tickers = fetched_tickers
-            st.sidebar.success(f"Loaded {len(fetched_tickers)} tickers from portfolio")
-        else:
-            portfolio_tickers = default_portfolio_tickers
-            st.sidebar.info("Could not extract holdings from selected portfolio; using default tickers.")
-    else:
-        st.sidebar.info("No portfolios found on the provided URL. Enter a different Yahoo portfolio page or ensure the page is public.")
-        portfolio_tickers = default_portfolio_tickers
-        # Provide fallback inputs: allow user to paste tickers or upload a CSV
-        pasted = st.sidebar.text_area("Paste tickers (comma or whitespace separated)", value="")
-        uploaded = st.sidebar.file_uploader("Or upload a CSV/ TXT with tickers (one per line)", type=["csv", "txt"])
-        if uploaded is not None:
-            try:
-                content = uploaded.read().decode('utf-8')
-                lines = [ln.strip() for ln in content.replace(',','\n').splitlines() if ln.strip()]
-                if lines:
-                    portfolio_tickers = lines
-                    st.sidebar.success(f"Loaded {len(lines)} tickers from uploaded file")
-            except Exception:
-                st.sidebar.error("Failed to read uploaded file; please ensure it's plain text or CSV with tickers.")
-        elif pasted:
-            parsed = [t.strip().upper() for t in re.split(r"[\s,]+", pasted) if t.strip()]
-            if parsed:
-                portfolio_tickers = parsed
-                st.sidebar.success(f"Loaded {len(parsed)} tickers from paste")
-    
-    # Define default tickers that should always be available
-    default_portfolio_tickers_fallback = ['IONQ', 'QBTS', 'SOUN', 'RGTI']
-    
-    # Ensure portfolio_tickers is not empty
-    if not portfolio_tickers:
-        portfolio_tickers = default_portfolio_tickers_fallback
-    
-    # Default selection: filter to only include tickers that exist in portfolio_tickers
-    default_selection_candidates = ['IONQ', 'QBTS', 'SOUN', 'RGTI']
-    default_selection = [t for t in default_selection_candidates if t in portfolio_tickers]
-    
-    # If no defaults match, use first few from portfolio_tickers
-    if not default_selection and portfolio_tickers:
-        default_selection = portfolio_tickers[:min(4, len(portfolio_tickers))]
-    
-    # Mansa Capital Fund Names for display
+    # Mansa Capital Fund Names and tickers
     MANSA_FUNDS = {
-        'IONQ': 'Mansa AI',
-        'QBTS': 'Mansa AI2',
         'SOUN': 'Mansa Tech',
-        'RGTI': 'Mansa Jugarnaut',
-        'AMZN': 'Mansa Jugarnaut',
-        'NVDA': 'Mansa Jugarnaut',
-        'B': 'Mansa Minerals',
-        'IAU': 'Mansa Minerals'
+        'RETAIL': 'Mansa Retail',
+        'MONEYBAG': 'Mansa Money Bag',
+        'IONQ': 'Mansa AI',
+        'CRYPTO': 'Mansa_Crypto',
+        'HEALTH': 'Mansa Health',
+        'SUPPLY': 'Mansa Supply Chain',
+        'DIVERSITY': 'Mansa Diversify Dominance',
+        'ETF': 'Mansa ETF',
+        'SHORTS': 'Mansa Shorts (Options)',
+        'FOREX': 'Mansa FOREX',
+        'MINERALS': 'Mansa Minerals',
+        'REALESTATE': 'Mansa Real Estate',
+        'SMALLS': 'Mansa_Smalls'
     }
     
-    # Create ticker labels with fund names
-    def format_ticker(ticker):
-        if ticker in MANSA_FUNDS:
-            return f"{MANSA_FUNDS[ticker]} ({ticker})"
-        return ticker
-
-    selected_tickers = st.sidebar.multiselect(
-        'Select Mansa Capital Funds:',
-        portfolio_tickers,
-        default_selection,
-        format_func=format_ticker
+    # Create list of fund tickers
+    fund_tickers = list(MANSA_FUNDS.keys())
+    fund_names = list(MANSA_FUNDS.values())
+    
+    # Create mapping for display
+    def format_fund_name(ticker):
+        return MANSA_FUNDS.get(ticker, ticker)
+    
+    # Selectbox for Mansa Capital Funds
+    selected_fund = st.sidebar.selectbox(
+        'Select a Mansa Capital Fund:',
+        fund_tickers,
+        format_func=format_fund_name
     )
-
-    # Optional: give user a way to validate tickers via yfinance (best-effort)
-    if st.sidebar.button("Validate selected tickers"):
-        if not YFINANCE_AVAILABLE:
-            st.sidebar.error("yfinance not installed; cannot validate tickers.")
-        else:
-            invalid = []
-            valid = []
-            max_check = 20
-            to_check = selected_tickers[:max_check]
-            progress = st.sidebar.progress(0)
-            for i, sym in enumerate(to_check):
-                try:
-                    t = yf.Ticker(sym)
-                    info = t.info
-                    # heuristic: valid if info contains a longName or regularMarketPrice
-                    if info and (info.get('longName') or info.get('regularMarketPrice') is not None):
-                        valid.append(sym)
-                    else:
-                        invalid.append(sym)
-                except Exception:
-                    invalid.append(sym)
-                progress.progress(int((i + 1) / len(to_check) * 100))
-            progress.empty()
-            st.sidebar.write(f"Valid: {valid}")
-            if invalid:
-                st.sidebar.warning(f"Possibly invalid or not-found tickers (first {max_check} checked): {invalid}")
+    
+    # Convert single selection to list for compatibility with rest of code
+    selected_tickers = [selected_fund] if selected_fund else []
+    
+    # Set portfolio_tickers to all available funds
+    portfolio_tickers = fund_tickers
 
     today = date.today()
     five_years_ago = today - timedelta(days=5 * 365)

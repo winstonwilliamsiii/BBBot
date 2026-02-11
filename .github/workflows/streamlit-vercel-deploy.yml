@@ -158,10 +158,11 @@ jobs:
           
           # Check required secrets/env vars for production
           if '${{ github.ref }}' == 'refs/heads/main':
-            required = ['VERCEL_TOKEN', 'VERCEL_ORG_ID', 'VERCEL_PROJECT_ID']
+            required = ['VERCEL_TOKEN', 'VERCEL_ORG_ID', 'VERCEL_PROJECT_ID', 'VERCEL_SCOPE']
             missing = [var for var in required if not os.getenv(var)]
             if missing:
               print(f'✗ Missing required secrets: {missing}')
+              print('📖 See GITHUB_SECRETS_SETUP.md for setup instructions')
               exit(1)
           
           print('✓ Environment validation passed')
@@ -170,6 +171,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
 
       # ===== DEPLOYMENT =====
       # Branch Strategy:

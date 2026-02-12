@@ -80,6 +80,11 @@ web_modules/
 .env.production
 .env.production.local
 .env.local
+
+# Allow example env files (templates)
+!.env.*.example
+
+# Block all other .env variants
 .env.*
 
 # parcel-bundler cache (https://parceljs.org/)

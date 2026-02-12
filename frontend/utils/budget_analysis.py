@@ -59,18 +59,26 @@ class BudgetAnalyzer:
         """Initialize database connection."""
         # Use separate budget database configuration
         # Check Streamlit secrets first, then fall back to env vars
+        
+        # Get host first to determine if Railway
+        host = get_secret('BUDGET_MYSQL_HOST', get_secret('MYSQL_HOST', get_secret('DB_HOST', '127.0.0.1')))
+        is_railway = any(x in host for x in ('railway', 'nozomi'))
+        
+        # Smart default port: Railway uses 54537, local uses 3307
+        default_port = '54537' if is_railway else '3307'
+        
         self.db_config = {
-            'host': get_secret('BUDGET_MYSQL_HOST', get_secret('MYSQL_HOST', get_secret('DB_HOST', '127.0.0.1'))),
-            'port': int(get_secret('BUDGET_MYSQL_PORT', get_secret('MYSQL_PORT', get_secret('DB_PORT', '3307')))),
+            'host': host,
+            'port': int(get_secret('BUDGET_MYSQL_PORT', get_secret('MYSQL_PORT', get_secret('DB_PORT', default_port)))),
             'user': get_secret('BUDGET_MYSQL_USER', get_secret('MYSQL_USER', get_secret('DB_USER', 'root'))),
             'password': get_secret('BUDGET_MYSQL_PASSWORD', get_secret('MYSQL_PASSWORD', get_secret('DB_PASSWORD', ''))),
-            'database': get_secret('BUDGET_MYSQL_DATABASE', get_secret('MYSQL_DATABASE', get_secret('DB_NAME', 'mydb'))),
+            'database': get_secret('BUDGET_MYSQL_DATABASE', get_secret('MYSQL_DATABASE', get_secret('DB_NAME', 'mansa_bot' if is_railway else 'mydb'))),
             'charset': 'utf8mb4',
             'collation': 'utf8mb4_unicode_ci'
         }
         
         # DEBUG: Show what port is being used
-        st.sidebar.info(f"🔍 DEBUG: Connecting to MySQL Port {self.db_config['port']}")
+        st.sidebar.info(f"🔍 DEBUG: Connecting to {host}:{self.db_config['port']} ({'Railway' if is_railway else 'Local'})")
     
     def _get_connection(self):
         """Create database connection."""
@@ -88,20 +96,14 @@ class BudgetAnalyzer:
                 - Database: `{self.db_config['database']}`
                 - User: `{self.db_config['user']}`
                 
-                **For Streamlit Cloud:**
+                **For Streamlit Cloud (Railway Production):**
                 Add these secrets in Settings → Secrets:
                 ```toml
                 MYSQL_HOST = "nozomi.proxy.rlwy.net"
                 MYSQL_PORT = "54537"
                 MYSQL_USER = "root"
-                MYSQL_PASSWORD = "your_password"
-                MYSQL_DATABASE = "railway"
-                
-                BUDGET_MYSQL_HOST = "nozomi.proxy.rlwy.net"
-                BUDGET_MYSQL_PORT = "54537"
-                BUDGET_MYSQL_USER = "root"
-                BUDGET_MYSQL_PASSWORD = "your_password"
-                BUDGET_MYSQL_DATABASE = "railway"
+                MYSQL_PASSWORD = "cBlIUSygvPJCgPbNKHePJekQlClRamri"
+                MYSQL_DATABASE = "mansa_bot"
                 ```
                 
                 **For Local Development:**
@@ -125,11 +127,11 @@ class BudgetAnalyzer:
                 
                 4. ✅ **Check .env configuration:**
                    ```
-                   BUDGET_MYSQL_HOST=127.0.0.1
-                   BUDGET_MYSQL_PORT=3306
-                   BUDGET_MYSQL_USER=root
-                   BUDGET_MYSQL_PASSWORD=root
-                   BUDGET_MYSQL_DATABASE=mydb
+                   MYSQL_HOST=127.0.0.1
+                   MYSQL_PORT=3306
+                   MYSQL_USER=root
+                   MYSQL_PASSWORD=root
+                   MYSQL_DATABASE=mydb
                    ```
                 
                 5. ✅ **Restart MySQL service:**

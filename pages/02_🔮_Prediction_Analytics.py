@@ -135,25 +135,32 @@ def fetch_kalshi_portfolio():
             portfolio_list = []
             for pos in positions:
                 # Extract position data from Kalshi API response
-                contract_name = pos.get('market_title', pos.get('ticker', pos.get('contract_ticker', 'Unknown')))
-                quantity = pos.get('position', pos.get('quantity', 0))
-                entry_price = pos.get('purchase_price', pos.get('cost_basis', 0))
-                current_price = pos.get('current_price', pos.get('market_price', entry_price))
+                contract_name = pos.get('ticker', 'Unknown')
+                quantity = float(pos.get('position', 0))
+                realized_pnl = float(pos.get('realized_pnl', 0))
+                realized_pnl_dollars = float(pos.get('realized_pnl_dollars', 0))
+                total_traded = float(pos.get('total_traded', 0))
+                total_traded_dollars = float(pos.get('total_traded_dollars', 0))
+                market_exposure_dollars = float(pos.get('market_exposure_dollars', 0))
                 
-                # Calculate P&L
-                cost_basis = quantity * entry_price
-                current_value = quantity * current_price
-                pnl = current_value - cost_basis
+                # Calculate entry price from total traded
+                entry_price = (total_traded_dollars / total_traded) if total_traded and total_traded != 0 else 0
+                current_price = (market_exposure_dollars / quantity) if quantity and quantity != 0 else entry_price
+                
+                # Calculate P&L based on market exposure and total cost
+                cost_basis = abs(total_traded_dollars) if total_traded_dollars else 0
+                current_value = abs(market_exposure_dollars) if market_exposure_dollars else 0
+                pnl = realized_pnl_dollars  # Use Kalshi's calculated realized P&L
                 pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
                 
                 portfolio_list.append({
                     'Exchange': 'Kalshi',
                     'Contract': contract_name,
-                    'Quantity': quantity,
-                    'Entry Price': f"${entry_price:.4f}",
-                    'Current Price': f"${current_price:.4f}",
+                    'Quantity': int(quantity),
+                    'Entry Price': f"${entry_price:.4f}" if entry_price else "N/A",
+                    'Current Price': f"${current_price:.4f}" if current_price else "N/A",
                     'P&L': f"${pnl:.2f}",
-                    'P&L %': f"{pnl_pct:+.2f}%"
+                    'P&L %': f"{pnl_pct:+.2f}%" if pnl_pct else "0%"
                 })
             
             return pd.DataFrame(portfolio_list)

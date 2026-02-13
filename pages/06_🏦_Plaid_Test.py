@@ -257,35 +257,35 @@ if mode == "Direct Plaid API (Cloud)":
         **Use the manual link below** to open Plaid in a new browser tab.
         """)
         
-                # Create an embedded HTML and open via data URL to avoid iframe issues
-                from base64 import b64encode
-                popup_html = f"""
-                <!doctype html><html><head>
-                <meta charset='utf-8'>
-                <title>Plaid Link</title>
-                <script src='https://cdn.plaid.com/link/v2/stable/link-initialize.js'></script>
-                </head><body>
-                <div id='status'>Initializing...</div>
-                <button id='open' disabled>Open Plaid</button>
-                <script>
-                (function(){
-                    const token = '{st.session_state.link_token}';
-                    if(!token){document.getElementById('status').textContent='No link_token';return;}
-                    const handler = Plaid.create({
-                        token: token,
-                        onLoad: function(){document.getElementById('status').textContent='Ready';document.getElementById('open').disabled=false;},
-                        onSuccess: function(public_token){
-                            document.getElementById('status').textContent='Success';
-                            if(window.opener){window.opener.postMessage({type:'plaid_success', public_token: public_token}, '*');}
-                        },
-                        onExit: function(){document.getElementById('status').textContent='Exit';}
-                    });
-                    document.getElementById('open').addEventListener('click', function(){handler.open();});
-                })();
-                </script>
-                </body></html>
-                """
-                encoded = b64encode(popup_html.encode('utf-8')).decode('ascii')
+        # Create an embedded HTML and open via data URL to avoid iframe issues
+        from base64 import b64encode
+        popup_html = f"""
+        <!doctype html><html><head>
+        <meta charset='utf-8'>
+        <title>Plaid Link</title>
+        <script src='https://cdn.plaid.com/link/v2/stable/link-initialize.js'></script>
+        </head><body>
+        <div id='status'>Initializing...</div>
+        <button id='open' disabled>Open Plaid</button>
+        <script>
+        (function(){{
+            const token = '{st.session_state.link_token}';
+            if(!token){{document.getElementById('status').textContent='No link_token';return;}}
+            const handler = Plaid.create({{
+                token: token,
+                onLoad: function(){{document.getElementById('status').textContent='Ready';document.getElementById('open').disabled=false;}},
+                onSuccess: function(public_token){{
+                    document.getElementById('status').textContent='Success';
+                    if(window.opener){{window.opener.postMessage({{type:'plaid_success', public_token: public_token}}, '*');}}
+                }},
+                onExit: function(){{document.getElementById('status').textContent='Exit';}}
+            }});
+            document.getElementById('open').addEventListener('click', function(){{handler.open();}});
+        }})();
+        </script>
+        </body></html>
+        """
+        encoded = b64encode(popup_html.encode('utf-8')).decode('ascii')
         
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -298,7 +298,7 @@ if mode == "Direct Plaid API (Cloud)":
                 onmouseover="this.style.background='#0066dd'" onmouseout="this.style.background='#0a84ff'">
                 🏦 Open Plaid Link in New Tab
             </button>
-            "", unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
         
         with col2:
             if st.button("📋 Copy Link Token", use_container_width=True):

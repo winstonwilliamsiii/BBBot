@@ -37,6 +37,7 @@ python-dotenv>=1.0.0
 requests>=2.28.0
 
 # MT5 REST bridge
+MetaTrader5>=5.0.45
 flask>=2.3.0
 gunicorn>=21.2.0
 

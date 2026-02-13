@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Tuple, List
 import pandas as pd
 from alpaca_trade_api import REST, TimeFrame
+from frontend.components.alpaca_connector import AlpacaConnector
 
 # Configure logging
 logging.basicConfig(
@@ -37,6 +38,8 @@ if not ALPACA_KEY or not ALPACA_SECRET:
 
 try:
     alpaca = REST(ALPACA_KEY, ALPACA_SECRET, base_url=ALPACA_BASE_URL)
+    # Initialize AlpacaConnector for bracket orders
+    alpaca_connector = AlpacaConnector(ALPACA_KEY, ALPACA_SECRET, paper=True)
 except Exception as e:
     logger.error(f"Failed to initialize Alpaca API client: {e}")
     raise
@@ -176,14 +179,15 @@ def calculate_position_size(equity: float, current_price: float) -> int:
     return max(1, position_size)  # Ensure at least 1 share
 
 
-def place_order(symbol: str, qty: int, side: str) -> Optional[dict]:
+def place_order(symbol: str, qty: int, side: str, current_price: Optional[float] = None) -> Optional[dict]:
     """
-    Place a market order on Alpaca.
+    Place a bracket order with automatic stop loss and take profit.
     
     Args:
         symbol: Trading symbol
         qty: Order quantity
         side: 'buy' or 'sell'
+        current_price: Current market price (required for bracket orders)
     
     Returns:
         Order details or None on failure
@@ -193,21 +197,66 @@ def place_order(symbol: str, qty: int, side: str) -> Optional[dict]:
         return None
     
     try:
-        order = alpaca.submit_order(
-            symbol=symbol,
-            qty=qty,
-            side=side,
-            type='market',
-            time_in_force='day'
-        )
-        logger.info(f"Order placed: {side.upper()} {qty} {symbol} - Order ID: {order.id}")
-        return {
-            'id': order.id,
-            'symbol': order.symbol,
-            'qty': float(order.qty),
-            'side': order.side,
-            'status': order.status
-        }
+        # For BUY orders with bracket protection
+        if side.lower() == 'buy':
+            if current_price is None:
+                # Get current price from latest trade (more accurate than quote)
+                try:
+                    latest_trade = alpaca_connector.get_latest_trade(symbol)
+                    current_price = float(latest_trade['trade']['p'])
+                except:
+                    # Fallback to bar close price
+                    latest_bar = alpaca.get_latest_bar(symbol)
+                    current_price = float(latest_bar.c)
+            
+            # Calculate stop loss and take profit (2% stop, 4% profit)
+            stop_loss_price = round(current_price * 0.98, 2)
+            take_profit_price = round(current_price * 1.04, 2)
+            
+            logger.info(f"Placing bracket order: {symbol} {side.upper()} {qty}")
+            logger.info(f"  Entry: ~${current_price:.2f}")
+            logger.info(f"  Stop Loss: ${stop_loss_price:.2f} (-2%)")
+            logger.info(f"  Take Profit: ${take_profit_price:.2f} (+4%)")
+            
+            # Place bracket order
+            order = alpaca_connector.place_bracket_order(
+                symbol=symbol,
+                qty=qty,
+                side=side,
+                order_type='market',
+                take_profit_limit_price=take_profit_price,
+                stop_loss_stop_price=stop_loss_price,
+                time_in_force='gtc'
+            )
+            
+            if order:
+                logger.info(f"✅ Bracket order placed: {symbol} {side.upper()} {qty} - Order ID: {order.get('id')}")
+                return {
+                    'id': order.get('id'),
+                    'symbol': order.get('symbol'),
+                    'qty': float(order.get('qty', qty)),
+                    'side': order.get('side'),
+                    'status': order.get('status'),
+                    'stop_loss': stop_loss_price,
+                    'take_profit': take_profit_price
+                }
+        else:
+            # For SELL orders (close position), use simple market order
+            order = alpaca.submit_order(
+                symbol=symbol,
+                qty=qty,
+                side=side,
+                type='market',
+                time_in_force='day'
+            )
+            logger.info(f"Order placed: {side.upper()} {qty} {symbol} - Order ID: {order.id}")
+            return {
+                'id': order.id,
+                'symbol': order.symbol,
+                'qty': float(order.qty),
+                'side': order.side,
+                'status': order.status
+            }
     except Exception as e:
         logger.error(f"Failed to place {side} order for {symbol}: {e}")
         return None
@@ -275,7 +324,7 @@ def execute_trading_strategy(symbol: str = GOLD_SYMBOL) -> Tuple[bool, str]:
     elif rsi < RSI_OVERSOLD and position_qty == 0:
         logger.info(f"BUY SIGNAL: RSI {rsi:.2f} < {RSI_OVERSOLD}")
         position_size = calculate_position_size(account['equity'], current_price)
-        order = place_order(symbol, position_size, 'buy')
+        order = place_order(symbol, position_size, 'buy', current_price)
         if order:
             return True, f"Buy order executed: {order['qty']} shares at RSI {rsi:.2f}"
         else:
@@ -377,7 +426,7 @@ class AlpacaRSIStrategy(TradingStrategy):
         try:
             if signal == "BUY" and position_qty == 0:
                 position_size = calculate_position_size(account_equity, current_price)
-                order = place_order(self.symbol, position_size, 'buy')
+                order = place_order(self.symbol, position_size, 'buy', current_price)
                 if order:
                     logger.info(f"[{self.symbol}] BUY signal executed: {order['qty']} shares")
                     return True

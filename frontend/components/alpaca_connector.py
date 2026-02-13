@@ -296,6 +296,17 @@ class AlpacaConnector:
             
             # Submit bracket order
             response = self.session.post(f"{self.base_url}/v2/orders", json=data, timeout=10)
+            
+            if not response.ok:
+                error_msg = f"Order failed: {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f" - {error_detail}"
+                except:
+                    error_msg += f" - {response.text}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
             response.raise_for_status()
             
             result = response.json()

@@ -5,7 +5,13 @@
 from broker_api import execute_trade  # Ensure this module is accessible in KNIME's Python environment
 
 # === Input: KNIME passes input_table as a DataFrame ===
-df = input_table.copy()
+# Check if running in KNIME environment
+try:
+    df = input_table.copy()  # noqa: F821 - input_table provided by KNIME runtime
+except NameError:
+    # Not in KNIME - create empty DataFrame for validation
+    import pandas as pd
+    df = pd.DataFrame()
 
 # === Parameters ===
 broker = 'binance'  # or 'webull', 'ibkr'

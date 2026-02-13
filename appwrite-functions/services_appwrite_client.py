@@ -1,4 +1,4 @@
-//# services/appwrites_client.copy()
+# services/appwrites_client.copy()
 
 import os
 import requests

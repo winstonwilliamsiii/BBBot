@@ -8,6 +8,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Try to import mlflow at module level
+try:
+    import mlflow
+    MLFLOW_IMPORTED = True
+except ImportError:
+    MLFLOW_IMPORTED = False
+    logger.warning("MLflow not installed")
+
 class MLFlowSafeWrapper:
     """
     Wraps MLFlow initialization to gracefully handle schema errors
@@ -21,8 +29,11 @@ class MLFlowSafeWrapper:
     
     def _initialize_safely(self):
         """Initialize MLFlow, but catch schema errors gracefully"""
+        if not MLFLOW_IMPORTED:
+            logger.warning("MLflow not available - skipping initialization")
+            return
+            
         try:
-            import mlflow
             tracking_uri = os.getenv(
                 'MLFLOW_TRACKING_URI',
                 'mysql+pymysql://root:cBlIUSygvPJCgPbNKHePJekQlClRamri@nozomi.proxy.rlwy.net:54537/mlflow_db'
@@ -57,7 +68,7 @@ class MLFlowSafeWrapper:
     
     def log_metric(self, key, value, step=0):
         """Log a metric if MLFlow is available"""
-        if not self.available:
+        if not self.available or not MLFLOW_IMPORTED:
             return
         try:
             if hasattr(self.client, '_tracking_client'):
@@ -68,7 +79,7 @@ class MLFlowSafeWrapper:
     
     def log_params(self, params):
         """Log parameters if MLFlow is available"""
-        if not self.available:
+        if not self.available or not MLFLOW_IMPORTED:
             return
         try:
             if hasattr(self.client, '_tracking_client'):

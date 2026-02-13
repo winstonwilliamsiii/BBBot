@@ -1,4 +1,4 @@
-//# services_watchlist
+# services_watchlist
 
 from services.appwrite_client import call_function
 

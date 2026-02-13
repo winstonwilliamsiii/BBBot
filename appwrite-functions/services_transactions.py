@@ -1,4 +1,4 @@
-//#services/transactions
+#services/transactions
 
 from services.appwrite_client import call_function
 

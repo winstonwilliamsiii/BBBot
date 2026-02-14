@@ -237,10 +237,10 @@ pages/
 ├── 02_📈_Investment_Analysis.py    (Page 2: Budget Management)
 ├── 03_🔴_Live_Crypto_Dashboard.py  (Page 3: Investment Analysis)
 ├── 04_💼_Broker_Trading.py         (Page 4: Crypto Dashboard)
-├── 05_🤖_Trading_Bot.py            (Page 5: Broker Trading)
-├── 06_🏦_Plaid_Test.py             (Page 6: Trading Bot - ADMIN ONLY)
-├── 07_🌐_Multi_Broker_Trading.py   (Page 7: Plaid Test - ADMIN ONLY)
-└── api/                             (Page 8: Multi-Broker - ADMIN ONLY)
+├── 05_🌐_Multi_Broker_Trading.py   (Page 5: Multi-Broker - ADMIN ONLY)
+├── 06_🏦_Plaid_Test.py             (Page 6: Plaid Test - ADMIN ONLY)
+├── 07_🤖_Trading_Bot.py            (Page 7: Trading Bot - ADMIN ONLY)
+└── api/                             (API endpoints)
 ```
 
 ### Page Numbering (1-8)

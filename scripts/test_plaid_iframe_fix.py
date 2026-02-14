@@ -15,8 +15,8 @@ from pathlib import Path
 print("✓ Test 1: Checking file structure...")
 pages_dir = Path(__file__).parent / "pages"
 
-test_page = pages_dir / "06_🏦_Plaid_Test.py"
-popup_page = pages_dir / "06a_🏦_Plaid_Link_Popup.py"
+test_page = pages_dir / "07_🏦_Plaid_Test.py"
+popup_page = pages_dir / "07a_🏦_Plaid_Link_Popup.py"
 
 assert test_page.exists(), f"❌ Main test page missing: {test_page}"
 assert popup_page.exists(), f"❌ Popup page missing: {popup_page}"

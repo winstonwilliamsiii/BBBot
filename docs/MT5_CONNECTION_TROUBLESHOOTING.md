@@ -86,7 +86,7 @@ MT5_PORT=443
 ┌─────────────────────────────────────────────────┐
 │  Streamlit App (Multi-Broker Dashboard)        │
 │  Port: 8501                                     │
-│  File: pages/08_🌐_Multi_Broker_Trading.py     │
+│  File: pages/06_🌐_Multi_Broker_Trading.py     │
 └────────────┬────────────────────────────────────┘
              │ HTTP Requests
              ↓
@@ -198,7 +198,7 @@ MT5_PORT=443
 - **MT5 Python Package:** https://www.mql5.com/en/docs/integration/python_metatrader5
 - **MT5 REST Server Code:** `src/mt5_rest_api_server.py`
 - **MT5 Connector Code:** `frontend/components/mt5_connector.py`
-- **Multi-Broker Dashboard:** `pages/08_🌐_Multi_Broker_Trading.py`
+- **Multi-Broker Dashboard:** `pages/06_🌐_Multi_Broker_Trading.py`
 - **Startup Script:** `START_MT5_SERVER.bat`
 
 ---

@@ -97,7 +97,7 @@ Expected response:
 ┌──────────────────────────────────────┐
 │ Streamlit Multi-Broker Dashboard    │
 │ Port: 8501                           │
-│ File: pages/08_🌐_Multi_Broker...   │
+│ File: pages/06_🌐_Multi_Broker...   │
 └─────────────┬────────────────────────┘
               │ HTTP: localhost:8002
               ↓

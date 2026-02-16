@@ -69,6 +69,13 @@ try:
 except ImportError:
     APPWRITE_SERVICES_AVAILABLE = False
 
+# DCF Analysis Widget import
+try:
+    from frontend.components.dcf_widget import render_dcf_widget, render_dcf_mini_widget
+    DCF_WIDGET_AVAILABLE = True
+except ImportError:
+    DCF_WIDGET_AVAILABLE = False
+
 
 @st.cache_data
 def get_yfinance_data(tickers, start_date, end_date):
@@ -565,6 +572,14 @@ def main():
                         st.warning("Please enter a User ID")
         
         st.markdown("---")
+    
+    # ==========================================================================
+    # DCF Fundamental Analysis Section
+    # ==========================================================================
+    if DCF_WIDGET_AVAILABLE:
+        st.markdown("## 📊 Fundamental Analysis")
+        render_dcf_widget()
+        st.markdown("---")
 
     # Sidebar controls
     if os.getenv("ENVIRONMENT", "development").lower() == "development":
@@ -583,6 +598,33 @@ def main():
                         f"user={result['config'].get('user')}"
                     )
 
+    # Login Section - Personal Budget Access
+    st.sidebar.markdown("---")
+    st.sidebar.header("🔐 Personal Budget Login")
+    
+    if RBAC_AVAILABLE:
+        # Check if user is already logged in
+        if 'rbac_user' in st.session_state and st.session_state.rbac_user:
+            # User is logged in - show user info
+            user = st.session_state.rbac_user
+            st.sidebar.success(f"👤 Logged in as: **{user.get('username', 'User')}**")
+            st.sidebar.caption(f"Role: {user.get('role', 'N/A')}")
+            
+            # Logout button
+            if st.sidebar.button("🚪 Logout", key="sidebar_logout"):
+                st.session_state.rbac_user = None
+                st.rerun()
+        else:
+            # User not logged in - show login form
+            st.sidebar.info("Sign in to access Personal Budget Analysis")
+            
+            with st.sidebar.expander("🔑 Login", expanded=False):
+                show_login_form()
+    else:
+        st.sidebar.warning("⚠️ Login system unavailable")
+        st.sidebar.caption("RBAC module not loaded")
+    
+    st.sidebar.markdown("---")
     st.sidebar.header("Mansa Capital Funds")
     
     # Mansa Capital Fund Names and tickers

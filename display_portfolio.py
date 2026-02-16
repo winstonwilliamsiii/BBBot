@@ -44,6 +44,11 @@ if positions:
         total_traded_dollars = float(pos.get('total_traded_dollars', 0))
         market_exposure_dollars = float(pos.get('market_exposure_dollars', 0))
 
+        # Kalshi API returns values in cents, convert to dollars
+        total_traded_dollars = total_traded_dollars / 100
+        market_exposure_dollars = market_exposure_dollars / 100
+        realized_pnl_dollars = realized_pnl_dollars / 100
+        
         if total_traded and total_traded != 0:
             entry_price = total_traded_dollars / total_traded
         else:
@@ -85,4 +90,12 @@ if positions:
     print("=" * 100)
     print(df.to_string(index=False))
     print("=" * 100)
-    print(f"\nBalance: {client.get_user_balance()}")
+    balance = client.get_user_balance()
+    if balance:
+        balance_dollars = balance.get('balance', 0) / 100
+        portfolio_value_dollars = balance.get('portfolio_value', 0) / 100
+        print(f"\nBalance: ${balance_dollars:.2f} cash, ${portfolio_value_dollars:.2f} portfolio value")
+        print(f"Raw API response: {balance}")
+    else:
+        print("\nNo balance data")
+

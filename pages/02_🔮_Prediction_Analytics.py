@@ -138,10 +138,10 @@ def fetch_kalshi_portfolio():
                 contract_name = pos.get('ticker', 'Unknown')
                 quantity = float(pos.get('position', 0))
                 realized_pnl = float(pos.get('realized_pnl', 0))
-                realized_pnl_dollars = float(pos.get('realized_pnl_dollars', 0))
+                realized_pnl_dollars = float(pos.get('realized_pnl_dollars', 0)) / 100  # Convert cents to dollars
                 total_traded = float(pos.get('total_traded', 0))
-                total_traded_dollars = float(pos.get('total_traded_dollars', 0))
-                market_exposure_dollars = float(pos.get('market_exposure_dollars', 0))
+                total_traded_dollars = float(pos.get('total_traded_dollars', 0)) / 100  # Convert cents to dollars
+                market_exposure_dollars = float(pos.get('market_exposure_dollars', 0)) / 100  # Convert cents to dollars
                 
                 # Calculate entry price from total traded
                 entry_price = (total_traded_dollars / total_traded) if total_traded and total_traded != 0 else 0
@@ -150,7 +150,7 @@ def fetch_kalshi_portfolio():
                 # Calculate P&L based on market exposure and total cost
                 cost_basis = abs(total_traded_dollars) if total_traded_dollars else 0
                 current_value = abs(market_exposure_dollars) if market_exposure_dollars else 0
-                pnl = realized_pnl_dollars  # Use Kalshi's calculated realized P&L
+                pnl = realized_pnl_dollars  # Use Kalshi's calculated realized P&L (already converted to dollars)
                 pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0
                 
                 portfolio_list.append({
@@ -440,7 +440,7 @@ with col1:
     """, unsafe_allow_html=True)
 
 with col2:
-    st.markdown("""
+    st.markdown(f"""
     <div class='metric-card'>
         <div class='metric-label'>My Positions</div>
         <div class='metric-value'>{portfolio_value}</div>
@@ -532,13 +532,15 @@ with tab2:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        kalshi_cash = kalshi_balance.get('cash', 0) if kalshi_balance else 0
+        # Kalshi API returns 'balance' in cents, convert to dollars
+        kalshi_cash = (kalshi_balance.get('balance', 0) / 100) if kalshi_balance else 0
         polymarket_cash = polymarket_balance.get('cash', 0) if polymarket_balance else 0
         total_cash = kalshi_cash + polymarket_cash
         st.metric("💰 Total Cash", f"${total_cash:,.2f}")
     
     with col2:
-        kalshi_holdings = kalshi_balance.get('portfolio_value', 0) if kalshi_balance else 0
+        # Kalshi API returns 'portfolio_value' in cents, convert to dollars
+        kalshi_holdings = (kalshi_balance.get('portfolio_value', 0) / 100) if kalshi_balance else 0
         polymarket_holdings = polymarket_balance.get('portfolio_value', 0) if polymarket_balance else 0
         total_holdings = kalshi_holdings + polymarket_holdings
         st.metric("📈 Total Holdings Value", f"${total_holdings:,.2f}")

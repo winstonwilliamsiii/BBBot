@@ -457,29 +457,42 @@ class EconomicCalendarWidget:
         for idx, (name, ticker) in enumerate(indices.items()):
             with cols[idx]:
                 try:
+                    # Use history() for more reliable real-time data
                     data = yf.Ticker(ticker)
-                    info = data.info
-                    current = info.get('currentPrice', 'N/A')
-                    prev_close = info.get('previousClose', 0)
+                    hist = data.history(period='2d')  # Get last 2 days for comparison
                     
-                    if isinstance(current, (int, float)) and isinstance(prev_close, (int, float)):
-                        change = current - prev_close
-                        change_pct = (change / prev_close * 100) if prev_close > 0 else 0
-                        change_color = '#10B981' if change >= 0 else '#EF4444'
-                        change_arrow = '📈' if change >= 0 else '📉'
+                    if not hist.empty and len(hist) >= 1:
+                        current = hist['Close'].iloc[-1]
                         
-                        st.markdown(f"""
-                        <div class="market-card">
-                            <div class="market-index">{name}</div>
-                            <div class="market-value">{current:,.2f}</div>
-                            <div class="market-change" style="color: {change_color};">
-                                {change_arrow} {change:+.2f} ({change_pct:+.2f}%)
+                        # Get previous close for change calculation
+                        if len(hist) >= 2:
+                            prev_close = hist['Close'].iloc[-2]
+                        else:
+                            # Fallback to info if only one day available
+                            info = data.info
+                            prev_close = info.get('previousClose', current)
+                        
+                        if pd.notna(current) and pd.notna(prev_close) and prev_close > 0:
+                            change = current - prev_close
+                            change_pct = (change / prev_close * 100)
+                            change_color = '#10B981' if change >= 0 else '#EF4444'
+                            change_arrow = '📈' if change >= 0 else '📉'
+                            
+                            st.markdown(f"""
+                            <div class="market-card">
+                                <div class="market-index">{name}</div>
+                                <div class="market-value">{current:,.2f}</div>
+                                <div class="market-change" style="color: {change_color};">
+                                    {change_arrow} {change:+.2f} ({change_pct:+.2f}%)
+                                </div>
                             </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.info(f"{name}: Data unavailable")
                     else:
                         st.info(f"{name}: Data unavailable")
                 except Exception as e:
+                    logger.error(f"Error fetching {name} ({ticker}): {str(e)}")
                     st.info(f"{name}: Error fetching data")
     
     def render_full_dashboard(self):

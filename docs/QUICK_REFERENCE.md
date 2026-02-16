@@ -62,7 +62,7 @@ netstat -ano | findstr :3306
 
 ### Restore Original Config
 ```bash
-cp .env.backup_20260112_094253 .env
+cp config/env-templates/.env.backup_20260112_094253 .env
 ```
 
 ### Check MySQL is Running

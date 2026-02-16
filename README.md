@@ -170,8 +170,8 @@ pip install -r requirements.txt
 
 #### 3. Configure Environment
 ```bash
-# Copy example environment file
-cp .env.example .env
+# Copy example environment file from templates
+cp config/env-templates/.env.example .env
 
 # Edit .env with your credentials
 # Required: MySQL, Appwrite, Broker APIs

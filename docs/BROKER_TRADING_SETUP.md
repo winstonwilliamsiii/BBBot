@@ -23,7 +23,7 @@ pip install webull ibapi python-binance
 
 Copy the example file and add your credentials:
 ```bash
-cp .env.brokers.example .env.brokers
+cp config/env-templates/.env.brokers.example .env.brokers
 ```
 
 Edit `.env.brokers` with your credentials:

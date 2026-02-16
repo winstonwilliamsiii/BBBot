@@ -40,7 +40,7 @@ python -c "import streamlit; print('✓ Streamlit ready')"
 
 ```powershell
 # Copy template
-cp .env.local.template .env.local
+cp config/env-templates/.env.local.template .env.local
 
 # Open for editing
 notepad .env.local

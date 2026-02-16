@@ -130,7 +130,8 @@ BentleyBudgetBot/
 ├── config_env.py                  # Environment configuration
 ├── requirements.txt               # Python dependencies
 ├── vercel.json                    # Vercel deployment config
-├── .env.example                   # Environment template
+├── config/
+│   └── env-templates/             # Environment templates (.env.example, etc.)
 ├── .gitignore                     # Git ignore patterns
 ├── LICENSE                        # Project license
 └── README.md                      # Project overview

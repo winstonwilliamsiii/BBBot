@@ -224,6 +224,7 @@ Desktop.ini
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+*.lnk
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/

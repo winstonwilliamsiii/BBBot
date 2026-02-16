@@ -74,10 +74,18 @@ web_modules/
 
 # dotenv environment variable files
 .env
+.env.development
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
 .env.local
+
+# Allow example env files (templates)
+!.env.*.example
+
+# Block all other .env variants
+.env.*
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

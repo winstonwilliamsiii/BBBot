@@ -35,8 +35,7 @@ def test_tiingo_api():
     print(f"✅ API Key found: {api_key[:8]}...{api_key[-4:]}")
     
     # Test with direct HTTP request
-📡 Testing API connection...")
-        print("\n📡 Testing API connection...")
+    print("\n📡 Testing API connection...")
     url = "https://api.tiingo.com/tiingo/daily/AAPL/prices"
     params = {"startDate": "2024-12-01"}
     headers = {"Authorization": f"Token {api_key}"}
@@ -59,15 +58,11 @@ def test_tiingo_api():
         
         elif response.status_code == 403:
             print("❌ HTTP 403 - FORBIDDEN")
-            print("
-Possible causes:")
-Possible causes:")
+            print("\nPossible causes:")
             print("  1. API key is valid but account needs upgrade")
             print("  2. Free tier doesn't allow this endpoint")
             print("  3. Rate limit exceeded")
-            print("
-Try:")
-Try:")
+            print("\nTry:")
             print("  - Check subscription at https://www.tiingo.com/account")
             print("  - Wait a few minutes and try again")
             return False
@@ -76,12 +71,8 @@ Try:")
             error_msg = response.json().get('detail', 'Unknown error')
             print(f"❌ HTTP 401 - AUTHENTICATION FAILED")
             print(f"   Server says: {error_msg}")
-            print("
-🔴 YOUR API KEY IS INVALID!")
-🔴 YOUR API KEY IS INVALID!")
-            print("
-Fix:")
-Fix:")
+            print("\n🔴 YOUR API KEY IS INVALID!")
+            print("\nFix:")
             print("  1. Go to https://www.tiingo.com/account/api")
             print("  2. Check if you see an API token")
             print("  3. If no token shown, click 'Create New Token'")
@@ -90,9 +81,7 @@ Fix:")
             print("  6. Re-run this test")
             
             # Try to get account info
-            print("
-📋 Testing account endpoint...")
-📋 Testing account endpoint...")
+            print("\n📋 Testing account endpoint...")
             account_url = "https://api.tiingo.com/api/test"
             account_response = requests.get(account_url, headers=headers, timeout=10)
             if account_response.status_code == 200:
@@ -128,8 +117,7 @@ def test_plaid_api():
     
     if not client_id or client_id == 'your_plaid_client_id_here':
         print("❌ PLAID_CLIENT_ID not configured")
-        print("
-Fix:")
+        print("\nFix:")
         print("  1. Login to https://dashboard.plaid.com/")
         print("  2. Get your client_id from API settings")
         print("  3. Add to .env: PLAID_CLIENT_ID=your_client_id")
@@ -149,10 +137,8 @@ Fix:")
         from plaid_link import PlaidLinkManager
         
         manager = PlaidLinkManager()
-        print("
-✅ SUCCESS! PlaidLinkManager initialized")
-        print("
-If Streamlit still shows error:")
+        print("\n✅ SUCCESS! PlaidLinkManager initialized")
+        print("\nIf Streamlit still shows error:")
         print("  1. Hard refresh browser (Ctrl+Shift+R)")
         print("  2. Clear Streamlit cache (press 'C' in app)")
         print("  3. Restart Streamlit server")
@@ -230,8 +216,7 @@ def test_database():
         with engine.connect() as conn:
             result = conn.execute("SELECT VERSION()")
             version = result.fetchone()[0]
-            print(f"
-✅ SUCCESS! Connected to MySQL")
+            print(f"\n✅ SUCCESS! Connected to MySQL")
             print(f"   Version: {version}")
             return True
     
@@ -242,8 +227,7 @@ def test_database():
     
     except Exception as e:
         print(f"❌ Connection failed: {e}")
-        print("
-Fix:")
+        print("\nFix:")
         print("  1. Check if MySQL is running")
         print("  2. Verify port 3306 (not 3307)")
         print("  3. Check credentials in .env file")
@@ -253,15 +237,11 @@ Fix:")
 
 def main():
     """Run all diagnostic tests"""
-    print("
-" + "="*70)
+    print("\n" + "="*70)
     print("  🔬 BENTLEY BUDGET BOT - API DIAGNOSTIC TEST")
     print("="*70)
-    print("
-This will test all your API integrations and provide fix instructions")
-    print("for any issues found.
-
-")
+    print("\nThis will test all your API integrations and provide fix instructions")
+    print("for any issues found.\n")
     
     # Track results
     results = {
@@ -283,13 +263,11 @@ This will test all your API integrations and provide fix instructions")
             print(f"   • {name}")
     
     if broken:
-        print("
-❌ Needs Attention:")
+        print("\n❌ Needs Attention:")
         for name in broken:
             print(f"   • {name}")
     
-    print(f"
-Total: {len(working)}/{len(results)} APIs working")
+    print(f"\nTotal: {len(working)}/{len(results)} APIs working")
     
     # Recommendations
     print_header("💡 NEXT STEPS")
@@ -312,8 +290,7 @@ Total: {len(working)}/{len(results)} APIs working")
     
     if len(working) == len(results):
         print("🎉 ALL SYSTEMS GO!")
-        print("
-You can now run:")
+        print("\nYou can now run:")
         print("   streamlit run streamlit_app.py")
         print()
     else:

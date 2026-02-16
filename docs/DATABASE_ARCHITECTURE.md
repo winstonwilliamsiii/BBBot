@@ -1,445 +1,323 @@
-# BentleyBudgetBot - MySQL Database Architecture
-**Date:** December 14, 2025  
-**Version:** 2.0 (Post-bbbot1 Migration)
+# Database Architecture - BentleyBot
 
----
+**Date:** January 17, 2026  
+**Status:** ✅ CLARIFIED
 
-## 🏗️ Database Schema Layout
+## Database Setup Overview
 
-### Connection Details
-- **Host:** 127.0.0.1 (localhost)
-- **Port:** 3306
-- **Root User:** root
-- **Character Set:** utf8mb4
-- **Collation:** utf8mb4_unicode_ci
+### Docker MySQL (Port 3307) - LOCAL DEVELOPMENT
 
----
+**Container:** `Demo_Bots`  
+**Host:** `127.0.0.1`  
+**Port:** `3307`  
+**User:** `root`  
+**Password:** `root`
 
-## 📊 Database Breakdown
+**Contains TWO databases on the SAME MySQL server:**
 
-### 1. **mydb** - Personal Budget & Plaid Integration
-**Purpose:** User budget tracking, Plaid transactions, personal finance management
-
-**Environment Variables:**
-```bash
-BUDGET_MYSQL_HOST=127.0.0.1
-BUDGET_MYSQL_PORT=3306
-BUDGET_MYSQL_USER=root
-BUDGET_MYSQL_PASSWORD=root
-BUDGET_MYSQL_DATABASE=mydb
+```
+┌─────────────────────────────────────────────────┐
+│   Docker MySQL Container (Port 3307)           │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  📊 bbbot1 Database                            │
+│  ├─ stock_prices_yf (yfinance prices)         │
+│  ├─ fundamentals (financial statements)        │
+│  ├─ stock_prices_tiingo (Tiingo data)         │
+│  ├─ barchart_data (Barchart futures)          │
+│  ├─ alphavantage_data (AV data)               │
+│  └─ stocktwits_sentiment (social sentiment)    │
+│                                                 │
+│  🔬 mlflow_db Database                         │
+│  ├─ experiments (MLflow experiments)           │
+│  ├─ runs (experiment runs)                     │
+│  ├─ metrics (logged metrics: PE, ROI, etc.)   │
+│  ├─ params (run parameters)                    │
+│  ├─ tags (run tags)                            │
+│  └─ ... (34 MLflow tables total)              │
+│                                                 │
+│  🚁 mansa_bot Database                         │
+│  └─ Airflow metadata tables (44 tables)        │
+│                                                 │
+└─────────────────────────────────────────────────┘
 ```
 
-**Tables:**
-- `budget_categories` - Budget category definitions
-- `budget_tracking` - Monthly budget allocations
-- `cash_flow_summary` - Aggregated income/expense summaries
-- `user_plaid_tokens` - Plaid access tokens and item IDs
-- `transaction_notes` - User annotations on transactions
-- `plaid_transactions` - Raw transaction data from Plaid
-- `plaid_accounts` - Bank account information
-- `users` - User authentication (RBAC)
-- `user_permissions` - Role-based permissions
+### Railway MySQL (Port 54537) - PRODUCTION/STREAMLIT CLOUD
 
-**Primary Features:**
-- Personal Budget page (pages/01_💰_Personal_Budget.py)
-- Plaid Link integration
-- Cash flow analysis
-- Transaction categorization
+**Host:** `nozomi.proxy.rlwy.net`  
+**Port:** `54537`  
+**User:** `root`  
+**Password:** `cBlIUSygvPJCgPbNKHePJekQlClRamri`
 
-**Schema Location:** `scripts/setup/budget_schema.sql`
+**Contains:**
+- `railway` - Main app data
+- `mydb` - Plaid/Budget transactions  
+- `mlflow_db` - MLflow for Streamlit Cloud deployment (same structure as local)
 
 ---
 
-### 2. **mansa_bot** - Metrics, Models & dbt Staging
-**Purpose:** Application metrics, ML model metadata, dbt pipeline staging tables
+## MLflow Connection Logic
 
-**Environment Variables:**
+### How MLflow Decides Which Database to Use
+
+**File:** [bbbot1_pipeline/mlflow_config.py](bbbot1_pipeline/mlflow_config.py)
+
+```python
+def get_mlflow_config() -> dict:
+    mlflow_host = os.getenv('MLFLOW_MYSQL_HOST')
+    
+    if mlflow_host and mlflow_host != '127.0.0.1':
+        # ✈️ RAILWAY/CLOUD - For Streamlit Cloud deployment
+        return {
+            "host": mlflow_host,  # nozomi.proxy.rlwy.net
+            "port": 54537,
+            "database": "mlflow_db"
+        }
+    else:
+        # 🐳 LOCAL DOCKER - For development on your machine
+        return {
+            "host": "127.0.0.1",
+            "port": 3307,
+            "database": "mlflow_db"
+        }
+```
+
+**Connection String Examples:**
+
+**Local Development:**
+```
+mysql+pymysql://root:root@127.0.0.1:3307/mlflow_db
+```
+
+**Streamlit Cloud (Railway):**
+```
+mysql+pymysql://root:PASSWORD@nozomi.proxy.rlwy.net:54537/mlflow_db
+```
+
+---
+
+## Your Questions Answered
+
+### Q1: "Will the MLFlow triggers come from Railway now?"
+
+**Answer:** No, MLflow triggers come from **wherever your code is running:**
+
+| Environment | MLflow Connects To | When |
+|-------------|-------------------|------|
+| **Local Python scripts** | Docker port 3307 | When MLFLOW_MYSQL_HOST not set or = 127.0.0.1 |
+| **Local Airflow DAGs** | Docker port 3307 | Same - runs on your machine |
+| **Streamlit Cloud** | Railway port 54537 | When MLFLOW_MYSQL_HOST = nozomi.proxy.rlwy.net |
+
+### Q2: "Why can't MLflow reliably connect to port 3307?"
+
+**Answer:** MLflow **CAN** connect to port 3307! ✅
+
+**Test Results:**
 ```bash
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
+✅ MLFlow connection successful!
+   Found 2 experiment(s)
+   Tracking URI: mysql+pymysql://root:root@127.0.0.1:3307/mlflow_db
+```
+
+**Common Issues That May Have Confused You:**
+1. ❌ Docker container not running → Start with `docker-compose up -d`
+2. ❌ Wrong password in .env → Must be `MLFLOW_MYSQL_PASSWORD=root`
+3. ❌ mlflow_db database didn't exist → Now created with 34 tables
+
+### Q3: "How do bbbot1 and mlflow_db both work on port 3307?"
+
+**Answer:** They are **different databases on the SAME MySQL server.**
+
+Think of it like this:
+```
+MySQL Server (Port 3307)
+  ├─ Database: bbbot1      ← Stock data goes here
+  ├─ Database: mlflow_db   ← MLflow experiments go here
+  └─ Database: mansa_bot   ← Airflow metadata goes here
+```
+
+**They DON'T conflict because:**
+- Different database names (bbbot1 vs mlflow_db)
+- Same MySQL server, different schemas
+- Like different folders on the same drive
+
+---
+
+## Data Flow: How Everything Works Together
+
+### Step 1: Data Ingestion (Airflow)
+```mermaid
+Airbyte/Airflow DAGs
+    ↓
+MySQL Port 3307
+    ├─> bbbot1.stock_prices_yf (raw prices)
+    └─> bbbot1.fundamentals (financials)
+```
+
+### Step 2: Data Transformation (dbt)
+```mermaid
+dbt models in bbbot1_pipeline/sql/
+    ↓
+Read from: bbbot1.stock_prices_yf
+Calculate: PE ratios, moving averages, ROI
+    ↓
+Write to: bbbot1.marts.features_roi
+```
+
+### Step 3: MLflow Logging (Python)
+```mermaid
+derive_ratios.py (Python script)
+    ↓
+1. Query: bbbot1.stock_prices_yf
+2. Calculate: PE ratio, PB ratio, etc.
+3. Log metrics: mlflow.log_metric("pe_ratio", 15.2)
+    ↓
+MySQL Port 3307
+    └─> mlflow_db.metrics (experiment results)
+```
+
+### Step 4: Streamlit Display
+```mermaid
+Streamlit Investment Analysis page
+    ↓
+Query MLflow: "Get latest experiments"
+    ↓
+MySQL Port 3307 (local) OR Railway Port 54537 (cloud)
+    └─> mlflow_db.runs (retrieve logged metrics)
+    ↓
+Display: Charts, tables, comparisons
+```
+
+---
+
+## Configuration Files Summary
+
+### .env (Local Development)
+```bash
+# Docker MySQL (Port 3307)
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3307
 MYSQL_PASSWORD=root
-MYSQL_DATABASE=mansa_bot
-```
 
-**Tables:**
+# BBBot1 Database (Stock Data)
+BBBOT1_MYSQL_HOST=127.0.0.1
+BBBOT1_MYSQL_PORT=3307
+BBBOT1_MYSQL_PASSWORD=root
+BBBOT1_MYSQL_DATABASE=bbbot1
 
-#### System Metrics
-- `api_metrics` - Request/latency/error tracking
-- `system_health` - CPU, memory, disk usage logs
-- `data_freshness` - Last update timestamps for data sources
-
-#### Trading & P&L
-- `trades` - Trading bot transaction history
-- `portfolio_positions` - Current holdings
-- `portfolio_performance` - Historical P&L snapshots
-
-#### dbt Staging
-- `stg_fundamentals` - Staged fundamental data
-- `stg_prices` - Staged price data
-- `stg_sentiment` - Staged sentiment data
-
-**Primary Features:**
-- System Metrics dashboard (pages/06_📊_System_Metrics.py)
-- Trading P&L dashboard (pages/07_💰_Trading_PnL.py)
-- Bot Health monitoring (pages/08_🏥_Bot_Health.py)
-- dbt data transformations
-
-**Schema Location:** `scripts/setup/mansa_bot_schema.sql` (to be created)
-
----
-
-### 3. **mansa_quant** - Quantitative Analysis Datasets
-**Purpose:** Fundamentals, sentiment analysis, technical indicators
-
-**Environment Variables:**
-```bash
-QUANT_MYSQL_DATABASE=mansa_quant
-```
-
-**Tables:**
-
-#### Fundamental Data
-- `stock_fundamentals` - Balance sheet, income statement, ratios
-- `earnings_reports` - Quarterly earnings data
-- `company_info` - Company metadata (sector, industry, description)
-
-#### Sentiment Analysis
-- `stocktwits_sentiment` - Social sentiment from StockTwits
-- `news_sentiment` - News article sentiment scores
-- `reddit_sentiment` - Reddit mentions and sentiment
-
-#### Technical Analysis
-- `technical_indicators` - RSI, MACD, moving averages
-- `price_patterns` - Chart patterns detection
-- `volume_analysis` - Volume-based indicators
-
-**Primary Features:**
-- Investment Analysis page (pages/02_📈_Investment_Analysis.py)
-- Quantitative screening
-- Sentiment dashboards
-
-**Schema Location:** `scripts/setup/mansa_quant_schema.sql` (to be created)
-
----
-
-### 4. **mlflow_db** - MLFlow & Airflow Metadata
-**Purpose:** Machine learning experiment tracking, Airflow DAG metadata
-
-**Environment Variables:**
-```bash
+# MLflow Database (Experiments)
+MLFLOW_MYSQL_HOST=127.0.0.1
+MLFLOW_MYSQL_PORT=3307
+MLFLOW_MYSQL_PASSWORD=root
 MLFLOW_MYSQL_DATABASE=mlflow_db
-MLFLOW_TRACKING_URI=mysql+pymysql://root:root@127.0.0.1:3306/mlflow_db
 ```
 
-**Tables (MLFlow Native):**
-- `experiments` - ML experiment definitions
-- `runs` - Individual experiment runs
-- `metrics` - Run metrics (accuracy, loss, etc.)
-- `params` - Hyperparameters
-- `tags` - Run metadata tags
-- `model_versions` - Model registry versions
-
-**Tables (Airflow Metadata):**
-- `dag_runs` - DAG execution history
-- `task_instances` - Individual task executions
-- `task_logs` - Task execution logs
-
-**Primary Features:**
-- MLFlow experiment tracking
-- Airflow pipeline orchestration
-- Model versioning and registry
-
-**Schema Location:** MLFlow auto-creates tables on first run
+### Streamlit Secrets (Cloud Deployment)
+```toml
+# Railway MySQL (Port 54537)
+MLFLOW_MYSQL_HOST = "nozomi.proxy.rlwy.net"
+MLFLOW_MYSQL_PORT = "54537"
+MLFLOW_MYSQL_PASSWORD = "cBlIUSygvPJCgPbNKHePJekQlClRamri"
+MLFLOW_MYSQL_DATABASE = "mlflow_db"
+```
 
 ---
 
-### 5. **mrgp_schema** - Bulk Equities & Crypto Datasets
-**Purpose:** High-volume market data storage (prices, volume, orderbook)
+## Workflow Recap (With Database Details)
 
-**Environment Variables:**
+### Complete Pipeline:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. DATA SOURCES                                             │
+└─────────────────────────────────────────────────────────────┘
+   Tiingo, Barchart, AlphaVantage, YFinance, StockTwits
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 2. AIRFLOW INGESTION                                        │
+│    DAGs: ingest_yfinance.py, ingest_alpha_vantage.py       │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 3. MYSQL STORAGE (Port 3307)                                │
+│    Database: bbbot1                                         │
+│    Tables: stock_prices_yf, fundamentals, etc.             │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 4. DBT TRANSFORMATIONS                                      │
+│    Models: stg_prices, stg_fundamentals, features_roi      │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 5. PYTHON ANALYSIS (derive_ratios.py)                      │
+│    Calculate: PE ratio, ROE, moving averages               │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 6. MLFLOW LOGGING                                           │
+│    log_fundamental_ratios()                                 │
+│    Database: mlflow_db (Port 3307)                         │
+│    Tables: experiments, runs, metrics, params              │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 7. STREAMLIT DISPLAY                                        │
+│    Investment Analysis page queries MLflow                  │
+│    Shows: Latest experiments, metrics, comparisons         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Testing MLflow Connection
+
+### Test Local Docker Connection (Port 3307)
 ```bash
-BULK_MYSQL_DATABASE=mrgp_schema
+cd C:\Users\winst\BentleyBudgetBot
+python -c "from bbbot1_pipeline.mlflow_config import validate_connection; validate_connection()"
 ```
 
-**Tables:**
-
-#### Equities
-- `stock_prices_bulk` - Historical OHLCV data (years of data)
-- `intraday_prices` - Minute/5-minute bars
-- `stock_splits` - Stock split events
-- `dividends` - Dividend payment history
-
-#### Crypto
-- `crypto_prices` - Cryptocurrency OHLCV data
-- `crypto_orderbook` - Orderbook snapshots
-- `crypto_trades` - Real-time trade data from WebSocket
-- `exchange_info` - Exchange metadata
-
-#### Reference Data
-- `ticker_master` - Master list of all tickers
-- `exchange_holidays` - Market holiday calendar
-
-**Primary Features:**
-- Historical backtesting
-- Data pipelines (Airbyte ingestion)
-- Bulk data exports for analysis
-
-**Schema Location:** `scripts/setup/mrgp_schema.sql` (to be created)
-
----
-
-## 🔄 Migration from bbbot1
-
-### Old Architecture (DEPRECATED)
+**Expected Output:**
 ```
-bbbot1 → Everything in one database ❌
-├─ Fundamentals
-├─ Prices
-├─ Sentiment
-├─ Budget data
-└─ Metrics
+✅ MLFlow connection successful!
+   Found 2 experiment(s)
 ```
 
-**Problems:**
-- ❌ No separation of concerns
-- ❌ Difficult to backup selectively
-- ❌ Performance issues with large tables
-- ❌ Hard to scale individual components
-
-### New Architecture (CURRENT)
-```
-mydb          → Budget & personal finance
-mansa_bot     → App metrics & dbt staging
-mansa_quant   → Quantitative analysis datasets
-mlflow_db     → ML experiments & Airflow
-mrgp_schema   → Bulk historical data
-```
-
-**Benefits:**
-- ✅ Logical separation of data domains
-- ✅ Independent backup/restore
-- ✅ Easier to scale (e.g., move mrgp_schema to separate server)
-- ✅ Clear ownership and access control
-- ✅ Better performance (smaller databases)
-
----
-
-## 🔧 Code Migration Required
-
-### Files Referencing bbbot1 (Need Updates)
-
-#### 1. Airflow DAGs
-- `airflow/dags/bbbot1_master_pipeline.py` → Rename to `mansa_master_pipeline.py`
-- Update all `from bbbot1_pipeline` imports
-
-#### 2. Pipeline Code
-- `bbbot1_pipeline/` directory → Rename to `mansa_pipeline/`
-- Update package name throughout codebase
-
-#### 3. Legacy Scripts
-- `#alphavantage_fundamentals.py` - Update connection string
-- `#yfinance_fundamentals.py` - Update imports
-- `#stock_pipeline_DAG.py` - Update database references
-
-#### 4. SQL Scripts
-- `bbbot1_pipeline/sql/create_indexes.sql` → Update to reference correct databases
-
----
-
-## 📝 Environment Variable Mapping
-
-### Complete .env Configuration
-
+### Test Railway Connection (Port 54537)
 ```bash
-# ============================================================================
-# MySQL Database Configuration
-# ============================================================================
-
-# Main Application Database (metrics, models, staging)
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=root
-MYSQL_DATABASE=mansa_bot
-
-# Personal Budget Database (Plaid integration)
-BUDGET_MYSQL_HOST=127.0.0.1
-BUDGET_MYSQL_PORT=3306
-BUDGET_MYSQL_USER=root
-BUDGET_MYSQL_PASSWORD=root
-BUDGET_MYSQL_DATABASE=mydb
-
-# Quantitative Analysis Database
-QUANT_MYSQL_DATABASE=mansa_quant
-
-# MLFlow & Airflow Database
-MLFLOW_MYSQL_DATABASE=mlflow_db
-MLFLOW_TRACKING_URI=mysql+pymysql://root:root@127.0.0.1:3306/mlflow_db
-
-# Bulk Data Storage
-BULK_MYSQL_DATABASE=mrgp_schema
-
-# ============================================================================
-# Airbyte Configuration (for data ingestion)
-# ============================================================================
-AIRBYTE_MYSQL_USER=airbyte
-AIRBYTE_MYSQL_PASSWORD=airbyte_secure_password_2025
+$env:MLFLOW_MYSQL_HOST="nozomi.proxy.rlwy.net"
+$env:MLFLOW_MYSQL_PORT="54537"
+$env:MLFLOW_MYSQL_PASSWORD="cBlIUSygvPJCgPbNKHePJekQlClRamri"
+python -c "from bbbot1_pipeline.mlflow_config import validate_connection; validate_connection()"
 ```
 
 ---
 
-## 🔐 User Access Control
+## Quick Reference: Which Database for What?
 
-### Recommended User Setup
-
-```sql
--- Application user (read/write)
-CREATE USER 'mansa_app'@'localhost' IDENTIFIED BY 'secure_app_password';
-GRANT ALL PRIVILEGES ON mansa_bot.* TO 'mansa_app'@'localhost';
-GRANT ALL PRIVILEGES ON mydb.* TO 'mansa_app'@'localhost';
-GRANT ALL PRIVILEGES ON mansa_quant.* TO 'mansa_app'@'localhost';
-
--- Read-only analytics user
-CREATE USER 'mansa_analytics'@'localhost' IDENTIFIED BY 'analytics_password';
-GRANT SELECT ON mansa_bot.* TO 'mansa_analytics'@'localhost';
-GRANT SELECT ON mansa_quant.* TO 'mansa_analytics'@'localhost';
-GRANT SELECT ON mrgp_schema.* TO 'mansa_analytics'@'localhost';
-
--- Airbyte ingestion user
-CREATE USER 'airbyte'@'%' IDENTIFIED BY 'airbyte_secure_password_2025';
-GRANT SELECT, INSERT, UPDATE ON mansa_quant.* TO 'airbyte'@'%';
-GRANT SELECT, INSERT, UPDATE ON mrgp_schema.* TO 'airbyte'@'%';
-
-FLUSH PRIVILEGES;
-```
+| Data Type | Database | Port | Location |
+|-----------|----------|------|----------|
+| Stock prices from yfinance | bbbot1 | 3307 | Docker |
+| Financial fundamentals | bbbot1 | 3307 | Docker |
+| Calculated ratios (dbt) | bbbot1 | 3307 | Docker |
+| **MLflow experiments** | **mlflow_db** | **3307** | **Docker (local)** |
+| **MLflow experiments** | **mlflow_db** | **54537** | **Railway (cloud)** |
+| Airflow metadata | mansa_bot | 3307 | Docker |
+| Plaid transactions | mydb | 54537 | Railway |
 
 ---
 
-## 📦 Backup Strategy
+## Key Takeaways
 
-### Individual Database Backups
-
-```bash
-# Budget data (most critical for users)
-mysqldump -u root -p mydb > backups/mydb_$(date +%Y%m%d).sql
-
-# Application data (metrics, models)
-mysqldump -u root -p mansa_bot > backups/mansa_bot_$(date +%Y%m%d).sql
-
-# Quantitative data (can be re-fetched from APIs)
-mysqldump -u root -p mansa_quant > backups/mansa_quant_$(date +%Y%m%d).sql
-
-# MLFlow experiments
-mysqldump -u root -p mlflow_db > backups/mlflow_db_$(date +%Y%m%d).sql
-
-# Bulk data (optional, very large)
-# mysqldump -u root -p mrgp_schema > backups/mrgp_schema_$(date +%Y%m%d).sql
-```
-
-### Restore Priority
-1. **mydb** (Critical) - User budget data
-2. **mansa_bot** (High) - Application metrics
-3. **mlflow_db** (Medium) - ML experiments
-4. **mansa_quant** (Low) - Can re-fetch from APIs
-5. **mrgp_schema** (Low) - Bulk historical data
+1. ✅ **MLflow DOES work with port 3307** - Connection test successful
+2. ✅ **bbbot1 and mlflow_db coexist** - Different databases, same MySQL server
+3. ✅ **Local = Docker:3307, Cloud = Railway:54537** - Auto-detected by mlflow_config.py
+4. ✅ **MLflow logs FROM your Python scripts** - Not triggered by Railway
+5. ✅ **Same mlflow_db structure** - Whether local Docker or Railway cloud
 
 ---
 
-## 🚀 Database Initialization Checklist
-
-### 1. Create Databases
-```sql
-CREATE DATABASE IF NOT EXISTS mydb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS mansa_bot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS mansa_quant CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS mlflow_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS mrgp_schema CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-### 2. Run Schema Scripts
-```bash
-# Budget tables
-mysql -u root -p mydb < scripts/setup/budget_schema.sql
-
-# Application tables
-mysql -u root -p mansa_bot < scripts/setup/mansa_bot_schema.sql
-
-# Quantitative tables
-mysql -u root -p mansa_quant < scripts/setup/mansa_quant_schema.sql
-
-# MLFlow (auto-creates on first run)
-# Just ensure MLFLOW_TRACKING_URI is set correctly
-
-# Bulk data tables
-mysql -u root -p mrgp_schema < scripts/setup/mrgp_schema.sql
-```
-
-### 3. Verify Schema
-```bash
-# Check table counts
-mysql -u root -p -e "SELECT table_schema, COUNT(*) as table_count FROM information_schema.tables WHERE table_schema IN ('mydb', 'mansa_bot', 'mansa_quant', 'mlflow_db', 'mrgp_schema') GROUP BY table_schema;"
-```
-
-### 4. Test Connections
-```bash
-python test_database_connections.py
-```
-
----
-
-## 🔗 Appwrite Integration Plan
-
-**Your Future State:**
-```
-Appwrite Cloud
-├─ User authentication
-├─ API gateway
-├─ Real-time subscriptions
-└─ File storage
-
-MySQL (Local/AWS RDS)
-├─ mydb (budget transactions)
-├─ mansa_bot (metrics)
-├─ mansa_quant (market data)
-├─ mlflow_db (ML experiments)
-└─ mrgp_schema (bulk data)
-```
-
-**Migration Path:**
-1. **Phase 1:** Keep MySQL for data storage, use Appwrite for auth
-2. **Phase 2:** Move user tables to Appwrite Database
-3. **Phase 3:** Use Appwrite Functions for API endpoints
-4. **Phase 4:** MySQL becomes pure data warehouse
-
----
-
-## 📊 Database Size Estimates
-
-| Database | Expected Size | Growth Rate |
-|----------|---------------|-------------|
-| mydb | 10-50 MB | Low (user transactions) |
-| mansa_bot | 100-500 MB | Medium (metrics logs) |
-| mansa_quant | 1-5 GB | Medium (fundamentals/sentiment) |
-| mlflow_db | 500 MB - 2 GB | Low (experiment metadata) |
-| mrgp_schema | 10-100 GB | High (historical OHLCV) |
-
-**Total:** ~12-108 GB (depends on historical data retention)
-
----
-
-## ✅ Next Steps
-
-1. ✅ Create missing schema files (`mansa_bot_schema.sql`, `mansa_quant_schema.sql`, `mrgp_schema.sql`)
-2. ✅ Run migration script to create all databases
-3. ✅ Update all `bbbot1` references to use new database names
-4. ✅ Test each application feature with new schema
-5. ✅ Document connection patterns for each database
-6. ✅ Set up automated backups
-7. ✅ Create database monitoring dashboard
-
----
-
-**Last Updated:** December 14, 2025  
-**Schema Version:** 2.0  
-**Migration Status:** In Progress
+**Updated:** January 17, 2026  
+**Status:** ✅ All databases operational  
+**MLflow Connection:** ✅ Working on port 3307

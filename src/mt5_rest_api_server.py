@@ -437,8 +437,13 @@ def modify_position():
 if __name__ == '__main__':
     print("=" * 60)
     print("MT5 REST API Server")
+    # Get port from environment or use 8002 (8000 is used by Airbyte)
+    import os
+    port = int(os.getenv('PORT', '8002'))
+    host = os.getenv('HOST', '0.0.0.0')
+    
     print("=" * 60)
-    print("Starting server on http://localhost:8000")
+    print(f"Starting MT5 REST API server on http://localhost:{port}")
     print("\nMake sure MetaTrader 5 terminal is running!")
     print("\nAvailable endpoints:")
     print("  GET  /Health           - Health check")
@@ -453,4 +458,5 @@ if __name__ == '__main__':
     print("  POST /ModifyPosition   - Modify SL/TP")
     print("=" * 60)
     
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    # Disable debug mode and use_reloader to prevent restart loop
+    app.run(host=host, port=port, debug=False, use_reloader=False)

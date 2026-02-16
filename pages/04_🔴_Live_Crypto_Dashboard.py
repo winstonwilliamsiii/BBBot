@@ -148,7 +148,7 @@ except ImportError:
 # Import MLFlow tracker
 try:
     from bbbot1_pipeline.mlflow_tracker import get_tracker
-    from bbbot1_pipeline.mlflow_config import print_connection_details
+    from bbbot1_pipeline.mlflow_config import print_connection_details, get_mlflow_config, MYSQL_WORKBENCH_INFO
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
@@ -201,11 +201,12 @@ def display_live_crypto_dashboard():
     # Connection details button
     if st.sidebar.button("🔌 Show MLFlow Connection"):
         if MLFLOW_AVAILABLE:
-            st.sidebar.code("""
+            config = get_mlflow_config()
+            st.sidebar.code(f"""
 Connection: Bentley_Budget
-Host: 127.0.0.1:3306
-Database: mlflow_db
-User: root@localhost
+Host: {config['host']}:{config['port']}
+Database: {config['database']}
+User: {config['user']}@localhost
             """)
         else:
             st.sidebar.warning("MLFlow not configured")
@@ -539,12 +540,13 @@ def display_mlflow_crypto_logs():
         
         # Show connection info
         with st.expander("🔌 MLFlow Connection Details"):
-            st.code("""
+            config = get_mlflow_config()
+            st.code(f"""
 Name: Bentley_Budget
-Host: 127.0.0.1
-Port: 3306
-Database: mlflow_db
-User: root@localhost
+Host: {config['host']}
+Port: {config['port']}
+Database: {config['database']}
+User: {config['user']}@localhost
             """)
         
     except Exception as e:

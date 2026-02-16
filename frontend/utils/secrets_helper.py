@@ -68,12 +68,10 @@ def get_mysql_config(database: str = None) -> dict:
     host = get_secret('MYSQL_HOST', default=get_secret('DB_HOST', default='127.0.0.1'))
     is_railway = any(x in host for x in ('railway', 'nozomi'))
 
-    # ---
-    # 🚦 AUTO-MAPPING: On Railway, mansa_bot/railway → bbbot1 for trading signals
-    # This ensures the app always uses the correct DB for ML trading signals
+    # Auto-map database names for Railway production environment
+    # mansa_bot and railway both point to bbbot1 on production
     if is_railway and database in ('mansa_bot', 'railway'):
         database = 'bbbot1'
-    # ---
 
     return {
         'host': host,

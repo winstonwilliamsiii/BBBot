@@ -220,9 +220,10 @@ BentleyBudgetBot/
 │   │   ├── 02_📈_Investment_Analysis.py
 │   │   ├── 03_🔴_Live_Crypto_Dashboard.py
 │   │   ├── 04_💼_Broker_Trading.py
-│   │   ├── 05_🤖_Trading_Bot.py
+│   │   ├── 05_🌐_Multi_Broker_Trading.py
 │   │   ├── 06_🏦_Plaid_Test.py
-│   │   └── 07_🌐_Multi_Broker_Trading.py
+│   │   ├── 07_🤖_Trading_Bot.py
+│   │   └── 08_Investment_Portfolio.py
 │   ├── frontend/                 # React/Next.js components
 │   └── vercel-frontend/          # Vercel deployment
 │

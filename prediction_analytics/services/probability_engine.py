@@ -1,106 +1,90 @@
-"""
-Probability Engine
-==================
-Calculates and analyzes prediction probabilities
-"""
+"""Probability engine for implied probability calculations."""
+import logging
+from typing import Dict, List, Optional
 
-from typing import Dict, List, Optional, Tuple
 import numpy as np
-from datetime import datetime
+from sqlalchemy import text
+
+from prediction_analytics.services.db import get_session_factory
+
+logger = logging.getLogger(__name__)
 
 
 class ProbabilityEngine:
-    """Engine for probability calculations and analysis"""
-    
     def __init__(self):
-        """Initialize probability engine"""
-        pass
-    
-    def calculate_implied_probability(self, price: float) -> float:
-        """Calculate implied probability from market price
-        
-        Args:
-            price: The current market price (0-1)
-            
-        Returns:
-            Implied probability as percentage
-        """
-        if not 0 <= price <= 1:
-            raise ValueError("Price must be between 0 and 1")
-        return price * 100
-    
-    def calculate_sharpe_ratio(self, returns: List[float], risk_free_rate: float = 0.02) -> float:
-        """Calculate Sharpe ratio for a series of returns
-        
-        Args:
-            returns: List of returns
-            risk_free_rate: Risk-free rate for calculation
-            
-        Returns:
-            Sharpe ratio
-        """
-        if not returns:
+        self.session_factory = get_session_factory()
+
+    def _calc_lmsr(self, yes_price: float, no_price: float) -> float:
+        total = yes_price + no_price
+        if total == 0:
+            return 50.0
+        return (yes_price / total) * 100
+
+    def _calc_amm(self, yes_liq: float, no_liq: float) -> float:
+        if yes_liq + no_liq == 0:
+            return 50.0
+        return (yes_liq / (yes_liq + no_liq)) * 100
+
+    def _calc_orderbook(self, bids: List[float], asks: List[float]) -> Optional[float]:
+        if not bids or not asks:
+            return None
+        return (np.mean(bids) + np.mean(asks)) / 2 * 100
+
+    def _confidence(self, values: List[float]) -> float:
+        if not values:
             return 0.0
-        
-        returns_array = np.array(returns)
-        excess_returns = returns_array - risk_free_rate
-        
-        if np.std(excess_returns) == 0:
-            return 0.0
-        
-        return np.mean(excess_returns) / np.std(excess_returns)
-    
-    def calculate_confidence_score(self, probability: float, market_volume: float) -> float:
-        """Calculate confidence score based on probability and market volume
-        
-        Args:
-            probability: The probability (0-1)
-            market_volume: Trading volume
-            
-        Returns:
-            Confidence score (0-1)
-        """
-        # Normalize volume (assuming volume > 100k is high)
-        normalized_volume = min(market_volume / 100000, 1.0)
-        
-        # Probability confidence (higher at extremes)
-        prob_confidence = abs(probability - 0.5) * 2
-        
-        # Combine factors
-        confidence = (prob_confidence + normalized_volume) / 2
-        return min(confidence, 1.0)
-    
-    def analyze_market_sentiment(self, markets: List[Dict]) -> Dict:
-        """Analyze overall sentiment from market data
-        
-        Args:
-            markets: List of market dictionaries with price and volume
-            
-        Returns:
-            Sentiment analysis results
-        """
-        if not markets:
-            return {"bullish_count": 0, "bearish_count": 0, "neutral_count": 0}
-        
-        bullish = 0
-        bearish = 0
-        neutral = 0
-        
-        for market in markets:
-            price = market.get("price", 0.5)
-            
-            if price > 0.65:
-                bullish += 1
-            elif price < 0.35:
-                bearish += 1
-            else:
-                neutral += 1
-        
-        return {
-            "bullish_count": bullish,
-            "bearish_count": bearish,
-            "neutral_count": neutral,
-            "bullish_percentage": (bullish / len(markets)) * 100 if markets else 0,
-            "bearish_percentage": (bearish / len(markets)) * 100 if markets else 0,
-            "neutral_percentage": (neutral / len(markets)) * 100 if markets else 0
-        }
+        if len(values) == 1:
+            return 0.8
+        variance = np.var(values)
+        return round(min(1.0, 1.0 / (1.0 + variance / 100)), 2)
+
+    async def compute_and_store(self, contract_id: str) -> Optional[Dict]:
+        with self.session_factory() as session:
+            contract = session.execute(text(
+                """
+                SELECT yes_price, no_price, liquidity_usd
+                FROM mansa_quant.event_contracts
+                WHERE contract_id = :cid AND status = 'OPEN'
+                """
+            ), {"cid": contract_id}).fetchone()
+            if not contract:
+                logger.info("No open contract found for %s", contract_id)
+                return None
+            yes_price, no_price, liquidity = contract
+
+            order_rows = session.execute(text(
+                """
+                SELECT price, side FROM mansa_quant.orderbook_data
+                WHERE contract_id = :cid AND timestamp > NOW() - INTERVAL 1 HOUR
+                ORDER BY timestamp DESC LIMIT 100
+                """
+            ), {"cid": contract_id}).fetchall()
+            bids = [p for p, side in order_rows if side == "BID"]
+            asks = [p for p, side in order_rows if side == "ASK"]
+
+            calcs = {
+                "lmsr": self._calc_lmsr(yes_price, no_price),
+                "amm": self._calc_amm(yes_price, max(1e-6, 1 - yes_price)),
+            }
+            ob_prob = self._calc_orderbook(bids, asks)
+            if ob_prob is not None:
+                calcs["orderbook"] = ob_prob
+
+            implied = float(np.mean(list(calcs.values())))
+            confidence = self._confidence(list(calcs.values()))
+
+            session.execute(text(
+                """
+                INSERT INTO mansa_quant.prediction_probabilities
+                (contract_id, source, implied_probability, confidence_score, rationale)
+                VALUES (:cid, 'engine', :prob, :conf, :rat)
+                """
+            ), {
+                "cid": contract_id,
+                "prob": round(implied, 2),
+                "conf": confidence,
+                "rat": f"Ensemble of {len(calcs)} methods"
+            })
+            session.commit()
+            logger.info("Stored prediction for %s -> %.2f (conf %.2f)", contract_id, implied, confidence)
+            return {"contract_id": contract_id, "implied_probability": implied, "confidence": confidence}

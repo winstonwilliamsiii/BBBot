@@ -18,7 +18,8 @@
         "cashpro",
         "DEEPSEEK",
         "FOREX",
-        "IBKR"
+        "IBKR",
+        "KALSHI"
     ],
     "sqltools.connections": [
         {
@@ -91,5 +92,6 @@
             "database": "mansa_bot",
             "username": "root"
         }
-    ]
+    ],
+    "chat.viewProgressBadge.enabled": true
 }

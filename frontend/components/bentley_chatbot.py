@@ -409,11 +409,20 @@ def render_chatbot_interface(context_data: Dict = None):
         
         st.rerun()
     
-    # Display chat history below input
+    # Display chat history below input - ALWAYS SHOW (even if empty)
+    st.markdown("""
+    <div style='margin-top: 1.5rem; border-top: 2px solid #14B8A6; padding-top: 1rem;'>
+        <h3 style='color: #FACC15; font-size: 1.2rem; margin-bottom: 1rem;'>
+            💬 Conversation History
+        </h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
     chat_container = st.container()
     
     with chat_container:
         if len(st.session_state.chat_history) > 0:
+            # Show all messages in the chat history
             for msg in st.session_state.chat_history:
                 if msg['role'] == 'user':
                     with st.chat_message("user"):
@@ -421,6 +430,17 @@ def render_chatbot_interface(context_data: Dict = None):
                 else:
                     with st.chat_message("assistant", avatar="🤖"):
                         st.write(msg['content'])
+        else:
+            # Show a placeholder when chat is empty
+            st.markdown("""
+            <div style='background: rgba(17, 24, 39, 0.4); 
+                        padding: 2rem; border-radius: 8px; text-align: center;
+                        border: 1px dashed rgba(255,255,255,0.2);'>
+                <p style='color: rgba(255,255,255,0.6); font-size: 1rem; margin: 0;'>
+                    🗨️ No messages yet. Start a conversation above!
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
     
 
 

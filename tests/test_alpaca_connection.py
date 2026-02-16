@@ -2,18 +2,23 @@
 Test Alpaca Connection Script
 Validates Alpaca API credentials and connection status
 """
-
+    
 import os
 import sys
+import pathlib
+# Ensure project root is in sys.path for import
+project_root = pathlib.Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
-
+        
 # Load environment variables
 load_dotenv()
-
+        
 print("=" * 60)
 print("ALPACA CONNECTION TEST")
 print("=" * 60)
-
+        
 # Import connector
 try:
     from frontend.components.alpaca_connector import AlpacaConnector
@@ -21,28 +26,28 @@ try:
 except ImportError as e:
     print(f"❌ Failed to import Alpaca connector: {e}")
     sys.exit(1)
-
+        
 # Get credentials from environment
 api_key = os.getenv("ALPACA_API_KEY", "")
 secret_key = os.getenv("ALPACA_SECRET_KEY", "")
 paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-
+        
 print("\n" + "=" * 60)
 print("STEP 1: Environment Configuration")
 print("=" * 60)
-
+    
 if not api_key:
     print("❌ ALPACA_API_KEY not found in .env")
     sys.exit(1)
 else:
     print(f"✅ ALPACA_API_KEY found: {api_key[:8]}...")
-
+    
 if not secret_key:
     print("❌ ALPACA_SECRET_KEY not found in .env")
     sys.exit(1)
 else:
     print(f"✅ ALPACA_SECRET_KEY found: {secret_key[:8]}...")
-
+    
 print(f"✅ Trading Mode: {'PAPER' if paper else 'LIVE'}")
 
 # Initialize connector
@@ -172,6 +177,48 @@ except Exception as e:
 print("\n" + "=" * 60)
 print("✅ CONNECTION TEST COMPLETE")
 print("=" * 60)
+
+print("\n" + "=" * 60)
+print("STEP 7: Place SUPX Buy Order @ $16.50")
+print("=" * 60)
+try:
+    order = alpaca.place_order(
+        symbol="SUPX",
+        qty=1,
+        side="buy",
+        order_type="limit",
+        time_in_force="day",
+        limit_price=16.50
+    )
+    if order:
+        print(f"✅ Order placed! ID: {order.get('id', 'N/A')}")
+        print(f"   Symbol: {order.get('symbol', 'N/A')}")
+        print(f"   Side: {order.get('side', 'N/A')}")
+        print(f"   Type: {order.get('type', 'N/A')}")
+        print(f"   Limit Price: {order.get('limit_price', 'N/A')}")
+        print(f"   Status: {order.get('status', 'N/A')}")
+        # Send Discord notification
+        try:
+            from frontend.utils.discord_alpaca import send_discord_trade_notification
+            sent = send_discord_trade_notification(
+                symbol=order.get('symbol', 'SUPX'),
+                side=order.get('side', 'buy'),
+                qty=order.get('qty', 1),
+                order_type=order.get('type', 'limit'),
+                limit_price=order.get('limit_price', 16.50),
+                status=order.get('status', 'pending_new')
+            )
+            if sent:
+                print("✅ Discord notification sent.")
+            else:
+                print("⚠️ Discord notification failed (check webhook URL)")
+        except Exception as e:
+            print(f"⚠️ Discord notification error: {e}")
+    else:
+        print("❌ Order failed (no response)")
+except Exception as e:
+    print(f"❌ Order error: {e}")
+
 print("\nAlpaca is ready for:")
 print("  ✅ Bentley Bot Investment Page")
 print("  ✅ Brokerage Dashboard")

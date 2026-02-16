@@ -1,0 +1,5 @@
+#requirementstxttxt
+mysql-connector-python
+requests
+textblob
+python-dotenv

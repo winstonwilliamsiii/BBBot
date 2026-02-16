@@ -220,6 +220,106 @@ class AlpacaConnector:
             logger.error(f"Error placing order: {e}")
             return None
     
+    def place_bracket_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: str = "buy",
+        order_type: str = "market",
+        limit_price: Optional[float] = None,
+        take_profit_limit_price: Optional[float] = None,
+        stop_loss_stop_price: Optional[float] = None,
+        stop_loss_limit_price: Optional[float] = None,
+        time_in_force: str = "gtc"
+    ) -> Optional[Dict]:
+        """
+        Place a bracket order with automatic stop loss and take profit
+        
+        Args:
+            symbol: Stock symbol
+            qty: Number of shares
+            side: "buy" or "sell"
+            order_type: "market" or "limit"
+            limit_price: Entry limit price (required if order_type="limit")
+            take_profit_limit_price: Take profit price (REQUIRED)
+            stop_loss_stop_price: Stop loss trigger price (REQUIRED)
+            stop_loss_limit_price: Stop loss limit price (optional, defaults to stop_price)
+            time_in_force: "day" or "gtc" (good-til-cancelled recommended for brackets)
+            
+        Returns:
+            Dictionary with order details including all three legs
+            
+        Example:
+            # Buy 100 shares of AAPL at market with $5 stop loss and $10 take profit
+            current_price = 150.00
+            order = alpaca.place_bracket_order(
+                symbol="AAPL",
+                qty=100,
+                side="buy",
+                order_type="market",
+                take_profit_limit_price=160.00,  # $10 profit
+                stop_loss_stop_price=145.00      # $5 stop loss
+            )
+        """
+        try:
+            # Validate required parameters
+            if take_profit_limit_price is None:
+                raise ValueError("take_profit_limit_price is required for bracket orders")
+            if stop_loss_stop_price is None:
+                raise ValueError("stop_loss_stop_price is required for bracket orders")
+            
+            # Build order data
+            data = {
+                'symbol': symbol,
+                'qty': qty,
+                'side': side,
+                'type': order_type,
+                'time_in_force': time_in_force,
+                'order_class': 'bracket',  # THIS IS KEY FOR BRACKET ORDERS
+                'take_profit': {
+                    'limit_price': take_profit_limit_price
+                },
+                'stop_loss': {
+                    'stop_price': stop_loss_stop_price
+                }
+            }
+            
+            # Add entry limit price if specified
+            if order_type == "limit":
+                if limit_price is None:
+                    raise ValueError("limit_price required when order_type='limit'")
+                data['limit_price'] = limit_price
+            
+            # Add stop loss limit price if specified (for stop-limit instead of stop-market)
+            if stop_loss_limit_price is not None:
+                data['stop_loss']['limit_price'] = stop_loss_limit_price
+            
+            # Submit bracket order
+            response = self.session.post(f"{self.base_url}/v2/orders", json=data, timeout=10)
+            
+            if not response.ok:
+                error_msg = f"Order failed: {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f" - {error_detail}"
+                except:
+                    error_msg += f" - {response.text}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(
+                f"✅ Bracket order placed: {symbol} {side.upper()} {qty} @ "
+                f"TP: ${take_profit_limit_price}, SL: ${stop_loss_stop_price}"
+            )
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error placing bracket order: {e}")
+            return None
+    
     def get_orders(self, status: str = "open") -> Optional[List[Dict]]:
         """
         Get orders

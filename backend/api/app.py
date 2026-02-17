@@ -160,15 +160,15 @@ def check_profit_benchmark():
 
 if __name__ == '__main__':
     print("🚀 Starting Bentley Bot Control Center API...")
-    print("📡 API will be available at: http://localhost:5000")
-    print("📊 Health check: http://localhost:5000/health")
-    print("🔧 Admin test: http://localhost:5000/admin/test")
+    print("📡 API will be available at: http://localhost:5001")
+    print("📊 Health check: http://localhost:5001/health")
+    print("🔧 Admin test: http://localhost:5001/admin/test")
     print("\n⚠️  Note: Admin endpoints will be added in Week 1-2")
     print("📖 See: docs/CONTROL_CENTER_QUICK_START.md\n")
     
     app.run(
         host='0.0.0.0',
-        port=5000,
+        port=5001,
         debug=True,
         use_reloader=False  # Disabled to prevent .venv file change detection loop
     )

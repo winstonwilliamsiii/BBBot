@@ -153,7 +153,7 @@ See: [CONTROL_CENTER_QUICK_START.md](docs/CONTROL_CENTER_QUICK_START.md)
 
 ## 🔗 Important Links
 
-- **Flask API:** http://localhost:5000
+- **Flask API:** http://localhost:5001
 - **Streamlit App:** http://localhost:8501
 - **MLflow:** http://localhost:5000 (if Docker running)
 - **Airflow:** http://localhost:8080 (if Docker running)
@@ -172,7 +172,7 @@ See: [CONTROL_CENTER_QUICK_START.md](docs/CONTROL_CENTER_QUICK_START.md)
 
 ```powershell
 # Check Flask API status
-curl http://localhost:5000/health
+curl http://localhost:5001/health
 
 # Check Streamlit status
 Get-Process *streamlit*

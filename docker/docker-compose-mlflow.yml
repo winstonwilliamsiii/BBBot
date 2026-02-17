@@ -19,22 +19,18 @@ services:
       - ./data/mlflow/db:/mlflow/db
     command: >
       bash -c "
-        pip install mlflow==2.8.1 pandas==2.1.4 && 
+        apt-get update && apt-get install -y curl && 
+        pip install mlflow==2.8.1 pandas==2.1.4 gunicorn==21.2.0 && 
         mkdir -p /mlflow/artifacts /mlflow/db && 
-        mlflow server 
-        --backend-store-uri sqlite:////mlflow/db/mlflow.db
-        --default-artifact-root /mlflow/artifacts 
-        --host 0.0.0.0 
-        --port 5000 
-        --serve-artifacts
+        gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --access-logfile - 'mlflow.server:app' --env MLFLOW_BACKEND_STORE_URI='sqlite:////mlflow/db/mlflow.db' --env MLFLOW_DEFAULT_ARTIFACT_ROOT='/mlflow/artifacts'
       "
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import requests; requests.get(\"http://localhost:5000\")' || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
   # Optional: MLflow with MySQL backend (more robust for production)
   mlflow-mysql:

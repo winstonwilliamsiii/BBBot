@@ -22,7 +22,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Configuration
-FLASK_API_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5000")
+FLASK_API_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
 MLFLOW_URL = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 # Page config

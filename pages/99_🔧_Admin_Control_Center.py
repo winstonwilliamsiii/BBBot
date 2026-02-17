@@ -377,8 +377,8 @@ def main():
     with tab5:
         st.markdown('<div class="section-header"><h2>Risk Management & Compliance</h2></div>', unsafe_allow_html=True)
         
-        # Risk metrics
-        col1, col2, col3 = st.columns(3)
+        # Risk metrics (Row 1)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric("Portfolio Drawdown", "-2.3%", "Within limits")
@@ -386,6 +386,72 @@ def main():
             st.metric("Margin Utilization", "34%", "Healthy")
         with col3:
             st.metric("Risk Violations Today", "0", "✓")
+        with col4:
+            # NEW: Trade Liquidity Ratio
+            liquidity_ratio = 26.5  # Example: 26.5% cash available
+            ratio_delta = "+3.2%" if liquidity_ratio >= 20 else "-Warning"
+            ratio_color = "normal" if liquidity_ratio >= 20 else "inverse"
+            st.metric("Trade Liquidity Ratio", f"{liquidity_ratio}%", ratio_delta, delta_color=ratio_color)
+        
+        st.markdown("---")
+        
+        # NEW: Liquidity Management Section
+        st.markdown('<div class="section-header"><h3>💧 Liquidity & Dry Powder Management</h3></div>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("**Automatic Trade Liquidity Settings**")
+            st.caption("Ensure sufficient cash reserves for alternative opportunities and market mobility")
+            
+            # Cash Reserve Buffer
+            liquidity_buffer = st.slider(
+                "Cash Reserve Buffer (%)", 
+                min_value=10, 
+                max_value=50, 
+                value=25, 
+                step=5,
+                help="Recommended: 20-30% for optimal liquidity and opportunity capture"
+            )
+            
+            # Profit Benchmark
+            profit_benchmark = st.number_input(
+                "Profit Benchmark for Liquidity Release (%)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=15.0, 
+                step=0.5,
+                help="When trades reach this profit %, release funds back to liquidity pool"
+            )
+            
+            # Auto-rebalance
+            auto_rebalance = st.checkbox(
+                "Auto-rebalance to maintain liquidity buffer", 
+                value=True,
+                help="Automatically adjust positions to maintain target cash reserve"
+            )
+        
+        with col2:
+            st.markdown("**💰 Available Dry Powder**")
+            
+            # Sample calculations (replace with actual portfolio data)
+            total_portfolio_value = 100000  # Example
+            current_cash = total_portfolio_value * (liquidity_ratio / 100)
+            target_cash = total_portfolio_value * (liquidity_buffer / 100)
+            available_for_trades = max(0, current_cash - target_cash)
+            
+            st.metric("Total Cash", f"${current_cash:,.0f}")
+            st.metric("Reserved Buffer", f"${target_cash:,.0f}")
+            st.metric("Available Now", f"${available_for_trades:,.0f}", 
+                     "Ready for deployment" if available_for_trades > 0 else "At limit")
+            
+            # Liquidity health indicator
+            if liquidity_ratio >= liquidity_buffer:
+                st.success("✅ Healthy liquidity position")
+            elif liquidity_ratio >= (liquidity_buffer - 5):
+                st.warning("⚠️ Approaching liquidity minimum")
+            else:
+                st.error("🔴 Below liquidity buffer")
         
         st.markdown("---")
         
@@ -409,6 +475,32 @@ def main():
         
         if st.button("💾 Save Risk Settings", type="primary"):
             st.success("Risk settings updated successfully!")
+            st.info(f"Liquidity buffer set to {liquidity_buffer}% | Profit benchmark at {profit_benchmark}%")
+        
+        st.markdown("---")
+        
+        # Liquidity deployment strategy
+        with st.expander("📊 Liquidity Deployment Strategy"):
+            st.markdown("""
+            **How the Trade Liquidity Ratio works:**
+            
+            1. **Cash Reserve Buffer**: Maintains {buffer}% cash for rapid deployment on opportunities
+            2. **Profit Benchmark**: When positions hit {benchmark}% profit, reallocate to liquidity pool
+            3. **Auto-Rebalance**: System automatically adjusts to maintain target liquidity
+            4. **Dry Powder Calculation**: `Available = Current Cash - Reserved Buffer`
+            
+            **Example:**
+            - Portfolio Value: $100,000
+            - Target Buffer: 25% → $25,000 reserved
+            - Current Cash: 26.5% → $26,500
+            - **Available Dry Powder: $1,500** for new opportunities
+            
+            This ensures you always have capital ready for:
+            - Alternative trading opportunities
+            - Market volatility response
+            - Quick position adjustments
+            - Opportunistic entries
+            """.format(buffer=liquidity_buffer, benchmark=profit_benchmark))
         
         st.markdown("---")
         

@@ -40,8 +40,13 @@ jobs:
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     
+    - name: Set PYTHONPATH
+      run: |
+        echo "PYTHONPATH=${{ github.workspace }}/src:${{ github.workspace }}" >> $GITHUB_ENV
+    
     - name: Final production validation
       env:
+        PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
         ENVIRONMENT: production
         MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
         MYSQL_PORT: ${{ secrets.MYSQL_PORT }}

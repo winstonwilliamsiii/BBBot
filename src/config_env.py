@@ -267,3 +267,8 @@ if __name__ == '__main__':
             print(f"   Airbyte: {config.get_airbyte_url()}")
         except ValueError as e:
             print(f"   ❌ Error: {e}")
+
+
+# Module-level config instance for easy importing
+# Usage: from config_env import config
+config = EnvironmentConfig()

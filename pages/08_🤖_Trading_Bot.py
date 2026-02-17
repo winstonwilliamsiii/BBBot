@@ -215,6 +215,18 @@ st.markdown("""
 st.title("🤖 ML Trading Bot Dashboard")
 st.markdown("**Automated Trading with Mean Reversion & Random Forest Strategies**")
 
+# Bot Status Banner - Moved from Home Page
+try:
+    from frontend.utils.styling import create_custom_card
+    create_custom_card(
+        "Trading Bot Status",
+        "All systems operational. Bot is responding normally to user queries and executing trades.",
+    )
+except ImportError:
+    st.info("✅ **Trading Bot Status**: All systems operational. Bot is responding normally to user queries and executing trades.")
+
+st.markdown("---")
+
 # Bot status check
 def get_bot_status():
     """Check if trading bot DAG is running"""

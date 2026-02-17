@@ -486,15 +486,6 @@ def main():
     st.markdown("---")
 
     # ==========================================================================
-    # Economic Calendar & Market Data Section
-    # ==========================================================================
-    if ECONOMIC_CALENDAR_AVAILABLE:
-        st.markdown("## 📊 Markets & Economics")
-        widget = get_calendar_widget()
-        widget.render_full_dashboard()
-        st.markdown("---")
-    
-    # ==========================================================================
     # Appwrite Quick Actions Section - Transaction & Watchlist Management
     # ==========================================================================
     if APPWRITE_SERVICES_AVAILABLE:
@@ -580,7 +571,14 @@ def main():
         st.markdown("## 📊 Fundamental Analysis")
         render_dcf_widget()
         st.markdown("---")
-
+    # ==========================================================================
+    # Economic Calendar & Market Data Section - MOVED TO BOTTOM
+    # ==========================================================================
+    if ECONOMIC_CALENDAR_AVAILABLE:
+        st.markdown("## 📋 Markets & Economics")
+        widget = get_calendar_widget()
+        widget.render_full_dashboard()
+        st.markdown("---")
     # Sidebar controls
     if os.getenv("ENVIRONMENT", "development").lower() == "development":
         with st.sidebar.expander("Dev: Database Health"):
@@ -623,6 +621,72 @@ def main():
     else:
         st.sidebar.warning("⚠️ Login system unavailable")
         st.sidebar.caption("RBAC module not loaded")
+    
+    st.sidebar.markdown("---")
+    st.sidebar.header("📄 Upload Portfolio CSV")
+    
+    # Add CSV upload information
+    with st.sidebar.expander("ℹ️ CSV Format Help"):
+        st.write("""
+        **Required columns:**
+        - `Symbol`: Stock ticker (e.g., AAPL, MSFT)
+        - `Quantity`: Number of shares owned
+        
+        **Optional columns:**
+        - `Purchase_Price`: Price paid per share
+        - `Purchase_Date`: Date purchased (YYYY-MM-DD)
+        """)
+    
+    portfolio_csv = st.sidebar.file_uploader(
+        "Upload your portfolio data (CSV)",
+        type=["csv"],
+        help="CSV should contain columns: Symbol, Quantity, Purchase_Price (optional: Purchase_Date)"
+    )
+    
+    # Initialize portfolio_data in session state if not exists
+    if 'portfolio_data' not in st.session_state:
+        st.session_state.portfolio_data = None
+        
+    if portfolio_csv is not None:
+        try:
+            # Read the uploaded CSV
+            portfolio_df = pd.read_csv(portfolio_csv)
+            
+            # Validate required columns
+            required_cols = ['Symbol', 'Quantity']
+            if all(col in portfolio_df.columns for col in required_cols):
+                st.session_state.portfolio_data = portfolio_df
+                st.sidebar.success(f"✅ Portfolio loaded: {len(portfolio_df)} holdings")
+                
+                # Display a preview
+                st.sidebar.write("**Preview:**")
+                st.sidebar.dataframe(portfolio_df.head(3), use_container_width=True)
+            else:
+                st.sidebar.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
+                
+        except Exception as e:
+            st.sidebar.error(f"❌ Error reading CSV: {str(e)}")
+    
+    # CSV Template Download
+    if st.sidebar.button("📥 Download CSV Template"):
+        # Create sample CSV data
+        sample_data = {
+            'Symbol': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+            'Quantity': [10, 5, 3, 8, 2],
+            'Purchase_Price': [150.00, 280.00, 2500.00, 3200.00, 800.00],
+            'Purchase_Date': ['2023-01-15', '2023-02-10', '2023-03-05', '2023-01-20', '2023-02-28']
+        }
+        sample_df = pd.DataFrame(sample_data)
+        
+        # Convert to CSV
+        csv_content = sample_df.to_csv(index=False)
+        
+        st.sidebar.download_button(
+            label="Download portfolio_template.csv",
+            data=csv_content,
+            file_name="portfolio_template.csv",
+            mime="text/csv"
+        )
     
     st.sidebar.markdown("---")
     st.sidebar.header("Mansa Capital Funds")
@@ -683,12 +747,6 @@ def main():
     if from_date > to_date:
         st.error("Error: Start date must be before end date.")
         st.stop()
-
-    # Bot status card - positioned above portfolio metrics
-    create_custom_card(
-        "Bot Status",
-        "All systems operational. Bot is responding normally to user queries.",
-    )
 
     # Calculate portfolio metrics if CSV uploaded
     portfolio_value, num_assets, num_sectors, value_change = calculate_portfolio_metrics(
@@ -760,6 +818,138 @@ def main():
             if 'Purchase_Price' in portfolio_df.columns:
                 avg_purchase = portfolio_df['Purchase_Price'].mean()
                 st.metric("Avg Purchase Price", f"${avg_purchase:.2f}")
+        
+        # OHLC Chart with Volume for Portfolio Tickers
+        st.markdown("---")
+        st.markdown("### 📈 Portfolio Holdings - Price & Volume Analysis")
+        
+        # Get unique symbols from uploaded CSV
+        csv_symbols = portfolio_df['Symbol'].unique().tolist()
+        
+        if csv_symbols and YFINANCE_AVAILABLE:
+            # Let user select which ticker to view
+            selected_csv_ticker = st.selectbox(
+                "Select a ticker to view OHLC chart:",
+                csv_symbols,
+                key="csv_ticker_selector"
+            )
+            
+            # Date range for OHLC data (default: last 90 days)
+            today_ohlc = date.today()
+            ninety_days_ago = today_ohlc - timedelta(days=90)
+            
+            ohlc_col1, ohlc_col2 = st.columns(2)
+            with ohlc_col1:
+                ohlc_start_date = st.date_input(
+                    "Start Date",
+                    value=ninety_days_ago,
+                    max_value=today_ohlc,
+                    key="ohlc_start"
+                )
+            with ohlc_col2:
+                ohlc_end_date = st.date_input(
+                    "End Date",
+                    value=today_ohlc,
+                    max_value=today_ohlc,
+                    key="ohlc_end"
+                )
+            
+            if selected_csv_ticker:
+                try:
+                    # Fetch OHLC data with hourly intervals
+                    ticker_obj = yf.Ticker(selected_csv_ticker)
+                    
+                    # For hourly data, use period-based approach for recent data
+                    if (ohlc_end_date - ohlc_start_date).days <= 7:
+                        # Last 7 days - use 1 hour interval
+                        ohlc_df = ticker_obj.history(period="7d", interval="1h")
+                    elif (ohlc_end_date - ohlc_start_date).days <= 60:
+                        # Last 60 days - use 1 day interval
+                        ohlc_df = ticker_obj.history(start=ohlc_start_date, end=ohlc_end_date, interval="1d")
+                    else:
+                        # Longer periods - use daily data
+                        ohlc_df = ticker_obj.history(start=ohlc_start_date, end=ohlc_end_date, interval="1d")
+                    
+                    if not ohlc_df.empty:
+                        # Import plotly for candlestick chart
+                        import plotly.graph_objects as go
+                        from plotly.subplots import make_subplots
+                        
+                        # Create subplots: candlestick on top, volume on bottom
+                        fig = make_subplots(
+                            rows=2, cols=1,
+                            shared_xaxes=True,
+                            vertical_spacing=0.03,
+                            subplot_titles=(f'{selected_csv_ticker} Price', 'Volume'),
+                            row_heights=[0.7, 0.3]
+                        )
+                        
+                        # Add candlestick chart
+                        fig.add_trace(
+                            go.Candlestick(
+                                x=ohlc_df.index,
+                                open=ohlc_df['Open'],
+                                high=ohlc_df['High'],
+                                low=ohlc_df['Low'],
+                                close=ohlc_df['Close'],
+                                name='OHLC'
+                            ),
+                            row=1, col=1
+                        )
+                        
+                        # Add volume bars
+                        colors = ['red' if ohlc_df['Close'].iloc[i] < ohlc_df['Open'].iloc[i] 
+                                 else 'green' for i in range(len(ohlc_df))]
+                        
+                        fig.add_trace(
+                            go.Bar(
+                                x=ohlc_df.index,
+                                y=ohlc_df['Volume'],
+                                name='Volume',
+                                marker_color=colors,
+                                showlegend=False
+                            ),
+                            row=2, col=1
+                        )
+                        
+                        # Update layout
+                        fig.update_layout(
+                            title=f'{selected_csv_ticker} - OHLC Chart with Volume',
+                            yaxis_title='Price ($)',
+                            yaxis2_title='Volume',
+                            xaxis_rangeslider_visible=False,
+                            height=700,
+                            template='plotly_dark',
+                            hovermode='x unified'
+                        )
+                        
+                        # Display the chart
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Show current stats
+                        info_col1, info_col2, info_col3, info_col4 = st.columns(4)
+                        
+                        with info_col1:
+                            st.metric("Current Price", f"${ohlc_df['Close'].iloc[-1]:.2f}")
+                        with info_col2:
+                            day_change = ohlc_df['Close'].iloc[-1] - ohlc_df['Open'].iloc[-1]
+                            day_change_pct = (day_change / ohlc_df['Open'].iloc[-1]) * 100
+                            st.metric("Day Change", f"${day_change:.2f}", f"{day_change_pct:+.2f}%")
+                        with info_col3:
+                            st.metric("Volume", f"{ohlc_df['Volume'].iloc[-1]:,.0f}")
+                        with info_col4:
+                            avg_volume = ohlc_df['Volume'].mean()
+                            st.metric("Avg Volume", f"{avg_volume:,.0f}")
+                        
+                    else:
+                        st.warning(f"No OHLC data available for {selected_csv_ticker} in the selected date range.")
+                        
+                except Exception as e:
+                    st.error(f"Error fetching OHLC data for {selected_csv_ticker}: {str(e)}")
+        else:
+            st.info("📄 Upload a portfolio CSV to view OHLC charts for your holdings.")
+        
+        st.markdown("---")
 
     # Fetch portfolio data
     portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)

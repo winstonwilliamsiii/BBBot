@@ -12,8 +12,8 @@ streamlit>=1.28.0
 
 # Data visualization
 plotly>=5.0.0
-pandas>=1.5.0
-numpy>=1.24.0
+pandas>=2.0.0
+numpy>=2.0.0
 
 # Financial data
 yfinance>=0.2.0
@@ -37,8 +37,8 @@ python-dotenv>=1.0.0
 requests>=2.28.0
 
 # MT5 REST bridge (flask/gunicorn only - MetaTrader5 is Windows-only, see requirements-mt5.txt)
-flask>=2.3.0
-gunicorn>=21.2.0
+flask>=3.0.0
+gunicorn>=25.0.0
 
 # Appwrite backend SDK
 appwrite>=4.0.0
@@ -55,13 +55,13 @@ google-generativeai>=0.3.0
 # PLAID INTEGRATION (Personal Budget Analysis)
 # ============================================
 plaid-python==30.0.0
-cryptography>=41.0.0
+cryptography>=46.0.0
 python-dateutil>=2.8.0
 
 # ============================================
 # PREDICTION MARKETS (Kalshi & Polymarket)
 # ============================================
-cryptography>=41.0.0  # RSA signing for Kalshi API authentication
+cryptography>=46.0.0  # RSA signing for Kalshi API authentication
 aiohttp>=3.9.0
 
 # ============================================
@@ -74,7 +74,7 @@ pymysql>=1.1.0
 # ============================================
 # MLFLOW EXPERIMENT TRACKING (Required for Investment Analysis)
 # ============================================
-mlflow>=2.8.0
+mlflow>=3.0.0
 alembic>=1.12.0
 
 # ============================================

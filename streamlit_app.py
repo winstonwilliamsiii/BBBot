@@ -571,6 +571,57 @@ def main():
         st.markdown("## 📊 Fundamental Analysis")
         render_dcf_widget()
         st.markdown("---")
+    
+    # ==========================================================================
+    # Mansa Capital Fund Performance - MOVED HERE per Admin request
+    # ==========================================================================
+    st.markdown("## 📈 Mansa Capital Fund Performance")
+    
+    # Fetch portfolio data
+    portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
+    if portfolio_data.empty:
+        st.warning("No data returned for the selected tickers / date range.")
+    else:
+        df = portfolio_data.copy()
+        df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
+        
+        # Add Fund Name column
+        df['Fund Name'] = df['Ticker'].map(MANSA_FUNDS).fillna(df['Ticker'])
+
+        st.subheader('Fund Performance Over Time')
+        st.line_chart(df, x='Date', y='Price', color='Fund Name')
+
+        st.write("")
+        # Format as: Month Day, Year (month spelled out)
+        st.subheader(f"Metrics for {to_date.strftime('%B')} {to_date.day}, {to_date.year}")
+
+        # Use metric cards per ticker (in columns)
+        cols = st.columns(min(4, len(selected_tickers)))
+        for i, ticker in enumerate(selected_tickers):
+            col = cols[i % len(cols)]
+            with col:
+                ticker_data = df[df['Ticker'] == ticker]
+                if not ticker_data.empty:
+                    first_price = ticker_data['Price'].iloc[0]
+                    last_price = ticker_data['Price'].iloc[-1]
+                    if pd.notna(first_price) and first_price > 0:
+                        growth_pct = ((last_price - first_price) / first_price) * 100
+                        delta = f'{growth_pct:.2f}%'
+                    else:
+                        delta = 'n/a'
+                    # Use fund name if available, otherwise ticker
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    create_metric_card(f'{display_name}', f'${last_price:,.2f}', delta)
+                else:
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    create_metric_card(f'{display_name}', 'N/A', 'N/A')
+
+        st.write("")
+        st.subheader("Raw Fund Data")
+        st.dataframe(df, use_container_width=True)
+    
+    st.markdown("---")
+    
     # ==========================================================================
     # Economic Calendar & Market Data Section - MOVED TO BOTTOM
     # ==========================================================================
@@ -628,19 +679,21 @@ def main():
     # Add CSV upload information
     with st.sidebar.expander("ℹ️ CSV Format Help"):
         st.write("""
-        **Required columns:**
-        - `Symbol`: Stock ticker (e.g., AAPL, MSFT)
-        - `Quantity`: Number of shares owned
+        **Required columns (use either naming):**
+        - `Ticker` or `Symbol`: Stock ticker (e.g., AAPL, MSFT)
+        - `Quantity` or `Shares`: Number of shares owned
         
         **Optional columns:**
-        - `Purchase_Price`: Price paid per share
-        - `Purchase_Date`: Date purchased (YYYY-MM-DD)
+        - `Purchase_Price` or `Price`: Price paid per share
+        - `Purchase_Date` or `Date`: Date purchased (YYYY-MM-DD)
+        
+        **Note:** Column names are case-insensitive.
         """)
     
     portfolio_csv = st.sidebar.file_uploader(
         "Upload your portfolio data (CSV)",
         type=["csv"],
-        help="CSV should contain columns: Symbol, Quantity, Purchase_Price (optional: Purchase_Date)"
+        help="CSV should contain columns: Ticker/Symbol and Quantity/Shares"
     )
     
     # Initialize portfolio_data in session state if not exists
@@ -652,41 +705,87 @@ def main():
             # Read the uploaded CSV
             portfolio_df = pd.read_csv(portfolio_csv)
             
-            # Validate required columns
-            required_cols = ['Symbol', 'Quantity']
-            if all(col in portfolio_df.columns for col in required_cols):
+            # Normalize column names to be case-insensitive
+            portfolio_df.columns = portfolio_df.columns.str.strip()
+            col_mapping = {col: col for col in portfolio_df.columns}
+            
+            # Map flexible column names to standard names
+            for col in portfolio_df.columns:
+                col_lower = col.lower()
+                if col_lower in ['ticker', 'symbol']:
+                    col_mapping[col] = 'Symbol'
+                elif col_lower in ['quantity', 'shares', 'qty']:
+                    col_mapping[col] = 'Quantity'
+                elif col_lower in ['purchase_price', 'price', 'cost']:
+                    col_mapping[col] = 'Purchase_Price'
+                elif col_lower in ['purchase_date', 'date']:
+                    col_mapping[col] = 'Purchase_Date'
+            
+            portfolio_df = portfolio_df.rename(columns=col_mapping)
+            
+            # Validate required columns exist
+            if 'Symbol' not in portfolio_df.columns:
+                st.sidebar.error("❌ CSV must contain 'Ticker' or 'Symbol' column")
+                st.sidebar.info(f"Found columns: {', '.join(portfolio_df.columns.tolist())}")
+            elif 'Quantity' not in portfolio_df.columns:
+                st.sidebar.error("❌ CSV must contain 'Quantity' or 'Shares' column")
+                st.sidebar.info(f"Found columns: {', '.join(portfolio_df.columns.tolist())}")
+            else:
+                # Clean the data
+                portfolio_df['Symbol'] = portfolio_df['Symbol'].str.strip().str.upper()
+                portfolio_df = portfolio_df[portfolio_df['Symbol'].notna()]
+                
                 st.session_state.portfolio_data = portfolio_df
                 st.sidebar.success(f"✅ Portfolio loaded: {len(portfolio_df)} holdings")
                 
                 # Display a preview
                 st.sidebar.write("**Preview:**")
                 st.sidebar.dataframe(portfolio_df.head(3), use_container_width=True)
-            else:
-                st.sidebar.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
                 
         except Exception as e:
             st.sidebar.error(f"❌ Error reading CSV: {str(e)}")
+            st.sidebar.info("Make sure your file is a valid CSV format.")
     
-    # CSV Template Download
-    if st.sidebar.button("📥 Download CSV Template"):
-        # Create sample CSV data
-        sample_data = {
-            'Symbol': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
-            'Quantity': [10, 5, 3, 8, 2],
-            'Purchase_Price': [150.00, 280.00, 2500.00, 3200.00, 800.00],
-            'Purchase_Date': ['2023-01-15', '2023-02-10', '2023-03-05', '2023-01-20', '2023-02-28']
-        }
-        sample_df = pd.DataFrame(sample_data)
-        
-        # Convert to CSV
-        csv_content = sample_df.to_csv(index=False)
-        
-        st.sidebar.download_button(
-            label="Download portfolio_template.csv",
-            data=csv_content,
-            file_name="portfolio_template.csv",
-            mime="text/csv"
-        )
+    # CSV Template Download with both naming conventions
+    template_col1, template_col2 = st.sidebar.columns(2)
+    
+    with template_col1:
+        if st.button("📥 Template (Ticker)", use_container_width=True):
+            sample_data = {
+                'Ticker': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+                'Quantity': [10, 5, 3, 8, 2],
+                'Purchase_Price': [150.00, 280.00, 2500.00, 3200.00, 800.00],
+                'Purchase_Date': ['2023-01-15', '2023-02-10', '2023-03-05', '2023-01-20', '2023-02-28']
+            }
+            sample_df = pd.DataFrame(sample_data)
+            csv_content = sample_df.to_csv(index=False)
+            
+            st.sidebar.download_button(
+                label="⬇️ Download Ticker Template",
+                data=csv_content,
+                file_name="portfolio_template_ticker.csv",
+                mime="text/csv",
+                key="download_ticker_template"
+            )
+    
+    with template_col2:
+        if st.button("📥 Template (Symbol)", use_container_width=True):
+            sample_data = {
+                'Symbol': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'],
+                'Quantity': [10, 5, 3, 8, 2],
+                'Purchase_Price': [150.00, 280.00, 2500.00, 3200.00, 800.00],
+                'Purchase_Date': ['2023-01-15', '2023-02-10', '2023-03-05', '2023-01-20', '2023-02-28']
+            }
+            sample_df = pd.DataFrame(sample_data)
+            csv_content = sample_df.to_csv(index=False)
+            
+            st.sidebar.download_button(
+                label="⬇️ Download Symbol Template",
+                data=csv_content,
+                file_name="portfolio_template_symbol.csv",
+                mime="text/csv",
+                key="download_symbol_template"
+            )
     
     st.sidebar.markdown("---")
     st.sidebar.header("Mansa Capital Funds")
@@ -950,49 +1049,6 @@ def main():
             st.info("📄 Upload a portfolio CSV to view OHLC charts for your holdings.")
         
         st.markdown("---")
-
-    # Fetch portfolio data
-    portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
-    if portfolio_data.empty:
-        st.warning("No data returned for the selected tickers / date range.")
-    else:
-        df = portfolio_data.copy()
-        df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
-        
-        # Add Fund Name column
-        df['Fund Name'] = df['Ticker'].map(MANSA_FUNDS).fillna(df['Ticker'])
-
-        st.header('Mansa Capital Fund Performance Over Time')
-        st.line_chart(df, x='Date', y='Price', color='Fund Name')
-
-        st.write("")
-        # Format as: Month Day, Year (month spelled out)
-        st.header(f"Metrics for {to_date.strftime('%B')} {to_date.day}, {to_date.year}")
-
-        # Use metric cards per ticker (in columns)
-        cols = st.columns(min(4, len(selected_tickers)))
-        for i, ticker in enumerate(selected_tickers):
-            col = cols[i % len(cols)]
-            with col:
-                ticker_data = df[df['Ticker'] == ticker]
-                if not ticker_data.empty:
-                    first_price = ticker_data['Price'].iloc[0]
-                    last_price = ticker_data['Price'].iloc[-1]
-                    if pd.notna(first_price) and first_price > 0:
-                        growth_pct = ((last_price - first_price) / first_price) * 100
-                        delta = f'{growth_pct:.2f}%'
-                    else:
-                        delta = 'n/a'
-                    # Use fund name if available, otherwise ticker
-                    display_name = MANSA_FUNDS.get(ticker, ticker)
-                    create_metric_card(f'{display_name}', f'${last_price:,.2f}', delta)
-                else:
-                    display_name = MANSA_FUNDS.get(ticker, ticker)
-                    create_metric_card(f'{display_name}', 'N/A', 'N/A')
-
-        st.write("")
-        st.header("Raw Portfolio Data")
-        st.dataframe(df, use_container_width=True)
 
     # Footer
     add_footer()

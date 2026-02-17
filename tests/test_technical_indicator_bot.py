@@ -178,7 +178,8 @@ class TestTradingConfig:
     
     def test_config_defaults(self, test_config):
         """Test default configuration values"""
-        assert test_config.SYMBOL == os.getenv("TRADING_SYMBOL", "SPY")
+        assert isinstance(test_config.SYMBOLS, list)
+        assert "QTUM" in test_config.SYMBOLS or "SPY" in os.getenv("TRADING_SYMBOLS", "QTUM,IBIT,SCHD,VUG,IONZ,PINK,SQQQ,NUKZ,VOO")
         assert test_config.RSI_PERIOD == 14
         assert test_config.RSI_OVERBOUGHT == 70
         assert test_config.RSI_OVERSOLD == 30

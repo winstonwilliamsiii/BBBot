@@ -44,7 +44,7 @@ class TradingConfig:
     ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
     
     # Trading Parameters
-    SYMBOL = os.getenv("TRADING_SYMBOL", "SPY")  # Default to SPY ETF
+    SYMBOLS = os.getenv("TRADING_SYMBOLS", "QTUM,IBIT,SCHD,VUG,IONZ,PINK,SQQQ,NUKZ,VOO").split(",")  # ETF tickers
     TIMEFRAME = TimeFrame.Day  # 1-day bars
     LOOKBACK_DAYS = 100  # Historical data for indicators
     
@@ -88,7 +88,7 @@ class TradingConfig:
         cls.ALPACA_SECRET_KEY = secret_key
         
         logger.info(f"Configuration loaded:")
-        logger.info(f"  Symbol: {cls.SYMBOL}")
+        logger.info(f"  Symbols: {', '.join(cls.SYMBOLS)}")
         logger.info(f"  Base URL: {cls.ALPACA_BASE_URL}")
         logger.info(f"  Dry Run: {cls.DRY_RUN}")
         logger.info(f"  Trading Enabled: {cls.ENABLE_TRADING}")
@@ -398,7 +398,7 @@ class TechnicalIndicatorBot:
             logger.error(f"Error executing trade: {e}")
     
     def run(self):
-        """Main execution loop"""
+        """Main execution loop - processes all configured symbols"""
         try:
             logger.info("=" * 80)
             logger.info("TECHNICAL INDICATOR TRADING BOT - STARTING")
@@ -412,34 +412,47 @@ class TechnicalIndicatorBot:
                 logger.error(f"Account balance (${self.account_info['equity']:.2f}) below minimum (${self.config.MIN_ACCOUNT_BALANCE})")
                 return
             
-            # Fetch market data
-            df = self.fetch_market_data(self.config.SYMBOL, self.config.LOOKBACK_DAYS)
+            # Process each symbol
+            for symbol in self.config.SYMBOLS:
+                try:
+                    logger.info(f"\n{'='*60}")
+                    logger.info(f"Processing {symbol}")
+                    logger.info(f"{'='*60}")
+                    
+                    # Fetch market data
+                    df = self.fetch_market_data(symbol, self.config.LOOKBACK_DAYS)
+                    
+                    if df.empty:
+                        logger.warning(f"No market data available for {symbol}, skipping...")
+                        continue
+                    
+                    # Calculate indicators
+                    df = self.calculate_all_indicators(df)
+                    
+                    # Display latest indicator values
+                    latest = df.iloc[-1]
+                    logger.info("Latest Indicator Values:")
+                    logger.info(f"  Price: ${latest['close']:.2f}")
+                    logger.info(f"  RSI: {latest['RSI']:.2f}")
+                    logger.info(f"  MACD: {latest['MACD']:.4f}, Signal: {latest['MACD_Signal']:.4f}")
+                    logger.info(f"  SMA Short: ${latest['SMA_Short']:.2f}, SMA Long: ${latest['SMA_Long']:.2f}")
+                    logger.info(f"  BB Upper: ${latest['BB_Upper']:.2f}, Lower: ${latest['BB_Lower']:.2f}")
+                    
+                    # Generate signal
+                    signal = self.generate_signal(df)
+                    logger.info(f"Signal for {symbol}: {signal}")
+                    
+                    # Execute trade
+                    if signal != 'HOLD':
+                        self.execute_trade(symbol, signal, latest['close'])
+                    else:
+                        logger.info(f"No action for {symbol} - holding position")
+                        
+                except Exception as e:
+                    logger.error(f"Error processing {symbol}: {e}", exc_info=True)
+                    continue
             
-            if df.empty:
-                logger.error("No market data available")
-                return
-            
-            # Calculate indicators
-            df = self.calculate_all_indicators(df)
-            
-            # Display latest indicator values
-            latest = df.iloc[-1]
-            logger.info("Latest Indicator Values:")
-            logger.info(f"  Price: ${latest['close']:.2f}")
-            logger.info(f"  RSI: {latest['RSI']:.2f}")
-            logger.info(f"  MACD: {latest['MACD']:.4f}, Signal: {latest['MACD_Signal']:.4f}")
-            logger.info(f"  SMA Short: ${latest['SMA_Short']:.2f}, SMA Long: ${latest['SMA_Long']:.2f}")
-            logger.info(f"  BB Upper: ${latest['BB_Upper']:.2f}, Lower: ${latest['BB_Lower']:.2f}")
-            
-            # Generate signal
-            signal = self.generate_signal(df)
-            logger.info(f"Signal: {signal}")
-            
-            # Execute trade
-            if signal != 'HOLD':
-                self.execute_trade(self.config.SYMBOL, signal, latest['close'])
-            
-            logger.info("=" * 80)
+            logger.info("\n" + "=" * 80)
             logger.info("TECHNICAL INDICATOR TRADING BOT - COMPLETED")
             logger.info("=" * 80)
         

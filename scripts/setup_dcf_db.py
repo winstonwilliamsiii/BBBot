@@ -23,15 +23,6 @@ DB_CONFIG = {
 
 def get_password():
     """Get MySQL password from environment or prompt user"""
-    # Get password
-    password = get_password()
-    config = DB_CONFIG.copy()
-    config["password"] = password
-    
-    try:
-        # Connect to database
-        print(f"🔌 Connecting to MySQL database '{config['database']}' on {config['host']}:{config['port']}...")
-        conn = mysql.connector.connect(**config variables")
     print(f"Please enter MySQL password for user '{DB_CONFIG['user']}'")
     print(f"(or press Enter if no password is set)")
     password = getpass.getpass("MySQL Password: ")

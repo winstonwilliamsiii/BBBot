@@ -565,6 +565,12 @@ def main():
         st.markdown("---")
     
     # ==========================================================================
+    # Mansa Capital Fund Performance - MOVED HERE from below
+    # ==========================================================================
+    # Note: This section was moved here to ensure variables are defined first
+    # It will be rendered after sidebar configuration
+    
+    # ==========================================================================
     # DCF Fundamental Analysis Section
     # ==========================================================================
     if DCF_WIDGET_AVAILABLE:
@@ -572,53 +578,7 @@ def main():
         render_dcf_widget()
         st.markdown("---")
     
-    # ==========================================================================
-    # Mansa Capital Fund Performance - MOVED HERE per Admin request
-    # ==========================================================================
-    st.markdown("## 📈 Mansa Capital Fund Performance")
-    
-    # Fetch portfolio data
-    portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
-    if portfolio_data.empty:
-        st.warning("No data returned for the selected tickers / date range.")
-    else:
-        df = portfolio_data.copy()
-        df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
-        
-        # Add Fund Name column
-        df['Fund Name'] = df['Ticker'].map(MANSA_FUNDS).fillna(df['Ticker'])
-
-        st.subheader('Fund Performance Over Time')
-        st.line_chart(df, x='Date', y='Price', color='Fund Name')
-
-        st.write("")
-        # Format as: Month Day, Year (month spelled out)
-        st.subheader(f"Metrics for {to_date.strftime('%B')} {to_date.day}, {to_date.year}")
-
-        # Use metric cards per ticker (in columns)
-        cols = st.columns(min(4, len(selected_tickers)))
-        for i, ticker in enumerate(selected_tickers):
-            col = cols[i % len(cols)]
-            with col:
-                ticker_data = df[df['Ticker'] == ticker]
-                if not ticker_data.empty:
-                    first_price = ticker_data['Price'].iloc[0]
-                    last_price = ticker_data['Price'].iloc[-1]
-                    if pd.notna(first_price) and first_price > 0:
-                        growth_pct = ((last_price - first_price) / first_price) * 100
-                        delta = f'{growth_pct:.2f}%'
-                    else:
-                        delta = 'n/a'
-                    # Use fund name if available, otherwise ticker
-                    display_name = MANSA_FUNDS.get(ticker, ticker)
-                    create_metric_card(f'{display_name}', f'${last_price:,.2f}', delta)
-                else:
-                    display_name = MANSA_FUNDS.get(ticker, ticker)
-                    create_metric_card(f'{display_name}', 'N/A', 'N/A')
-
-        st.write("")
-        st.subheader("Raw Fund Data")
-        st.dataframe(df, use_container_width=True)
+    # This section moved to after sidebar configuration where variables are defined
     
     st.markdown("---")
     
@@ -846,6 +806,53 @@ def main():
     if from_date > to_date:
         st.error("Error: Start date must be before end date.")
         st.stop()
+
+    # ==========================================================================
+    # Mansa Capital Fund Performance - MOVED HERE from line 576
+    # ==========================================================================
+    st.markdown("## 📈 Mansa Capital Fund Performance")
+    
+    # Fetch portfolio data
+    portfolio_data = get_yfinance_data(selected_tickers, from_date, to_date)
+    if portfolio_data.empty:
+        st.warning("No data returned for the selected tickers / date range.")
+    else:
+        df = portfolio_data.copy()
+        df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
+        
+        # Add Fund Name column
+        df['Fund Name'] = df['Ticker'].map(MANSA_FUNDS).fillna(df['Ticker'])
+
+        st.subheader('Fund Performance Over Time')
+        st.line_chart(df, x='Date', y='Price', color='Fund Name')
+
+        st.write("")
+        # Format as: Month Day, Year (month spelled out)
+        st.subheader(f"Metrics for {to_date.strftime('%B')} {to_date.day}, {to_date.year}")
+
+        # Use metric cards per ticker (in columns)
+        cols = st.columns(min(4, len(selected_tickers)))
+        for i, ticker in enumerate(selected_tickers):
+            col = cols[i % len(cols)]
+            with col:
+                ticker_data = df[df['Ticker'] == ticker]
+                if not ticker_data.empty:
+                    first_price = ticker_data['Price'].iloc[0]
+                    last_price = ticker_data['Price'].iloc[-1]
+                    if pd.notna(first_price) and first_price > 0:
+                        growth_pct = ((last_price - first_price) / first_price) * 100
+                        delta = f'{growth_pct:.2f}%'
+                    else:
+                        delta = 'n/a'
+                    # Use fund name if available, otherwise ticker
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    create_metric_card(f'{display_name}', f'${last_price:,.2f}', delta)
+                else:
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    create_metric_card(f'{display_name}', 'N/A', 'N/A')
+
+        st.write("")
+        st.subheader("Raw Fund Data")
 
     # Calculate portfolio metrics if CSV uploaded
     portfolio_value, num_assets, num_sectors, value_change = calculate_portfolio_metrics(

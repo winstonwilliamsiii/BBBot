@@ -343,7 +343,9 @@ jobs:
           "
 
       # ===== NOTIFICATIONS =====
-      - name: SuccBuild & validation successful!"
+      - name: Success Notification
+        run: |
+          echo "✅ Build & validation successful!"
           echo "Environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}"
           echo "Branch: ${{ github.ref }}"
           echo "Commit: ${{ github.sha }}"
@@ -367,7 +369,4 @@ jobs:
           echo "❌ Build failed"
           echo "Branch: ${{ github.ref }}"
           echo "Commit: ${{ github.sha }}"
-          echo "Check logs above for details
-          echo "❌ Deployment failed"
-          echo "Branch: ${{ github.ref }}"
-          echo "Commit: ${{ github.sha }}"
+          echo "Check logs above for details"

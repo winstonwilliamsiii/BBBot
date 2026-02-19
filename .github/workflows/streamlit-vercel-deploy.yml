@@ -1,231 +1,68 @@
 name: Streamlit to Vercel Deployment
 
-# ============================================
-# BRANCH STRATEGY
-# ============================================
-# main    → Deploys to PRODUCTION (bbbot305.streamlit.app)
-# staging → Deploys to STAGING/PREVIEW (Railway port 3307)
-# feature/* → No deployment (protected)
-# ============================================
-
 on:
   push:
     branches:
-      - main       # Production deployment
-      - staging    # Staging/Preview deployment
+      - main
+      - staging
     paths:
-      - 'streamlit_app.py'        # Main Streamlit app
-      - 'api/**'                   # Vercel API handlers
-      - 'frontend/**'              # Frontend components & utilities
-      - 'requirements.txt'         # Python dependencies (main)
-      - '.github/workflows/streamlit-vercel-deploy.yml'
+      - streamlit_app.py
+      - api/**
+      - frontend/**
+      - requirements.txt
+      - .github/workflows/streamlit-vercel-deploy.yml
 
 env:
-  NODE_VERSION: '18'
-  PYTHON_VERSION: '3.11'         # Must match runtime.txt
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.11"
 
 jobs:
   validate-and-deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     timeout-minutes: 30
 
     steps:
-      # ===== CHECKOUT & SETUP =====
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
+          cache: pip
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      # ===== VALIDATION =====
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          echo "Installing main requirements from requirements.txt..."
           pip install -r requirements.txt
-          
-          echo "Installing Vercel API requirements from api/requirements.txt..."
           if [ -f "api/requirements.txt" ]; then
             pip install -r api/requirements.txt
           fi
-          
-          echo "✓ All dependencies installed successfully"
 
-      - name: Validate requirements files
-        continue-on-error: true
+      - name: Validate Python syntax
         run: |
-          python -c "
-          import sys
-          
-          print('=== REQUIREMENTS VALIDATION ===')
-          
-          # Check main requirements
-          print('\n✓ Checking requirements.txt for essential packages:')
-          required_main = ['streamlit', 'mysql-connector-python', 'requests', 'pandas', 'numpy', 'appwrite']
-          with open('requirements.txt') as f:
-            content = f.read()
-            for pkg in required_main:
-              if pkg.lower() in content.lower():
-                print(f'  ✓ {pkg} found')
-              else:
-                print(f'  ⚠ {pkg} not found - may affect functionality')
-          
-          # Check API requirements (optional)
-          try:
-            with open('api/requirements.txt') as f:
-              api_content = f.read()
-              print('\n✓ Checking api/requirements.txt for API dependencies:')
-              if 'requests' in api_content.lower():
-                print('  ✓ requests found in api requirements')
-          except FileNotFoundError:
-            print('\n⚠ api/requirements.txt not found - API deployment may not work')
-          
-          print('\n✓ Requirements validation complete')
-          "
-
-      - name: Validate Streamlit config
-        continue-on-error: true
-        run: |
-          python -c "
-          import json
-          import sys
-          import os
-          
-          # Check vercel.json
-          if not os.path.exists('vercel.json'):
-            print('⚠ vercel.json not found - Vercel deployment may not work')
-            sys.exit(0)
-            
-          try:
-            with open('vercel.json') as f:
-              config = json.load(f)
-            print('✓ vercel.json is valid JSON')
-            
-            # Check required routes exist (optional)
-            routes = config.get('routes', [])
-            if routes:
-              api_routes = [r for r in routes if '/api' in str(r.get('src', ''))]
-        continue-on-error: true
-        run: |
-          pip install flake8 --quiet
-          # Check main app and API - non-blocking
-          echo "Linting Python files..."
-          flake8 streamlit_app.py --count --select=E9,F63,F7,F82 --show-source --statistics || echo "⚠ Linting found issues (non-blocking)"
-          
+          python -m compileall -q streamlit_app.py
           if [ -f "api/index.py" ]; then
-            flake8 api/index.py --count --select=E9,F63,F7,F82 --show-source --statistics || echo "⚠ API linting found issues (non-blocking)"
+            python -m compileall -q api/index.py
           fi
-          
-          echo "✓ Linting completed"
 
-      - name: Run import validation
-        continue-on-error: true
-        run: |
-          python -c "
-          import sys
-          print('Validating imports...')
-          
-          # Test critical imports
-          missing = []
-          try:
-            import streamlit
-            print('✓ streamlit')
-          except ImportError:
-            missing.append('streamlit')
-            
-          try:
-            import pandas
-            print('✓ pandas')
-          except ImportError:
-            missing.append('pandas')
-            
-          try:
-            import yfinance
-            print('✓ yfinance')
-          except ImportError:
-            print('⚠ yfinance not installed (optional)')
-            
-          try:
-            import appwrite
-            print('✓ appwrite')
-          except ImportError:
-            missing.append('appwrite')
-          
-          if missing:
-            print(f'\n✗ Critical imports missing: {missing}')
-            sys.exit(1)
-          
-          print('\n✓ Core dependencies available')
-          
-          # Test app syntax (don't execute)
-          try:
-            with open('streamlit_app.py') as f:
-              compile(f.read(), 'streamlit_app.py', 'exec')
-          print('✓ Core dependencies available')
-          except ImportError as e:
-            print(f'✗ Missing dependency: {e}')
-            sys.exit(1)
-          
-          # Test app import
-          try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location('streamlit_app', 'streamlit_app.py')
-            if spec and spec.loader:
-              module = importlib.util.module_from_spec(spec)
-              # Don't execute, just check syntax
-              print('✓ Streamlit app syntax is valid')
-          except SyntaxError as e:
-            print(f'✗ Syntax error in streamlit_app.py: {e}')
-            sys.exit(1)
-          "
-
-      - name: Check environment capabilities
-        run: |
-          python -c "
-          import os
-          
-          # Check Vercel secrets availability
-          vercel_vars = ['VERCEL_TOKEN', 'VERCEL_ORG_ID', 'VERCEL_PROJECT_ID', 'VERCEL_SCOPE']
-          missing = [var for var in vercel_vars if not os.getenv(var)]
-          
-          if missing:
-            print(f'⚠️  Vercel secrets not configured: {missing}')
-            print('   Vercel deployment will be skipped.')
-            print('   Streamlit Cloud will auto-deploy from GitHub.')
-            print('   See GITHUB_SECRETS_SETUP.md to enable Vercel deployment.')
-          else:
-            print('✓ Vercel deployment enabled')
-          
-          print('✓ Validation complete - continuing deployment')
-          "
+      - name: Check Vercel secrets
+        id: check_vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_SCOPE" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Vercel deployment enabled"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Vercel secrets missing; skipping Vercel deploy"
+          fi
 
-      # ===== DEPLOYMENT =====
-      # Branch Strategy:
-      # - main branch   → Deploys to PRODUCTION (bbbot305.streamlit.app)
-      # - staging branch → Deploys to STAGING/PREVIEW (Railway port 3307)
-      
-      - name: Set up Node.js for Vercel
+      - name: Set up Node.js
         if: steps.check_vercel.outputs.enabled == 'true'
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -234,139 +71,20 @@ jobs:
         run: npm install -g vercel@latest
 
       - name: Deploy to Vercel
-        id: vercel
         if: steps.check_vercel.outputs.enabled == 'true'
-        continue-on-error: true
-        run: |
-          # Determine environment based on branch
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            VERCEL_ENV="production"
-            DEPLOY_TARGET="PRODUCTION (bbbot305.streamlit.app)"
-          else
-            VERCEL_ENV="preview"
-            DEPLOY_TARGET="STAGING/PREVIEW (Railway 3307)"
-          fi
-          
-          echo "Deploying to: $DEPLOY_TARGET"
-          echo "Environment: $VERCEL_ENV"
-          
-          # Deploy
-          DEPLOYMENT_URL=$(vercel deploy \
-            --token ${{ secrets.VERCEL_TOKEN }} \
-            --scope ${{ secrets.VERCEL_SCOPE }} \
-            --$VERCEL_ENV)
-          
-          echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
-          echo "Deployment URL: $DEPLOYMENT_URL"
-          echo "Branch: ${{ github.ref }}"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      
-      - name: Streamlit Cloud notification
-        if: steps.check_vercel.outputs.enabled == 'false'
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📡  STREAMLIT CLOUD AUTO-DEPLOY"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          echo "✅ Code validation passed"
-          echo "✅ Pushed to GitHub successfully"
-          echo "📡 Streamlit Cloud will auto-deploy this commit"
-          echo ""
-          echo "🔗 Monitor deployment:"
-          echo "   https://share.streamlit.io/"
-          echo ""
-          echo "⚙️  Verify Streamlit Cloud Secrets are set:"
-          echo "   MYSQL_DATABASE = \"railway\""
-          echo "   MYSQL_PORT = \"54537\""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-      # ===== HEALTH CHECKS (Only if Vercel deployed) =====
-      - name: Wait for deployment to be ready
-        if: steps.vercel.outputs.deployment_url != '' && steps.vercel.outcome == 'success'
-        run: sleep 10
-
-      - name: Verify API health endpoint
-        if: steps.vercel.outputs.deployment_url != '' && steps.vercel.outcome == 'success'
-        continue-on-error: true
-        run: |
-          echo "Checking API health at: ${{ steps.vercel.outputs.deployment_url }}"
-          
-          max_attempts=5
-          attempt=1
-          while [ $attempt -le $max_attempts ]; do
-            response=$(curl -s -w "\n%{http_code}" \
-              ${{ steps.vercel.outputs.deployment_url }}/api/health)
-            http_code=$(echo "$response" | tail -n1)
-            body=$(echo "$response" | head -n1)
-            
-            echo "Attempt $attempt: HTTP $http_code"
-            
-            if [ "$http_code" = "200" ]; then
-              if echo "$body" | grep -q "healthy"; then
-                echo "✓ API is healthy"
-                exit 0
-              fi
-            fi
-            
-            if [ $attempt -lt $max_attempts ]; then
-              sleep 3
-            fi
-            attempt=$((attempt + 1))
-          done
-          
-          echo "⚠ API health check failed after $max_attempts attempts"
-          echo "Note: This may be expected if Vercel deployment is not configured"
-          exit 0
-
-      - name: Run basic connectivity test
-        if: steps.vercel.outputs.deployment_url != '' && steps.vercel.outcome == 'success'
-        continue-on-error: true
-        run: |
-          python -c "
-          import requests
-          
-          url = '${{ steps.vercel.outputs.deployment_url }}/api/health'
-          try:
-            r = requests.get(url, timeout=10)
-            print(f'API Response: {r.status_code}')
-            print(f'Body: {r.text}')
-            
-            if r.status_code == 200 and 'healthy' in r.text:
-              print('✓ Backend API is operational')
-            else:
-              print('⚠ Unexpected API response (non-critical)')
-          except Exception as e:
-            print(f'⚠ Connection error: {e} (non-critical)')
-          "
-
-      # ===== NOTIFICATIONS =====
-      - name: Success Notification
-        run: |
-          echo "✅ Build & validation successful!"
-          echo "Environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}"
-          echo "Branch: ${{ github.ref }}"
-          echo "Commit: ${{ github.sha }}"
-          
-          if [ -n "${{ steps.vercel.outputs.deployment_url }}" ]; then
-            echo "🚀 Vercel URL: ${{ steps.vercel.outputs.deployment_url }}"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            vercel deploy --prod --token "$VERCEL_TOKEN" --scope "$VERCEL_SCOPE"
           else
-            echo "📡 Streamlit Cloud will auto-deploy from GitHub"
-            echo "🔗 Monitor at: https://share.streamlit.io/"
+            vercel deploy --token "$VERCEL_TOKEN" --scope "$VERCEL_SCOPE"
           fi
-          
-          echo ""
-          echo "🔧 Next: Check Streamlit Cloud Secrets are configured:"
-          echo "   MYSQL_HOST = nozomi.proxy.rlwy.net"
-          echo "   MYSQL_PORT = 54537"
-          echo "   MYSQL_DATABASE = mansa_bot"
 
-      - name: Failure notification
-        if: failure()
+      - name: Deployment summary
+        if: always()
         run: |
-          echo "❌ Build failed"
-          echo "Branch: ${{ github.ref }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "Check logs above for details"
+          echo "Workflow completed"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Vercel enabled: ${{ steps.check_vercel.outputs.enabled }}"

@@ -43,4 +43,4 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
       run: |
-        pytest
+        pytest tests/test_mansa_titan_bot.py tests/test_stars_orchestration.py

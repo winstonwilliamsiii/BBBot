@@ -56,7 +56,8 @@ def render_multi_broker_dashboard():
         "🔌 MT5 (FOREX/Futures)",
         "📈 Alpaca (Stocks/Crypto)",
         "🏦 IBKR (Multi-Asset)",
-        "📊 Combined View"
+        "📊 Combined View",
+        "🤖 ML Trading Signals"
     ])
     
     with tabs[0]:
@@ -70,6 +71,9 @@ def render_multi_broker_dashboard():
     
     with tabs[3]:
         render_combined_portfolio()
+
+    with tabs[4]:
+        render_ml_trading_signals()
 
 
 def render_broker_status():
@@ -129,34 +133,9 @@ def render_broker_status():
             st.info("No open orders")
 
 
-    # Show open Alpaca orders below broker status
-    if ALPACA_AVAILABLE and st.session_state.brokers['alpaca'] is not None:
-        connector = st.session_state.brokers['alpaca']
-        st.subheader("📬 Open Alpaca Orders")
-        orders = connector.get_orders(status="open")
-        if orders and len(orders) > 0:
-            order_data = [{
-                'Order ID': o.get('id', '')[:8],
-                'Symbol': o.get('symbol', ''),
-                'Side': o.get('side', ''),
-                'Type': o.get('type', ''),
-                'Qty': o.get('qty', ''),
-                'Limit Price': o.get('limit_price', ''),
-                'Status': o.get('status', ''),
-                'Submitted At': o.get('submitted_at', '')
-            } for o in orders]
-            df_orders = pd.DataFrame(order_data)
-            st.dataframe(
-                df_orders,
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("No open orders")
-        
-        if not ibkr_connected and IBKR_AVAILABLE:
-            if st.button("Connect IBKR", key="connect_ibkr_main"):
-                connect_ibkr()
+    if not ibkr_connected and IBKR_AVAILABLE:
+        if st.button("Connect IBKR", key="connect_ibkr_main"):
+            connect_ibkr()
 
 
 def connect_mt5():
@@ -514,6 +493,129 @@ def render_combined_portfolio():
         st.dataframe(pd.DataFrame(all_positions), use_container_width=True, hide_index=True)
     else:
         st.info("No positions across any broker")
+
+
+def render_ml_trading_signals():
+    """Display ML trading signals with DB fallback and MLflow indicator linkage."""
+    st.subheader("🤖 ML Trading Signals")
+
+    try:
+        from sqlalchemy import create_engine, inspect
+        from sqlalchemy.exc import OperationalError
+        from frontend.utils.secrets_helper import get_mysql_config
+
+        mysql_config = get_mysql_config()
+        base_host = mysql_config.get('host', '127.0.0.1')
+        base_port = mysql_config.get('port', 3306)
+        base_user = mysql_config.get('user', 'root')
+        base_password = mysql_config.get('password', 'root')
+        configured_db = mysql_config.get('database')
+
+        candidate_dbs = []
+        for db_name in [configured_db, 'bbbot1', 'railway', 'mansa_bot']:
+            if db_name and db_name not in candidate_dbs:
+                candidate_dbs.append(db_name)
+
+        df_signals = pd.DataFrame()
+        selected_db = None
+        table_ref = None
+
+        for db_name in candidate_dbs:
+            try:
+                connection_string = (
+                    f"mysql+pymysql://{base_user}:{base_password}@{base_host}:{base_port}/{db_name}"
+                )
+                engine = create_engine(connection_string)
+                inspector = inspect(engine)
+
+                schema_names = inspector.get_schema_names()
+                has_marts_schema = 'marts' in schema_names
+
+                if has_marts_schema and 'features_roi' in inspector.get_table_names(schema='marts'):
+                    table_ref = 'marts.features_roi'
+                elif 'features_roi' in inspector.get_table_names():
+                    table_ref = 'features_roi'
+                else:
+                    engine.dispose()
+                    continue
+
+                query = f"""
+                SELECT
+                    ticker,
+                    date as signal_date,
+                    close as price,
+                    rsi_14,
+                    macd,
+                    macd_signal,
+                    sentiment_score,
+                    CASE
+                        WHEN rsi_14 < 30 AND macd > macd_signal THEN 'BUY'
+                        WHEN rsi_14 > 70 AND macd < macd_signal THEN 'SELL'
+                        ELSE 'HOLD'
+                    END as trade_signal
+                FROM {table_ref}
+                WHERE date = (SELECT MAX(date) FROM {table_ref})
+                ORDER BY ticker
+                LIMIT 25;
+                """
+
+                df_signals = pd.read_sql(query, engine)
+                selected_db = db_name
+                engine.dispose()
+                break
+
+            except OperationalError as e:
+                if "Unknown database" in str(e):
+                    continue
+                continue
+            except Exception:
+                continue
+
+        if df_signals.empty:
+            st.warning("⚠️ No trading signals found in available databases.")
+            st.info("Run the ML feature pipeline to populate `features_roi` and refresh this tab.")
+            return
+
+        st.success(f"✅ Loaded signals from database: {selected_db} ({table_ref})")
+
+        def highlight_signal(val):
+            if val == 'BUY':
+                return 'background-color: #90EE90'
+            if val == 'SELL':
+                return 'background-color: #FFB6C1'
+            return ''
+
+        styled_df = df_signals.style.applymap(highlight_signal, subset=['trade_signal'])
+        st.dataframe(styled_df, use_container_width=True)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("🟢 BUY Signals", int((df_signals['trade_signal'] == 'BUY').sum()))
+        col2.metric("🔴 SELL Signals", int((df_signals['trade_signal'] == 'SELL').sum()))
+        col3.metric("⚪ HOLD Signals", int((df_signals['trade_signal'] == 'HOLD').sum()))
+
+        st.markdown("---")
+        st.subheader("🧠 Experiment Output Indicator")
+        try:
+            import mlflow
+            from mlflow.tracking import MlflowClient
+            from bbbot1_pipeline.mlflow_config import get_mlflow_tracking_uri
+
+            mlflow.set_tracking_uri(get_mlflow_tracking_uri())
+            client = MlflowClient()
+            experiments = client.search_experiments(max_results=1)
+            if experiments:
+                runs = mlflow.search_runs(experiment_ids=[experiments[0].experiment_id], max_results=1)
+                if not runs.empty:
+                    st.success("✅ ML Trading Signals linked to MLflow experiment outputs (latest run detected)")
+                else:
+                    st.warning("⚠️ MLflow is reachable, but no runs found yet for latest experiment")
+            else:
+                st.warning("⚠️ MLflow reachable, but no experiments found")
+        except Exception as mlflow_error:
+            st.warning(f"⚠️ MLflow linkage check unavailable: {mlflow_error}")
+
+    except Exception as e:
+        st.error(f"Failed to load trading signals: {e}")
 
 
 # Standalone page function

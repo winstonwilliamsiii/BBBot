@@ -3,7 +3,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv('.env.development')
+# Load from main .env file (same as Streamlit app)
+load_dotenv(override=True)
 
 from prediction_analytics.services.kalshi_client import KalshiClient
 

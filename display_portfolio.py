@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 import pandas as pd
 from prediction_analytics.services.kalshi_client import KalshiClient
 
-load_dotenv('.env.development')
+# Load from main .env file (same as Streamlit app)
+load_dotenv(override=True)
 
 # Mimic what the page does
 KALSHI_API_KEY_ID = (

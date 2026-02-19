@@ -1,0 +1,105 @@
+"""Stars orchestration DAG: Titan gatekeeper with downstream bot routing."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+import logging
+
+from airflow import DAG
+from airflow.operators.empty import EmptyOperator
+from airflow.operators.python import BranchPythonOperator, PythonOperator
+
+from scripts.stars_orchestration import evaluate_titan_gate, run_fund_bot
+
+
+logger = logging.getLogger(__name__)
+
+
+default_args = {
+    "owner": "titan",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
+
+
+def titan_gate_branch(**kwargs):
+    decision = evaluate_titan_gate()
+    kwargs["ti"].xcom_push(key="titan_gate_decision", value=decision)
+    logger.info("Titan gate decision: %s", decision)
+    if decision.get("status") == "approved":
+        return "run_titan"
+    return "blocked_by_titan"
+
+
+def run_bot(bot_name: str, **kwargs):
+    result = run_fund_bot(bot_name)
+    kwargs["ti"].xcom_push(key=f"{bot_name.lower()}_status", value=result)
+    logger.info("Bot run status for %s: %s", bot_name, result)
+    return result
+
+
+dag = DAG(
+    dag_id="stars_orchestration",
+    default_args=default_args,
+    description=(
+        "Titan gate + multi-bot orchestration for "
+        "Mansa_Tech/Mansa_FOREX/Mansa_ETF/Mansa_Minerals"
+    ),
+    schedule_interval="30 9 * * 1-5",
+    start_date=datetime(2026, 2, 19),
+    catchup=False,
+    tags=["stars", "trading", "titan", "rigel", "dogon", "orion"],
+)
+
+
+with dag:
+    titan_guard = BranchPythonOperator(
+        task_id="titan_guard",
+        python_callable=titan_gate_branch,
+    )
+
+    blocked_by_titan = EmptyOperator(task_id="blocked_by_titan")
+
+    run_titan = PythonOperator(
+        task_id="run_titan",
+        python_callable=run_bot,
+        op_kwargs={"bot_name": "Titan"},
+    )
+
+    run_rigel = PythonOperator(
+        task_id="run_rigel",
+        python_callable=run_bot,
+        op_kwargs={"bot_name": "Rigel"},
+    )
+
+    run_dogon = PythonOperator(
+        task_id="run_dogon",
+        python_callable=run_bot,
+        op_kwargs={"bot_name": "Dogon"},
+    )
+
+    run_orion = PythonOperator(
+        task_id="run_orion",
+        python_callable=run_bot,
+        op_kwargs={"bot_name": "Orion"},
+    )
+
+    orchestration_done = EmptyOperator(
+        task_id="orchestration_done",
+        trigger_rule="none_failed_min_one_success",
+    )
+
+    titan_guard.set_downstream(blocked_by_titan)
+    blocked_by_titan.set_downstream(orchestration_done)
+
+    titan_guard.set_downstream(run_titan)
+    run_titan.set_downstream(run_rigel)
+    run_titan.set_downstream(run_dogon)
+    run_titan.set_downstream(run_orion)
+
+    run_rigel.set_downstream(orchestration_done)
+    run_dogon.set_downstream(orchestration_done)
+    run_orion.set_downstream(orchestration_done)

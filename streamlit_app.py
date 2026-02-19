@@ -24,6 +24,7 @@ from frontend.utils.styling import (
 )
 from frontend.styles.colors import COLOR_SCHEME
 from frontend.utils.yahoo import fetch_portfolio_list, fetch_portfolio_tickers
+from frontend.utils.bot_fund_mapping import BOT_FUND_ALLOCATIONS
 
 # Optional MySQL helper (for dev health checks)
 try:
@@ -463,12 +464,17 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    st.subheader("📊 Featured Trading Bots")
-    col_b1, col_b2 = st.columns(2)
-    with col_b1:
-        create_metric_card("RSI-MACD Strategy", "+24.3% YTD", "Win Rate 68%")
-    with col_b2:
-        create_metric_card("Mean Reversion Alpha", "+18.7% YTD", "Win Rate 61%")
+    st.subheader("📊 Featured Trading Bots & Funds")
+    bot_cards = [
+        ("Titan", BOT_FUND_ALLOCATIONS["Titan"]),
+        ("Rigel", BOT_FUND_ALLOCATIONS["Rigel"]),
+        ("Dogon", BOT_FUND_ALLOCATIONS["Dogon"]),
+        ("Orion", BOT_FUND_ALLOCATIONS["Orion"]),
+    ]
+    card_cols = st.columns(4)
+    for col, (bot_name, fund_name) in zip(card_cols, bot_cards):
+        with col:
+            create_metric_card(bot_name, fund_name, "Linked")
 
     # ==========================================================================
     # Bentley AI ChatBot Section - Primary Interface
@@ -752,7 +758,7 @@ def main():
     
     # Mansa Capital Fund Names and tickers
     MANSA_FUNDS = {
-        'SOUN': 'Mansa Tech',
+        'SOUN': 'Mansa_Tech',
         'RETAIL': 'Mansa Retail',
         'MONEYBAG': 'Mansa Money Bag',
         'IONQ': 'Mansa AI',
@@ -760,10 +766,10 @@ def main():
         'HEALTH': 'Mansa Health',
         'SUPPLY': 'Mansa Supply Chain',
         'DIVERSITY': 'Mansa Diversify Dominance',
-        'ETF': 'Mansa ETF',
+        'ETF': 'Mansa_ETF',
         'SHORTS': 'Mansa Shorts (Options)',
-        'FOREX': 'Mansa FOREX',
-        'MINERALS': 'Mansa Minerals',
+        'FOREX': 'Mansa_FOREX',
+        'MINERALS': 'Mansa_Minerals',
         'REALESTATE': 'Mansa Real Estate',
         'SMALLS': 'Mansa_Smalls'
     }

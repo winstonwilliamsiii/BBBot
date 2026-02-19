@@ -17,13 +17,31 @@ import pandas as pd
 from datetime import datetime
 import sys
 import os
+from urllib.parse import urlparse
 
 # Add project root to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    from bbbot1_pipeline.mlflow_config import (
+        get_mlflow_tracking_uri,
+        get_mlflow_server_url,
+        get_mlflow_backend_store_uri,
+    )
+except Exception:
+    def get_mlflow_tracking_uri():
+        return os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+
+    def get_mlflow_server_url():
+        return os.getenv("MLFLOW_SERVER_URL", "http://localhost:5000")
+
+    def get_mlflow_backend_store_uri():
+        return os.getenv("MLFLOW_BACKEND_STORE_URI", "not-configured")
+
 # Configuration
 FLASK_API_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
-MLFLOW_URL = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
+MLFLOW_URL = get_mlflow_server_url()
 
 # Page config
 st.set_page_config(
@@ -36,8 +54,18 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
+    .stApp {
+        background: radial-gradient(circle at top left, #111827 0%, #0b1220 55%, #030712 100%);
+        color: #e5e7eb;
+    }
+    [data-testid="stHeader"], [data-testid="stSidebar"] {
+        background: #0b1220;
+    }
+    [data-testid="stSidebar"] {
+        border-right: 1px solid #1f2937;
+    }
     .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
         padding: 20px;
         border-radius: 10px;
         color: white;
@@ -55,11 +83,12 @@ st.markdown("""
         cursor: pointer;
     }
     .section-header {
-        background: #1f2937;
+        background: #111827;
         color: white;
         padding: 15px;
         border-radius: 8px;
         margin: 20px 0 10px 0;
+        border: 1px solid #374151;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -146,9 +175,6 @@ def main():
         
         st.markdown("---")
         st.markdown("### 🔗 Quick Links")
-        st.markdown("#### Dashboards")
-        st.page_link("pages/98_🧠_MLflow_Training.py", label="🧠 MLflow Training Dashboard", icon="🧠")
-        
         st.markdown("#### External Services")
         st.markdown(f"[MLflow UI]({MLFLOW_URL})")
         st.markdown("[Airflow](http://localhost:8080)")
@@ -229,21 +255,55 @@ def main():
         
         if bots_data:
             bots_df = pd.DataFrame(bots_data.get("bots", []))
-            st.dataframe(bots_df, use_container_width=True)
+            if not bots_df.empty:
+                if "bot_name" not in bots_df.columns and "name" in bots_df.columns:
+                    bots_df["bot_name"] = bots_df["name"]
+                if "mansa_fund" not in bots_df.columns:
+                    bots_df["mansa_fund"] = "Mansa Fund"
+
+                display_cols = [
+                    "bot_name",
+                    "mansa_fund",
+                    "status",
+                    "broker",
+                    "uptime",
+                ]
+                available_cols = [col for col in display_cols if col in bots_df.columns]
+                display_df = bots_df[available_cols].copy()
+                display_df = display_df.rename(columns={
+                    "bot_name": "Bot Name",
+                    "mansa_fund": "Mansa Fund",
+                    "status": "Status",
+                    "broker": "Broker",
+                    "uptime": "Uptime",
+                })
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No bots returned from API.")
         else:
             # Sample bot data
             bots = [
-                {"id": 1, "name": "GoldRSI Strategy", "status": "running", "broker": "Alpaca", "uptime": "3d 5h"},
-                {"id": 2, "name": "USD/COP Short", "status": "idle", "broker": "MT5", "uptime": "1d 2h"},
-                {"id": 3, "name": "Portfolio Optimizer", "status": "running", "broker": "Multi", "uptime": "7d 12h"},
+                {"id": 1, "bot_name": "GoldRSI Strategy", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Alpaca", "uptime": "3d 5h"},
+                {"id": 2, "bot_name": "USD/COP Short", "mansa_fund": "Mansa Fund", "status": "idle", "broker": "MT5", "uptime": "1d 2h"},
+                {"id": 3, "bot_name": "Portfolio Optimizer", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Multi", "uptime": "7d 12h"},
             ]
-            bots_df = pd.DataFrame(bots)
+            st.dataframe(
+                pd.DataFrame(bots).rename(columns={
+                    "bot_name": "Bot Name",
+                    "mansa_fund": "Mansa Fund",
+                    "status": "Status",
+                    "broker": "Broker",
+                    "uptime": "Uptime",
+                })[["Bot Name", "Mansa Fund", "Status", "Broker", "Uptime"]],
+                use_container_width=True,
+                hide_index=True,
+            )
             
             for idx, bot in enumerate(bots):
                 col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
                 
                 with col1:
-                    st.markdown(f"**{bot['name']}**")
+                    st.markdown(f"**{bot['bot_name']}**")
                 with col2:
                     st.markdown(get_status_badge(bot['status']), unsafe_allow_html=True)
                 with col3:
@@ -252,10 +312,10 @@ def main():
                     st.text(f"Uptime: {bot['uptime']}")
                 with col5:
                     if st.button("⏸️", key=f"stop_{idx}"):
-                        st.info(f"Stopping {bot['name']}...")
+                        st.info(f"Stopping {bot['bot_name']}...")
                 with col6:
                     if st.button("📊", key=f"metrics_{idx}"):
-                        st.info(f"Loading metrics for {bot['name']}...")
+                        st.info(f"Loading metrics for {bot['bot_name']}...")
                 
                 st.markdown("---")
         
@@ -511,79 +571,114 @@ def main():
     # TAB 6: MLflow Integration
     with tab6:
         st.markdown('<div class="section-header"><h2>🧠 MLflow Experiment Tracking</h2></div>', unsafe_allow_html=True)
-        
-        # Quick stats
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Active Experiments", "5", "")
-        with col2:
-            st.metric("Total Runs (30d)", "124", "+18")
-        with col3:
-            st.metric("Success Rate", "94.3%", "+2.1%")
-        with col4:
-            st.metric("Best Model Accuracy", "87.2%", "")
-        
-        st.markdown("---")
-        
-        # MLflow server status
+
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             st.subheader("🔌 MLflow Server Status")
-            
-            try:
-                # Try to ping MLflow server
-                response = requests.get(f"{MLFLOW_URL}/health", timeout=2)
-                if response.status_code == 200:
-                    st.success(f"✅ MLflow server is running at {MLFLOW_URL}")
-                else:
-                    st.warning(f"⚠️ MLflow server returned status {response.status_code}")
-            except requests.exceptions.ConnectionError:
-                st.error(f"❌ Cannot connect to MLflow server at {MLFLOW_URL}")
-                st.info("Start MLflow: `mlflow server --backend-store-uri <uri> --host 0.0.0.0 --port 5000`")
-            except Exception as e:
-                st.warning(f"⚠️ MLflow server status unknown: {str(e)}")
-        
+            mlflow_scheme = urlparse(MLFLOW_URL).scheme.lower()
+            if mlflow_scheme not in ("http", "https"):
+                st.warning(f"⚠️ MLflow UI URL must be HTTP/HTTPS. Current value: {MLFLOW_URL}")
+                st.info("Set `MLFLOW_SERVER_URL` to your tracking server URL, e.g. `http://localhost:5000`")
+            else:
+                health_urls = [f"{MLFLOW_URL}/health", f"{MLFLOW_URL}/version"]
+                connected = False
+                for health_url in health_urls:
+                    try:
+                        response = requests.get(health_url, timeout=3)
+                        if response.status_code == 200:
+                            st.success(f"✅ MLflow server reachable at {MLFLOW_URL}")
+                            connected = True
+                            break
+                    except requests.exceptions.ConnectionError:
+                        continue
+                    except Exception:
+                        continue
+                if not connected:
+                    st.error(f"❌ Cannot connect to MLflow server at {MLFLOW_URL}")
+                    st.info("Start MLflow: `mlflow server --backend-store-uri <uri> --host 0.0.0.0 --port 5000`")
+
         with col2:
             st.subheader("🔗 Quick Actions")
-            if st.button("📊 Open Full Dashboard", type="primary", use_container_width=True):
-                st.switch_page("pages/98_🧠_MLflow_Training.py")
-            
-            if st.button("🌐 MLflow UI", use_container_width=True):
+            if st.button("🔄 Refresh MLflow Data", type="primary", use_container_width=True):
+                st.rerun()
+            if st.button("🌐 Open MLflow UI", use_container_width=True):
                 st.markdown(f"[Open MLflow UI]({MLFLOW_URL})")
-        
+
         st.markdown("---")
-        
-        # Recent experiments table
         st.subheader("📋 Recent Experiments")
-        
-        # Sample data (replace with actual MLflow data)
-        experiments_data = {
-            "Experiment": ["Portfolio Optimization", "Risk Prediction", "Price Forecast", "Sentiment Analysis"],
-            "Runs": [23, 18, 45, 12],
-            "Best Metric": [0.872, 0.845, 0.791, 0.823],
-            "Last Updated": ["2 hours ago", "5 hours ago", "1 day ago", "2 days ago"],
-            "Status": ["Active", "Active", "Completed", "Active"]
-        }
-        
-        experiments_df = pd.DataFrame(experiments_data)
-        st.dataframe(experiments_df, use_container_width=True)
-        
+
+        try:
+            import mlflow
+            from mlflow.tracking import MlflowClient
+
+            mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+            client = MlflowClient()
+            experiments = client.search_experiments()
+
+            exp_rows = []
+            total_runs = 0
+            finished_runs = 0
+
+            for exp in experiments[:25]:
+                runs = mlflow.search_runs(experiment_ids=[exp.experiment_id], max_results=200)
+                run_count = len(runs)
+                total_runs += run_count
+                if not runs.empty and "status" in runs.columns:
+                    finished_runs += len(runs[runs["status"] == "FINISHED"])
+
+                last_updated = "N/A"
+                if not runs.empty and "start_time" in runs.columns:
+                    ts = pd.to_datetime(runs["start_time"]).max()
+                    if pd.notna(ts):
+                        last_updated = ts.strftime('%Y-%m-%d %H:%M:%S')
+
+                exp_rows.append({
+                    "Experiment": exp.name,
+                    "Experiment ID": exp.experiment_id,
+                    "Lifecycle Stage": exp.lifecycle_stage,
+                    "Runs": run_count,
+                    "Last Updated": last_updated,
+                })
+
+            success_rate = (finished_runs / total_runs * 100) if total_runs > 0 else 0.0
+
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.metric("Active Experiments", len(experiments), "")
+            with m2:
+                st.metric("Total Runs", total_runs, "")
+            with m3:
+                st.metric("Finished Runs", finished_runs, "")
+            with m4:
+                st.metric("Success Rate", f"{success_rate:.1f}%", "")
+
+            if exp_rows:
+                st.dataframe(pd.DataFrame(exp_rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("No experiments found.")
+
+        except Exception as e:
+            error_text = str(e)
+            st.error(f"❌ Failed to load experiments: {error_text}")
+            if "Can't locate revision identified by" in error_text:
+                st.warning("⚠️ MLflow database migrations are out of sync.")
+                st.code(f"mlflow db upgrade \"{get_mlflow_backend_store_uri()}\"", language="bash")
+            else:
+                st.info("Make sure MLflow server is running and tracking URI points to the server URL.")
+
         st.markdown("---")
-        
-        # Configuration info
         with st.expander("⚙️ MLflow Configuration"):
             st.code(f"""
 # MLflow Configuration
-TRACKING_URI: {MLFLOW_URL}
-BACKEND_STORE: MySQL
-ARTIFACT_LOCATION: Local filesystem
+TRACKING_URI: {MLFLOW_TRACKING_URI}
+SERVER_URL: {MLFLOW_URL}
+BACKEND_STORE_URI: {get_mlflow_backend_store_uri()}
 
-# To access MLflow:
-1. Ensure Docker services are running
-2. Visit {MLFLOW_URL} for web UI
-3. Use MLflow Training Dashboard for detailed analysis
+# Notes
+- MLflow Training dashboard is merged into this ACC tab.
+- Use SERVER_URL for web health checks/UI.
+- Use BACKEND_STORE_URI for `mlflow db upgrade`.
             """, language="text")
     
     # TAB 7: System Logs

@@ -1,0 +1,1 @@
+feat(trading-bot): add production-ready technical indicator trading bot

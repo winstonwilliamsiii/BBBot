@@ -6,6 +6,7 @@ Supports both local Docker (port 3307) and Railway cloud deployment
 
 import os
 from typing import Optional
+from urllib.parse import urlparse
 
 def get_mlflow_config() -> dict:
     """
@@ -42,6 +43,51 @@ def get_mlflow_config() -> dict:
 # Get configuration based on environment
 MLFLOW_MYSQL_CONFIG = get_mlflow_config()
 
+
+def _is_http_uri(uri: str) -> bool:
+    """Return True when URI is HTTP(S)."""
+    if not uri:
+        return False
+    scheme = urlparse(uri).scheme.lower()
+    return scheme in ("http", "https")
+
+
+def get_mlflow_server_url() -> str:
+    """
+    Get MLflow web/server URL.
+
+    Priority:
+    1. MLFLOW_SERVER_URL (explicit web endpoint)
+    2. MLFLOW_TRACKING_URI if it's HTTP(S)
+    3. Default local MLflow server URL
+    """
+    explicit_server = os.getenv("MLFLOW_SERVER_URL", "").strip()
+    if _is_http_uri(explicit_server):
+        return explicit_server.rstrip("/")
+
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "").strip()
+    if _is_http_uri(tracking_uri):
+        return tracking_uri.rstrip("/")
+
+    return "http://localhost:5000"
+
+
+def get_mlflow_backend_store_uri() -> str:
+    """
+    Get MLflow backend store URI.
+
+    Uses explicit env var first, then builds from MySQL config.
+    """
+    backend_uri = os.getenv("MLFLOW_BACKEND_STORE_URI", "").strip()
+    if backend_uri:
+        return backend_uri
+
+    return (
+        f"mysql+pymysql://{MLFLOW_MYSQL_CONFIG['user']}:{MLFLOW_MYSQL_CONFIG['password']}"
+        f"@{MLFLOW_MYSQL_CONFIG['host']}:{MLFLOW_MYSQL_CONFIG['port']}"
+        f"/{MLFLOW_MYSQL_CONFIG['database']}"
+    )
+
 def get_mlflow_tracking_uri() -> str:
     """
     Get MLFlow tracking URI for MySQL backend
@@ -49,11 +95,12 @@ def get_mlflow_tracking_uri() -> str:
     Returns:
         str: MySQL connection string for MLFlow
     """
-    return (
-        f"mysql+pymysql://{MLFLOW_MYSQL_CONFIG['user']}:{MLFLOW_MYSQL_CONFIG['password']}"
-        f"@{MLFLOW_MYSQL_CONFIG['host']}:{MLFLOW_MYSQL_CONFIG['port']}"
-        f"/{MLFLOW_MYSQL_CONFIG['database']}"
-    )
+    tracking_uri = os.getenv('MLFLOW_TRACKING_URI', '').strip()
+    if tracking_uri:
+        if _is_http_uri(tracking_uri):
+            return tracking_uri
+
+    return get_mlflow_server_url()
 
 def get_mlflow_artifact_path() -> str:
     """
@@ -97,7 +144,7 @@ def initialize_mlflow(experiment_name: str = "bentley_bot_analysis") -> None:
     """
     import mlflow
     
-    # Set tracking URI to MySQL
+    # Set tracking URI to MLflow server endpoint
     tracking_uri = get_mlflow_tracking_uri()
     mlflow.set_tracking_uri(tracking_uri)
     
@@ -132,7 +179,7 @@ def validate_connection() -> bool:
         import mlflow
         from mlflow.tracking import MlflowClient
         
-        # Set tracking URI
+        # Set tracking URI (HTTP endpoint preferred)
         tracking_uri = get_mlflow_tracking_uri()
         mlflow.set_tracking_uri(tracking_uri)
         
@@ -146,6 +193,9 @@ def validate_connection() -> bool:
         
     except Exception as e:
         print(f"❌ MLFlow connection failed: {e}")
+        if "Can't locate revision identified by" in str(e):
+            print("ℹ️ MLflow database migration mismatch detected.")
+            print("   Run: mlflow db upgrade <MLFLOW_BACKEND_STORE_URI>")
         return False
 
 if __name__ == "__main__":

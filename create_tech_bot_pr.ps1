@@ -10,7 +10,7 @@ Production-ready Technical Indicator Trading Bot with support for multiple ETF t
 ## Changes Made
 ### Core Features
 - ✅ Multi-indicator trading strategy (RSI, MACD, Bollinger Bands, SMA)
-- ✅ Support for 9 ETF tickers: QTUM, IBIT, SCHD, VUG, IONZ, PINK, SQQQ, NUKZ, VOO
+- ✅ Support for 12 symbols: VOO, SQQQ, MAGS, BITI, XLF, QUTM, NUKZ, PINK, DFEN, VXX, IONZ, VIX
 - ✅ Automated signal generation and trade execution
 - ✅ Position sizing based on account equity and risk tolerance
 - ✅ Comprehensive error handling and logging
@@ -54,7 +54,7 @@ All tests passing locally:
 ## Configuration
 The bot uses environment variables for all configuration:
 \`\`\`bash
-TRADING_SYMBOLS=QTUM,IBIT,SCHD,VUG,IONZ,PINK,SQQQ,NUKZ,VOO
+TRADING_SYMBOLS=VOO,SQQQ,MAGS,BITI,XLF,QUTM,NUKZ,PINK,DFEN,VXX,IONZ,VIX
 ALPACA_API_KEY=<your_key>
 ALPACA_SECRET_KEY=<your_secret>
 ALPACA_BASE_URL=https://paper-api.alpaca.markets

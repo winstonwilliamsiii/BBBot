@@ -4,23 +4,26 @@
 Successfully updated the Technical Indicator Trading Bot to support multiple ETF tickers as requested.
 
 ## ETF Tickers Configured
-The bot now monitors and trades the following ETFs:
-- **QTUM** - Defiance Quantum ETF
--  **IBIT** - iShares Bitcoin Trust ETF
-- **SCHD** - Schwab U.S. Dividend Equity ETF
-- **VUG** - Vanguard Growth ETF
-- **IONZ** - AdvisorShares International Developed Multifactor ETF
-- **PINK** - Simplify Health Care ETF
-- **SQQQ** - ProShares UltraPro Short QQQ
-- **NUKZ** - Range Nuclear Renaissance Index ETF
-- **VOO** - Vanguard S&P 500 ETF
+The bot now monitors and trades the following symbols:
+- **VOO**
+- **SQQQ**
+- **MAGS**
+- **BITI**
+- **XLF**
+- **QUTM**
+- **NUKZ**
+- **PINK**
+- **DFEN**
+- **VXX**
+- **IONZ**
+- **VIX**
 
 ## Key Changes Made
 
 ### 1. Configuration Updates
 - **Before**: Single `SYMBOL` parameter (default: SPY)
 - **After**: Multiple `SYMBOLS` list (configurable via environment variable)
-- Environment variable: `TRADING_SYMBOLS=QTUM,IBIT,SCHD,VUG,IONZ,PINK,SQQQ,NUKZ,VOO`
+- Environment variable: `TRADING_SYMBOLS=VOO,SQQQ,MAGS,BITI,XLF,QUTM,NUKZ,PINK,DFEN,VXX,IONZ,VIX`
 
 ### 2. Bot Processing Logic
 - Updated `run()` method to iterate through all configured symbols
@@ -72,7 +75,7 @@ All tests passing:
    ```bash
    export ALPACA_API_KEY="your_key"
    export ALPACA_SECRET_KEY="your_secret"
-   export TRADING_SYMBOLS="QTUM,IBIT,SCHD,VUG,IONZ,PINK,SQQQ,NUKZ,VOO"
+  export TRADING_SYMBOLS="VOO,SQQQ,MAGS,BITI,XLF,QUTM,NUKZ,PINK,DFEN,VXX,IONZ,VIX"
    export DRY_RUN="false"  # When ready for live trading
    export ENABLE_TRADING="true"  # When ready for live trading
    ```

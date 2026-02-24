@@ -192,7 +192,7 @@ Once all workflows pass ✅:
 
 ### Trading Bot Configuration
 **File:** `scripts/technical_indicator_bot.py`  
-**Tickers:** QTUM, IBIT, SCHD, VUG, IONZ, PINK, SQQQ, NUKZ, VOO  
+**Tickers:** VOO, SQQQ, MAGS, BITI, XLF, QUTM, NUKZ, PINK, DFEN, VXX, IONZ, VIX  
 **Strategy:** Multi-indicator (RSI, MACD, Bollinger Bands, SMA)  
 **Risk Management:** 2% per trade, max 100 shares per position  
 **Tests:** 21 comprehensive unit tests ✅

@@ -44,7 +44,7 @@ class TradingConfig:
     ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
     
     # Trading Parameters
-    SYMBOLS = os.getenv("TRADING_SYMBOLS", "QTUM,IBIT,SCHD,VUG,IONZ,PINK,SQQQ,NUKZ,VOO").split(",")  # ETF tickers
+    SYMBOLS = os.getenv("TRADING_SYMBOLS", "VOO,SQQQ,MAGS,BITI,XLF,QUTM,NUKZ,PINK,DFEN,VXX,IONZ,VIX").split(",")  # ETF tickers
     TIMEFRAME = TimeFrame.Day  # 1-day bars
     LOOKBACK_DAYS = 100  # Historical data for indicators
     

@@ -61,7 +61,7 @@ try {
     Write-Host "→ Merging $branch..." -ForegroundColor Gray
     git merge $branch --no-ff -m "Merge PR #$prNumber: Production-ready Technical Indicator Trading Bot
 
-- Multi-ETF support (9 tickers: QTUM, IBIT, SCHD, VUG, IONZ, PINK, SQQQ, NUKZ, VOO)
+- Multi-ETF support (12 symbols: VOO, SQQQ, MAGS, BITI, XLF, QUTM, NUKZ, PINK, DFEN, VXX, IONZ, VIX)
 - Multi-indicator strategy (RSI, MACD, Bollinger Bands, SMA)
 - 21 comprehensive unit tests (all passing)
 - 2% risk management with position sizing

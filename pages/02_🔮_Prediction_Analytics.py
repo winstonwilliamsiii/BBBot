@@ -80,31 +80,43 @@ except ImportError as e:
 # KALSHI CREDENTIALS & SETUP
 # ============================================
 try:
-    KALSHI_API_KEY_ID = st.secrets.get("KALSHI_API_KEY_ID", "") or os.getenv(
-        "KALSHI_API_KEY_ID", ""
-    ) or os.getenv("KALSHI_ACCESS_KEY", "")
-    KALSHI_PRIVATE_KEY = st.secrets.get("KALSHI_PRIVATE_KEY", "") or os.getenv(
-        "KALSHI_PRIVATE_KEY", ""
-    )
-except Exception:
-    KALSHI_API_KEY_ID = os.getenv("KALSHI_API_KEY_ID", "") or os.getenv(
-        "KALSHI_ACCESS_KEY", ""
-    )
-    KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
+    # Try nested table format first (production Streamlit Cloud)
+    KALSHI_API_KEY_ID = st.secrets["prediction_markets"]["KALSHI_API_KEY_ID"]
+    KALSHI_PRIVATE_KEY = st.secrets["prediction_markets"]["KALSHI_PRIVATE_KEY"]
+except (KeyError, AttributeError):
+    # Fallback to flat format or environment variables (local development)
+    try:
+        KALSHI_API_KEY_ID = st.secrets.get("KALSHI_API_KEY_ID", "") or os.getenv(
+            "KALSHI_API_KEY_ID", ""
+        ) or os.getenv("KALSHI_ACCESS_KEY", "")
+        KALSHI_PRIVATE_KEY = st.secrets.get("KALSHI_PRIVATE_KEY", "") or os.getenv(
+            "KALSHI_PRIVATE_KEY", ""
+        )
+    except Exception:
+        KALSHI_API_KEY_ID = os.getenv("KALSHI_API_KEY_ID", "") or os.getenv(
+            "KALSHI_ACCESS_KEY", ""
+        )
+        KALSHI_PRIVATE_KEY = os.getenv("KALSHI_PRIVATE_KEY", "")
 
 # ============================================
 # POLYMARKET CREDENTIALS & SETUP
 # ============================================
 try:
-    POLYMARKET_API_KEY = st.secrets.get("POLYMARKET_API_KEY", "") or os.getenv(
-        "POLYMARKET_API_KEY", ""
-    )
-    POLYMARKET_SECRET_KEY = st.secrets.get("POLYMARKET_SECRET_KEY", "") or os.getenv(
-        "POLYMARKET_SECRET_KEY", ""
-    )
-except Exception:
-    POLYMARKET_API_KEY = os.getenv("POLYMARKET_API_KEY", "")
-    POLYMARKET_SECRET_KEY = os.getenv("POLYMARKET_SECRET_KEY", "")
+    # Try nested table format first (production Streamlit Cloud)
+    POLYMARKET_API_KEY = st.secrets["prediction_markets"]["POLYMARKET_API_KEY"]
+    POLYMARKET_SECRET_KEY = st.secrets["prediction_markets"]["POLYMARKET_SECRET_KEY"]
+except (KeyError, AttributeError):
+    # Fallback to flat format or environment variables (local development)
+    try:
+        POLYMARKET_API_KEY = st.secrets.get("POLYMARKET_API_KEY", "") or os.getenv(
+            "POLYMARKET_API_KEY", ""
+        )
+        POLYMARKET_SECRET_KEY = st.secrets.get("POLYMARKET_SECRET_KEY", "") or os.getenv(
+            "POLYMARKET_SECRET_KEY", ""
+        )
+    except Exception:
+        POLYMARKET_API_KEY = os.getenv("POLYMARKET_API_KEY", "")
+        POLYMARKET_SECRET_KEY = os.getenv("POLYMARKET_SECRET_KEY", "")
 
 
 @st.cache_data(ttl=300)

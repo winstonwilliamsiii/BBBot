@@ -39,6 +39,7 @@ except TypeError:
     pass
 
 import streamlit as st
+from frontend.utils.secrets_helper import get_plaid_config
 from plaid.api import plaid_api
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
@@ -58,35 +59,35 @@ class PlaidLinkManager:
         """Initialize Plaid API client"""
         # Reload environment one more time to be sure (local only)
         load_dotenv(str(project_root / '.env'), override=True)
-        
-        # Try Streamlit secrets first (production), then env vars (local dev)
+
         self.client_id = ''
         self.secret = ''
         self.env = 'sandbox'
-        
-        # Method 1: Try st.secrets (Streamlit Cloud)
+
         try:
-            if hasattr(st, 'secrets'):
-                # Try to access secrets directly
-                self.client_id = str(st.secrets.get('PLAID_CLIENT_ID', '')).strip()
-                self.secret = str(st.secrets.get('PLAID_SECRET', '')).strip()
-                self.env = str(st.secrets.get('PLAID_ENV', 'sandbox')).strip()
-                
-                if self.client_id:
-                    print(f"✅ Loaded Plaid credentials from st.secrets")
-                    print(f"   Client ID: {self.client_id[:10]}...")
+            plaid_config = get_plaid_config()
+            self.client_id = str(plaid_config.get('client_id', '')).strip()
+            self.secret = str(plaid_config.get('secret', '')).strip()
+            self.env = str(plaid_config.get('env', 'sandbox')).strip().lower()
+
+            if self.client_id:
+                print("✅ Loaded Plaid credentials from unified secrets helper")
+                print(f"   Client ID: {self.client_id[:10]}...")
+                print(f"   Environment: {self.env}")
         except Exception as e:
-            print(f"⚠️ st.secrets access failed: {e}")
-        
-        # Method 2: Fallback to environment variables (local dev)
+            print(f"⚠️ Unified Plaid config load failed: {e}")
+
+        # Fallback for legacy env var usage
         if not self.client_id:
             self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
-            self.secret = os.getenv('PLAID_SECRET', '').strip()
-            self.env = os.getenv('PLAID_ENV', 'sandbox').strip()
-            
-            if self.client_id:
-                print(f"✅ Loaded Plaid credentials from .env")
-                print(f"   Client ID: {self.client_id[:10]}...")
+            self.secret = (
+                os.getenv('PLAID_SECRET_PRODUCTION', '').strip()
+                or os.getenv('PLAID_SECRET', '').strip()
+            )
+            self.env = (
+                os.getenv('PLAID_ENV', '').strip()
+                or os.getenv('PLAID_ENVIRONMENT', 'sandbox').strip()
+            ).lower()
         
         # Validation: Must have credentials
         if not self.client_id:
@@ -106,6 +107,7 @@ class PlaidLinkManager:
             raise ValueError(
                 "PLAID_CLIENT_ID not found in st.secrets or environment.\n"
                 "On Streamlit Cloud: Add PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV to App Secrets.\n"
+                "For production keys, optionally add PLAID_CLIENT_ID_PRODUCTION and PLAID_SECRET_PRODUCTION.\n"
                 "Locally: Ensure .env file has valid credentials."
             )
         elif self.client_id == 'your_plaid_client_id_here':

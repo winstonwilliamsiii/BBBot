@@ -148,11 +148,43 @@ def get_plaid_config() -> dict:
     Raises:
         ValueError: If credentials are not configured
     """
-    client_id = get_secret('PLAID_CLIENT_ID', section='plaid')
-    secret = get_secret('PLAID_SECRET', section='plaid')
-    env = get_secret('PLAID_ENV', section='plaid', default=None)
+    env = os.getenv('PLAID_ENV') or os.getenv('PLAID_ENVIRONMENT')
+    if not env:
+        env = get_secret('PLAID_ENV', section='plaid', default=None)
     if not env:
         env = get_secret('PLAID_ENVIRONMENT', section='plaid', default='sandbox')
+    env = str(env).strip().lower()
+
+    is_production = env == 'production'
+
+    if is_production:
+        client_id = (
+            os.getenv('PLAID_CLIENT_ID_PRODUCTION')
+            or os.getenv('PLAID_PRODUCTION_CLIENT_ID')
+            or os.getenv('PLAID_CLIENT_ID')
+            or
+            get_secret('PLAID_CLIENT_ID_PRODUCTION', section='plaid', default=None)
+            or get_secret('PLAID_PRODUCTION_CLIENT_ID', section='plaid', default=None)
+            or get_secret('PLAID_CLIENT_ID', section='plaid')
+        )
+        secret = (
+            os.getenv('PLAID_SECRET_PRODUCTION')
+            or os.getenv('PLAID_PRODUCTION_SECRET')
+            or os.getenv('PLAID_SECRET')
+            or
+            get_secret('PLAID_SECRET_PRODUCTION', section='plaid', default=None)
+            or get_secret('PLAID_PRODUCTION_SECRET', section='plaid', default=None)
+            or get_secret('PLAID_SECRET', section='plaid')
+        )
+    else:
+        client_id = (
+            os.getenv('PLAID_CLIENT_ID')
+            or get_secret('PLAID_CLIENT_ID', section='plaid')
+        )
+        secret = (
+            os.getenv('PLAID_SECRET')
+            or get_secret('PLAID_SECRET', section='plaid')
+        )
     
     if not client_id or client_id == 'your-plaid-client-id':
         raise ValueError(

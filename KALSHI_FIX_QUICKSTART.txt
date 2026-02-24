@@ -1,0 +1,128 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║               KALSHI PORTFOLIO FIX - QUICK REFERENCE                 ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ 🔴 PROBLEM IDENTIFIED                                                │
+└──────────────────────────────────────────────────────────────────────┘
+
+  ❌ Kalshi API credentials not configured
+  ❌ Using placeholder values in .env.development
+  ❌ Private key file missing
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ ✅ SOLUTION: CHOOSE YOUR METHOD                                      │
+└──────────────────────────────────────────────────────────────────────┘
+
+  METHOD 1: AUTOMATED SETUP (Easiest - Recommended)
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  Step 1: Get your API keys from Kalshi
+    → Go to: https://kalshi.com/account/profile
+    → Login: wwilliams@mansacap.com / Cartagena57!@
+    → Create new API key
+    → Download the private key file
+  
+  Step 2: Run the setup script
+    → python setup_kalshi_credentials.py
+    → Follow the prompts
+    → Script will configure everything automatically
+  
+  Step 3: Verify it works
+    → python fix_kalshi_portfolio.py
+    → Should show: ✅ SUCCESS!
+
+
+  METHOD 2: MANUAL SETUP (More control)
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  See: KALSHI_PORTFOLIO_FIX.md (Option B)
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ 📝 WHAT YOU NEED FROM KALSHI                                         │
+└──────────────────────────────────────────────────────────────────────┘
+
+  1. API Key ID (looks like UUID):
+     Example: a952bcbe-ec3b-4b5b-b8f9-11dae589608c
+  
+  2. Private Key File (RSA format):
+     Starts with: -----BEGIN RSA PRIVATE KEY-----
+     Ends with:   -----END RSA PRIVATE KEY-----
+     
+  ⚠️  IMPORTANT: Private key shown ONLY ONCE - save immediately!
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ 📁 FILES CREATED TO HELP YOU                                         │
+└──────────────────────────────────────────────────────────────────────┘
+
+  setup_kalshi_credentials.py
+    → Interactive setup wizard
+    → Handles everything automatically
+    → Recommended for quick setup
+  
+  fix_kalshi_portfolio.py
+    → Diagnostic and troubleshooting tool
+    → Run this to verify setup
+    → Provides detailed error messages
+  
+  KALSHI_PORTFOLIO_FIX.md
+    → Complete documentation
+    → Manual setup instructions
+    → Troubleshooting guide
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ 🚀 AFTER SETUP - VIEW YOUR PORTFOLIO                                │
+└──────────────────────────────────────────────────────────────────────┘
+
+  1. Start the app:
+     streamlit run streamlit_app.py
+  
+  2. Navigate to: 🔮 Prediction Analytics
+  
+  3. You should see:
+     ✅ Account Balance: $9.82
+     ✅ Open Positions (if any)
+     ✅ Trade History
+     ✅ Active Markets
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ 🔒 SECURITY - DON'T WORRY                                            │
+└──────────────────────────────────────────────────────────────────────┘
+
+  ✅ Private key file is in .gitignore
+  ✅ Won't be committed to version control
+  ✅ Only stored locally on your machine
+  ✅ Safe to use - API keys bypass MFA for programs
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ 🆘 NEED HELP?                                                        │
+└──────────────────────────────────────────────────────────────────────┘
+
+  1. Run diagnostic:
+     python fix_kalshi_portfolio.py
+  
+  2. Check detailed docs:
+     KALSHI_PORTFOLIO_FIX.md
+  
+  3. Still stuck?
+     - Check KALSHI_API_SETUP.md
+     - Kalshi API docs: https://kalshi.com/api/docs
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ 📊 COMMANDS QUICK REFERENCE                                          │
+└──────────────────────────────────────────────────────────────────────┘
+
+  # Setup credentials (run once)
+  python setup_kalshi_credentials.py
+  
+  # Test/verify (run to check)
+  python fix_kalshi_portfolio.py
+  
+  # Start app (view portfolio)
+  streamlit run streamlit_app.py
+
+═══════════════════════════════════════════════════════════════════════
+
+💡 TIP: Start with the automated setup - it's the easiest way!
+
+═══════════════════════════════════════════════════════════════════════

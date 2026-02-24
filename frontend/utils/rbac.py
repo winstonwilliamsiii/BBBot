@@ -192,8 +192,8 @@ class User:
         4: Live Crypto (CLIENT+, INVESTOR, ADMIN)
         5: Broker Trading (INVESTOR, ADMIN)
         6: Trading Bot (ADMIN only)
-        7: Plaid Test (ADMIN only)
-        8: Multi-Broker Trading (ADMIN only)
+        7: Reserved admin page slot (ADMIN only)
+        8: Reserved admin page slot (ADMIN only)
         """
         page_permissions = {
             1: Permission.VIEW_DASHBOARD,
@@ -202,7 +202,7 @@ class User:
             4: Permission.VIEW_CRYPTO,
             5: Permission.VIEW_BROKER_TRADING,
             6: Permission.VIEW_TRADING_BOT,
-            # Pages 7-8 also require VIEW_TRADING_BOT (ADMIN only)
+            # Reserved admin slots also require VIEW_TRADING_BOT (ADMIN only)
             7: Permission.VIEW_TRADING_BOT,
             8: Permission.VIEW_TRADING_BOT,
         }

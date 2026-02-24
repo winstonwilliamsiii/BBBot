@@ -21,7 +21,7 @@ except ImportError:
 # Import custom styling
 try:
     from frontend.styles.colors import COLOR_SCHEME
-    from frontend.utils.styling import apply_custom_styling
+    from frontend.utils.styling import apply_custom_styling, create_metric_card
     STYLING_AVAILABLE = True
 except ImportError:
     STYLING_AVAILABLE = False
@@ -31,6 +31,25 @@ except ImportError:
         'accent': '#FF8C00',
         'text': '#E6EEF8'
     }
+
+    def create_metric_card(title, value, delta=None):
+        st.metric(title, value, delta)
+
+try:
+    from frontend.utils.bot_fund_mapping import BOT_FUND_ALLOCATIONS
+except ImportError:
+    BOT_FUND_ALLOCATIONS = {
+        "Titan": "Mansa_Tech",
+        "Rigel": "Mansa_FOREX",
+        "Dogon": "Mansa_ETF",
+        "Orion": "Mansa_Minerals",
+    }
+
+try:
+    from scripts.mansa_titan_bot import TitanBot, TitanConfig
+    TITAN_AVAILABLE = True
+except Exception:
+    TITAN_AVAILABLE = False
 
 # Database connection
 try:
@@ -306,6 +325,33 @@ def load_active_signals():
         return pd.DataFrame()
 
 
+def _build_titan_status_rows() -> pd.DataFrame:
+    rows = []
+    for bot_name, fund_name in BOT_FUND_ALLOCATIONS.items():
+        rows.append(
+            {
+                "Bot": bot_name,
+                "Fund": fund_name,
+                "Status": "active" if bot_name in ("Titan", "Rigel") else "pending",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+@st.cache_data(ttl=30)
+def load_titan_snapshot() -> dict:
+    if not TITAN_AVAILABLE:
+        return {}
+
+    config = TitanConfig.from_env()
+    bot = TitanBot(config)
+    try:
+        bot.ensure_database_tables()
+    except (RuntimeError, OSError, ValueError):
+        pass
+    return bot.dashboard_snapshot()
+
+
 # Sidebar controls
 st.sidebar.header("🎛️ Bot Controls")
 
@@ -351,11 +397,12 @@ days_map = {
 selected_days = days_map[date_range]
 
 # Main dashboard
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Overview", 
     "📈 Performance", 
     "🎯 Active Signals", 
-    "📜 Trade History"
+    "📜 Trade History",
+    "🚀 Titan Monitor"
 ])
 
 # TAB 1: Overview
@@ -584,6 +631,63 @@ with tab4:
     
     else:
         st.info(f"No trade history in {date_range.lower()}")
+
+# TAB 5: Titan Monitor (merged from standalone page)
+with tab5:
+    st.subheader("🚀 Titan Bot Monitor")
+
+    if not TITAN_AVAILABLE:
+        st.info("Titan monitor components are not available in this environment.")
+    else:
+        allocation_df = _build_titan_status_rows()
+        st.markdown("**Bot/Fund Allocation**")
+        st.dataframe(allocation_df, use_container_width=True)
+
+        snapshot = load_titan_snapshot()
+        if not snapshot:
+            st.info("No Titan snapshot data available yet.")
+        else:
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                create_metric_card("Total Trades", str(snapshot.get("total_trades", 0)))
+            with c2:
+                create_metric_card("Submitted", str(snapshot.get("submitted_trades", 0)))
+            with c3:
+                create_metric_card("Simulated", str(snapshot.get("simulated_trades", 0)))
+            with c4:
+                create_metric_card("Blocked", str(snapshot.get("blocked_trades", 0)))
+
+            st.markdown("**Service Health**")
+            health_df = pd.DataFrame(snapshot.get("health", []))
+            if health_df.empty:
+                st.info("No service health data available yet.")
+            else:
+                st.dataframe(health_df, use_container_width=True)
+
+            st.markdown("**Recent Titan Trades**")
+            trades_df_titan = snapshot.get("trades_df", pd.DataFrame())
+            if trades_df_titan.empty:
+                st.info("No Titan trades logged yet.")
+            else:
+                view_df = trades_df_titan.copy().sort_values("timestamp")
+                st.dataframe(
+                    view_df[
+                        [
+                            "timestamp",
+                            "symbol",
+                            "side",
+                            "qty",
+                            "status",
+                            "prediction_probability",
+                        ]
+                    ],
+                    use_container_width=True,
+                )
+
+                chart_df = view_df[["timestamp", "prediction_probability"]].dropna()
+                if not chart_df.empty:
+                    st.markdown("**Prediction Probability Trend**")
+                    st.line_chart(chart_df.set_index("timestamp"))
 
 # Footer
 st.markdown("---")

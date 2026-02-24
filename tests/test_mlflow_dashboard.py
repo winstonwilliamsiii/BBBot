@@ -82,31 +82,16 @@ class TestMLflowImport:
 
 
 class TestMLflowDashboardPage:
-    """Test MLflow dashboard page structure."""
+    """Test MLflow dashboard integration in Admin Control Center."""
     
-    def test_dashboard_file_exists(self):
-        """Test that dashboard file exists."""
+    def test_standalone_dashboard_removed(self):
+        """Test that legacy standalone MLflow page has been removed."""
         dashboard_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "pages",
             "98_🧠_MLflow_Training.py"
         )
-        assert os.path.exists(dashboard_path)
-    
-    def test_dashboard_imports(self):
-        """Test that dashboard has required imports."""
-        dashboard_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "pages",
-            "98_🧠_MLflow_Training.py"
-        )
-        
-        with open(dashboard_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            
-            assert "import streamlit" in content
-            assert "import mlflow" in content or "from bbbot1_pipeline.mlflow_config import" in content
-            assert "import pandas" in content
+        assert not os.path.exists(dashboard_path)
 
 
 class TestAdminControlCenter:

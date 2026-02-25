@@ -20,11 +20,11 @@
 
 ## 📊 Overview
 
-Bentley Budget Bot is a comprehensive financial management platform that combines personal budgeting, multi-broker trading, portfolio analytics, and real-time market data visualization. Built for **Mansa Capital Partners** and **Moor Capital Trust**, with support for personal accounts.
+Bentley Budget Bot is a comprehensive financial management platform that combines personal budgeting, multi-broker trading, portfolio analytics, and real-time market data visualization. Built for **Bot Name and Description** and **Moor Capital Trust**, with support for personal accounts.
 
 ### 🎯 Key Features
 
-- **Multi-Tenant Portfolio Management** - Track Mansa Capital, Moor Trust, and personal accounts
+- **Multi-Tenant Portfolio Management** - Track Bot Name and Description, Moor Trust, and personal accounts
 - **Unified Broker Integration** - Seamlessly trade across 6+ brokerages (Alpaca, IBKR, Schwab, Binance, MT5, TradeStation)
 - **Real-Time Market Data** - Live crypto prices, stock quotes, and forex rates
 - **Banking Integration** - Plaid API for automated transaction syncing
@@ -324,7 +324,7 @@ BentleyBudgetBot/
 
 ### 📊 Portfolio Dashboard
 - Real-time portfolio valuation across all accounts
-- Multi-tenant view (Mansa Capital, Moor Trust, Personal)
+- Multi-tenant view (Bot Name and Description, Moor Trust, Personal)
 - Asset allocation charts and P&L tracking
 - Position monitoring with live prices
 
@@ -379,7 +379,7 @@ The project uses a **single consolidated MySQL instance** running on Port 3307 w
 Supports **multi-tenant, normalized trading operations**:
 
 - **brokers** - Broker configurations (Alpaca, IBKR, MT5, etc.)
-- **accounts** - Multi-tenant accounts (Mansa Capital, Moor Trust, Personal)
+- **accounts** - Multi-tenant accounts (Bot Name and Description, Moor Trust, Personal)
 - **positions** - Current holdings with P&L tracking
 - **orders** - Order lifecycle from submission to fill
 - **order_executions** - Individual fill details
@@ -623,7 +623,7 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## 👥 Team
 
-**Mansa Capital Partners**  
+**Bot Name and Description**  
 Multi-asset investment management
 
 **Moor Capital Trust**  

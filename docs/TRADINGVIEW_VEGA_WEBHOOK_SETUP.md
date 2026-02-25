@@ -16,6 +16,7 @@ Set these in your Vercel project:
 - `API_GATEWAY_KEY` = existing API key (fallback auth if no TradingView secret is set)
 - `VEGA_PAPER_ONLY` = `true` (default, blocks live mode) or `false`
 - `VEGA_LIVE_MODE_KEY` = required key for live mode payloads (optional but strongly recommended)
+- `VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS` = cooldown for blocked-live tiny Discord alerts (default `300`)
 
 ## 2) TradingView Webhook URL
 
@@ -121,7 +122,8 @@ Invoke-RestMethod -Method Post `
 
 - If `TRADINGVIEW_WEBHOOK_SECRET` is not set, endpoint falls back to `x-api-key` validation when `API_GATEWAY_KEY` exists.
 - If `VEGA_PAPER_ONLY=true`, all `"mode": "live"` requests are rejected.
-- When a live request is rejected by paper-only mode, a tiny Discord alert is sent (if `DISCORD_WEBHOOK` is configured).
+- When a live request is rejected (paper-only mode or invalid live key), a tiny Discord alert is sent (if `DISCORD_WEBHOOK` is configured).
+- Repeated blocked-live alerts are rate-limited by `VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS` per symbol/timeframe.
 - If `VEGA_LIVE_MODE_KEY` is set, live requests must include `live_key` (payload, query, or `x-live-key` header).
 - For TradingView reliability, keep payload compact and always send valid JSON.
 - Start with `send_discord: true` during testing, then disable for high-frequency production alerts unless needed.

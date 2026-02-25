@@ -39,7 +39,7 @@ streamlit run streamlit_app.py
    - Template included
 
 2. **Login Repositioning**
-   - Moved login above Mansa Funds in sidebar
+   - Moved login above Bot Name and Description in sidebar
    - Shows user status when logged in
    - Clean logout functionality
 
@@ -149,7 +149,7 @@ git push origin dev
 ## ✅ Completion Checklist
 
 - [x] CSV upload functionality added to DCF widget
-- [x] Login section repositioned above Mansa Funds
+- [x] Login section repositioned above Bot Name and Description
 - [x] Database setup script created and tested
 - [x] Python imports validated
 - [x] Documentation created

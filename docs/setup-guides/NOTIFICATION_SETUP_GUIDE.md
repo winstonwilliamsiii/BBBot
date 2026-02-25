@@ -54,6 +54,18 @@ curl -H "Content-Type: application/json" \
 
 **Expected**: Message appears in your Discord channel
 
+#### **1.4 TradingView Paper-Gate Tiny Alert Cooldown (Vercel)**
+```bash
+# Optional Vercel environment variable for webhook anti-spam:
+VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS=300
+
+# Behavior:
+# - When a TradingView live-mode request is blocked by VEGA_PAPER_ONLY=true,
+#   a tiny Discord alert is emitted.
+# - Repeated blocked alerts are rate-limited per symbol/timeframe.
+# - Set to 0 to disable cooldown.
+```
+
 ---
 
 ### ✅ Step 2: Gmail Setup for GitHub Actions (10 minutes)

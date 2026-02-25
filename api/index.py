@@ -19,6 +19,12 @@ DISCORD_WEBHOOK = (
     os.getenv("DISCORD_WEBHOOK")
     or os.getenv("DISCORD_WEBHOOK_PROD")
 )
+VEGA_PAPER_ONLY = os.getenv("VEGA_PAPER_ONLY", "true").strip().lower()
+VEGA_LIVE_MODE_KEY = os.getenv("VEGA_LIVE_MODE_KEY")
+
+
+def _is_truthy(value):
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _request_headers(request):
@@ -175,6 +181,22 @@ def _send_discord_alert(normalized: dict):
         return {"sent": False, "error": str(error)}
 
 
+def _send_discord_tiny_alert(message: str):
+    if not DISCORD_WEBHOOK:
+        return {"sent": False, "reason": "DISCORD_WEBHOOK not configured"}
+
+    body = {"content": message}
+    try:
+        response = requests.post(DISCORD_WEBHOOK, json=body, timeout=8)
+        return {
+            "sent": response.ok,
+            "status_code": response.status_code,
+            "ok": response.ok,
+        }
+    except requests.RequestException as error:
+        return {"sent": False, "error": str(error)}
+
+
 def _forward_to_vega(payload: dict, normalized: dict):
     if not VEGA_BOT_WEBHOOK_URL:
         return {
@@ -290,6 +312,59 @@ def handler(request):
         elif API_KEY and provided_api_key != API_KEY:
             return _response(401, {"error": "Unauthorized"})
 
+        execution_mode = "paper"
+        if isinstance(payload, dict):
+            mode_value = (
+                payload.get("mode")
+                or payload.get("trade_mode")
+                or payload.get("execution_mode")
+                or "paper"
+            )
+            execution_mode = str(mode_value).strip().lower()
+
+        if execution_mode not in {"paper", "live"}:
+            return _response(
+                400,
+                {
+                    "error": "Invalid execution mode",
+                    "allowed_modes": ["paper", "live"],
+                },
+            )
+
+        live_key = None
+        if isinstance(payload, dict):
+            live_key = payload.get("live_key")
+        if not live_key:
+            live_key = query_params.get("live_key")
+        if not live_key:
+            live_key = headers.get("x-live-key")
+
+        if execution_mode == "live":
+            if _is_truthy(VEGA_PAPER_ONLY):
+                symbol = normalized.get("symbol") or "UNKNOWN"
+                timeframe = normalized.get("timeframe") or "n/a"
+                _send_discord_tiny_alert(
+                    "⚠️ Blocked live TradingView request "
+                    f"({symbol}, TF {timeframe}): VEGA_PAPER_ONLY=true"
+                )
+                return _response(
+                    403,
+                    {
+                        "error": "Live mode disabled",
+                        "message": "VEGA_PAPER_ONLY is enabled",
+                    },
+                )
+
+            if VEGA_LIVE_MODE_KEY and live_key != VEGA_LIVE_MODE_KEY:
+                return _response(
+                    401,
+                    {
+                        "error": "Unauthorized live mode key",
+                    },
+                )
+
+        normalized["execution_mode"] = execution_mode
+
         vega_result = _forward_to_vega(payload, normalized)
 
         send_discord = False
@@ -309,6 +384,7 @@ def handler(request):
                 "status": "received",
                 "route": "/api/vega/tradingview-alert",
                 "received_at": datetime.now().isoformat(),
+                "execution_mode": execution_mode,
                 "normalized": normalized,
                 "forward": vega_result,
                 "discord": discord_result,

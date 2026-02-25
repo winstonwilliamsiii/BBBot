@@ -14,6 +14,8 @@ Set these in your Vercel project:
 - `VEGA_BOT_WEBHOOK_URL` = Vega Mansa Retail execution endpoint (optional but recommended for automation)
 - `DISCORD_WEBHOOK` = Discord webhook URL (optional)
 - `API_GATEWAY_KEY` = existing API key (fallback auth if no TradingView secret is set)
+- `VEGA_PAPER_ONLY` = `true` (default, blocks live mode) or `false`
+- `VEGA_LIVE_MODE_KEY` = required key for live mode payloads (optional but strongly recommended)
 
 ## 2) TradingView Webhook URL
 
@@ -40,6 +42,7 @@ Use valid JSON in TradingView alert message.
   "time": "{{time}}",
   "price": "{{close}}",
   "action": "BUY",
+  "mode": "paper",
   "ml_score": 0.84,
   "mtf": {
     "higher_tf": "240",
@@ -51,6 +54,21 @@ Use valid JSON in TradingView alert message.
     "take_profit_pct": 2.8,
     "position_size_pct": 0.5
   }
+}
+```
+
+### Live mode payload (only when gate is enabled for live)
+
+```json
+{
+  "secret": "YOUR_TRADINGVIEW_WEBHOOK_SECRET",
+  "strategy": "Vega Mansa Retail MTF-ML",
+  "ticker": "{{ticker}}",
+  "interval": "{{interval}}",
+  "price": "{{close}}",
+  "action": "BUY",
+  "mode": "live",
+  "live_key": "YOUR_VEGA_LIVE_MODE_KEY"
 }
 ```
 
@@ -73,11 +91,12 @@ Use valid JSON in TradingView alert message.
 `POST /api/vega/tradingview-alert`
 
 - Validates `TRADINGVIEW_WEBHOOK_SECRET` (query/body) if configured
+- Enforces execution mode gate (`paper` default; `live` only when allowed)
 - Parses JSON payload from TradingView
 - Normalizes key fields (`symbol`, `side`, `timeframe`, `strategy`, `price`)
 - Forwards normalized payload to `VEGA_BOT_WEBHOOK_URL` when set
 - Sends Discord alert when payload includes `"send_discord": true`
-- Returns JSON status (`received`, `forward`, `discord`)
+- Returns JSON status (`received`, `execution_mode`, `forward`, `discord`)
 
 ## 5) Quick Test (PowerShell)
 
@@ -101,5 +120,8 @@ Invoke-RestMethod -Method Post `
 ## Notes
 
 - If `TRADINGVIEW_WEBHOOK_SECRET` is not set, endpoint falls back to `x-api-key` validation when `API_GATEWAY_KEY` exists.
+- If `VEGA_PAPER_ONLY=true`, all `"mode": "live"` requests are rejected.
+- When a live request is rejected by paper-only mode, a tiny Discord alert is sent (if `DISCORD_WEBHOOK` is configured).
+- If `VEGA_LIVE_MODE_KEY` is set, live requests must include `live_key` (payload, query, or `x-live-key` header).
 - For TradingView reliability, keep payload compact and always send valid JSON.
 - Start with `send_discord: true` during testing, then disable for high-frequency production alerts unless needed.

@@ -5,6 +5,7 @@ Adds CORS and simple API key auth for /api/* endpoints.
 
 import json
 import os
+import time
 from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 
@@ -21,10 +22,42 @@ DISCORD_WEBHOOK = (
 )
 VEGA_PAPER_ONLY = os.getenv("VEGA_PAPER_ONLY", "true").strip().lower()
 VEGA_LIVE_MODE_KEY = os.getenv("VEGA_LIVE_MODE_KEY")
+VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS = os.getenv(
+    "VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS",
+    "300",
+)
+
+BLOCKED_LIVE_ALERT_LAST_SENT = {}
 
 
 def _is_truthy(value):
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _as_non_negative_int(value, default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+        return parsed if parsed >= 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _should_send_blocked_live_alert(symbol: str, timeframe: str) -> bool:
+    cooldown = _as_non_negative_int(
+        VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS,
+        default=300,
+    )
+    if cooldown == 0:
+        return True
+
+    key = f"{symbol}:{timeframe}"
+    now = time.time()
+    last_sent = BLOCKED_LIVE_ALERT_LAST_SENT.get(key)
+    if last_sent is not None and (now - last_sent) < cooldown:
+        return False
+
+    BLOCKED_LIVE_ALERT_LAST_SENT[key] = now
+    return True
 
 
 def _request_headers(request):
@@ -111,7 +144,7 @@ def _redact_payload(payload: dict):
     return redacted
 
 
-def _normalize_tradingview_payload(payload: dict):
+def _normalize_tradingview_payload(payload):
     if not isinstance(payload, dict):
         return {}
 
@@ -197,7 +230,7 @@ def _send_discord_tiny_alert(message: str):
         return {"sent": False, "error": str(error)}
 
 
-def _forward_to_vega(payload: dict, normalized: dict):
+def _forward_to_vega(payload, normalized: dict):
     if not VEGA_BOT_WEBHOOK_URL:
         return {
             "forwarded": False,
@@ -296,14 +329,15 @@ def handler(request):
 
         query_params = _request_query_params(request, path)
         payload, raw_text = _request_json_body(request)
-        normalized = _normalize_tradingview_payload(payload)
+        payload_dict = payload if isinstance(payload, dict) else {}
+        normalized = _normalize_tradingview_payload(payload_dict)
 
         provided_secret = (
             query_params.get("secret")
-            or payload.get("secret")
-            or payload.get("passphrase")
-            or payload.get("token")
-        ) if isinstance(payload, dict) else query_params.get("secret")
+            or payload_dict.get("secret")
+            or payload_dict.get("passphrase")
+            or payload_dict.get("token")
+        )
         provided_api_key = headers.get("x-api-key")
 
         if TRADINGVIEW_WEBHOOK_SECRET:
@@ -313,14 +347,13 @@ def handler(request):
             return _response(401, {"error": "Unauthorized"})
 
         execution_mode = "paper"
-        if isinstance(payload, dict):
-            mode_value = (
-                payload.get("mode")
-                or payload.get("trade_mode")
-                or payload.get("execution_mode")
-                or "paper"
-            )
-            execution_mode = str(mode_value).strip().lower()
+        mode_value = (
+            payload_dict.get("mode")
+            or payload_dict.get("trade_mode")
+            or payload_dict.get("execution_mode")
+            or "paper"
+        )
+        execution_mode = str(mode_value).strip().lower()
 
         if execution_mode not in {"paper", "live"}:
             return _response(
@@ -332,21 +365,22 @@ def handler(request):
             )
 
         live_key = None
-        if isinstance(payload, dict):
-            live_key = payload.get("live_key")
+        live_key = payload_dict.get("live_key")
         if not live_key:
             live_key = query_params.get("live_key")
         if not live_key:
             live_key = headers.get("x-live-key")
 
         if execution_mode == "live":
+            symbol = normalized.get("symbol") or "UNKNOWN"
+            timeframe = normalized.get("timeframe") or "n/a"
+
             if _is_truthy(VEGA_PAPER_ONLY):
-                symbol = normalized.get("symbol") or "UNKNOWN"
-                timeframe = normalized.get("timeframe") or "n/a"
-                _send_discord_tiny_alert(
-                    "⚠️ Blocked live TradingView request "
-                    f"({symbol}, TF {timeframe}): VEGA_PAPER_ONLY=true"
-                )
+                if _should_send_blocked_live_alert(symbol, timeframe):
+                    _send_discord_tiny_alert(
+                        "⚠️ Blocked live TradingView request "
+                        f"({symbol}, TF {timeframe}): VEGA_PAPER_ONLY=true"
+                    )
                 return _response(
                     403,
                     {
@@ -356,6 +390,11 @@ def handler(request):
                 )
 
             if VEGA_LIVE_MODE_KEY and live_key != VEGA_LIVE_MODE_KEY:
+                if _should_send_blocked_live_alert(symbol, timeframe):
+                    _send_discord_tiny_alert(
+                        "⚠️ Blocked live TradingView request "
+                        f"({symbol}, TF {timeframe}): invalid live key"
+                    )
                 return _response(
                     401,
                     {
@@ -365,11 +404,9 @@ def handler(request):
 
         normalized["execution_mode"] = execution_mode
 
-        vega_result = _forward_to_vega(payload, normalized)
+        vega_result = _forward_to_vega(payload_dict, normalized)
 
-        send_discord = False
-        if isinstance(payload, dict):
-            send_discord = bool(payload.get("send_discord", False))
+        send_discord = bool(payload_dict.get("send_discord", False))
         if send_discord:
             discord_result = _send_discord_alert(normalized)
         else:

@@ -484,7 +484,14 @@ class TitanBot:
         if mysql is None:
             raise RuntimeError("mysql-connector-python is not installed")
 
-        conn = mysql.connector.connect(**self.config.mysql_config())
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning(
+                "Could not connect for service health logging: %s",
+                exc,
+            )
+            return
         try:
             cursor = conn.cursor()
             now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -504,6 +511,8 @@ class TitanBot:
                     ),
                 )
             conn.commit()
+        except Exception as exc:
+            logger.warning("Could not write service health rows: %s", exc)
         finally:
             conn.close()
 
@@ -511,7 +520,11 @@ class TitanBot:
         if mysql is None:
             return pd.DataFrame()
 
-        conn = mysql.connector.connect(**self.config.mysql_config())
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning("Could not connect for Titan trades read: %s", exc)
+            return pd.DataFrame()
         try:
             query = (
                 "SELECT timestamp, symbol, side, qty, status, "
@@ -523,7 +536,8 @@ class TitanBot:
             if not df.empty:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
             return df
-        except (ValueError, TypeError, OSError):
+        except Exception as exc:
+            logger.warning("Could not read Titan trades: %s", exc)
             return pd.DataFrame()
         finally:
             conn.close()

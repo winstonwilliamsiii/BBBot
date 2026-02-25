@@ -16,6 +16,8 @@ from typing import Dict, Optional, List, Any
 from dataclasses import dataclass
 from datetime import datetime
 import logging
+import os
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,42 @@ class MT5Connector:
         self.connected = False
         self.session = requests.Session()
         self.account: Optional[MT5Account] = None
+        self.request_timeout = float(os.getenv("MT5_REQUEST_TIMEOUT", "10"))
+        self.connect_retries = int(os.getenv("MT5_CONNECT_RETRIES", "3"))
+        self.connect_retry_delay = float(
+            os.getenv("MT5_CONNECT_RETRY_DELAY", "1.0")
+        )
+
+    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """Execute HTTP request with retry for transient network failures."""
+        timeout = kwargs.pop('timeout', self.request_timeout)
+        last_error = None
+
+        for attempt in range(1, self.connect_retries + 1):
+            try:
+                return self.session.request(
+                    method,
+                    url,
+                    timeout=timeout,
+                    **kwargs,
+                )
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+            ) as exc:
+                last_error = exc
+                if attempt >= self.connect_retries:
+                    break
+
+                sleep_seconds = self.connect_retry_delay * attempt
+                logger.warning(
+                    f"Transient MT5 network error (attempt "
+                    f"{attempt}/{self.connect_retries}): {exc}. "
+                    f"Retrying in {sleep_seconds:.1f}s"
+                )
+                time.sleep(sleep_seconds)
+
+        raise last_error if last_error else RuntimeError("Unknown network error")
         
     def connect(self, user: str, password: str, host: str, port: int = 443) -> bool:
         """
@@ -88,7 +126,12 @@ class MT5Connector:
             }
             
             logger.info(f"Connecting to MT5 account {user} on {host}:{port}")
-            response = self.session.get(endpoint, params=params, timeout=10)
+            response = self._request(
+                'GET',
+                endpoint,
+                params=params,
+                timeout=10,
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -113,7 +156,7 @@ class MT5Connector:
         """Disconnect from MT5 account"""
         try:
             endpoint = f"{self.base_url}/Disconnect"
-            response = self.session.get(endpoint, timeout=5)
+            response = self._request('GET', endpoint, timeout=5)
             response.raise_for_status()
             
             self.connected = False
@@ -138,7 +181,7 @@ class MT5Connector:
             
         try:
             endpoint = f"{self.base_url}/AccountInfo"
-            response = self.session.get(endpoint, timeout=5)
+            response = self._request('GET', endpoint, timeout=5)
             response.raise_for_status()
             
             return response.json()
@@ -160,7 +203,7 @@ class MT5Connector:
             
         try:
             endpoint = f"{self.base_url}/Positions"
-            response = self.session.get(endpoint, timeout=5)
+            response = self._request('GET', endpoint, timeout=5)
             response.raise_for_status()
             
             data = response.json()
@@ -208,7 +251,12 @@ class MT5Connector:
                 'count': count
             }
             
-            response = self.session.get(endpoint, params=params, timeout=10)
+            response = self._request(
+                'GET',
+                endpoint,
+                params=params,
+                timeout=10,
+            )
             response.raise_for_status()
             
             return response.json()
@@ -263,7 +311,12 @@ class MT5Connector:
             if tp is not None:
                 data['tp'] = tp
             
-            response = self.session.post(endpoint, json=data, timeout=10)
+            response = self._request(
+                'POST',
+                endpoint,
+                json=data,
+                timeout=10,
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -292,7 +345,12 @@ class MT5Connector:
             endpoint = f"{self.base_url}/ClosePosition"
             data = {'ticket': ticket}
             
-            response = self.session.post(endpoint, json=data, timeout=5)
+            response = self._request(
+                'POST',
+                endpoint,
+                json=data,
+                timeout=5,
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -339,7 +397,12 @@ class MT5Connector:
             if tp is not None:
                 data['tp'] = tp
             
-            response = self.session.post(endpoint, json=data, timeout=5)
+            response = self._request(
+                'POST',
+                endpoint,
+                json=data,
+                timeout=5,
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -374,7 +437,12 @@ class MT5Connector:
             endpoint = f"{self.base_url}/SymbolInfo"
             params = {'symbol': symbol}
             
-            response = self.session.get(endpoint, params=params, timeout=5)
+            response = self._request(
+                'GET',
+                endpoint,
+                params=params,
+                timeout=5,
+            )
             response.raise_for_status()
             
             return response.json()
@@ -405,7 +473,12 @@ class MT5Connector:
                 'events': events
             }
             
-            response = self.session.post(endpoint, json=data, timeout=5)
+            response = self._request(
+                'POST',
+                endpoint,
+                json=data,
+                timeout=5,
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -431,7 +504,7 @@ class MT5Connector:
         """
         try:
             endpoint = f"{self.base_url}/Health"
-            response = self.session.get(endpoint, timeout=3)
+            response = self._request('GET', endpoint, timeout=3)
             response.raise_for_status()
             
             result = response.json()

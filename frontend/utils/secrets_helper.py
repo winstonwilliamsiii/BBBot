@@ -109,11 +109,22 @@ def get_alpaca_config() -> dict:
     Raises:
         ValueError: If credentials are not configured
     """
-    api_key = get_secret('ALPACA_API_KEY')
-    secret_key = get_secret('ALPACA_SECRET_KEY')
+    api_key = (
+        get_secret('ALPACA_API_KEY')
+        or get_secret('APCA_API_KEY_ID')
+        or get_secret('ALPACA_KEY_ID')
+    )
+    secret_key = (
+        get_secret('ALPACA_SECRET_KEY')
+        or get_secret('APCA_API_SECRET_KEY')
+        or get_secret('ALPACA_API_SECRET')
+    )
     paper = get_secret('ALPACA_PAPER', default=None)
     if paper is None:
         env = get_secret('ALPACA_ENVIRONMENT', default='paper')
+        if str(env).lower() not in ('paper', 'live'):
+            base_url = get_secret('ALPACA_BASE_URL', default='') or ''
+            env = 'paper' if 'paper-api.alpaca.markets' in str(base_url).lower() else 'live'
         paper = 'true' if str(env).lower() == 'paper' else 'false'
     
     if not api_key or api_key == 'your-alpaca-api-key-here':

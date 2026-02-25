@@ -143,7 +143,7 @@ st.markdown("""
     
     /* Metric styling */
     [data-testid="stMetricLabel"] {
-        color: rgba(230, 238, 248, 0.9) !important;
+        color: #FFFFFF !important;
         font-size: 0.9rem !important;
         font-weight: 500 !important;
     }
@@ -155,14 +155,26 @@ st.markdown("""
     }
     
     [data-testid="stMetricDelta"] {
-        color: rgba(230, 238, 248, 0.9) !important;
+        color: #FFFFFF !important;
         font-size: 0.9rem !important;
         opacity: 0.9 !important;
     }
     
     /* Headers and text */
     h1, h2, h3, h4, h5, h6, p, span, div {
-        color: #E6EEF8 !important;
+        color: #FFFFFF !important;
+    }
+
+    label, li, td, th, [data-testid="stMarkdownContainer"] * {
+        color: #FFFFFF !important;
+    }
+
+    a:hover,
+    [data-testid="stMarkdownContainer"] a:hover,
+    .stTabs [role="tab"]:hover,
+    [data-testid="stSidebar"] a:hover,
+    [data-baseweb="select"] *:hover {
+        color: #06B6D4 !important;
     }
     
     /* Status indicators */
@@ -208,7 +220,7 @@ st.markdown("""
     [data-baseweb="menu"] li:hover,
     [role="option"]:hover {{
         background-color: rgba(6, 182, 212, 0.2) !important;
-        color: #E6EEF8 !important;
+        color: #06B6D4 !important;
     }}
 
     /* Sidebar styling - prevent color changes */
@@ -328,9 +340,10 @@ def load_active_signals():
 def _build_titan_status_rows() -> pd.DataFrame:
     rows = []
     for bot_name, fund_name in BOT_FUND_ALLOCATIONS.items():
+        display_name = "Mansa Star Bots" if bot_name == "Titan" else bot_name
         rows.append(
             {
-                "Bot": bot_name,
+                "Bot": display_name,
                 "Fund": fund_name,
                 "Status": "active" if bot_name in ("Titan", "Rigel") else "pending",
             }
@@ -349,7 +362,10 @@ def load_titan_snapshot() -> dict:
         bot.ensure_database_tables()
     except (RuntimeError, OSError, ValueError):
         pass
-    return bot.dashboard_snapshot()
+    try:
+        return bot.dashboard_snapshot()
+    except Exception:
+        return {}
 
 
 # Sidebar controls
@@ -402,7 +418,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 Performance", 
     "🎯 Active Signals", 
     "📜 Trade History",
-    "🚀 Titan Monitor"
+    "✨ Mansa Star Bots"
 ])
 
 # TAB 1: Overview
@@ -634,18 +650,26 @@ with tab4:
 
 # TAB 5: Titan Monitor (merged from standalone page)
 with tab5:
-    st.subheader("🚀 Titan Bot Monitor")
+    st.subheader("✨ Mansa Star Bots Monitor")
 
     if not TITAN_AVAILABLE:
-        st.info("Titan monitor components are not available in this environment.")
+        st.info("Mansa Star Bots monitor components are not available in this environment.")
     else:
         allocation_df = _build_titan_status_rows()
         st.markdown("**Bot/Fund Allocation**")
         st.dataframe(allocation_df, use_container_width=True)
 
+        st.markdown("**FOREX Coverage (Rigel)**")
+        rigel_rows = allocation_df[allocation_df["Fund"] == "Mansa_FOREX"]
+        if rigel_rows.empty:
+            st.info("Rigel FOREX mapping is not configured.")
+        else:
+            st.success("Rigel FOREX monitoring is included here under Mansa Star Bots.")
+            st.dataframe(rigel_rows, use_container_width=True)
+
         snapshot = load_titan_snapshot()
         if not snapshot:
-            st.info("No Titan snapshot data available yet.")
+            st.info("No Mansa Star Bots snapshot data available yet.")
         else:
             c1, c2, c3, c4 = st.columns(4)
             with c1:
@@ -664,10 +688,10 @@ with tab5:
             else:
                 st.dataframe(health_df, use_container_width=True)
 
-            st.markdown("**Recent Titan Trades**")
+            st.markdown("**Recent Mansa Star Bot Trades**")
             trades_df_titan = snapshot.get("trades_df", pd.DataFrame())
             if trades_df_titan.empty:
-                st.info("No Titan trades logged yet.")
+                st.info("No Mansa Star Bot trades logged yet.")
             else:
                 view_df = trades_df_titan.copy().sort_values("timestamp")
                 st.dataframe(

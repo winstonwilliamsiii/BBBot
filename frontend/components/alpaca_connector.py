@@ -16,6 +16,8 @@ from typing import Dict, Optional, List, Any
 from dataclasses import dataclass
 from datetime import datetime
 import logging
+import os
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +63,25 @@ class AlpacaConnector:
             secret_key: Alpaca secret key
             paper: Use paper trading (True) or live trading (False)
         """
-        self.api_key = api_key
-        self.secret_key = secret_key
+        self.api_key = (api_key or "").strip()
+        self.secret_key = (secret_key or "").strip()
         self.paper = paper
+
+        if not self.api_key or not self.secret_key:
+            raise ValueError("Missing Alpaca API credentials. Set ALPACA_API_KEY and ALPACA_SECRET_KEY.")
+
+        self.request_timeout = float(os.getenv("ALPACA_REQUEST_TIMEOUT", "10"))
+        self.connect_retries = int(os.getenv("ALPACA_CONNECT_RETRIES", "3"))
+        self.connect_retry_delay = float(os.getenv("ALPACA_CONNECT_RETRY_DELAY", "1.0"))
         
         # Set base URL based on paper/live
-        if paper:
+        base_url_override = os.getenv("ALPACA_BASE_URL", "").strip()
+        data_url_override = os.getenv("ALPACA_DATA_URL", "").strip()
+
+        if base_url_override:
+            self.base_url = base_url_override.rstrip("/")
+            self.data_url = data_url_override.rstrip("/") if data_url_override else "https://data.alpaca.markets"
+        elif paper:
             self.base_url = "https://paper-api.alpaca.markets"
             self.data_url = "https://data.alpaca.markets"
         else:
@@ -75,11 +90,33 @@ class AlpacaConnector:
         
         self.session = requests.Session()
         self.session.headers.update({
-            'APCA-API-KEY-ID': api_key,
-            'APCA-API-SECRET-KEY': secret_key
+            'APCA-API-KEY-ID': self.api_key,
+            'APCA-API-SECRET-KEY': self.secret_key
         })
         
         logger.info(f"Alpaca connector initialized ({'PAPER' if paper else 'LIVE'} trading)")
+
+    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """Execute HTTP request with retry for transient network failures."""
+        timeout = kwargs.pop('timeout', self.request_timeout)
+        last_error = None
+
+        for attempt in range(1, self.connect_retries + 1):
+            try:
+                return self.session.request(method, url, timeout=timeout, **kwargs)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+                last_error = exc
+                if attempt >= self.connect_retries:
+                    break
+
+                sleep_seconds = self.connect_retry_delay * attempt
+                logger.warning(
+                    f"Transient Alpaca network error (attempt {attempt}/{self.connect_retries}): {exc}. "
+                    f"Retrying in {sleep_seconds:.1f}s"
+                )
+                time.sleep(sleep_seconds)
+
+        raise last_error if last_error else RuntimeError("Unknown network error")
     
     def get_account(self) -> Optional[Dict[str, Any]]:
         """
@@ -89,7 +126,7 @@ class AlpacaConnector:
             Dictionary with account details (buying_power, cash, portfolio_value, etc.)
         """
         try:
-            response = self.session.get(f"{self.base_url}/v2/account", timeout=5)
+            response = self._request('GET', f"{self.base_url}/v2/account", timeout=5)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -104,7 +141,7 @@ class AlpacaConnector:
             List of AlpacaPosition objects
         """
         try:
-            response = self.session.get(f"{self.base_url}/v2/positions", timeout=5)
+            response = self._request('GET', f"{self.base_url}/v2/positions", timeout=5)
             response.raise_for_status()
             
             data = response.json()
@@ -131,7 +168,11 @@ class AlpacaConnector:
     def get_position(self, symbol: str) -> Optional[Dict]:
         """Get specific position"""
         try:
-            response = self.session.get(f"{self.base_url}/v2/positions/{symbol}", timeout=5)
+            response = self._request(
+                'GET',
+                f"{self.base_url}/v2/positions/{symbol}",
+                timeout=5
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -141,7 +182,11 @@ class AlpacaConnector:
     def close_position(self, symbol: str) -> bool:
         """Close a position"""
         try:
-            response = self.session.delete(f"{self.base_url}/v2/positions/{symbol}", timeout=5)
+            response = self._request(
+                'DELETE',
+                f"{self.base_url}/v2/positions/{symbol}",
+                timeout=5
+            )
             response.raise_for_status()
             logger.info(f"Position {symbol} closed successfully")
             return True
@@ -152,7 +197,11 @@ class AlpacaConnector:
     def close_all_positions(self) -> bool:
         """Close all positions"""
         try:
-            response = self.session.delete(f"{self.base_url}/v2/positions", timeout=5)
+            response = self._request(
+                'DELETE',
+                f"{self.base_url}/v2/positions",
+                timeout=5
+            )
             response.raise_for_status()
             logger.info("All positions closed")
             return True
@@ -210,7 +259,12 @@ class AlpacaConnector:
             if stop_price is not None:
                 data['stop_price'] = stop_price
             
-            response = self.session.post(f"{self.base_url}/v2/orders", json=data, timeout=10)
+            response = self._request(
+                'POST',
+                f"{self.base_url}/v2/orders",
+                json=data,
+                timeout=10
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -295,7 +349,12 @@ class AlpacaConnector:
                 data['stop_loss']['limit_price'] = stop_loss_limit_price
             
             # Submit bracket order
-            response = self.session.post(f"{self.base_url}/v2/orders", json=data, timeout=10)
+            response = self._request(
+                'POST',
+                f"{self.base_url}/v2/orders",
+                json=data,
+                timeout=10
+            )
             
             if not response.ok:
                 error_msg = f"Order failed: {response.status_code}"
@@ -332,7 +391,12 @@ class AlpacaConnector:
         """
         try:
             params = {'status': status, 'limit': 500}
-            response = self.session.get(f"{self.base_url}/v2/orders", params=params, timeout=5)
+            response = self._request(
+                'GET',
+                f"{self.base_url}/v2/orders",
+                params=params,
+                timeout=5
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -342,7 +406,11 @@ class AlpacaConnector:
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an order"""
         try:
-            response = self.session.delete(f"{self.base_url}/v2/orders/{order_id}", timeout=5)
+            response = self._request(
+                'DELETE',
+                f"{self.base_url}/v2/orders/{order_id}",
+                timeout=5
+            )
             response.raise_for_status()
             logger.info(f"Order {order_id} cancelled")
             return True
@@ -353,7 +421,11 @@ class AlpacaConnector:
     def cancel_all_orders(self) -> bool:
         """Cancel all open orders"""
         try:
-            response = self.session.delete(f"{self.base_url}/v2/orders", timeout=5)
+            response = self._request(
+                'DELETE',
+                f"{self.base_url}/v2/orders",
+                timeout=5
+            )
             response.raise_for_status()
             logger.info("All orders cancelled")
             return True
@@ -392,7 +464,8 @@ class AlpacaConnector:
             if end:
                 params['end'] = end
             
-            response = self.session.get(
+            response = self._request(
+                'GET',
                 f"{self.data_url}/v2/stocks/{symbol}/bars",
                 params=params,
                 timeout=10
@@ -406,7 +479,8 @@ class AlpacaConnector:
     def get_latest_quote(self, symbol: str) -> Optional[Dict]:
         """Get latest quote (bid/ask)"""
         try:
-            response = self.session.get(
+            response = self._request(
+                'GET',
                 f"{self.data_url}/v2/stocks/{symbol}/quotes/latest",
                 timeout=5
             )
@@ -419,7 +493,8 @@ class AlpacaConnector:
     def get_latest_trade(self, symbol: str) -> Optional[Dict]:
         """Get latest trade"""
         try:
-            response = self.session.get(
+            response = self._request(
+                'GET',
                 f"{self.data_url}/v2/stocks/{symbol}/trades/latest",
                 timeout=5
             )
@@ -446,7 +521,8 @@ class AlpacaConnector:
         """
         try:
             params = {'period': period, 'timeframe': timeframe}
-            response = self.session.get(
+            response = self._request(
+                'GET',
                 f"{self.base_url}/v2/account/portfolio/history",
                 params=params,
                 timeout=10
@@ -460,7 +536,7 @@ class AlpacaConnector:
     def get_clock(self) -> Optional[Dict]:
         """Get market clock (open/closed status)"""
         try:
-            response = self.session.get(f"{self.base_url}/v2/clock", timeout=5)
+            response = self._request('GET', f"{self.base_url}/v2/clock", timeout=5)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -476,7 +552,12 @@ class AlpacaConnector:
             if end:
                 params['end'] = end
             
-            response = self.session.get(f"{self.base_url}/v2/calendar", params=params, timeout=5)
+            response = self._request(
+                'GET',
+                f"{self.base_url}/v2/calendar",
+                params=params,
+                timeout=5
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -486,7 +567,11 @@ class AlpacaConnector:
     def get_asset(self, symbol: str) -> Optional[Dict]:
         """Get asset information"""
         try:
-            response = self.session.get(f"{self.base_url}/v2/assets/{symbol}", timeout=5)
+            response = self._request(
+                'GET',
+                f"{self.base_url}/v2/assets/{symbol}",
+                timeout=5
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:

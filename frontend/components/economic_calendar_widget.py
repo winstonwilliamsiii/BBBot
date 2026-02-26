@@ -210,7 +210,7 @@ class EconomicCalendarWidget:
             margin-bottom: 4px;
         }
         .release-time {
-            color: rgba(255, 255, 255, 0.7);
+            color: #FFFFFF;
             font-size: 0.9rem;
             margin-bottom: 4px;
         }
@@ -290,7 +290,7 @@ class EconomicCalendarWidget:
                     {release['category']}
                 </span>
             </div>
-            <div style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-top: 8px;">
+            <div style="color: #FFFFFF; font-size: 0.85rem; margin-top: 8px;">
                 {release['description']}<br>
                 <strong>Agency:</strong> {release['agency']}<br>
                 <strong>Schedule:</strong> {release['schedule']}
@@ -333,7 +333,7 @@ class EconomicCalendarWidget:
             margin-bottom: 8px;
         }
         .ipo-info {
-            color: rgba(255, 255, 255, 0.7);
+            color: #FFFFFF;
             font-size: 0.9rem;
             line-height: 1.6;
         }
@@ -432,7 +432,7 @@ class EconomicCalendarWidget:
             margin-bottom: 4px;
         }
         .market-change {
-            color: rgba(255, 255, 255, 0.7);
+            color: #FFFFFF;
             font-size: 0.9rem;
         }
         </style>
@@ -503,7 +503,7 @@ class EconomicCalendarWidget:
             <h2 style='color: #FFFFFF; font-size: 2rem; margin-bottom: 0.5rem;'>
                 📅 Economic Calendar & Market Events
             </h2>
-            <p style='color: rgba(255,255,255,0.9); font-size: 0.95rem; margin-bottom: 0.3rem;'>
+            <p style='color: #FFFFFF; font-size: 0.95rem; margin-bottom: 0.3rem;'>
                 Today's releases, upcoming IPOs, and market summary
             </p>
             <div style='background: linear-gradient(135deg, #0A0A0A 0%, #111827 100%); 

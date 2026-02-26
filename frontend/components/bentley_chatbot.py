@@ -246,7 +246,7 @@ def render_chatbot_interface(context_data: Dict = None):
         <h2 style='color: #FFFFFF; font-size: 2rem; margin-bottom: 0.5rem;'>
             🤖 Bentley AI Assistant
         </h2>
-        <p style='color: rgba(255,255,255,0.9); font-size: 1rem; margin-bottom: 0.3rem;'>
+        <p style='color: #FFFFFF; font-size: 1rem; margin-bottom: 0.3rem;'>
             Your intelligent financial advisor - Ask me anything about your portfolio, budget, or the markets
         </p>
         <div style='background: linear-gradient(135deg, #0A0A0A 0%, #111827 100%); 
@@ -267,7 +267,7 @@ def render_chatbot_interface(context_data: Dict = None):
         status_text = "AI Connected" if chatbot.api_key else "Rule-Based Mode"
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #14B8A6;'>
-            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Status</div>
+            <div class='metric-label' style='color: #FFFFFF;'>Status</div>
             <div class='metric-value' style='color: #14B8A6; font-size: 1.1rem;'>{status_icon} {status_text}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -276,7 +276,7 @@ def render_chatbot_interface(context_data: Dict = None):
         chat_count = len(st.session_state.get('chat_history', []))
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #FACC15;'>
-            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Conversations</div>
+            <div class='metric-label' style='color: #FFFFFF;'>Conversations</div>
             <div class='metric-value' style='color: #FACC15; font-size: 1.1rem;'>{chat_count // 2} exchanges</div>
         </div>
         """, unsafe_allow_html=True)
@@ -285,7 +285,7 @@ def render_chatbot_interface(context_data: Dict = None):
         model_name = "DeepSeek" if chatbot.api_key else "Local Rules"
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #14B8A6;'>
-            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Model</div>
+            <div class='metric-label' style='color: #FFFFFF;'>Model</div>
             <div class='metric-value' style='color: #14B8A6; font-size: 1.1rem;'>{model_name}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -294,7 +294,7 @@ def render_chatbot_interface(context_data: Dict = None):
         context_items = len([k for k, v in (context_data or {}).items() if v])
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #111827 0%, #0A0A0A 100%); border: 1px solid #FACC15;'>
-            <div class='metric-label' style='color: rgba(255,255,255,0.8);'>Data Sources</div>
+            <div class='metric-label' style='color: #FFFFFF;'>Data Sources</div>
             <div class='metric-value' style='color: #FACC15; font-size: 1.1rem;'>{context_items} active</div>
         </div>
         """, unsafe_allow_html=True)
@@ -371,7 +371,7 @@ def render_chatbot_interface(context_data: Dict = None):
         <p style='color: #FFFFFF; font-size: 1.1rem; margin: 0;'>
             👋 <strong style='color: #FACC15;'>Hi, I'm Bentley</strong> - your AI financial assistant.
         </p>
-        <p style='color: rgba(255,255,255,0.85); font-size: 0.95rem; margin: 0.5rem 0 0 0;'>
+        <p style='color: #FFFFFF; font-size: 0.95rem; margin: 0.5rem 0 0 0;'>
             Ask me anything about your portfolio, budget, or the markets!
         </p>
     </div>

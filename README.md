@@ -194,6 +194,21 @@ streamlit run streamlit_app.py
 # Access at http://localhost:8501
 ```
 
+#### 6. Run FastAPI (Optional API Service)
+```bash
+# Install local dependencies (includes FastAPI)
+pip install -r requirements-local.txt
+
+# Start FastAPI with auto-reload
+python -m uvicorn Main:app --host 0.0.0.0 --port 8000 --reload
+
+# Or use npm script
+npm run api:dev
+
+# API Docs
+# http://localhost:8000/docs
+```
+
 ### Docker Setup (Optional)
 
 ```bash

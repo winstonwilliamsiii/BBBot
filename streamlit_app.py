@@ -24,7 +24,6 @@ from frontend.utils.styling import (
 )
 from frontend.styles.colors import COLOR_SCHEME
 from frontend.utils.yahoo import fetch_portfolio_list, fetch_portfolio_tickers
-from frontend.utils.bot_fund_mapping import BOT_FUND_ALLOCATIONS
 
 # Optional MySQL helper (for dev health checks)
 try:
@@ -463,18 +462,6 @@ def main():
                     margin: 1rem auto; border-radius: 2px;'></div>
     </div>
     """, unsafe_allow_html=True)
-
-    st.subheader("📊 Featured Trading Bots & Funds")
-    bot_cards = [
-        ("Titan", BOT_FUND_ALLOCATIONS["Titan"]),
-        ("Rigel", BOT_FUND_ALLOCATIONS["Rigel"]),
-        ("Dogon", BOT_FUND_ALLOCATIONS["Dogon"]),
-        ("Orion", BOT_FUND_ALLOCATIONS["Orion"]),
-    ]
-    card_cols = st.columns(4)
-    for col, (bot_name, fund_name) in zip(card_cols, bot_cards):
-        with col:
-            create_metric_card(bot_name, fund_name, "Linked")
 
     # ==========================================================================
     # Bentley AI ChatBot Section - Primary Interface

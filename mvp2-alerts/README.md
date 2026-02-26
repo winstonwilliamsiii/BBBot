@@ -23,10 +23,16 @@ Node.js service that posts combined alerts (top gainers/losers + your portfolio 
    Edit `.env` and add your Discord webhook URL
 
 3. **Customize portfolio**:
-   Edit `index.js` line 88 to add your stock symbols:
-   ```javascript
-   const portfolio = ['AAPL', 'MSFT', 'TSLA']; // replace with your holdings
-   ```
+   Portfolio symbols are resolved in this order:
+   1. `PORTFOLIO_SYMBOLS` (comma-separated)
+   2. `MANSA_TECH_SYMBOLS` (comma-separated)
+   3. MySQL `portfolios` table for `PORTFOLIO_USER_ID` (default `demo_user`)
+   4. Built-in Mansa Tech fallback: `IONQ,QBTS,SOUN,RGTI,AMZN,NVDA`
+
+4. **Rate-limit controls (recommended for AlphaVantage free tier)**:
+   - `PORTFOLIO_SHARD_COUNT=4` (split portfolio across runs)
+   - `PORTFOLIO_MAX_SYMBOLS_PER_RUN=5` (cap symbols evaluated per run)
+   - Optional override: `PORTFOLIO_SHARD_INDEX=0..N-1`
 
 ## Usage
 

@@ -32,6 +32,10 @@ pathlib2>=2.3.0
 # HTTP requests
 requests>=2.28.0
 
+# FastAPI admin/API service
+fastapi[standard]>=0.115.0
+uvicorn>=0.30.0
+
 # ============================================
 # DATABASE & DATA PIPELINE
 # ============================================

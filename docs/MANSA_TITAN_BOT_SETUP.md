@@ -31,6 +31,49 @@ This creates:
 Primary module: `scripts/mansa_titan_bot.py`  
 Compatibility entrypoint: `#MANSA_FUND TITAN_BOT.py`
 
+## 3.1) Switch Titan/Vega without code edits
+
+Shared config file:
+- `config/fundamentals_bots.yml`
+
+Scaffolded bot keys (13):
+- `Titan_Bot`
+- `Vega_Bot`
+- `Rigel_Bot`
+- `Dogon_Bot`
+- `Orion_Bot`
+- `Sirius_Bot`
+- `Altair_Bot`
+- `Deneb_Bot`
+- `Arcturus_Bot`
+- `Polaris_Bot`
+- `Betelgeuse_Bot`
+- `Procyon_Bot`
+- `Antares_Bot`
+
+How switching works:
+- Set `active_bot` in YAML to `Titan_Bot` or `Vega_Bot`, then run the bot normally.
+- Optional override from environment: `ACTIVE_BOT=Titan_Bot` (or `Vega_Bot`).
+- Optional custom file path: `BOT_CONFIG_PATH=path/to/your.yml`.
+
+Example:
+
+```yaml
+active_bot: Vega_Bot
+bots:
+	Titan_Bot:
+		strategy_label: Tech_Fundamentals_Mag7
+	Vega_Bot:
+		strategy_label: Retail_Fundamentals
+```
+
+Runtime override examples:
+
+```powershell
+$env:ACTIVE_BOT = "Rigel_Bot"
+python "#MANSA_FUND TITAN_BOT.py"
+```
+
 ## 4) Dashboard Visualization
 
 Open Streamlit and use page:

@@ -13,13 +13,21 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+from scripts.load_screener_csv import load_bot_trade_candidates
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 try:
     import alpaca_trade_api as tradeapi
@@ -38,6 +46,78 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _default_bot_profile(bot_name: str = "Titan_Bot") -> Dict[str, Any]:
+    return {
+        "bot_name": bot_name,
+        "screener_file": "titan_tech_fundamentals.csv",
+        "universe": "Mag7+Tech",
+        "position_size": 5000.0,
+        "strategy_label": "Tech_Fundamentals_Mag7",
+        "risk_rules": {
+            "min_volume": 5000000,
+            "max_pe": 40,
+            "min_roe": 15,
+            "max_debt_to_equity": 0.8,
+        },
+    }
+
+
+def _load_active_bot_profile(
+    config_path: Optional[str],
+    requested_bot: Optional[str],
+) -> Dict[str, Any]:
+    profile = _default_bot_profile()
+
+    if not config_path:
+        return profile
+
+    if yaml is None:
+        logger.warning("PyYAML not installed; using default bot profile")
+        return profile
+
+    path = Path(config_path)
+    if not path.exists():
+        logger.info("Bot config file not found at %s; using defaults", path)
+        return profile
+
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except (OSError, ValueError, TypeError) as exc:
+        logger.warning("Failed reading bot config %s: %s", path, exc)
+        return profile
+
+    if not isinstance(data, dict):
+        return profile
+
+    bots = data.get("bots", {})
+    if not isinstance(bots, dict) or not bots:
+        return profile
+
+    active_bot = requested_bot or data.get("active_bot") or "Titan_Bot"
+    if active_bot not in bots:
+        logger.warning(
+            "Active bot '%s' not found in config; falling back to default profile",
+            active_bot,
+        )
+        return profile
+
+    bot_profile = bots.get(active_bot) or {}
+    if not isinstance(bot_profile, dict):
+        return profile
+
+    merged = {
+        **profile,
+        **bot_profile,
+        "bot_name": active_bot,
+    }
+
+    if "risk_rules" not in merged or not isinstance(merged["risk_rules"], dict):
+        merged["risk_rules"] = profile["risk_rules"]
+
+    return merged
 
 
 def _as_bool(value: str, default: bool) -> bool:
@@ -87,10 +167,22 @@ class TitanConfig:
     dry_run: bool
     enable_trading: bool
     strategy_name: str
+    active_bot_name: str = "Titan_Bot"
+    screener_file: str = "titan_tech_fundamentals.csv"
+    universe: str = "Mag7+Tech"
+    position_size: float = 5000.0
+    risk_rules: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "TitanConfig":
         load_dotenv(override=False)
+        bot_config_path = os.getenv(
+            "BOT_CONFIG_PATH",
+            "config/fundamentals_bots.yml",
+        )
+        requested_bot = os.getenv("ACTIVE_BOT") or os.getenv("BOT_NAME")
+        bot_profile = _load_active_bot_profile(bot_config_path, requested_bot)
+
         return cls(
             alpaca_api_key=os.getenv("ALPACA_API_KEY"),
             alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY"),
@@ -141,7 +233,21 @@ class TitanConfig:
             ),
             strategy_name=os.getenv(
                 "TITAN_STRATEGY_NAME",
-                "Mansa Tech - Titan Bot",
+                str(bot_profile.get("strategy_label", "Mansa Tech - Titan Bot")),
+            ),
+            active_bot_name=str(bot_profile.get("bot_name", "Titan_Bot")),
+            screener_file=str(
+                bot_profile.get("screener_file", "titan_tech_fundamentals.csv")
+            ),
+            universe=str(bot_profile.get("universe", "Mag7+Tech")),
+            position_size=_as_float(
+                str(bot_profile.get("position_size", "5000")),
+                5000.0,
+            ),
+            risk_rules=(
+                bot_profile.get("risk_rules", {})
+                if isinstance(bot_profile.get("risk_rules", {}), dict)
+                else {}
             ),
         )
 
@@ -269,6 +375,61 @@ class TitanBot:
             return False
         return True
 
+    def _passes_configured_risk_rules(
+        self,
+        fundamentals: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[bool, str]:
+        rules = self.config.risk_rules or {}
+        if not rules:
+            return True, "no-risk-rules"
+
+        fundamentals_data = fundamentals or {}
+        if not fundamentals_data:
+            return True, "no-fundamentals-provided"
+
+        min_volume = rules.get("min_volume")
+        if min_volume is not None:
+            volume = fundamentals_data.get("volume")
+            if volume is not None and float(volume) < float(min_volume):
+                return False, "min_volume"
+
+        max_pe = rules.get("max_pe")
+        if max_pe is not None:
+            pe_ratio = fundamentals_data.get("pe")
+            if pe_ratio is not None and float(pe_ratio) > float(max_pe):
+                return False, "max_pe"
+
+        min_roe = rules.get("min_roe")
+        if min_roe is not None:
+            roe = fundamentals_data.get("roe")
+            if roe is not None and float(roe) < float(min_roe):
+                return False, "min_roe"
+
+        max_debt_to_equity = rules.get("max_debt_to_equity")
+        if max_debt_to_equity is not None:
+            debt_to_equity = fundamentals_data.get("debt_to_equity")
+            if (
+                debt_to_equity is not None
+                and float(debt_to_equity) > float(max_debt_to_equity)
+            ):
+                return False, "max_debt_to_equity"
+
+        min_dividend_yield = rules.get("min_dividend_yield")
+        if min_dividend_yield is not None:
+            dividend_yield = fundamentals_data.get("dividend_yield")
+            if (
+                dividend_yield is not None
+                and float(dividend_yield) < float(min_dividend_yield)
+            ):
+                return False, "min_dividend_yield"
+
+        return True, "passed"
+
+    def _effective_order_qty(self, qty: Optional[float]) -> float:
+        if qty is None or qty <= 0:
+            return float(self.config.position_size)
+        return float(qty)
+
     def load_model(self):
         if mlflow is None:
             return None
@@ -284,7 +445,12 @@ class TitanBot:
         if model is None:
             return 1, 0.5
 
-        prediction = int(model.predict([list(features)])[0])
+        try:
+            prediction = int(model.predict([list(features)])[0])
+        except (AttributeError, IndexError, TypeError, ValueError) as exc:
+            logger.warning("Prediction inference failed, using fallback: %s", exc)
+            return 1, 0.5
+
         probability = 0.5
         try:
             probability = float(model.predict_proba([list(features)])[0][1])
@@ -346,21 +512,33 @@ class TitanBot:
         self,
         symbol: str,
         side: str,
-        qty: float,
+        qty: Optional[float],
         features: Sequence[float],
+        fundamentals: Optional[Dict[str, Any]] = None,
     ):
+        effective_qty = self._effective_order_qty(qty)
         prediction, probability = self.titan_predict(features)
         passes_ml_gate = (
             prediction == 1
             and probability >= self.config.prediction_threshold
         )
         passes_risk_gate = self.titan_guard()
+        passes_fundamental_risk_rules, failed_risk_rule = (
+            self._passes_configured_risk_rules(fundamentals)
+        )
+
+        try:
+            if mlflow is not None:
+                mlflow.log_param("active_bot", self.config.active_bot_name)
+                mlflow.log_param("strategy_label", self.config.strategy_name)
+        except (RuntimeError, TypeError, ValueError):
+            pass
 
         if not passes_ml_gate:
             self.log_trade(
                 symbol,
                 side,
-                qty,
+                effective_qty,
                 "MARKET",
                 "blocked",
                 prediction_label=prediction,
@@ -373,12 +551,28 @@ class TitanBot:
             self.log_trade(
                 symbol,
                 side,
-                qty,
+                effective_qty,
                 "MARKET",
                 "blocked",
                 prediction_label=prediction,
                 prediction_probability=probability,
                 notes="Liquidity guard blocked trade",
+            )
+            return None
+
+        if not passes_fundamental_risk_rules:
+            self.log_trade(
+                symbol,
+                side,
+                effective_qty,
+                "MARKET",
+                "blocked",
+                prediction_label=prediction,
+                prediction_probability=probability,
+                notes=(
+                    "Risk rule blocked trade: "
+                    f"{failed_risk_rule}"
+                ),
             )
             return None
 
@@ -390,7 +584,7 @@ class TitanBot:
             self.log_trade(
                 symbol,
                 side,
-                qty,
+                effective_qty,
                 "MARKET",
                 "simulated",
                 prediction_label=prediction,
@@ -401,7 +595,7 @@ class TitanBot:
 
         order = self.api.submit_order(
             symbol=symbol,
-            qty=qty,
+            qty=effective_qty,
             side=side,
             type="market",
             time_in_force="day",
@@ -410,15 +604,60 @@ class TitanBot:
         self.log_trade(
             symbol,
             side,
-            qty,
+            effective_qty,
             "MARKET",
             "submitted",
             order_id=getattr(order, "id", None),
             prediction_label=prediction,
             prediction_probability=probability,
         )
-        self._notify_discord(f"Titan executed {side} order for {qty} {symbol}")
+        self._notify_discord(
+            f"Titan executed {side} order for {effective_qty} {symbol}"
+        )
         return order
+
+    def execute_from_screener(
+        self,
+        side: str = "buy",
+        max_trades: Optional[int] = None,
+        features_by_symbol: Optional[Dict[str, Sequence[float]]] = None,
+    ) -> List[Dict[str, Any]]:
+        candidates = load_bot_trade_candidates(self.config.active_bot_name)
+        if max_trades is not None and max_trades > 0:
+            candidates = candidates[:max_trades]
+
+        results: List[Dict[str, Any]] = []
+        for candidate in candidates:
+            symbol = str(candidate.get("symbol", "")).strip().upper()
+            if not symbol:
+                continue
+
+            fundamentals = candidate.get("fundamentals")
+            if not isinstance(fundamentals, dict):
+                fundamentals = {}
+
+            features: Sequence[float] = []
+            if features_by_symbol:
+                symbol_features = features_by_symbol.get(symbol)
+                if isinstance(symbol_features, Sequence):
+                    features = symbol_features
+
+            order = self.execute_trade(
+                symbol=symbol,
+                side=side,
+                qty=None,
+                features=features,
+                fundamentals=fundamentals,
+            )
+            results.append(
+                {
+                    "symbol": symbol,
+                    "executed": order is not None,
+                    "fundamentals": fundamentals,
+                }
+            )
+
+        return results
 
     def _http_health(self, url: str, timeout: int = 8) -> Tuple[str, str]:
         try:

@@ -606,7 +606,7 @@ def render_ml_trading_signals():
             if experiments:
                 runs = mlflow.search_runs(experiment_ids=[experiments[0].experiment_id], max_results=1)
                 if not runs.empty:
-                    st.success("✅ ML Trading Signals linked to MLflow experiment outputs (latest run detected)")
+                    st.success("✅ ML Trading Signals synced to MLflow experiment outputs (latest run detected)")
                 else:
                     st.warning("⚠️ MLflow is reachable, but no runs found yet for latest experiment")
             else:

@@ -1,0 +1,151 @@
+# Shared fundamentals screener config for Mansa bots
+# Switch bots without code edits by changing active_bot below.
+
+active_bot: Titan_Bot
+
+bots:
+  Titan_Bot:
+    screener_file: "titan_tech_fundamentals.csv"
+    universe: "Mag7+Tech"
+    position_size: 5000
+    strategy_label: "Tech_Fundamentals_Mag7"
+    risk_rules:
+      min_volume: 5000000
+      max_pe: 40
+      min_roe: 15
+      max_debt_to_equity: 0.8
+
+  Vega_Bot:
+    screener_file: "vega_fundamentals.csv"
+    universe: "Retail_Fundamentals"
+    position_size: 1000
+    strategy_label: "Retail_Fundamentals"
+    risk_rules:
+      min_volume: 1000000
+      max_pe: 25
+      min_roe: 12
+      max_debt_to_equity: 0.5
+      min_dividend_yield: 2
+
+  Rigel_Bot:
+    screener_file: "rigel_fx_fundamentals.csv"
+    universe: "Forex_Macro"
+    position_size: 3000
+    strategy_label: "Forex_Macro_Screener"
+    risk_rules:
+      min_volume: 500000
+      max_pe: 30
+      min_roe: 10
+      max_debt_to_equity: 1.0
+
+  Dogon_Bot:
+    screener_file: "dogon_etf_fundamentals.csv"
+    universe: "ETF_Fundamentals"
+    position_size: 2500
+    strategy_label: "ETF_Fundamentals_Core"
+    risk_rules:
+      min_volume: 1000000
+      max_pe: 35
+      min_roe: 10
+      max_debt_to_equity: 0.9
+
+  Orion_Bot:
+    screener_file: "orion_minerals_fundamentals.csv"
+    universe: "Minerals_Commodities"
+    position_size: 2200
+    strategy_label: "Minerals_Fundamentals"
+    risk_rules:
+      min_volume: 750000
+      max_pe: 28
+      min_roe: 10
+      max_debt_to_equity: 0.9
+
+  Sirius_Bot:
+    screener_file: "sirius_growth_fundamentals.csv"
+    universe: "Growth_Fundamentals"
+    position_size: 2000
+    strategy_label: "Growth_Fundamentals"
+    risk_rules:
+      min_volume: 1000000
+      max_pe: 45
+      min_roe: 12
+      max_debt_to_equity: 0.9
+
+  Altair_Bot:
+    screener_file: "altair_dividend_fundamentals.csv"
+    universe: "Dividend_Income"
+    position_size: 1800
+    strategy_label: "Dividend_Income_Fundamentals"
+    risk_rules:
+      min_volume: 800000
+      max_pe: 30
+      min_roe: 10
+      max_debt_to_equity: 0.7
+      min_dividend_yield: 2
+
+  Deneb_Bot:
+    screener_file: "deneb_quality_fundamentals.csv"
+    universe: "Quality_Factors"
+    position_size: 2000
+    strategy_label: "Quality_Fundamentals"
+    risk_rules:
+      min_volume: 1000000
+      max_pe: 32
+      min_roe: 14
+      max_debt_to_equity: 0.8
+
+  Arcturus_Bot:
+    screener_file: "arcturus_value_fundamentals.csv"
+    universe: "Value_Fundamentals"
+    position_size: 2200
+    strategy_label: "Value_Fundamentals"
+    risk_rules:
+      min_volume: 700000
+      max_pe: 22
+      min_roe: 10
+      max_debt_to_equity: 0.7
+
+  Polaris_Bot:
+    screener_file: "polaris_stability_fundamentals.csv"
+    universe: "Stable_Bluechips"
+    position_size: 2000
+    strategy_label: "Stability_Fundamentals"
+    risk_rules:
+      min_volume: 1500000
+      max_pe: 28
+      min_roe: 12
+      max_debt_to_equity: 0.7
+
+  Betelgeuse_Bot:
+    screener_file: "betelgeuse_cyclicals_fundamentals.csv"
+    universe: "Cyclical_Sectors"
+    position_size: 1800
+    strategy_label: "Cyclicals_Fundamentals"
+    risk_rules:
+      min_volume: 800000
+      max_pe: 26
+      min_roe: 9
+      max_debt_to_equity: 1.1
+
+  Procyon_Bot:
+    screener_file: "procyon_smalls_fundamentals.csv"
+    universe: "Smalls_Fundamentals"
+    position_size: 1200
+    strategy_label: "Smalls_Fundamentals"
+    risk_rules:
+      min_volume: 300000
+      max_pe: 35
+      min_roe: 10
+      max_debt_to_equity: 1.0
+
+  Antares_Bot:
+    screener_file: "antares_emerging_fundamentals.csv"
+    universe: "Emerging_Growth"
+    position_size: 1500
+    strategy_label: "Emerging_Fundamentals"
+    risk_rules:
+      min_volume: 500000
+      max_pe: 38
+      min_roe: 11
+      max_debt_to_equity: 1.0
+

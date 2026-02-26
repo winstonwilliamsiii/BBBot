@@ -5,7 +5,21 @@ const cron = require('node-cron');
 const mysql = require('mysql2/promise');
 
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
+const TIINGO_API_KEY = process.env.TIINGO_API_KEY || process.env.TIINGO_TOKEN;
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.ALPHAVANTAGE_API_KEY;
 const RUN_ONCE = process.argv.includes('--run-once');
+const DEFAULT_MANSA_TECH_SYMBOLS = ['IONQ', 'QBTS', 'SOUN', 'RGTI', 'AMZN', 'NVDA'];
+const argShardIndex = process.argv.find(a => a.startsWith('--shard-index='));
+const SHARD_INDEX_OVERRIDE = argShardIndex ? Number(argShardIndex.split('=')[1]) : null;
+const SHARD_COUNT = Math.max(1, Number.parseInt(process.env.PORTFOLIO_SHARD_COUNT || '4', 10) || 4);
+const SHARD_INDEX_ENV = Number.parseInt(process.env.PORTFOLIO_SHARD_INDEX || '', 10);
+const MAX_SYMBOLS_PER_RUN = Number.parseInt(
+  process.env.PORTFOLIO_MAX_SYMBOLS_PER_RUN || (ALPHA_VANTAGE_API_KEY ? '5' : '0'),
+  10
+);
+let tiingoAccessChecked = false;
+let tiingoAccessAvailable = false;
+let alphaVantageRateLimited = false;
 
 // ---------- MySQL Connection (Railway Cloud or Local) ----------
 let dbPool;
@@ -39,6 +53,133 @@ async function getDbConnection() {
   return dbPool;
 }
 
+function parseSymbols(raw) {
+  if (!raw || typeof raw !== 'string') {
+    return [];
+  }
+
+  const normalizeTradingViewSymbol = (value) => {
+    const token = String(value || '').trim().toUpperCase();
+    if (!token) {
+      return null;
+    }
+
+    if (!token.includes(':')) {
+      return token;
+    }
+
+    const [exchange, symbol] = token.split(':', 2);
+    if (!symbol) {
+      return null;
+    }
+
+    if (exchange === 'TSX') {
+      return `${symbol}.TO`;
+    }
+
+    if (exchange === 'TSXV') {
+      return `${symbol}.V`;
+    }
+
+    return symbol;
+  };
+
+  return [...new Set(
+    raw
+      .split(',')
+      .map(normalizeTradingViewSymbol)
+      .filter(Boolean)
+  )];
+}
+
+async function loadPortfolioSymbolsFromDb() {
+  const userId = process.env.PORTFOLIO_USER_ID || process.env.MANSA_PORTFOLIO_USER_ID || 'demo_user';
+
+  try {
+    const pool = await getDbConnection();
+
+    const [rows] = await pool.execute(
+      `SELECT DISTINCT ticker
+       FROM portfolios
+       WHERE user_id = ?
+       ORDER BY ticker`,
+      [userId]
+    );
+
+    const symbols = rows
+      .map(r => String(r.ticker || '').trim().toUpperCase())
+      .filter(Boolean);
+
+    if (symbols.length > 0) {
+      console.log(`✓ Loaded ${symbols.length} portfolio symbols from DB for user ${userId}`);
+    }
+
+    return symbols;
+  } catch (err) {
+    console.warn(`Portfolio symbols DB lookup skipped: ${err.message}`);
+    return [];
+  }
+}
+
+async function resolvePortfolioSymbols() {
+  const explicitSymbols = parseSymbols(process.env.PORTFOLIO_SYMBOLS || process.env.MANSA_TECH_SYMBOLS);
+  if (explicitSymbols.length > 0) {
+    console.log(`✓ Using explicit portfolio symbols from env (${explicitSymbols.length})`);
+    return explicitSymbols;
+  }
+
+  const dbSymbols = await loadPortfolioSymbolsFromDb();
+  if (dbSymbols.length > 0) {
+    return dbSymbols;
+  }
+
+  console.log(`ℹ Using default Mansa Tech symbols (${DEFAULT_MANSA_TECH_SYMBOLS.length})`);
+  return DEFAULT_MANSA_TECH_SYMBOLS;
+}
+
+function getAutoShardIndex() {
+  const etHour = Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: '2-digit',
+      hour12: false
+    }).format(new Date())
+  );
+
+  if (etHour < 8) return 0;
+  if (etHour < 10) return 1;
+  if (etHour < 12) return 2;
+  return 3;
+}
+
+function selectPortfolioSymbolsForRun(symbols) {
+  if (!Array.isArray(symbols) || symbols.length === 0) {
+    return [];
+  }
+
+  const rawShardIndex = Number.isFinite(SHARD_INDEX_OVERRIDE)
+    ? SHARD_INDEX_OVERRIDE
+    : (Number.isFinite(SHARD_INDEX_ENV) ? SHARD_INDEX_ENV : getAutoShardIndex());
+  const shardIndex = ((rawShardIndex % SHARD_COUNT) + SHARD_COUNT) % SHARD_COUNT;
+
+  let selected = symbols.filter((_, idx) => idx % SHARD_COUNT === shardIndex);
+
+  if (selected.length === 0) {
+    selected = symbols;
+  }
+
+  if (Number.isFinite(MAX_SYMBOLS_PER_RUN) && MAX_SYMBOLS_PER_RUN > 0 && selected.length > MAX_SYMBOLS_PER_RUN) {
+    selected = selected.slice(0, MAX_SYMBOLS_PER_RUN);
+  }
+
+  console.log(
+    `✓ Portfolio selection: shard ${shardIndex + 1}/${SHARD_COUNT}, ` +
+    `${selected.length}/${symbols.length} symbols this run`
+  );
+
+  return selected;
+}
+
 // ---------- Alert Logging ----------
 async function logAlert(symbol, changePercent, price, currency, alertType, discordDelivered, discordError = null) {
   try {
@@ -56,11 +197,151 @@ async function logAlert(symbol, changePercent, price, currency, alertType, disco
 
 // ---------- Data sources (replace with your preferred APIs) ----------
 
+async function fetchQuoteFromTiingo(symbol) {
+  if (!TIINGO_API_KEY) {
+    return null;
+  }
+
+  if (!tiingoAccessChecked) {
+    try {
+      const resp = await axios.get('https://api.tiingo.com/api/test', {
+        timeout: 8000,
+        headers: { Authorization: `Token ${TIINGO_API_KEY}` }
+      });
+      tiingoAccessAvailable = resp.status === 200;
+    } catch (err) {
+      tiingoAccessAvailable = false;
+      const status = err?.response?.status;
+      if (status) {
+        console.warn(`Tiingo preflight unavailable (HTTP ${status}); falling back to Yahoo quotes.`);
+      } else {
+        console.warn(`Tiingo preflight unavailable (${err.message}); falling back to Yahoo quotes.`);
+      }
+    } finally {
+      tiingoAccessChecked = true;
+    }
+  }
+
+  if (!tiingoAccessAvailable) {
+    return null;
+  }
+
+  try {
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - 7);
+
+    const toDateOnly = (d) => d.toISOString().slice(0, 10);
+
+    const url = `https://api.tiingo.com/tiingo/daily/${encodeURIComponent(symbol)}/prices`;
+    const { data } = await axios.get(url, {
+      timeout: 10000,
+      headers: {
+        Authorization: `Token ${TIINGO_API_KEY}`
+      },
+      params: {
+        startDate: toDateOnly(start),
+        endDate: toDateOnly(end)
+      }
+    });
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return null;
+    }
+
+    const latest = data[data.length - 1] || {};
+    const latestClose = Number(latest.close ?? latest.adjClose);
+    const previousClose = Number(
+      latest.prevClose ?? (data.length > 1 ? data[data.length - 2]?.close : NaN)
+    );
+
+    const changePercent = Number.isFinite(previousClose) && previousClose !== 0
+      ? ((latestClose - previousClose) / previousClose) * 100
+      : null;
+
+    if (!Number.isFinite(latestClose)) {
+      return null;
+    }
+
+    return {
+      symbol,
+      price: latestClose,
+      changePercent,
+      currency: 'USD'
+    };
+  } catch (err) {
+    const status = err?.response?.status;
+    if (status === 401 || status === 403) {
+      tiingoAccessAvailable = false;
+      console.warn(`Tiingo quote access disabled (HTTP ${status}); using Yahoo fallback for remaining symbols.`);
+    } else {
+      console.warn(`Tiingo quote failed ${symbol}: ${err.message}`);
+    }
+    return null;
+  }
+}
+
+async function fetchQuoteFromAlphaVantage(symbol) {
+  if (!ALPHA_VANTAGE_API_KEY || alphaVantageRateLimited) {
+    return null;
+  }
+
+  try {
+    const url = 'https://www.alphavantage.co/query';
+    const { data } = await axios.get(url, {
+      timeout: 10000,
+      params: {
+        function: 'GLOBAL_QUOTE',
+        symbol,
+        apikey: ALPHA_VANTAGE_API_KEY
+      }
+    });
+
+    if (data?.Note || data?.Information) {
+      alphaVantageRateLimited = true;
+      console.warn('AlphaVantage rate limit reached; using Yahoo fallback for remaining symbols.');
+      return null;
+    }
+
+    const quote = data?.['Global Quote'];
+    if (!quote || Object.keys(quote).length === 0) {
+      return null;
+    }
+
+    const price = Number(quote['05. price']);
+    const previousClose = Number(quote['08. previous close']);
+    const rawChangePct = String(quote['10. change percent'] || '').replace('%', '').trim();
+    const parsedChangePct = Number(rawChangePct);
+    const changePercent = Number.isFinite(parsedChangePct)
+      ? parsedChangePct
+      : (Number.isFinite(previousClose) && previousClose !== 0 && Number.isFinite(price)
+        ? ((price - previousClose) / previousClose) * 100
+        : null);
+
+    if (!Number.isFinite(price)) {
+      return null;
+    }
+
+    return {
+      symbol,
+      price,
+      changePercent,
+      currency: 'USD'
+    };
+  } catch (err) {
+    console.warn(`AlphaVantage quote failed ${symbol}: ${err.message}`);
+    return null;
+  }
+}
+
 // Simple Yahoo Finance quote fetch
-async function fetchQuote(symbol) {
+async function fetchQuoteFromYahoo(symbol) {
   try {
     const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
-    const { data } = await axios.get(url, { timeout: 10000 });
+    const { data } = await axios.get(url, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
     const q = data.quoteResponse.result[0];
     if (!q) return null;
     return {
@@ -73,6 +354,20 @@ async function fetchQuote(symbol) {
     console.error(`Quote error ${symbol}:`, err.message);
     return null;
   }
+}
+
+async function fetchQuote(symbol) {
+  const tiingoQuote = await fetchQuoteFromTiingo(symbol);
+  if (tiingoQuote) {
+    return tiingoQuote;
+  }
+
+  const alphaVantageQuote = await fetchQuoteFromAlphaVantage(symbol);
+  if (alphaVantageQuote) {
+    return alphaVantageQuote;
+  }
+
+  return fetchQuoteFromYahoo(symbol);
 }
 
 // Yahoo Finance screener endpoints for top gainers/losers
@@ -153,7 +448,8 @@ async function postToDiscord(content, embeds = []) {
 // ---------- Compose and send combined alert ----------
 async function runCombinedAlert() {
   try {
-    const portfolio = ['AAPL', 'MSFT', 'TSLA']; // replace with your holdings
+    const portfolioAll = await resolvePortfolioSymbols();
+    const portfolio = selectPortfolioSymbolsForRun(portfolioAll);
     const [gainers, losers, portfolioMoves] = await Promise.all([
       fetchTopGainers(5),
       fetchTopLosers(5),

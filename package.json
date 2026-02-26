@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "format": "prettier --write .",
-    "build": "echo 'No build step required for static/Streamlit deployment'"
+    "build": "echo 'No build step required for static/Streamlit deployment'",
+    "api:dev": "python -m uvicorn Main:app --host 0.0.0.0 --port 8000 --reload"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",

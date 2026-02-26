@@ -432,6 +432,43 @@ RAILWAY_MYSQL_PASSWORD=<from_railway_dashboard>
 
 See [BROKER_SETUP_GUIDE.md](./BROKER_SETUP_GUIDE.md) for detailed broker API setup instructions.
 
+### Plaid Sync Export + Load (One Command)
+
+Use the reusable utility script to run Plaid `transactions/sync`, export a full JSON artifact, and upsert into MySQL in one command:
+
+```bash
+python scripts/plaid_sync_export_load.py --access-token <access_token>
+```
+
+Output:
+- JSON artifact in `data/plaid/transactions_sync_<timestamp>.json`
+- Upsert into `mydb.plaid_transactions`
+
+#### Local/Host MySQL mode
+
+```bash
+python scripts/plaid_sync_export_load.py \
+   --access-token <access_token> \
+   --db-host 127.0.0.1 --db-port 3306 \
+   --db-user root --db-password <password> \
+   --db-name mydb
+```
+
+#### Docker MySQL mode (recommended for this repo)
+
+```bash
+python scripts/plaid_sync_export_load.py \
+   --access-token <access_token> \
+   --db-name mydb \
+   --docker-container bentley-mysql \
+   --docker-mysql-user root \
+   --docker-mysql-password root
+```
+
+Environment fallbacks used by the script:
+- Plaid: `PLAID_CLIENT_ID`, `PLAID_SECRET`
+- MySQL: `BUDGET_MYSQL_*`, then `MYSQL_*`
+
 ---
 
 ## 🧪 Testing

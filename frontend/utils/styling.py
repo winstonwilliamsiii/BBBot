@@ -6,10 +6,26 @@ def apply_custom_styling():
     """Inject custom CSS for the app using Mansa Capital COLOR_SCHEME."""
     css = f"""
     <style>
+    :root {{
+        --text-color: {COLOR_SCHEME['text']};
+        --secondary-text-color: {COLOR_SCHEME['text']};
+    }}
+
     /* App background with Mansa Capital branding */
     .stApp {{
         background: linear-gradient(180deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
         color: {COLOR_SCHEME['text']};
+    }}
+
+    .stMarkdown,
+    .stMarkdown p,
+    .stMarkdown span,
+    .stMarkdown li,
+    [data-testid="stWidgetLabel"] *,
+    [data-testid="stMetricLabel"] *,
+    [data-testid="stCaptionContainer"] * {{
+        color: {COLOR_SCHEME['text']} !important;
+        opacity: 1 !important;
     }}
 
     /* Card style with Mansa Capital colors */
@@ -32,14 +48,14 @@ def apply_custom_styling():
         border: 1px solid rgba(20, 184, 166, 0.2);
     }}
 
-    .metric-label {{ font-size: 0.9rem; color: rgba(255,255,255,0.8); }}
+    .metric-label {{ font-size: 0.9rem; color: {COLOR_SCHEME['text']}; }}
     .metric-value {{ font-size: 1.6rem; font-weight: 700; margin-top: .25rem; color: {COLOR_SCHEME['accent_gold']}; }}
     .metric-delta {{ font-size: 0.9rem; opacity: .9; margin-left: .5rem; color: {COLOR_SCHEME['accent_teal']}; }}
 
     .app-footer {{
         text-align: center;
         padding: 1rem 0.5rem;
-        color: rgba(255,255,255,0.7);
+        color: {COLOR_SCHEME['text']};
         font-size: 0.9rem;
         background: linear-gradient(135deg, {COLOR_SCHEME['background']} 0%, {COLOR_SCHEME['secondary']} 100%);
         border-top: 1px solid rgba(250, 204, 21, 0.2);
@@ -69,6 +85,29 @@ def apply_custom_styling():
     [data-testid="stSidebar"] label {{
         color: {COLOR_SCHEME['text']} !important;
         font-weight: 500 !important;
+    }}
+
+    [data-testid="stSidebarNav"] a,
+    [data-testid="stSidebarNav"] a span,
+    [data-testid="stSidebarNav"] li span {{
+        color: {COLOR_SCHEME['text']} !important;
+        opacity: 1 !important;
+        font-weight: 500 !important;
+    }}
+
+    [data-testid="stSidebarNav"] a:hover span {{
+        color: {COLOR_SCHEME['accent_gold']} !important;
+    }}
+
+    .stTabs [data-baseweb="tab"] {{
+        color: {COLOR_SCHEME['text']} !important;
+        opacity: 1 !important;
+    }}
+
+    .stTabs [data-baseweb="tab"]:hover,
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
+        color: {COLOR_SCHEME['text']} !important;
+        opacity: 1 !important;
     }}
 
     /* Sidebar buttons with teal accent */

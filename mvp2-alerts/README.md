@@ -32,7 +32,7 @@ Node.js service that posts combined alerts (top gainers/losers + your portfolio 
 
 **Manual test run**:
 ```bash
-node index.js
+node index.js --run-once
 ```
 
 **Run as scheduled service**:
@@ -42,10 +42,23 @@ npm start
 
 ## Schedule Configuration
 
-Default schedule (weekdays, America/New_York timezone):
-- 9:30 AM ET: `cron.schedule('30 14 * * 1-5', ...)`
-- 12:00 PM ET: `cron.schedule('0 17 * * 1-5', ...)`
-- 3:30 PM ET: `cron.schedule('30 20 * * 1-5', ...)`
+Default daily trade alert schedule (weekdays, America/New_York timezone):
+- 7:00 AM ET: `cron.schedule('0 7 * * 1-5', ...)`
+- 9:40 AM ET: `cron.schedule('40 9 * * 1-5', ...)`
+- 11:30 AM ET: `cron.schedule('30 11 * * 1-5', ...)`
+- 3:00 PM ET: `cron.schedule('0 15 * * 1-5', ...)`
+
+Current implementation schedule:
+- 7:00 AM ET
+- 9:40 AM ET
+- 11:30 AM ET
+- 3:00 PM ET
+
+For Windows Task Scheduler, each task should call:
+```bash
+node index.js --run-once
+```
+This sends one alert run and exits cleanly.
 
 Modify cron patterns in `index.js` to adjust timing.
 

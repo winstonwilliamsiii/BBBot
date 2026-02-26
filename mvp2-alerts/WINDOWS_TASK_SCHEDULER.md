@@ -30,7 +30,7 @@ This automatically creates 4 scheduled tasks for:
 7. Click **Next** → **Action** → Select **Start a program**
 8. Fill in:
    - **Program/script:** `C:\Program Files\nodejs\node.exe`
-   - **Add arguments:** `C:\Users\winst\BentleyBudgetBot\mvp2-alerts\index.js`
+   - **Add arguments:** `C:\Users\winst\BentleyBudgetBot\mvp2-alerts\index.js --run-once`
    - **Start in:** `C:\Users\winst\BentleyBudgetBot\mvp2-alerts`
 9. Click **Finish**
 

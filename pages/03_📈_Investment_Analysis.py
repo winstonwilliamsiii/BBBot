@@ -1144,8 +1144,8 @@ def display_fundamental_ratios(tickers, enable_logging):
                 elif data_source_used == 'yfinance':
                     st.markdown(
                         '<div class="data-section yfinance-data" style="margin-bottom: 1.5rem;">'
-                        '<h4 style="margin: 0 0 0.5rem 0; font-size: 1.2rem; color: #1a1a1a;">📉 Yahoo Finance Data (Free)</h4>'
-                        '<p style="margin: 0; opacity: 0.8; font-size: 0.9rem; color: #1a1a1a;">Source: yfinance Library | Community Maintained</p>'
+                        '<h4 style="margin: 0 0 0.5rem 0; font-size: 1.2rem; color: #FFFFFF;">📉 Yahoo Finance Data (Free)</h4>'
+                        '<p style="margin: 0; opacity: 1; font-size: 0.9rem; color: #FFFFFF;">Source: yfinance Library | Community Maintained</p>'
                         '</div>',
                         unsafe_allow_html=True
                     )

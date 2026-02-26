@@ -576,15 +576,15 @@ with tab2:
         <div style='background: {COLOR_SCHEME['card_background']}; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;'>
             <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;'>
                 <div>
-                    <div style='color: #9CA3AF; font-size: 0.875rem;'>Total Positions</div>
+                    <div style='color: {COLOR_SCHEME['text']}; font-size: 0.875rem;'>Total Positions</div>
                     <div style='color: {COLOR_SCHEME['accent_gold']}; font-size: 1.5rem; font-weight: bold;'>{len(display_portfolio)}</div>
                 </div>
                 <div>
-                    <div style='color: #9CA3AF; font-size: 0.875rem;'>Portfolio Value</div>
+                    <div style='color: {COLOR_SCHEME['text']}; font-size: 0.875rem;'>Portfolio Value</div>
                     <div style='color: {COLOR_SCHEME['accent_teal']}; font-size: 1.5rem; font-weight: bold;'>${total_holdings:,.0f}</div>
                 </div>
                 <div>
-                    <div style='color: #9CA3AF; font-size: 0.875rem;'>Total P&L</div>
+                    <div style='color: {COLOR_SCHEME['text']}; font-size: 0.875rem;'>Total P&L</div>
                     <div style='color: {"#10B981" if portfolio_pnl >= 0 else "#EF4444"}; font-size: 1.5rem; font-weight: bold;'>{portfolio_pnl:+.2f}%</div>
                 </div>
             </div>

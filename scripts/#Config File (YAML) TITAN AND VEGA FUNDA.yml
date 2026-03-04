@@ -1,0 +1,26 @@
+#Config File (YAML) TITAN AND VEGA FUNDAMENTALS SCREENER
+
+
+bots:
+  Titan_Bot:
+    screener_file: "titan_tech_fundamentals.csv"
+    universe: "Mag7+Tech"
+    position_size: 5000        # dollars per trade
+    strategy_label: "Tech_Fundamentals_Mag7"
+    risk_rules:
+      min_volume: 5000000      # 5M shares
+      max_pe: 40
+      min_roe: 15
+      max_debt_to_equity: 0.8
+
+  Vega_Bot:
+    screener_file: "vega_fundamentals.csv"
+    universe: "Retail_Fundamentals"
+    position_size: 1000        # smaller retail tickets
+    strategy_label: "Retail_Fundamentals"
+    risk_rules:
+      min_volume: 1000000      # 1M shares
+      max_pe: 25
+      min_roe: 12
+      max_debt_to_equity: 0.5
+      min_dividend_yield: 2

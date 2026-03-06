@@ -102,3 +102,27 @@ Critical: Use `@st.cache_data` for expensive operations:
 3. **MultiIndex DataFrame errors** - Yahoo returns different column structures per query size
 4. **Session state persistence** - Portfolio CSV data stored in `st.session_state.portfolio_data`
 5. **Vercel deployment** - Ensure all imports work in serverless environment (check `api/index.py`)
+
+## Bot Training Standards (Apply to ALL Bots)
+
+When adding or updating ML training pipelines for any bot (Titan, Rigel, Dogon, Orion, and future bots), always apply these standards:
+
+1. **Use isolated training environments**
+    - Create a dedicated venv per bot training flow (e.g. `.venv-dogon`).
+    - Do not mutate the primary runtime/trading venv for training-only dependencies.
+
+2. **Use bot-specific requirements files**
+    - Add a dedicated requirements file (e.g. `requirements-dogon-training.txt`).
+    - Keep trading/runtime dependencies separate from heavy ML stack dependencies.
+
+3. **Protect runtime dependency compatibility**
+    - Avoid introducing package upgrades that break live trading integrations.
+    - If dependency conflicts exist, resolve them through isolation rather than shared-version compromise.
+
+4. **Keep generated artifacts out of git**
+    - Treat trained model outputs and run-generated artifacts as local artifacts.
+    - Ensure `.gitignore` covers generated model directories/files.
+
+5. **Validate with a dry run before handoff**
+    - Run one short-cycle dry training execution and verify metrics/logging.
+    - Confirm metrics visibility in MLflow and relevant Bentley dashboard surfaces.

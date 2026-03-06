@@ -214,6 +214,10 @@ mlruns/
 mlartifacts/
 .mlflow/
 
+# Local trained model artifacts (do not commit generated bot models)
+models/
+!models/.gitkeep
+
 # Local logs and debug files
 logs/
 *.log

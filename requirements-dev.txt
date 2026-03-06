@@ -31,3 +31,8 @@ pre-commit>=3.3.3
 # Local server testing
 locust>=2.15.1  # Load testing
 watchdog>=3.0.0  # File watching for auto-reload
+
+# Dogon ETF ML training
+xgboost>=2.0.0
+tensorflow>=2.15.0
+keras-tcn>=3.5.6

@@ -209,6 +209,31 @@ npm run api:dev
 # http://localhost:8000/docs
 ```
 
+### 🤖 Dogon ETF ML Training (Biweekly)
+
+Use the new Dogon training pipeline to run a Gradient Boosted Trees baseline plus LSTM and TCN models for `Mansa_ETF`.
+
+```bash
+# Create isolated training environment (recommended)
+python -m venv .venv-dogon
+
+# Activate on Windows
+.venv-dogon\Scripts\activate
+
+# Install Dogon-only training dependencies
+pip install -r requirements-dogon-training.txt
+
+# Run a local Dogon training cycle
+python scripts/train_dogon_models.py --symbols SPY,QQQ,IWM,DIA,XLK,XLF --days 730 --min-accuracy 0.53
+```
+
+Why isolate: this avoids package conflicts between ML training dependencies and live-trading dependencies (for example, `websockets` requirements used by different integrations).
+
+Airflow schedule:
+- DAG: `dogon_etf_biweekly_training`
+- Interval: every 14 days
+- Gate: run fails if best model accuracy is below `--min-accuracy` (default `0.53`)
+
 ### Docker Setup (Optional)
 
 ```bash

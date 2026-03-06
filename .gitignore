@@ -175,6 +175,7 @@ venv/
 ENV/
 env/
 .venv
+.venv-dogon/
 moor_kingdom_env/
 
 # IDE and editor files (localhost only)

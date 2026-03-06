@@ -8,6 +8,10 @@ This folder contains all Airflow DAGs for the Bentley Budget Bot project, organi
 
 ### Core Trading DAGs
 - `bentleybot_trading_dag.py` - Main trading workflow with technical analysis and MLflow integration
+- `stars_orchestration_dag.py` - Titan gatekeeper + multi-bot orchestration (Titan/Rigel/Dogon/Orion)
+
+### Fund Training DAGs
+- `dogon_etf_training_dag.py` - Biweekly Dogon Mansa_ETF training (XGBoost baseline + LSTM + TCN) with promotion gate
 
 ### Airflow Configuration
 - **Executor**: CeleryExecutor for scalable task execution
@@ -29,6 +33,13 @@ AIRFLOW__CELERY__RESULT_BACKEND=db+mysql://root:root@mysql:3306/mansa_bot
 
 # MLflow Integration
 MLFLOW_TRACKING_URI=http://mlflow:5000
+
+# Dogon Training Controls
+DOGON_ETF_SYMBOLS=SPY,QQQ,IWM,DIA,XLK,XLF,XLE,XLV
+DOGON_TRAIN_DAYS=730
+DOGON_SEQUENCE_WINDOW=30
+DOGON_MIN_ACCURACY=0.53
+DOGON_MLFLOW_EXPERIMENT=Dogon-ETF-Models
 
 # Airbyte Integration
 AIRBYTE_API_URL=http://localhost:8001

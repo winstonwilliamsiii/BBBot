@@ -8,13 +8,16 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import mlflow
 import numpy as np
 import pandas as pd
+import requests
 import yfinance as yf
+from dotenv import load_dotenv
 from sklearn.metrics import accuracy_score, f1_score
 
 try:
@@ -42,6 +45,7 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 
 @dataclass
@@ -74,7 +78,7 @@ class DogonModelTrainer:
                 period=f"{self.config.days}d",
                 progress=False,
             )
-            if data.empty:
+            if data is None or data.empty:
                 logger.warning("No data returned for %s", symbol)
                 continue
             close_values = data["Close"]
@@ -84,12 +88,89 @@ class DogonModelTrainer:
             frames.append(close_col)
 
         if not frames:
+            logger.warning(
+                "Yahoo data unavailable for training; trying Alpaca fallback"
+            )
+            return self.fetch_data_from_alpaca()
+
+        merged = pd.concat(frames, axis=1).dropna()
+        merged.index = pd.to_datetime(merged.index)
+        return merged
+
+    def fetch_data_from_alpaca(self) -> pd.DataFrame:
+        api_key = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
+        api_secret = (
+            os.getenv("ALPACA_SECRET_KEY")
+            or os.getenv("APCA_API_SECRET_KEY")
+            or os.getenv("ALPACA_API_SECRET")
+        )
+        if not api_key or not api_secret:
+            raise RuntimeError(
+                "No ETF price data available for Dogon training "
+                "(Yahoo unavailable, Alpaca credentials missing)"
+            )
+
+        data_url = os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
+        headers = {
+            "APCA-API-KEY-ID": api_key,
+            "APCA-API-SECRET-KEY": api_secret,
+        }
+
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=max(self.config.days, 30) + 5)
+        params = {
+            "symbols": ",".join(self.config.symbols),
+            "timeframe": "1Day",
+            "start": start_dt.isoformat().replace("+00:00", "Z"),
+            "end": end_dt.isoformat().replace("+00:00", "Z"),
+            "adjustment": "raw",
+            "limit": 10000,
+            "feed": os.getenv("ALPACA_DATA_FEED", "iex"),
+        }
+
+        response = requests.get(
+            f"{data_url.rstrip('/')}/v2/stocks/bars",
+            headers=headers,
+            params=params,
+            timeout=20,
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Alpaca bars request failed ({response.status_code}): "
+                f"{response.text[:200]}"
+            )
+
+        payload = response.json()
+        bars = payload.get("bars", {})
+        frames: List[pd.DataFrame] = []
+        for symbol in self.config.symbols:
+            rows = bars.get(symbol, [])
+            if not rows:
+                logger.warning("No Alpaca bars returned for %s", symbol)
+                continue
+            frame = pd.DataFrame(rows)
+            if (
+                frame.empty
+                or "c" not in frame.columns
+                or "t" not in frame.columns
+            ):
+                continue
+            frame["t"] = pd.to_datetime(frame["t"]).dt.tz_localize(None)
+            close_col = frame.set_index("t")[["c"]].rename(
+                columns={"c": f"close_{symbol}"}
+            )
+            frames.append(close_col)
+
+        if not frames:
             raise RuntimeError(
                 "No ETF price data available for Dogon training"
             )
 
-        merged = pd.concat(frames, axis=1).dropna()
-        merged.index = pd.to_datetime(merged.index)
+        merged = pd.concat(frames, axis=1).dropna().sort_index()
+        if merged.empty:
+            raise RuntimeError(
+                "Alpaca fallback produced empty training dataset"
+            )
         return merged
 
     @staticmethod

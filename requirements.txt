@@ -16,7 +16,8 @@ pandas>=2.2.0,<3.0.0
 numpy>=1.26.0,<2.0.0
 
 # Financial data
-yfinance>=0.2.0
+yfinance>=0.2.0,<0.2.66
+websockets>=9,<11
 
 # Kalshi prediction markets - Official SDK
 kalshi>=0.2.0

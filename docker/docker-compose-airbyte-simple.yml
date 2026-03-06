@@ -23,6 +23,7 @@ services:
     image: airbyte/bootloader:0.50.33
     container_name: bentley-airbyte-bootloader
     environment:
+      - AIRBYTE_VERSION=0.50.33
       - DATABASE_PASSWORD=docker
       - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
       - DATABASE_USER=docker
@@ -36,6 +37,8 @@ services:
     restart: unless-stopped
     environment:
       - AIRBYTE_VERSION=0.50.33
+      - AIRBYTE_FLYWAY_CONFIGS_MINIMUM_MIGRATION_VERSION=0.29.15.001
+      - AIRBYTE_FLYWAY_JOBS_MINIMUM_MIGRATION_VERSION=0.29.15.001
       - CONFIG_ROOT=/data
       - DATABASE_PASSWORD=docker
       - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte

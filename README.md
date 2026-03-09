@@ -194,6 +194,15 @@ streamlit run streamlit_app.py
 # Access at http://localhost:8501
 ```
 
+#### 5b. Start Control Center API (Admin Dashboard Backend)
+```bash
+# Windows PowerShell helper script
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+
+# Health check
+curl http://localhost:5001/health
+```
+
 #### 6. Run FastAPI (Optional API Service)
 ```bash
 # Install local dependencies (includes FastAPI)

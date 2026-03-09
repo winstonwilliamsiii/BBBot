@@ -39,9 +39,33 @@ except Exception:
         return os.getenv("MLFLOW_BACKEND_STORE_URI", "not-configured")
 
 # Configuration
-FLASK_API_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
+DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
 MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
 MLFLOW_URL = get_mlflow_server_url()
+
+def resolve_control_center_api_url():
+    """Resolve a reachable Control Center API URL with localhost fallbacks."""
+    cached_url = st.session_state.get("resolved_control_center_api_url")
+    if cached_url:
+        return cached_url
+
+    candidate_urls = [DEFAULT_CONTROL_CENTER_URL]
+    if DEFAULT_CONTROL_CENTER_URL != "http://localhost:5001":
+        candidate_urls.append("http://localhost:5001")
+    if DEFAULT_CONTROL_CENTER_URL != "http://localhost:5000":
+        candidate_urls.append("http://localhost:5000")
+
+    for base_url in candidate_urls:
+        try:
+            response = requests.get(f"{base_url}/health", timeout=1.5)
+            if response.status_code == 200:
+                st.session_state.resolved_control_center_api_url = base_url
+                return base_url
+        except requests.exceptions.RequestException:
+            continue
+
+    st.session_state.resolved_control_center_api_url = DEFAULT_CONTROL_CENTER_URL
+    return DEFAULT_CONTROL_CENTER_URL
 
 # Page config
 st.set_page_config(
@@ -125,7 +149,8 @@ def check_admin_auth():
 def api_request(endpoint, method="GET", data=None):
     """Make request to Flask API."""
     try:
-        url = f"{FLASK_API_URL}{endpoint}"
+        flask_api_url = resolve_control_center_api_url()
+        url = f"{flask_api_url}{endpoint}"
         if method == "GET":
             response = requests.get(url, timeout=5)
         elif method == "POST":
@@ -139,7 +164,11 @@ def api_request(endpoint, method="GET", data=None):
             st.error(f"API Error: {response.status_code}")
             return None
     except requests.exceptions.ConnectionError:
-        st.error(f"⚠️ Cannot connect to Control Center API at {FLASK_API_URL}")
+        fallback_url = st.session_state.get(
+            "resolved_control_center_api_url",
+            DEFAULT_CONTROL_CENTER_URL,
+        )
+        st.error(f"⚠️ Cannot connect to Control Center API at {fallback_url}")
         st.info("Start the API: `python backend/api/app.py`")
         return None
     except Exception as e:

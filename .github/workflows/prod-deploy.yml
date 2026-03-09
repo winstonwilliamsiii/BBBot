@@ -64,6 +64,8 @@ jobs:
         ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
         ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL }}
+        POLYMARKET_API_KEY: ${{ secrets.POLYMARKET_API_KEY }}
+        POLYMARKET_SECRET_KEY: ${{ secrets.POLYMARKET_SECRET_KEY }}
       run: |
         python -m py_compile streamlit_app.py
         python -c "from config_env import config; assert config.is_production() or config.is_development(), 'Invalid config'"
@@ -89,6 +91,8 @@ jobs:
         ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
         ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL }}
+        POLYMARKET_API_KEY: ${{ secrets.POLYMARKET_API_KEY }}
+        POLYMARKET_SECRET_KEY: ${{ secrets.POLYMARKET_SECRET_KEY }}
       run: |
         # Install Streamlit CLI
         pip install streamlit

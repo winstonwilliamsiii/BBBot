@@ -32,14 +32,13 @@ class PolymarketAPIClient:
         self.secret_key = secret_key or os.getenv("POLYMARKET_SECRET_KEY", "")
         self.session = requests.Session()
         self.authenticated = bool(self.api_key and self.secret_key)
-        
-        if self.authenticated:
-            # Set up authentication headers
-            self.session.headers.update({
-                "Authorization": f"Bearer {self.api_key}",
-                "X-Secret-Key": self.secret_key,
-                "Content-Type": "application/json"
-            })
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        if self.secret_key:
+            headers["X-Secret-Key"] = self.secret_key
+        self.session.headers.update(headers)
     
     def test_connection(self) -> bool:
         """Test basic API connectivity
@@ -80,9 +79,6 @@ class PolymarketAPIClient:
         Returns:
             List of active markets
         """
-        if not self.authenticated:
-            return []
-        
         # Try multiple endpoint patterns
         endpoints_to_try = [
             # CLOB API pattern

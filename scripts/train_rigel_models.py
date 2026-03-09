@@ -143,8 +143,8 @@ class RigelModelTrainer:
         logger.info("Computing technical indicators...")
         
         # Calculate EMAs
-        df['ema_fast'] = df['close'].ewm(span=self.config.EMA_FAST_PERIOD, adjust=False).mean()
-        df['ema_slow'] = df['close'].ewm(span=self.config.EMA_SLOW_PERIOD, adjust=False).mean()
+        df['ema_fast'] = df['close'].ewm(span=self.config.EMA_FAST, adjust=False).mean()
+        df['ema_slow'] = df['close'].ewm(span=self.config.EMA_SLOW, adjust=False).mean()
         
         # Calculate RSI
         delta = df['close'].diff()
@@ -156,8 +156,8 @@ class RigelModelTrainer:
         # Calculate Bollinger Bands
         df['bb_middle'] = df['close'].rolling(window=self.config.BB_PERIOD).mean()
         bb_std = df['close'].rolling(window=self.config.BB_PERIOD).std()
-        df['bb_upper'] = df['bb_middle'] + (self.config.BB_STD_DEV * bb_std)
-        df['bb_lower'] = df['bb_middle'] - (self.config.BB_STD_DEV * bb_std)
+        df['bb_upper'] = df['bb_middle'] + (self.config.BB_STD * bb_std)
+        df['bb_lower'] = df['bb_middle'] - (self.config.BB_STD * bb_std)
         
         # Calculate ATR
         high_low = df['high'] - df['low']
@@ -478,11 +478,14 @@ def main():
     
     # Load credentials from environment
     api_key = os.getenv('ALPACA_API_KEY')
-    api_secret = os.getenv('ALPACA_API_SECRET')
+    api_secret = os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
     
     if not api_key or not api_secret:
         logger.error("❌ Missing Alpaca API credentials")
-        logger.error("Set ALPACA_API_KEY and ALPACA_API_SECRET environment variables")
+        logger.error(
+            "Set ALPACA_API_KEY and ALPACA_SECRET_KEY "
+            "(or ALPACA_API_SECRET) environment variables"
+        )
         sys.exit(1)
     
     # Initialize trainer

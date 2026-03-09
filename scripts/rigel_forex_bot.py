@@ -28,6 +28,11 @@ import pandas as pd
 import numpy as np
 from alpaca_trade_api import REST, TimeFrame
 
+try:
+    from frontend.components.mt5_connector import MT5Connector
+except Exception:
+    MT5Connector = None
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -106,6 +111,14 @@ class ForexConfig:
     ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
     ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
     ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    BROKER_PLATFORM = os.getenv("BROKER_PLATFORM", "alpaca").lower()
+
+    # ===== MT5 Configuration =====
+    MT5_API_URL = os.getenv("MT5_API_URL", "http://localhost:8002")
+    MT5_USER = os.getenv("MT5_USER")
+    MT5_PASSWORD = os.getenv("MT5_PASSWORD")
+    MT5_HOST = os.getenv("MT5_HOST")
+    MT5_PORT = int(os.getenv("MT5_PORT", "443"))
     
     # ===== Trading Pairs =====
     # Major forex pairs with good liquidity
@@ -167,13 +180,20 @@ class ForexConfig:
     @classmethod
     def validate(cls):
         """Validate configuration"""
-        if not cls.ALPACA_API_KEY or not cls.ALPACA_SECRET_KEY:
-            raise ValueError("Missing Alpaca API credentials")
+        if cls.BROKER_PLATFORM not in {"alpaca", "mt5"}:
+            raise ValueError("BROKER_PLATFORM must be 'alpaca' or 'mt5'")
+
+        if cls.BROKER_PLATFORM == "alpaca":
+            if not cls.ALPACA_API_KEY or not cls.ALPACA_SECRET_KEY:
+                raise ValueError("Missing Alpaca API credentials")
+        elif not cls.MT5_API_URL:
+            raise ValueError("Missing MT5_API_URL for MT5 broker platform")
         
         logger.info("=" * 70)
         logger.info("RIGEL FOREX BOT CONFIGURATION")
         logger.info("=" * 70)
         logger.info(f"Trading Pairs: {len(cls.FOREX_PAIRS)} pairs")
+        logger.info(f"Broker Platform: {cls.BROKER_PLATFORM.upper()}")
         logger.info(f"Session Hours: {cls.SESSION_START_HOUR}:00 - {cls.SESSION_END_HOUR}:00 EST")
         logger.info(f"Risk Per Trade: {cls.RISK_PER_TRADE * 100}%")
         logger.info(f"Max Positions: {cls.MAX_OPEN_POSITIONS}")
@@ -757,6 +777,7 @@ class RigelForexBot:
     def __init__(self, config: ForexConfig):
         self.config = config
         self.api: Optional[REST] = None
+        self.mt5_connector: Optional[MT5Connector] = None
         self.ml_predictor = MLPredictor(config.ML_MODEL_PATH, config.ENABLE_ML)
         self.risk_manager = RiskManager(config)
         self.strategy = MeanReversionStrategy(config, self.ml_predictor)
@@ -764,6 +785,45 @@ class RigelForexBot:
         
     def initialize(self):
         """Initialize API connection"""
+        if self.config.BROKER_PLATFORM == "mt5":
+            try:
+                if MT5Connector is None:
+                    logger.error("MT5Connector not available")
+                    return False
+
+                self.mt5_connector = MT5Connector(self.config.MT5_API_URL)
+
+                if not self.mt5_connector.health_check():
+                    logger.error(
+                        "MT5 health check failed at %s", self.config.MT5_API_URL
+                    )
+                    return False
+
+                if self.config.MT5_USER and self.config.MT5_PASSWORD and self.config.MT5_HOST:
+                    connected = self.mt5_connector.connect(
+                        self.config.MT5_USER,
+                        self.config.MT5_PASSWORD,
+                        self.config.MT5_HOST,
+                        self.config.MT5_PORT,
+                    )
+                    if not connected:
+                        logger.error("Failed to connect to MT5 account")
+                        return False
+                    account = self.mt5_connector.get_account_info() or {}
+                    logger.info("✓ Connected to MT5 API")
+                    logger.info("  Balance: %s", account.get("balance", "N/A"))
+                    logger.info("  Equity: %s", account.get("equity", "N/A"))
+                else:
+                    logger.warning(
+                        "MT5 credentials not set; running in API-only mode "
+                        "(health check passed)"
+                    )
+
+                return True
+            except Exception as e:
+                logger.error(f"Failed to initialize MT5 API: {e}")
+                return False
+
         try:
             self.api = REST(
                 self.config.ALPACA_API_KEY,
@@ -792,6 +852,44 @@ class RigelForexBot:
     
     def get_market_data(self, symbol: str, days: int = 100) -> Optional[pd.DataFrame]:
         """Fetch market data for symbol"""
+        if self.config.BROKER_PLATFORM == "mt5":
+            if not self.mt5_connector:
+                logger.error("MT5 connector not initialized")
+                return None
+            try:
+                mt5_symbol = symbol.replace("/", "")
+                count = max(100, days * 24)
+                payload = self.mt5_connector.get_market_data(mt5_symbol, "H1", count)
+                if not payload:
+                    return None
+                bars = payload.get("bars", [])
+                if not bars:
+                    return None
+
+                df = pd.DataFrame(bars)
+                rename_map = {
+                    "time": "timestamp",
+                    "open": "open",
+                    "high": "high",
+                    "low": "low",
+                    "close": "close",
+                    "tick_volume": "volume",
+                    "volume": "volume",
+                }
+                for source, target in rename_map.items():
+                    if source in df.columns and source != target:
+                        df = df.rename(columns={source: target})
+
+                required = {"open", "high", "low", "close", "volume"}
+                if not required.issubset(set(df.columns)):
+                    logger.error("MT5 market data missing required OHLCV columns")
+                    return None
+
+                return df
+            except Exception as e:
+                logger.error(f"Failed to fetch MT5 data for {symbol}: {e}")
+                return None
+
         try:
             end = datetime.now()
             start = end - timedelta(days=days)
@@ -853,6 +951,37 @@ class RigelForexBot:
         if not self.config.ENABLE_TRADING:
             logger.warning("Trading disabled in config")
             return
+
+        if self.config.BROKER_PLATFORM == "mt5":
+            if not self.mt5_connector:
+                logger.error("MT5 connector not initialized")
+                return
+
+            try:
+                side = 'BUY' if is_long else 'SELL'
+                mt5_symbol = signal.symbol.replace("/", "")
+                lot_size = max(0.01, round(position_size / 100000, 2))
+
+                result = self.mt5_connector.place_trade(
+                    symbol=mt5_symbol,
+                    order_type=side,
+                    volume=lot_size,
+                    sl=stop_price,
+                    tp=target_price,
+                    comment="Rigel mean reversion",
+                )
+
+                if result and result.get("success"):
+                    logger.info(
+                        "✓ MT5 order placed: %s",
+                        result.get("ticket", "unknown"),
+                    )
+                else:
+                    logger.error("Failed to execute MT5 trade: %s", result)
+                return
+            except Exception as e:
+                logger.error(f"Failed to execute MT5 trade: {e}")
+                return
         
         try:
             # Place bracket order with stop loss and take profit
@@ -885,8 +1014,24 @@ class RigelForexBot:
         
         # Get account info
         try:
-            account = self.api.get_account().__dict__
-            positions = self.api.list_positions()
+            if self.config.BROKER_PLATFORM == "mt5":
+                if not self.mt5_connector:
+                    logger.error("MT5 connector not initialized")
+                    return
+
+                raw_account = self.mt5_connector.get_account_info() or {}
+                balance = float(raw_account.get("balance", 0.0))
+                equity = float(raw_account.get("equity", balance))
+                free_margin = float(raw_account.get("margin_free", balance))
+                account = {
+                    "equity": equity,
+                    "cash": free_margin,
+                    "portfolio_value": max(equity, 1.0),
+                }
+                positions = self.mt5_connector.get_positions() or []
+            else:
+                account = self.api.get_account().__dict__
+                positions = self.api.list_positions()
         except Exception as e:
             logger.error(f"Failed to get account info: {e}")
             return

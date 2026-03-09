@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Tuple
@@ -16,6 +17,11 @@ from dotenv import load_dotenv
 
 from scripts.dogon_bot import run_cycle as run_dogon_cycle
 from scripts.mansa_titan_bot import TitanBot, TitanConfig
+
+try:
+    from alpaca_trade_api.rest import APIError
+except ImportError:
+    APIError = RuntimeError
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +77,11 @@ def run_market_open_cycle() -> Dict[str, Any]:
     max_trades = _as_int(os.getenv("TITAN_MAX_TRADES"), 1)
     deploy_pct = _as_float(os.getenv("TITAN_DRY_POWDER_DEPLOY_PCT"), 0.25)
     min_trade_cash = _as_float(os.getenv("TITAN_MIN_TRADE_CASH"), 50.0)
+    assumed_notional = _as_float(
+        os.getenv("TITAN_ASSUMED_TRADE_NOTIONAL"),
+        1000.0,
+    )
+    scheduled_qty = _as_float(os.getenv("TITAN_SCHEDULED_QTY"), 1.0)
 
     # Respect explicit env flags, but still apply safety overrides below.
     env_enable_trading = _as_bool(os.getenv("TITAN_ENABLE_TRADING"), True)
@@ -80,7 +91,7 @@ def run_market_open_cycle() -> Dict[str, Any]:
 
     try:
         bot.ensure_database_tables()
-    except Exception as exc:  # pragma: no cover - infra dependent
+    except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Could not ensure Titan tables: %s", exc)
 
     snapshot = bot.get_account_snapshot()
@@ -109,9 +120,30 @@ def run_market_open_cycle() -> Dict[str, Any]:
         if safety_reason is None:
             safety_reason = "insufficient_dry_powder"
     else:
-        config.position_size = round(position_size, 2)
+        allowed_trades = int(
+            math.floor(deployable_cash / max(assumed_notional, 1.0))
+        )
+        if allowed_trades <= 0:
+            config.enable_trading = False
+            config.dry_run = True
+            safety_reason = "insufficient_dry_powder"
+        else:
+            max_trades = min(max_trades, allowed_trades)
+            config.position_size = max(1.0, round(scheduled_qty, 4))
 
-    titan_results = bot.execute_from_screener(max_trades=max_trades)
+    titan_error = None
+    try:
+        titan_results = bot.execute_from_screener(max_trades=max_trades)
+    except (APIError, RuntimeError, OSError, ValueError) as exc:
+        titan_error = str(exc)
+        logger.warning(
+            "Titan execution failed, forcing dry-run fallback: %s",
+            exc,
+        )
+        config.enable_trading = False
+        config.dry_run = True
+        titan_results = bot.execute_from_screener(max_trades=max_trades)
+
     dogon_result = run_dogon_cycle()
 
     summary: Dict[str, Any] = {
@@ -127,6 +159,7 @@ def run_market_open_cycle() -> Dict[str, Any]:
             "position_size": config.position_size,
             "max_trades": max_trades,
             "safety_reason": safety_reason,
+            "error": titan_error,
             "results": titan_results,
         },
         "dogon": dogon_result,

@@ -43,6 +43,7 @@ DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localho
 MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
 MLFLOW_URL = get_mlflow_server_url()
 
+
 def resolve_control_center_api_url():
     """Resolve a reachable Control Center API URL with localhost fallbacks."""
     cached_url = st.session_state.get("resolved_control_center_api_url")
@@ -269,6 +270,23 @@ def main():
     # TAB 2: Bot Manager
     with tab2:
         st.markdown('<div class="section-header"><h2>AI/ML Bot Orchestration</h2></div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="section-header"><h3>Mansa FOREX (Rigel) Readiness</h3></div>', unsafe_allow_html=True)
+        r_col1, r_col2, r_col3 = st.columns(3)
+        with r_col1:
+            st.metric("Strategy", "Mean Reversion", "Scripted")
+        with r_col2:
+            st.metric("Rigel Runtime", "Ready", "Mansa FOREX mapped")
+        with r_col3:
+            st.metric("MLflow LSTM", "In Progress", "Trainer present; tracking pending")
+
+        st.caption(
+            "Rigel runs a scripted mean-reversion strategy for Mansa FOREX. "
+            "LSTM price prediction artifacts/training exist, but MLflow-connected "
+            "promotion/inference wiring should be finalized before marking ML-driven mode fully ready."
+        )
+
+        st.markdown("---")
         
         # Bot deployment controls
         col1, col2 = st.columns([3, 1])
@@ -289,6 +307,23 @@ def main():
                     bots_df["bot_name"] = bots_df["name"]
                 if "mansa_fund" not in bots_df.columns:
                     bots_df["mansa_fund"] = "Mansa Fund"
+
+                # Normalize displayed bot names for known Mansa fund strategies.
+                fund_to_bot = {
+                    "mansa minerals - gold strategy": "Orion",
+                    "mansa_minerals": "Orion",
+                    "mansa minerals": "Orion",
+                    "mansa forex": "Rigel",
+                    "mansa_forex": "Rigel",
+                }
+
+                def normalize_bot_name(row):
+                    fund_value = str(row.get("mansa_fund", "")).strip().lower()
+                    if fund_value in fund_to_bot:
+                        return fund_to_bot[fund_value]
+                    return row.get("bot_name", "")
+
+                bots_df["bot_name"] = bots_df.apply(normalize_bot_name, axis=1)
 
                 display_cols = [
                     "bot_name",
@@ -312,8 +347,8 @@ def main():
         else:
             # Sample bot data
             bots = [
-                {"id": 1, "bot_name": "GoldRSI Strategy", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Alpaca", "uptime": "3d 5h"},
-                {"id": 2, "bot_name": "USD/COP Short", "mansa_fund": "Mansa Fund", "status": "idle", "broker": "MT5", "uptime": "1d 2h"},
+                {"id": 1, "bot_name": "Orion", "mansa_fund": "Mansa Minerals - Gold Strategy", "status": "running", "broker": "Alpaca", "uptime": "3d 5h"},
+                {"id": 2, "bot_name": "Rigel", "mansa_fund": "Mansa FOREX", "status": "idle", "broker": "MT5", "uptime": "1d 2h"},
                 {"id": 3, "bot_name": "Portfolio Optimizer", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Multi", "uptime": "7d 12h"},
             ]
             st.dataframe(

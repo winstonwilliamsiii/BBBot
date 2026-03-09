@@ -192,7 +192,11 @@ class TitanConfig:
                 "ALPACA_BASE_URL",
                 "https://paper-api.alpaca.markets",
             ),
-            discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL"),
+            discord_webhook_url=(
+                os.getenv("DISCORD_WEBHOOK_URL")
+                or os.getenv("DISCORD_WEBHOOK")
+                or os.getenv("DISCORD_WEBHOOK_PROD")
+            ),
             mysql_host=os.getenv("MYSQL_HOST", "127.0.0.1"),
             mysql_port=_as_int(os.getenv("MYSQL_PORT"), 3307),
             mysql_user=os.getenv("MYSQL_USER", "root"),
@@ -336,11 +340,12 @@ class TitanBot:
         if not self.config.discord_webhook_url:
             return
         try:
-            requests.post(
+            response = requests.post(
                 self.config.discord_webhook_url,
                 json={"content": message},
                 timeout=8,
             )
+            response.raise_for_status()
         except requests.RequestException as exc:
             logger.warning("Discord notification failed: %s", exc)
 

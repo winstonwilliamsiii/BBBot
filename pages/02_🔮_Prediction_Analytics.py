@@ -118,6 +118,9 @@ except (KeyError, AttributeError):
         POLYMARKET_API_KEY = os.getenv("POLYMARKET_API_KEY", "")
         POLYMARKET_SECRET_KEY = os.getenv("POLYMARKET_SECRET_KEY", "")
 
+POLYMARKET_HAS_API_KEY = bool(POLYMARKET_API_KEY)
+POLYMARKET_HAS_PRIVATE_AUTH = bool(POLYMARKET_API_KEY and POLYMARKET_SECRET_KEY)
+
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_portfolio():
@@ -271,8 +274,8 @@ def fetch_kalshi_active_markets():
 @st.cache_data(ttl=300)
 def fetch_polymarket_portfolio():
     """Fetch user's Polymarket portfolio (positions)"""
-    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
-        st.info("ℹ️ Polymarket credentials not configured")
+    if not POLYMARKET_HAS_PRIVATE_AUTH:
+        st.info("ℹ️ Polymarket private portfolio access not configured (requires API key + secret key)")
         return pd.DataFrame(columns=['Exchange', 'Contract', 'Quantity', 'Entry Price', 'Current Price', 'P&L', 'P&L %'])
     
     try:
@@ -314,7 +317,7 @@ def fetch_polymarket_portfolio():
 @st.cache_data(ttl=300)
 def fetch_polymarket_balance():
     """Fetch user's Polymarket account balance"""
-    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
+    if not POLYMARKET_HAS_PRIVATE_AUTH:
         return None
     
     try:
@@ -330,7 +333,7 @@ def fetch_polymarket_balance():
 @st.cache_data(ttl=300)
 def fetch_polymarket_trades():
     """Fetch user's Polymarket trade history"""
-    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
+    if not POLYMARKET_HAS_PRIVATE_AUTH:
         return []
     
     try:
@@ -345,8 +348,8 @@ def fetch_polymarket_trades():
 @st.cache_data(ttl=300)
 def fetch_polymarket_active_markets():
     """Fetch active Polymarket markets"""
-    if not POLYMARKET_API_KEY or not POLYMARKET_SECRET_KEY:
-        st.info("ℹ️ Polymarket credentials not configured")
+    if not POLYMARKET_HAS_API_KEY:
+        st.info("ℹ️ Polymarket API key not configured")
         return pd.DataFrame()
     
     try:
@@ -641,14 +644,17 @@ with tab2:
         
         with debug_cols[1]:
             st.subheader("Polymarket Status")
-            if POLYMARKET_API_KEY and POLYMARKET_SECRET_KEY:
+            if POLYMARKET_HAS_PRIVATE_AUTH:
                 try:
                     pm_client = PolymarketAPIClient(api_key=POLYMARKET_API_KEY, secret_key=POLYMARKET_SECRET_KEY)
-                    st.success("✅ Client configured")
+                    st.success("✅ API + private auth configured")
                     st.write(f"**API Key**: {POLYMARKET_API_KEY[:10]}...")
                     st.write("**Note**: No funds transferred (demo mode)")
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
+            elif POLYMARKET_HAS_API_KEY:
+                st.warning("⚠️ API key configured (public markets enabled), secret key missing for portfolio/trades")
+                st.write(f"**API Key**: {POLYMARKET_API_KEY[:10]}...")
             else:
                 st.warning("ℹ️ Credentials not configured")
     

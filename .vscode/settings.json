@@ -28,73 +28,86 @@
         {
             "mysqlOptions": {
                 "authProtocol": "default",
-                "enableSsl": "Disabled"
-            },
-            "ssh": "Disabled",
-            "previewLimit": 50,
-            "server": "localhost",
-            "port": 3306,
-            "driver": "MySQL",
-            "database": "mydb",
-            "name": "MoorKingdom",
-            "username": "root"
-        },
-        {
-            "mysqlOptions": {
-                "authProtocol": "default",
-                "enableSsl": "Disabled"
+                "enableSsl": "Disabled",
+                "connectTimeout": 60000
             },
             "ssh": "Disabled",
             "previewLimit": 50,
             "server": "localhost",
             "port": 3307,
             "driver": "MySQL",
-            "name": "Demo_Bots",
+            "name": "📊 Demo_Bots - Mansa Bot",
             "database": "mansa_bot",
-            "username": "root"
+            "username": "root",
+            "connectionTimeout": 60
         },
         {
             "mysqlOptions": {
                 "authProtocol": "default",
-                "enableSsl": "Disabled"
+                "enableSsl": "Disabled",
+                "connectTimeout": 60000
             },
             "ssh": "Disabled",
             "previewLimit": 50,
             "server": "localhost",
             "port": 3307,
             "driver": "MySQL",
-            "name": "Demo_Bots",
+            "name": "📈 Bbbot1 - Equities Database",
             "database": "bbbot1",
-            "username": "root"
+            "username": "root",
+            "connectionTimeout": 60
         },
         {
             "mysqlOptions": {
                 "authProtocol": "default",
-                "enableSsl": "Disabled"
+                "enableSsl": "Disabled",
+                "connectTimeout": 60000
             },
             "ssh": "Disabled",
             "previewLimit": 50,
             "server": "localhost",
-            "port": 3306,
+            "port": 3307,
             "driver": "MySQL",
-            "name": "Bentley_Budget",
-            "database": "bbbot1",
-            "username": "root"
+            "name": "🔬 MLflow Database",
+            "database": "mlflow_db",
+            "username": "root",
+            "connectionTimeout": 60
         },
         {
             "mysqlOptions": {
                 "authProtocol": "default",
-                "enableSsl": "Disabled"
+                "enableSsl": "Disabled",
+                "connectTimeout": 60000
             },
             "ssh": "Disabled",
             "previewLimit": 50,
             "server": "localhost",
-            "port": 3306,
+            "port": 3307,
             "driver": "MySQL",
-            "name": "Bentley_Bots",
-            "database": "mansa_bot",
-            "username": "root"
+            "name": "📉 Mansa Quant",
+            "database": "mansa_quant",
+            "username": "root",
+            "connectionTimeout": 60
+        },
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled",
+                "connectTimeout": 60000
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3307,
+            "driver": "MySQL",
+            "name": "💰 Bentley Budget",
+            "database": "Bentley_Budget",
+            "username": "root",
+            "connectionTimeout": 60
         }
     ],
+    "sqltools.useNodeRuntime": true,
+    "sqltools.autoOpenSessionFiles": false,
+    "sqltools.results.limit": 1000,
     "chat.viewProgressBadge.enabled": true
 }

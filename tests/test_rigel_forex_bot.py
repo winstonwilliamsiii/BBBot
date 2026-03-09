@@ -581,6 +581,32 @@ class TestRigelForexBot:
         assert result is True
         assert bot.api is not None
 
+    def test_execute_trade_mt5_path(self, config, risk_metrics):
+        """Test MT5 trade execution route calls MT5 connector."""
+        config.BROKER_PLATFORM = "mt5"
+        config.DRY_RUN = False
+        config.ENABLE_TRADING = True
+
+        bot = RigelForexBot(config)
+        bot.mt5_connector = Mock()
+        bot.mt5_connector.place_trade.return_value = {
+            "success": True,
+            "ticket": 123456,
+        }
+
+        signal = TradingSignal(
+            symbol="EUR/USD",
+            signal_type=SignalType.BUY,
+            confidence=0.85,
+            price=1.0850,
+            timestamp=datetime.now(),
+            indicators={"rsi": 40.0},
+        )
+
+        bot.execute_trade(signal, risk_metrics)
+
+        assert bot.mt5_connector.place_trade.called
+
 
 # ============================================================================
 # INTEGRATION TESTS

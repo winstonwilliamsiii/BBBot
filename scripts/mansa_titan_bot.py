@@ -36,8 +36,10 @@ except ImportError:
 
 try:
     import mlflow
+    from mlflow.exceptions import MlflowException
 except ImportError:
     mlflow = None
+    MlflowException = RuntimeError
 
 try:
     import mysql.connector
@@ -436,7 +438,13 @@ class TitanBot:
         try:
             mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
             return mlflow.sklearn.load_model(self.config.titan_model_uri)
-        except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+        except (
+            AttributeError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
             logger.warning("MLflow model load failed: %s", exc)
             return None
 

@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# MySQL Configuration from .env
+# MySQL Configuration from .env (Docker container on port 3307)
 MYSQL_CONFIG = {
-    'host': os.getenv('MYSQL_HOST', 'localhost'),
-    'port': int(os.getenv('MYSQL_PORT', 3306)),
+    'host': os.getenv('MYSQL_HOST', '127.0.0.1'),
+    'port': int(os.getenv('MYSQL_PORT', 3307)),
     'user': os.getenv('MYSQL_USER', 'root'),
-    'password': os.getenv('MYSQL_PASSWORD'),
+    'password': os.getenv('MYSQL_PASSWORD', 'root'),
     'database': os.getenv('MYSQL_DATABASE', 'mansa_bot')
 }
 

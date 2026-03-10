@@ -68,6 +68,22 @@ def resolve_control_center_api_url():
     st.session_state.resolved_control_center_api_url = DEFAULT_CONTROL_CENTER_URL
     return DEFAULT_CONTROL_CENTER_URL
 
+
+def show_control_center_api_notice_once(reason: str = "unavailable"):
+    """Show a single non-blocking notice when API data cannot be loaded."""
+    if st.session_state.get("control_center_api_notice_shown"):
+        return
+
+    configured_url = st.session_state.get(
+        "resolved_control_center_api_url",
+        DEFAULT_CONTROL_CENTER_URL,
+    )
+    st.warning(
+        f"Control Center API is {reason} at {configured_url}. Showing fallback data where available."
+    )
+    st.info("Start the API with: `python backend/api/app.py`")
+    st.session_state.control_center_api_notice_shown = True
+
 # Page config
 st.set_page_config(
     page_title="Bentley Bot Control Center",
@@ -161,19 +177,13 @@ def api_request(endpoint, method="GET", data=None):
         
         if response.status_code == 200:
             return response.json()
-        else:
-            st.error(f"API Error: {response.status_code}")
-            return None
-    except requests.exceptions.ConnectionError:
-        fallback_url = st.session_state.get(
-            "resolved_control_center_api_url",
-            DEFAULT_CONTROL_CENTER_URL,
-        )
-        st.error(f"⚠️ Cannot connect to Control Center API at {fallback_url}")
-        st.info("Start the API: `python backend/api/app.py`")
+        show_control_center_api_notice_once(f"returning HTTP {response.status_code}")
         return None
-    except Exception as e:
-        st.error(f"Request failed: {str(e)}")
+    except requests.exceptions.ConnectionError:
+        show_control_center_api_notice_once("unreachable")
+        return None
+    except Exception:
+        show_control_center_api_notice_once("temporarily unavailable")
         return None
 
 
@@ -270,22 +280,6 @@ def main():
     # TAB 2: Bot Manager
     with tab2:
         st.markdown('<div class="section-header"><h2>AI/ML Bot Orchestration</h2></div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="section-header"><h3>Mansa FOREX (Rigel) Readiness</h3></div>', unsafe_allow_html=True)
-        r_col1, r_col2, r_col3 = st.columns(3)
-        with r_col1:
-            st.metric("Strategy", "Mean Reversion", "Scripted")
-        with r_col2:
-            st.metric("Rigel Runtime", "Ready", "Mansa FOREX mapped")
-        with r_col3:
-            st.metric("MLflow LSTM", "In Progress", "Trainer present; tracking pending")
-
-        st.caption(
-            "Rigel runs a scripted mean-reversion strategy for Mansa FOREX. "
-            "LSTM price prediction artifacts/training exist, but MLflow-connected "
-            "promotion/inference wiring should be finalized before marking ML-driven mode fully ready."
-        )
-
         st.markdown("---")
         
         # Bot deployment controls
@@ -313,8 +307,6 @@ def main():
                     "mansa minerals - gold strategy": "Orion",
                     "mansa_minerals": "Orion",
                     "mansa minerals": "Orion",
-                    "mansa forex": "Rigel",
-                    "mansa_forex": "Rigel",
                 }
 
                 def normalize_bot_name(row):
@@ -348,8 +340,7 @@ def main():
             # Sample bot data
             bots = [
                 {"id": 1, "bot_name": "Orion", "mansa_fund": "Mansa Minerals - Gold Strategy", "status": "running", "broker": "Alpaca", "uptime": "3d 5h"},
-                {"id": 2, "bot_name": "Rigel", "mansa_fund": "Mansa FOREX", "status": "idle", "broker": "MT5", "uptime": "1d 2h"},
-                {"id": 3, "bot_name": "Portfolio Optimizer", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Multi", "uptime": "7d 12h"},
+                {"id": 2, "bot_name": "Portfolio Optimizer", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Multi", "uptime": "7d 12h"},
             ]
             st.dataframe(
                 pd.DataFrame(bots).rename(columns={

@@ -12,7 +12,7 @@
 [![Appwrite](https://img.shields.io/badge/Appwrite-F02E65?style=for-the-badge&logo=appwrite&logoColor=white)](https://appwrite.io)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 
-[Live Demo](https://bbbot305.streamlit.app/) • [Documentation](#-documentation) • [API Reference](#-api-integrations) • [Setup Guide](#-quick-start)
+[Live Demo](https://bbbot305.streamlit.app/) • [Documentation](#-documentation) • [API Reference](#-api-integrations) • [Setup Guide](#-quick-start) • [Titan Bot README](TITAN_README.md) • [Dogon Bot README](DOGON_README.md)
 
 </div>
 

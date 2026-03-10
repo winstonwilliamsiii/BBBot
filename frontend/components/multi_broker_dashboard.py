@@ -6,9 +6,10 @@ Integrates MT5 (FOREX/Futures), Alpaca (Stocks/Crypto), and IBKR (All Assets)
 import streamlit as st
 import pandas as pd
 import os
+import time
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 # Import connectors
 try:
@@ -78,6 +79,16 @@ def render_multi_broker_dashboard():
 
 def render_broker_status():
     """Display connection status for all brokers"""
+
+    # Streamlit session state resets on app restarts/sleep.
+    # Auto-reconnect Alpaca periodically so production recovers without manual clicks.
+    if ALPACA_AVAILABLE and st.session_state.brokers.get('alpaca') is None:
+        now_ts = time.time()
+        last_attempt_ts = st.session_state.get('alpaca_auto_connect_last_attempt', 0.0)
+        cooldown_seconds = 60
+        if now_ts - float(last_attempt_ts) >= cooldown_seconds:
+            st.session_state['alpaca_auto_connect_last_attempt'] = now_ts
+            connect_alpaca(silent=True, rerun_on_success=False)
     
     st.subheader("🔗 Broker Connections")
     
@@ -173,37 +184,70 @@ def connect_mt5():
         )
 
 
-def connect_alpaca():
+def connect_alpaca(
+    api_key: str | None = None,
+    secret_key: str | None = None,
+    paper: bool | None = None,
+    silent: bool = False,
+    rerun_on_success: bool = True,
+):
     """Connect to Alpaca"""
     try:
         from frontend.utils.secrets_helper import get_alpaca_config
         from frontend.components.alpaca_connector import AlpacaConnector
-        
-        # Use the unified secrets helper for consistent credential retrieval
-        try:
-            config = get_alpaca_config()
-            api_key = config['api_key']
-            secret_key = config['secret_key']
-            paper = config['paper']
-        except ValueError as e:
-            st.error(f"❌ {str(e)}")
-            st.info("Configure in Streamlit Secrets (Cloud) or .env file (Local)")
-            return
-        
-        connector = AlpacaConnector(api_key, secret_key, paper)
+
+        # Prefer credentials entered in UI; fallback to secrets/env.
+        key = (api_key or "").strip()
+        secret = (secret_key or "").strip()
+        source = "manual"
+
+        if not key or not secret:
+            try:
+                config = get_alpaca_config()
+                key = str(config["api_key"])
+                secret = str(config["secret_key"])
+                if paper is None:
+                    paper = bool(config["paper"])
+                source = "secrets"
+            except ValueError as e:
+                st.session_state['alpaca_last_connect_error'] = str(e)
+                if not silent:
+                    st.error(f"❌ {str(e)}")
+                    st.info("Configure in Streamlit Secrets (Cloud) or .env file (Local)")
+                return
+
+        if paper is None:
+            paper = True
+
+        connector = AlpacaConnector(key, secret, bool(paper))
         account = connector.get_account()
-        
+
         if account:
             st.session_state.brokers['alpaca'] = connector
             portfolio_val = float(account['portfolio_value']) if account and 'portfolio_value' in account else 0.0
-            st.success(
-                f"✅ Alpaca Connected! Portfolio: ${portfolio_val:,.2f}"
-            )
-            st.rerun()
+            st.session_state['alpaca_last_connect_error'] = ""
+            if not silent:
+                st.success(
+                    f"✅ Alpaca Connected ({source})! Portfolio: ${portfolio_val:,.2f}"
+                )
+            if rerun_on_success:
+                st.rerun()
         else:
-            st.error("❌ Alpaca connection failed")
+            mode = "paper" if bool(paper) else "live"
+            err_msg = (
+                f"Alpaca connection failed ({mode} mode). "
+                "Verify ALPACA keys match mode and endpoint is reachable."
+            )
+            st.session_state['alpaca_last_connect_error'] = err_msg
+            if not silent:
+                st.error(f"❌ {err_msg}")
+                st.info(
+                    "Verify ALPACA keys are for the selected mode, and that the account endpoint is reachable."
+                )
     except Exception as e:
-        st.error(f"Alpaca error: {e}")
+        st.session_state['alpaca_last_connect_error'] = str(e)
+        if not silent:
+            st.error(f"Alpaca error: {e}")
 def connect_ibkr():
     """Connect to IBKR Gateway"""
     try:
@@ -318,7 +362,7 @@ def render_alpaca_section():
             paper = st.checkbox("Paper Trading", value=True)
             
             if st.button("Connect", type="primary", key="alpaca_connect_btn"):
-                connect_alpaca()
+                connect_alpaca(api_key=api_key, secret_key=secret_key, paper=paper)
         return
     
     # Show Alpaca account info

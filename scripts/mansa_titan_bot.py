@@ -174,6 +174,9 @@ class TitanConfig:
     universe: str = "Mag7+Tech"
     position_size: float = 5000.0
     risk_rules: Dict[str, Any] = field(default_factory=dict)
+    selection_mode: str = "technical"
+    manual_symbols: List[str] = field(default_factory=list)
+    technical_lookback_days: int = 120
 
     @classmethod
     def from_env(cls) -> "TitanConfig":
@@ -254,6 +257,18 @@ class TitanConfig:
                 bot_profile.get("risk_rules", {})
                 if isinstance(bot_profile.get("risk_rules", {}), dict)
                 else {}
+            ),
+            selection_mode=str(
+                os.getenv("TITAN_SELECTION_MODE", "technical")
+            ).strip().lower(),
+            manual_symbols=[
+                s.strip().upper()
+                for s in str(os.getenv("TITAN_MANUAL_SYMBOLS", "")).split(",")
+                if s.strip()
+            ],
+            technical_lookback_days=max(
+                30,
+                _as_int(os.getenv("TITAN_TECH_LOOKBACK_DAYS"), 120),
             ),
         )
 
@@ -436,6 +451,141 @@ class TitanBot:
         if qty is None or qty <= 0:
             return float(self.config.position_size)
         return float(qty)
+
+    def _compute_rsi(self, close: pd.Series, period: int = 14) -> Optional[float]:
+        if close.empty or len(close) <= period:
+            return None
+        delta = close.diff()
+        gain = delta.clip(lower=0).rolling(window=period).mean()
+        loss = (-delta.clip(upper=0)).rolling(window=period).mean()
+        rs = gain / loss.replace(0, pd.NA)
+        rsi = 100 - (100 / (1 + rs))
+        value = rsi.iloc[-1]
+        return None if pd.isna(value) else float(value)
+
+    def _fetch_technical_metrics(self, symbol: str) -> Dict[str, float]:
+        if self.api is None:
+            return {}
+
+        try:
+            bars = self.api.get_bars(
+                symbol,
+                "1Day",
+                limit=self.config.technical_lookback_days,
+                adjustment="raw",
+            ).df
+        except Exception as exc:
+            logger.warning("Failed loading bars for %s: %s", symbol, exc)
+            return {}
+
+        if bars is None or bars.empty or "close" not in bars.columns:
+            return {}
+
+        if isinstance(bars.index, pd.MultiIndex):
+            try:
+                bars = bars.xs(symbol, level=0)
+            except (KeyError, TypeError, ValueError):
+                return {}
+
+        close = pd.to_numeric(bars["close"], errors="coerce").dropna()
+        if close.empty or len(close) < 35:
+            return {}
+
+        ema_fast = close.ewm(span=12, adjust=False).mean()
+        ema_slow = close.ewm(span=26, adjust=False).mean()
+        macd_line = ema_fast - ema_slow
+        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+
+        rsi = self._compute_rsi(close, period=14)
+        if rsi is None:
+            return {}
+
+        macd = float(macd_line.iloc[-1])
+        signal = float(signal_line.iloc[-1])
+        return {
+            "rsi": float(rsi),
+            "macd": macd,
+            "macd_signal": signal,
+            "macd_hist": macd - signal,
+        }
+
+    def _score_technical_metrics(self, metrics: Dict[str, float]) -> float:
+        if not metrics:
+            return -999.0
+
+        score = 0.0
+        rsi = float(metrics.get("rsi", 50.0))
+        macd = float(metrics.get("macd", 0.0))
+        signal = float(metrics.get("macd_signal", 0.0))
+        hist = float(metrics.get("macd_hist", 0.0))
+
+        if macd > signal:
+            score += 2.0
+        else:
+            score -= 1.0
+
+        if 40.0 <= rsi <= 65.0:
+            score += 1.5
+        elif rsi < 35.0:
+            score += 1.0
+        elif rsi > 75.0:
+            score -= 1.0
+
+        if hist > 0:
+            score += 0.5
+
+        return score
+
+    def _rank_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        mode = (self.config.selection_mode or "technical").strip().lower()
+        if mode not in {"technical", "manual", "csv_order"}:
+            mode = "technical"
+
+        if mode == "manual" and self.config.manual_symbols:
+            by_symbol = {
+                str(item.get("symbol", "")).strip().upper(): item
+                for item in candidates
+            }
+            ordered: List[Dict[str, Any]] = []
+            for symbol in self.config.manual_symbols:
+                candidate = by_symbol.get(symbol)
+                if candidate is not None:
+                    clone = dict(candidate)
+                    clone["selection_reason"] = "manual"
+                    ordered.append(clone)
+            return ordered
+
+        if mode == "csv_order":
+            return candidates
+
+        if self.api is None:
+            logger.warning(
+                "TITAN_SELECTION_MODE=technical but Alpaca client unavailable; using CSV order"
+            )
+            return candidates
+
+        enriched: List[Dict[str, Any]] = []
+        for candidate in candidates:
+            symbol = str(candidate.get("symbol", "")).strip().upper()
+            metrics = self._fetch_technical_metrics(symbol)
+            score = self._score_technical_metrics(metrics)
+            clone = dict(candidate)
+            clone["technical_metrics"] = metrics
+            clone["technical_score"] = score
+            clone["selection_reason"] = "technical"
+            enriched.append(clone)
+
+        enriched.sort(
+            key=lambda item: (
+                float(item.get("technical_score", -999.0)),
+                str(item.get("symbol", "")),
+            ),
+            reverse=True,
+        )
+        return enriched
 
     def load_model(self):
         if mlflow is None:
@@ -636,6 +786,7 @@ class TitanBot:
         features_by_symbol: Optional[Dict[str, Sequence[float]]] = None,
     ) -> List[Dict[str, Any]]:
         candidates = load_bot_trade_candidates(self.config.active_bot_name)
+        candidates = self._rank_candidates(candidates)
         if max_trades is not None and max_trades > 0:
             candidates = candidates[:max_trades]
 
@@ -667,6 +818,9 @@ class TitanBot:
                     "symbol": symbol,
                     "executed": order is not None,
                     "fundamentals": fundamentals,
+                    "technical_score": candidate.get("technical_score"),
+                    "technical_metrics": candidate.get("technical_metrics", {}),
+                    "selection_reason": candidate.get("selection_reason", "csv_order"),
                 }
             )
 

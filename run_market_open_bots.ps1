@@ -38,6 +38,31 @@ if ($ForceDryRun.IsPresent) {
 # Keep paper mode explicit for morning automation.
 $env:ALPACA_PAPER = "true"
 
+# Ensure Discord webhook is available for Titan notifications.
+if (-not $env:DISCORD_WEBHOOK_URL) {
+    if ($env:DISCORD_WEBHOOK) {
+        $env:DISCORD_WEBHOOK_URL = $env:DISCORD_WEBHOOK
+    } elseif ($env:DISCORD_WEBHOOK_PROD) {
+        $env:DISCORD_WEBHOOK_URL = $env:DISCORD_WEBHOOK_PROD
+    } else {
+        $alertsEnvPath = Join-Path $repoRoot "mvp2-alerts\.env"
+        if (Test-Path $alertsEnvPath) {
+            $webhookLine = Get-Content $alertsEnvPath |
+                Where-Object {
+                    $_ -match '^DISCORD_WEBHOOK=' -and $_ -notmatch '^\s*#'
+                } |
+                Select-Object -First 1
+
+            if ($webhookLine) {
+                $webhookValue = ($webhookLine -split '=', 2)[1].Trim()
+                if ($webhookValue) {
+                    $env:DISCORD_WEBHOOK_URL = $webhookValue
+                }
+            }
+        }
+    }
+}
+
 $mysqlContainerName = "bentley-mysql"
 $runningNames = docker ps --format "{{.Names}}"
 if ($runningNames -notcontains $mysqlContainerName) {

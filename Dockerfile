@@ -12,4 +12,4 @@ COPY . /app
 
 EXPOSE 8080
 
-CMD ["gunicorn", "-w", "2", "-k", "gthread", "-b", "0.0.0.0:8080", "mt5_rest:app"]
+CMD ["python", "scripts/mt5_rest.py"]

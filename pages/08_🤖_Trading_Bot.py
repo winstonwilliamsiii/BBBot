@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
+from frontend.components.multi_broker_dashboard import render_multi_broker_dashboard
 
 # Import cache-busting reload function
 try:
@@ -40,7 +41,6 @@ try:
 except ImportError:
     BOT_FUND_ALLOCATIONS = {
         "Titan": "Mansa_Tech",
-        "Rigel": "Mansa_FOREX",
         "Dogon": "Mansa_ETF",
         "Orion": "Mansa_Minerals",
     }
@@ -345,7 +345,7 @@ def _build_titan_status_rows() -> pd.DataFrame:
             {
                 "Bot": display_name,
                 "Fund": fund_name,
-                "Status": "active" if bot_name in ("Titan", "Rigel") else "pending",
+                "Status": "active" if bot_name == "Titan" else "pending",
             }
         )
     return pd.DataFrame(rows)
@@ -413,12 +413,13 @@ days_map = {
 selected_days = days_map[date_range]
 
 # Main dashboard
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Overview", 
     "📈 Performance", 
     "🎯 Active Signals", 
     "📜 Trade History",
-    "✨ Mansa Star Bots"
+    "✨ Mansa Star Bots",
+    "🌐 Unified Broker"
 ])
 
 # TAB 1: Overview
@@ -659,14 +660,6 @@ with tab5:
         st.markdown("**Bot/Fund Allocation**")
         st.dataframe(allocation_df, use_container_width=True)
 
-        st.markdown("**FOREX Coverage (Rigel)**")
-        rigel_rows = allocation_df[allocation_df["Fund"] == "Mansa_FOREX"]
-        if rigel_rows.empty:
-            st.info("Rigel FOREX mapping is not configured.")
-        else:
-            st.success("Rigel FOREX monitoring is included here under Mansa Star Bots.")
-            st.dataframe(rigel_rows, use_container_width=True)
-
         snapshot = load_titan_snapshot()
         if not snapshot:
             st.info("No Mansa Star Bots snapshot data available yet.")
@@ -712,6 +705,12 @@ with tab5:
                 if not chart_df.empty:
                     st.markdown("**Prediction Probability Trend**")
                     st.line_chart(chart_df.set_index("timestamp"))
+
+# TAB 6: Unified Broker Trading + ML signals
+with tab6:
+    st.subheader("Broker Trading & ML Signals")
+    st.caption("Single reconciled broker page embedded inside Trading Bot.")
+    render_multi_broker_dashboard()
 
 # Footer
 st.markdown("---")

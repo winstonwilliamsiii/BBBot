@@ -66,6 +66,7 @@ class MT5Connector:
         self.connected = False
         self.session = requests.Session()
         self.account: Optional[MT5Account] = None
+        self.last_connect_error: str = ""
         self.request_timeout = float(os.getenv("MT5_REQUEST_TIMEOUT", "10"))
         self.connect_retries = int(os.getenv("MT5_CONNECT_RETRIES", "3"))
         self.connect_retry_delay = float(
@@ -102,6 +103,28 @@ class MT5Connector:
                 time.sleep(sleep_seconds)
 
         raise last_error if last_error else RuntimeError("Unknown network error")
+
+    def _request_with_fallback(self, method: str, paths: List[str], **kwargs) -> requests.Response:
+        """Try multiple endpoint paths and return the first non-404 response."""
+        last_response = None
+        last_error = None
+
+        for path in paths:
+            url = f"{self.base_url}{path}"
+            try:
+                response = self._request(method, url, **kwargs)
+                if response.status_code == 404:
+                    last_response = response
+                    continue
+                return response
+            except requests.exceptions.RequestException as exc:
+                last_error = exc
+
+        if last_response is not None:
+            return last_response
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("No endpoints provided")
         
     def connect(self, user: str, password: str, host: str, port: int = 443) -> bool:
         """
@@ -117,21 +140,29 @@ class MT5Connector:
             True if connection successful, False otherwise
         """
         try:
-            endpoint = f"{self.base_url}/Connect"
+            self.last_connect_error = ""
             params = {
                 'user': user,
                 'password': password,
                 'host': host,
-                'port': port
+                'port': port,
             }
             
             logger.info(f"Connecting to MT5 account {user} on {host}:{port}")
-            response = self._request(
+            # Legacy API uses GET /Connect query params; new bridge uses POST /connect JSON.
+            response = self._request_with_fallback(
                 'GET',
-                endpoint,
+                ['/Connect'],
                 params=params,
                 timeout=10,
             )
+            if response.status_code == 404:
+                response = self._request_with_fallback(
+                    'POST',
+                    ['/connect'],
+                    json=params,
+                    timeout=10,
+                )
             response.raise_for_status()
             
             result = response.json()
@@ -142,21 +173,36 @@ class MT5Connector:
                 logger.info(f"Successfully connected to MT5 account {user}")
                 return True
             else:
-                logger.error(f"MT5 connection failed: {result.get('error', 'Unknown error')}")
+                self.last_connect_error = str(result.get('error', 'Unknown error'))
+                logger.error(f"MT5 connection failed: {self.last_connect_error}")
                 return False
                 
+        except requests.exceptions.HTTPError as e:
+            detail = ""
+            try:
+                payload = e.response.json() if e.response is not None else {}
+                detail = str(payload.get('error') or payload)
+            except Exception:
+                detail = (e.response.text[:300] if e.response is not None else "")
+
+            self.last_connect_error = detail or str(e)
+            logger.error(f"Connection error: {e}; detail: {self.last_connect_error}")
+            return False
         except requests.exceptions.RequestException as e:
+            self.last_connect_error = str(e)
             logger.error(f"Connection error: {e}")
             return False
         except Exception as e:
+            self.last_connect_error = str(e)
             logger.error(f"Unexpected error during connection: {e}")
             return False
     
     def disconnect(self) -> bool:
         """Disconnect from MT5 account"""
         try:
-            endpoint = f"{self.base_url}/Disconnect"
-            response = self._request('GET', endpoint, timeout=5)
+            response = self._request_with_fallback('GET', ['/Disconnect'], timeout=5)
+            if response.status_code == 404:
+                response = self._request_with_fallback('POST', ['/disconnect'], timeout=5)
             response.raise_for_status()
             
             self.connected = False
@@ -180,8 +226,7 @@ class MT5Connector:
             return None
             
         try:
-            endpoint = f"{self.base_url}/AccountInfo"
-            response = self._request('GET', endpoint, timeout=5)
+            response = self._request_with_fallback('GET', ['/AccountInfo', '/account'], timeout=5)
             response.raise_for_status()
             
             return response.json()
@@ -202,8 +247,7 @@ class MT5Connector:
             return None
             
         try:
-            endpoint = f"{self.base_url}/Positions"
-            response = self._request('GET', endpoint, timeout=5)
+            response = self._request_with_fallback('GET', ['/Positions', '/positions'], timeout=5)
             response.raise_for_status()
             
             data = response.json()
@@ -244,16 +288,15 @@ class MT5Connector:
             return None
             
         try:
-            endpoint = f"{self.base_url}/MarketData"
             params = {
                 'symbol': symbol,
                 'timeframe': timeframe,
                 'count': count
             }
             
-            response = self._request(
+            response = self._request_with_fallback(
                 'GET',
-                endpoint,
+                ['/MarketData', '/market-data'],
                 params=params,
                 timeout=10,
             )
@@ -295,13 +338,11 @@ class MT5Connector:
             return None
             
         try:
-            endpoint = f"{self.base_url}/PlaceTrade"
-            
             data = {
                 'symbol': symbol,
                 'type': order_type,
                 'volume': volume,
-                'comment': comment
+                'comment': comment,
             }
             
             if price is not None:
@@ -311,12 +352,21 @@ class MT5Connector:
             if tp is not None:
                 data['tp'] = tp
             
-            response = self._request(
-                'POST',
-                endpoint,
-                json=data,
-                timeout=10,
-            )
+            response = self._request_with_fallback('POST', ['/PlaceTrade'], json=data, timeout=10)
+            if response.status_code == 404:
+                bridge_payload = {
+                    'symbol': symbol,
+                    'action': order_type,
+                    'volume': volume,
+                    'comment': comment,
+                }
+                if price is not None:
+                    bridge_payload['price'] = price
+                if sl is not None:
+                    bridge_payload['stop_loss'] = sl
+                if tp is not None:
+                    bridge_payload['take_profit'] = tp
+                response = self._request_with_fallback('POST', ['/trade'], json=bridge_payload, timeout=10)
             response.raise_for_status()
             
             result = response.json()
@@ -342,15 +392,8 @@ class MT5Connector:
             return False
             
         try:
-            endpoint = f"{self.base_url}/ClosePosition"
             data = {'ticket': ticket}
-            
-            response = self._request(
-                'POST',
-                endpoint,
-                json=data,
-                timeout=5,
-            )
+            response = self._request_with_fallback('POST', ['/ClosePosition'], json=data, timeout=5)
             response.raise_for_status()
             
             result = response.json()
@@ -389,20 +432,13 @@ class MT5Connector:
             return False
             
         try:
-            endpoint = f"{self.base_url}/ModifyPosition"
-            
             data = {'ticket': ticket}
             if sl is not None:
                 data['sl'] = sl
             if tp is not None:
                 data['tp'] = tp
-            
-            response = self._request(
-                'POST',
-                endpoint,
-                json=data,
-                timeout=5,
-            )
+
+            response = self._request_with_fallback('POST', ['/ModifyPosition', '/modify'], json=data, timeout=5)
             response.raise_for_status()
             
             result = response.json()
@@ -434,15 +470,9 @@ class MT5Connector:
             return None
             
         try:
-            endpoint = f"{self.base_url}/SymbolInfo"
             params = {'symbol': symbol}
-            
-            response = self._request(
-                'GET',
-                endpoint,
-                params=params,
-                timeout=5,
-            )
+
+            response = self._request_with_fallback('GET', ['/SymbolInfo', f'/symbol/{symbol}'], params=params, timeout=5)
             response.raise_for_status()
             
             return response.json()
@@ -503,12 +533,12 @@ class MT5Connector:
             True if server is healthy, False otherwise
         """
         try:
-            endpoint = f"{self.base_url}/Health"
-            response = self._request('GET', endpoint, timeout=3)
+            response = self._request_with_fallback('GET', ['/Health', '/health'], timeout=3)
             response.raise_for_status()
             
             result = response.json()
-            return result.get('status') == 'healthy'
+            status = str(result.get('status', '')).lower()
+            return status in {'healthy', 'ok'}
             
         except Exception as e:
             logger.error(f"Health check failed: {e}")

@@ -359,3 +359,61 @@ def test_execute_from_screener_passes_fundamentals(monkeypatch):
     assert captured["symbol"] == "AAPL"
     assert captured["qty"] is None
     assert captured["fundamentals"]["pe"] == 18.0
+
+
+def test_execute_from_screener_manual_selection(monkeypatch):
+    config = _build_config()
+    config.selection_mode = "manual"
+    config.manual_symbols = ["MSFT", "NVDA"]
+    bot = TitanBot(config)
+
+    monkeypatch.setattr(
+        "scripts.mansa_titan_bot.load_bot_trade_candidates",
+        lambda _bot_name: [
+            {"symbol": "AAPL", "fundamentals": {}, "raw": {}},
+            {"symbol": "NVDA", "fundamentals": {}, "raw": {}},
+            {"symbol": "MSFT", "fundamentals": {}, "raw": {}},
+        ],
+    )
+
+    seen = []
+
+    def fake_execute_trade(symbol, side, qty, features, fundamentals=None):
+        seen.append(symbol)
+        return None
+
+    monkeypatch.setattr(bot, "execute_trade", fake_execute_trade)
+
+    results = bot.execute_from_screener(side="buy", max_trades=2)
+
+    assert [row["symbol"] for row in results] == ["MSFT", "NVDA"]
+    assert seen == ["MSFT", "NVDA"]
+
+
+def test_execute_from_screener_technical_mode_without_api_keeps_csv_order(monkeypatch):
+    config = _build_config()
+    config.selection_mode = "technical"
+    bot = TitanBot(config)
+    bot.api = None
+
+    monkeypatch.setattr(
+        "scripts.mansa_titan_bot.load_bot_trade_candidates",
+        lambda _bot_name: [
+            {"symbol": "AAPL", "fundamentals": {}, "raw": {}},
+            {"symbol": "MSFT", "fundamentals": {}, "raw": {}},
+        ],
+    )
+
+    seen = []
+
+    def fake_execute_trade(symbol, side, qty, features, fundamentals=None):
+        seen.append(symbol)
+        return None
+
+    monkeypatch.setattr(bot, "execute_trade", fake_execute_trade)
+
+    results = bot.execute_from_screener(side="buy", max_trades=1)
+
+    assert len(results) == 1
+    assert results[0]["symbol"] == "AAPL"
+    assert seen == ["AAPL"]

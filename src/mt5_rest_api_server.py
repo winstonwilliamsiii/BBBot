@@ -37,7 +37,7 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'mt5_initialized': mt5.initialize(),
+        'mt5_initialized': mt5_connected,
         'timestamp': datetime.now().isoformat()
     })
 
@@ -62,18 +62,20 @@ def connect():
                 'error': 'Missing required parameters'
             }), 400
         
-        # Initialize MT5
-        if not mt5.initialize():
+        # Initialize MT5 with timeout so API doesn't hang indefinitely.
+        if not mt5.initialize(timeout=10000):
+            error = mt5.last_error()
             return jsonify({
                 'success': False,
-                'error': 'MT5 initialization failed'
+                'error': f'MT5 initialization failed: {error}'
             }), 500
         
         # Login to account
         authorized = mt5.login(
             login=int(user),
             password=password,
-            server=host
+            server=host,
+            timeout=10000,
         )
         
         if authorized:

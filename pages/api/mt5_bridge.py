@@ -159,6 +159,9 @@ class MT5Bridge:
                     'timestamp': datetime.now().isoformat()
                 }, "Connected to MT5")
 
+            detail = getattr(self.connector, 'last_connect_error', '')
+            if detail:
+                return error_response(f"Failed to connect to MT5: {detail}")
             return error_response("Failed to connect to MT5")
 
         except Exception as e:

@@ -24,6 +24,7 @@ from frontend.utils.styling import (
 )
 from frontend.styles.colors import COLOR_SCHEME
 from frontend.utils.yahoo import fetch_portfolio_list, fetch_portfolio_tickers
+from frontend.utils.bot_fund_mapping import get_bot_catalog_rows
 
 # Optional MySQL helper (for dev health checks)
 try:
@@ -742,45 +743,49 @@ def main():
     
     st.sidebar.markdown("---")
     st.sidebar.header("Mansa Capital Funds")
-    
-    # Mansa Capital Fund Names and tickers
-    MANSA_FUNDS = {
-        'SOUN': 'Mansa_Tech',
-        'RETAIL': 'Mansa Retail',
-        'MONEYBAG': 'Mansa Money Bag',
-        'IONQ': 'Mansa AI',
-        'CRYPTO': 'Mansa_Crypto',
-        'HEALTH': 'Mansa Health',
-        'SUPPLY': 'Mansa Supply Chain',
-        'DIVERSITY': 'Mansa Diversify Dominance',
-        'ETF': 'Mansa_ETF',
-        'SHORTS': 'Mansa Shorts (Options)',
-        'FOREX': 'Mansa_FOREX',
-        'MINERALS': 'Mansa_Minerals',
-        'REALESTATE': 'Mansa Real Estate',
-        'SMALLS': 'Mansa_Smalls'
+
+    bot_catalog_rows = get_bot_catalog_rows()
+    MANSA_FUNDS = {row["bot"]: row["fund"] for row in bot_catalog_rows}
+    MANSA_STRATEGIES = {row["bot"]: row["strategy"] for row in bot_catalog_rows}
+
+    # Proxy market tickers keep charts functional while the dropdown uses fund names.
+    FUND_MARKET_TICKERS = {
+        "Titan": "SOUN",
+        "Vega": "XRT",
+        "Draco": "BIL",
+        "Altair": "BOTZ",
+        "Procryon": "BTC-USD",
+        "Hydra": "XLV",
+        "Triton": "IYT",
+        "Dione": "VT",
+        "Dogon": "VTI",
+        "Cephei": "SH",
+        "Rigel": "UUP",
+        "Orion": "GLD",
+        "Rhea": "VNQ",
+        "Jupicita": "IWM",
     }
-    
-    # Create list of fund tickers
-    fund_tickers = list(MANSA_FUNDS.keys())
-    fund_names = list(MANSA_FUNDS.values())
-    
-    # Create mapping for display
-    def format_fund_name(ticker):
-        return MANSA_FUNDS.get(ticker, ticker)
-    
-    # Selectbox for Mansa Capital Funds
-    selected_fund = st.sidebar.selectbox(
-        'Select a Mansa Capital Fund:',
-        fund_tickers,
-        format_func=format_fund_name
+
+    fund_bots = list(MANSA_FUNDS.keys())
+
+    def format_fund_name(bot_name):
+        fund_name = MANSA_FUNDS.get(bot_name, bot_name)
+        display_fund_name = fund_name.replace("_", " ")
+        return f"{display_fund_name} ({bot_name})"
+
+    selected_fund_bot = st.sidebar.selectbox(
+        "Select a Mansa Capital Fund:",
+        fund_bots,
+        format_func=format_fund_name,
     )
-    
-    # Convert single selection to list for compatibility with rest of code
-    selected_tickers = [selected_fund] if selected_fund else []
-    
-    # Set portfolio_tickers to all available funds
-    portfolio_tickers = fund_tickers
+    st.sidebar.caption(f"Strategy: {MANSA_STRATEGIES.get(selected_fund_bot, 'N/A')}")
+
+    selected_market_ticker = FUND_MARKET_TICKERS.get(selected_fund_bot, selected_fund_bot)
+    selected_tickers = [selected_market_ticker] if selected_market_ticker else []
+    selected_ticker_to_fund = {selected_market_ticker: MANSA_FUNDS.get(selected_fund_bot, selected_fund_bot)}
+
+    # All available market proxies for portfolio-wide fetch compatibility.
+    portfolio_tickers = list(FUND_MARKET_TICKERS.values())
 
     today = date.today()
     five_years_ago = today - timedelta(days=5 * 365)
@@ -814,7 +819,7 @@ def main():
         df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
         
         # Add Fund Name column
-        df['Fund Name'] = df['Ticker'].map(MANSA_FUNDS).fillna(df['Ticker'])
+        df['Fund Name'] = df['Ticker'].map(selected_ticker_to_fund).fillna(df['Ticker'])
 
         st.subheader('Fund Performance Over Time')
         st.line_chart(df, x='Date', y='Price', color='Fund Name')
@@ -838,10 +843,10 @@ def main():
                     else:
                         delta = 'n/a'
                     # Use fund name if available, otherwise ticker
-                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    display_name = selected_ticker_to_fund.get(ticker, ticker)
                     create_metric_card(f'{display_name}', f'${last_price:,.2f}', delta)
                 else:
-                    display_name = MANSA_FUNDS.get(ticker, ticker)
+                    display_name = selected_ticker_to_fund.get(ticker, ticker)
                     create_metric_card(f'{display_name}', 'N/A', 'N/A')
 
         st.write("")

@@ -38,6 +38,43 @@ except Exception:
     def get_mlflow_backend_store_uri():
         return os.getenv("MLFLOW_BACKEND_STORE_URI", "not-configured")
 
+try:
+    from frontend.utils.bot_fund_mapping import get_bot_catalog_rows
+except Exception:
+    def get_bot_catalog_rows():
+        return [
+            {
+                "bot": "Titan",
+                "fund": "Mansa Tech",
+                "strategy": "ML Ensemble - CNN with Deep Learning approaches for further accuracy",
+            },
+            {"bot": "Vega", "fund": "Mansa Retail", "strategy": "Multi-timeframe Strategy"},
+            {"bot": "Draco", "fund": "Mansa Money Bag", "strategy": "Sentiment Analyzer"},
+            {"bot": "Altair", "fund": "Mansa AI", "strategy": "News Trading"},
+            {"bot": "Procryon", "fund": "Crypto Fund", "strategy": "Crypto Arbitrage"},
+            {"bot": "Hydra", "fund": "Mansa Health", "strategy": "Momentum Strategy"},
+            {
+                "bot": "Triton",
+                "fund": "Mansa Transportation",
+                "strategy": "Portfolio Optimizer",
+            },
+            {
+                "bot": "Dione",
+                "fund": "Mansa Diversify Dominance",
+                "strategy": "Technical Indicator Bot",
+            },
+            {"bot": "Dogon", "fund": "Mansa ETF", "strategy": "USD/COP Short"},
+            {"bot": "Cephei", "fund": "Mansa Shorts", "strategy": "Mean Reversion"},
+            {"bot": "Rigel", "fund": "Mansa FOREX", "strategy": "GoldRSI Strategy"},
+            {"bot": "Orion", "fund": "Mansa Minerals", "strategy": "Options Strategy"},
+            {"bot": "Rhea", "fund": "Mansa Real Estate", "strategy": "Pairs Trading"},
+            {
+                "bot": "Jupicita",
+                "fund": "Mansa_Smalls",
+                "strategy": "Small-cap alpha forecasting with liquidity-aware execution",
+            },
+        ]
+
 # Configuration
 DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
 MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
@@ -280,6 +317,32 @@ def main():
     # TAB 2: Bot Manager
     with tab2:
         st.markdown('<div class="section-header"><h2>AI/ML Bot Orchestration</h2></div>', unsafe_allow_html=True)
+
+        catalog_rows = get_bot_catalog_rows()
+        st.caption(
+            "Focus: alpha generation via price forecasting and portfolio optimization, "
+            "including simulated rebalancing guidance and execution-aware deployment."
+        )
+        st.caption(
+            "Jupicita strategy is set as a proposed default and can be overridden "
+            "once you finalize the exact production label."
+        )
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Mansa Funds", str(len(catalog_rows)))
+        with c2:
+            st.metric("Configured Bots", str(len(catalog_rows)))
+        with c3:
+            st.metric("Orchestration Scope", "Forecast + Rebalance")
+
+        st.markdown("**Mansa Capital Fund/Bot Strategy Catalog**")
+        catalog_df = pd.DataFrame(catalog_rows).rename(columns={
+            "bot": "Bot Name",
+            "fund": "Mansa Fund",
+            "strategy": "Proposed Strategy",
+        })
+        st.dataframe(catalog_df, use_container_width=True, hide_index=True)
         st.markdown("---")
         
         # Bot deployment controls
@@ -491,6 +554,10 @@ def main():
     # TAB 5: Risk Engine
     with tab5:
         st.markdown('<div class="section-header"><h2>Risk Management & Compliance</h2></div>', unsafe_allow_html=True)
+        st.caption(
+            "Portfolio optimization lens: monitor liquidity, drawdown, and concentration "
+            "to inform fund-level repositioning and rebalance cadence."
+        )
         
         # Risk metrics (Row 1)
         col1, col2, col3, col4 = st.columns(4)

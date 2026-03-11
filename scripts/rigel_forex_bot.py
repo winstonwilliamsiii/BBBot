@@ -314,12 +314,27 @@ class MLPredictor:
         try:
             import joblib
             import os
+            import glob
             
             # Model paths
             base_path = os.path.dirname(self.model_path)
             lstm_path = os.path.join(base_path, 'rigel_lstm_model.h5')
             xgb_path = os.path.join(base_path, 'rigel_xgb_model.pkl')
             scaler_path = os.path.join(base_path, 'rigel_scaler.pkl')
+
+            # Fallback: use latest symbol-specific artifacts if canonical names are missing.
+            if not os.path.exists(lstm_path):
+                lstm_candidates = glob.glob(os.path.join(base_path, '*_lstm_model.h5'))
+                if lstm_candidates:
+                    lstm_path = max(lstm_candidates, key=os.path.getmtime)
+            if not os.path.exists(xgb_path):
+                xgb_candidates = glob.glob(os.path.join(base_path, '*_xgb_model.pkl'))
+                if xgb_candidates:
+                    xgb_path = max(xgb_candidates, key=os.path.getmtime)
+            if not os.path.exists(scaler_path):
+                scaler_candidates = glob.glob(os.path.join(base_path, '*_scaler.pkl'))
+                if scaler_candidates:
+                    scaler_path = max(scaler_candidates, key=os.path.getmtime)
             
             # Try to load models
             if os.path.exists(lstm_path):

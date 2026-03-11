@@ -13,6 +13,8 @@ OUTPUTS:
     models/rigel/EURUSD_scaler.pkl
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import sys
@@ -20,6 +22,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Tuple, List
 import logging
+from contextlib import nullcontext
 
 import numpy as np
 import pandas as pd
@@ -45,12 +48,24 @@ except ImportError:
     XGB_AVAILABLE = False
     print("⚠️ XGBoost not available - XGBoost training disabled")
 
+try:
+    import mlflow
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    print("⚠️ MLflow not available - training metrics will not be logged")
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from scripts.rigel_forex_bot import ForexConfig, TechnicalIndicators
 from alpaca_trade_api import REST, TimeFrame
+
+try:
+    from bbbot1_pipeline.mlflow_config import get_mlflow_tracking_uri
+except ImportError:
+    get_mlflow_tracking_uri = None
 
 # Logging
 logging.basicConfig(
@@ -129,6 +144,33 @@ class RigelModelTrainer:
         except Exception as e:
             logger.error(f"Failed to fetch data: {e}")
             raise
+
+    def generate_synthetic_data(self, symbol: str, days: int = 30) -> pd.DataFrame:
+        """Generate synthetic OHLCV data for offline training validation."""
+        logger.info(f"Generating synthetic data for {symbol} ({days} days)")
+        periods = max(days * 24, 200)
+        idx = pd.date_range(end=datetime.now(), periods=periods, freq='h')
+
+        # Random walk with light volatility for deterministic-ish feature creation.
+        rng = np.random.default_rng(42)
+        base = 1.10
+        drift = 0.00001
+        shocks = rng.normal(loc=drift, scale=0.0008, size=periods)
+        close = base + np.cumsum(shocks)
+        open_ = np.roll(close, 1)
+        open_[0] = close[0]
+        high = np.maximum(open_, close) + np.abs(rng.normal(0.0002, 0.0001, size=periods))
+        low = np.minimum(open_, close) - np.abs(rng.normal(0.0002, 0.0001, size=periods))
+        volume = rng.integers(low=1000, high=100000, size=periods)
+
+        return pd.DataFrame({
+            'datetime': idx,
+            'open': open_,
+            'high': high,
+            'low': low,
+            'close': close,
+            'volume': volume,
+        })
     
     def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -233,7 +275,7 @@ class RigelModelTrainer:
         sequence_length: int = 60,
         epochs: int = 50,
         batch_size: int = 32
-    ) -> Tuple[Sequential, StandardScaler]:
+    ) -> Tuple[Sequential, StandardScaler, Dict[str, float]]:
         """
         Train LSTM model for sequential price prediction
         
@@ -307,15 +349,21 @@ class RigelModelTrainer:
         # Evaluate
         test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
         logger.info(f"✓ LSTM Test Accuracy: {test_acc:.2%}")
-        
-        return model, scaler
+
+        metrics = {
+            'lstm_test_loss': float(test_loss),
+            'lstm_test_accuracy': float(test_acc),
+            'lstm_train_samples': float(len(X_train)),
+            'lstm_test_samples': float(len(X_test)),
+        }
+        return model, scaler, metrics
     
     def train_xgboost_model(
         self,
         df: pd.DataFrame,
         n_estimators: int = 100,
         max_depth: int = 6
-    ) -> xgb.XGBClassifier:
+    ) -> Tuple[xgb.XGBClassifier, Dict[str, float]]:
         """
         Train XGBoost model for feature-based classification
         
@@ -369,7 +417,13 @@ class RigelModelTrainer:
         logger.info(f"✓ XGBoost Train Accuracy: {train_acc:.2%}")
         logger.info(f"✓ XGBoost Test Accuracy: {test_acc:.2%}")
         
-        return model
+        metrics = {
+            'xgb_train_accuracy': float(train_acc),
+            'xgb_test_accuracy': float(test_acc),
+            'xgb_train_samples': float(len(X_train)),
+            'xgb_test_samples': float(len(X_test)),
+        }
+        return model, metrics
     
     def save_models(
         self,
@@ -377,7 +431,7 @@ class RigelModelTrainer:
         lstm_model: Sequential,
         xgb_model: xgb.XGBClassifier,
         scaler: StandardScaler
-    ):
+    ) -> Dict[str, str]:
         """
         Save trained models to disk
         
@@ -396,27 +450,45 @@ class RigelModelTrainer:
         
         logger.info(f"Saving models to {self.models_dir}...")
         
+        saved_paths: Dict[str, str] = {}
+
         # Save LSTM
         if LSTM_AVAILABLE and lstm_model:
             lstm_model.save(lstm_path)
             logger.info(f"✓ Saved LSTM model: {lstm_path}")
+            saved_paths['lstm_model'] = str(lstm_path)
+            # Maintain backwards-compatible path expected by runtime loader.
+            canonical_lstm_path = self.models_dir / 'rigel_lstm_model.h5'
+            lstm_model.save(canonical_lstm_path)
+            saved_paths['lstm_model_canonical'] = str(canonical_lstm_path)
         
         # Save XGBoost
         if XGB_AVAILABLE and xgb_model:
             joblib.dump(xgb_model, xgb_path)
             logger.info(f"✓ Saved XGBoost model: {xgb_path}")
+            saved_paths['xgb_model'] = str(xgb_path)
+            canonical_xgb_path = self.models_dir / 'rigel_xgb_model.pkl'
+            joblib.dump(xgb_model, canonical_xgb_path)
+            saved_paths['xgb_model_canonical'] = str(canonical_xgb_path)
         
         # Save scaler
         if scaler:
             joblib.dump(scaler, scaler_path)
             logger.info(f"✓ Saved scaler: {scaler_path}")
+            saved_paths['scaler'] = str(scaler_path)
+            canonical_scaler_path = self.models_dir / 'rigel_scaler.pkl'
+            joblib.dump(scaler, canonical_scaler_path)
+            saved_paths['scaler_canonical'] = str(canonical_scaler_path)
+
+        return saved_paths
     
     def train_symbol(
         self,
         symbol: str,
         days: int = 365,
         lstm_epochs: int = 50,
-        xgb_estimators: int = 100
+        xgb_estimators: int = 100,
+        synthetic_data: bool = False
     ):
         """
         Complete training pipeline for a single symbol
@@ -432,29 +504,64 @@ class RigelModelTrainer:
         logger.info("=" * 70)
         
         try:
+            run_context = nullcontext()
+            run_active = False
+
+            if MLFLOW_AVAILABLE:
+                try:
+                    if get_mlflow_tracking_uri:
+                        mlflow.set_tracking_uri(get_mlflow_tracking_uri())
+                    mlflow.set_experiment('rigel_forex_training')
+                    run_name = f"{symbol.replace('/', '')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+                    run_context = mlflow.start_run(run_name=run_name)
+                    run_active = True
+                except Exception as mlflow_init_error:
+                    logger.warning(f"MLflow init failed, continuing without tracking: {mlflow_init_error}")
+
+            with run_context:
+                if run_active:
+                    mlflow.set_tag('bot', 'rigel')
+                    mlflow.set_tag('symbol', symbol)
+                    mlflow.log_param('symbol', symbol)
+                    mlflow.log_param('days', days)
+                    mlflow.log_param('lstm_epochs', lstm_epochs)
+                    mlflow.log_param('xgb_estimators', xgb_estimators)
+
             # Fetch data
-            df = self.fetch_training_data(symbol, days)
-            
-            # Prepare features
-            df = self.prepare_features(df)
-            
-            # Create labels
-            df['label'] = self.create_labels(df, lookahead=10)
-            
-            # Train LSTM
-            lstm_model, scaler = None, None
-            if LSTM_AVAILABLE:
-                lstm_model, scaler = self.train_lstm_model(df, epochs=lstm_epochs)
-            
-            # Train XGBoost
-            xgb_model = None
-            if XGB_AVAILABLE:
-                xgb_model = self.train_xgboost_model(df, n_estimators=xgb_estimators)
-            
-            # Save models
-            self.save_models(symbol, lstm_model, xgb_model, scaler)
-            
-            logger.info(f"✅ Successfully trained models for {symbol}")
+                df = self.generate_synthetic_data(symbol, days) if synthetic_data else self.fetch_training_data(symbol, days)
+
+                # Prepare features
+                df = self.prepare_features(df)
+
+                # Create labels
+                df['label'] = self.create_labels(df, lookahead=10).to_numpy(dtype=int)
+
+                if run_active:
+                    mlflow.log_metric('bars_fetched', float(len(df)))
+
+                # Train LSTM
+                lstm_model, scaler = None, None
+                lstm_metrics: Dict[str, float] = {}
+                if LSTM_AVAILABLE:
+                    lstm_model, scaler, lstm_metrics = self.train_lstm_model(df, epochs=lstm_epochs)
+
+                # Train XGBoost
+                xgb_model = None
+                xgb_metrics: Dict[str, float] = {}
+                if XGB_AVAILABLE:
+                    xgb_model, xgb_metrics = self.train_xgboost_model(df, n_estimators=xgb_estimators)
+
+                # Save models
+                saved_paths = self.save_models(symbol, lstm_model, xgb_model, scaler)
+
+                if run_active:
+                    for metric_name, metric_value in {**lstm_metrics, **xgb_metrics}.items():
+                        mlflow.log_metric(metric_name, metric_value)
+                    for _, artifact_path in saved_paths.items():
+                        if os.path.exists(artifact_path):
+                            mlflow.log_artifact(artifact_path)
+
+                logger.info(f"✅ Successfully trained models for {symbol}")
             
         except Exception as e:
             logger.error(f"❌ Training failed for {symbol}: {e}")
@@ -469,6 +576,7 @@ def main():
     parser.add_argument('--days', type=int, default=365, help='Days of historical data (default: 365)')
     parser.add_argument('--lstm-epochs', type=int, default=50, help='LSTM training epochs (default: 50)')
     parser.add_argument('--xgb-estimators', type=int, default=100, help='XGBoost estimators (default: 100)')
+    parser.add_argument('--synthetic-data', action='store_true', help='Use generated synthetic OHLCV data instead of Alpaca API')
     
     args = parser.parse_args()
     
@@ -480,13 +588,18 @@ def main():
     api_key = os.getenv('ALPACA_API_KEY')
     api_secret = os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
     
-    if not api_key or not api_secret:
+    if (not api_key or not api_secret) and not args.synthetic_data:
         logger.error("❌ Missing Alpaca API credentials")
         logger.error(
             "Set ALPACA_API_KEY and ALPACA_SECRET_KEY "
             "(or ALPACA_API_SECRET) environment variables"
         )
         sys.exit(1)
+
+    if args.synthetic_data and (not api_key or not api_secret):
+        logger.warning("⚠️ Running in synthetic-data mode without Alpaca credentials")
+        api_key = api_key or "synthetic"
+        api_secret = api_secret or "synthetic"
     
     # Initialize trainer
     trainer = RigelModelTrainer(api_key, api_secret)
@@ -502,7 +615,8 @@ def main():
                     symbol,
                     days=args.days,
                     lstm_epochs=args.lstm_epochs,
-                    xgb_estimators=args.xgb_estimators
+                    xgb_estimators=args.xgb_estimators,
+                    synthetic_data=args.synthetic_data
                 )
             except Exception as e:
                 logger.error(f"Skipping {symbol} due to error: {e}")
@@ -512,7 +626,8 @@ def main():
             args.symbol,
             days=args.days,
             lstm_epochs=args.lstm_epochs,
-            xgb_estimators=args.xgb_estimators
+            xgb_estimators=args.xgb_estimators,
+            synthetic_data=args.synthetic_data
         )
     
     logger.info("=" * 70)

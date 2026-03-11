@@ -22,6 +22,14 @@ import time
 logger = logging.getLogger(__name__)
 
 
+def _clean_secret(value: str | None) -> str:
+    """Normalize secret/env values by trimming whitespace and wrapping quotes."""
+    cleaned = (value or "").strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ("'", '"'):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
 @dataclass
 class AlpacaAccount:
     """Alpaca account credentials"""
@@ -63,8 +71,8 @@ class AlpacaConnector:
             secret_key: Alpaca secret key
             paper: Use paper trading (True) or live trading (False)
         """
-        self.api_key = (api_key or "").strip()
-        self.secret_key = (secret_key or "").strip()
+        self.api_key = _clean_secret(api_key)
+        self.secret_key = _clean_secret(secret_key)
         self.paper = paper
 
         if not self.api_key or not self.secret_key:
@@ -75,12 +83,30 @@ class AlpacaConnector:
         self.connect_retry_delay = float(os.getenv("ALPACA_CONNECT_RETRY_DELAY", "1.0"))
         
         # Set base URL based on paper/live
-        base_url_override = os.getenv("ALPACA_BASE_URL", "").strip()
-        data_url_override = os.getenv("ALPACA_DATA_URL", "").strip()
+        base_url_override = _clean_secret(os.getenv("ALPACA_BASE_URL", ""))
+        data_url_override = _clean_secret(os.getenv("ALPACA_DATA_URL", ""))
+
+        if paper:
+            mode_base_url = "https://paper-api.alpaca.markets"
+        else:
+            mode_base_url = "https://api.alpaca.markets"
 
         if base_url_override:
-            self.base_url = base_url_override.rstrip("/")
-            self.data_url = data_url_override.rstrip("/") if data_url_override else "https://data.alpaca.markets"
+            override_is_paper = "paper-api.alpaca.markets" in base_url_override.lower()
+            mode_is_paper = bool(paper)
+            if override_is_paper != mode_is_paper:
+                logger.warning(
+                    "Ignoring conflicting ALPACA_BASE_URL for selected mode: "
+                    f"mode={'paper' if mode_is_paper else 'live'}, base_url={base_url_override}"
+                )
+                self.base_url = mode_base_url
+            else:
+                self.base_url = base_url_override.rstrip("/")
+            self.data_url = (
+                data_url_override.rstrip("/")
+                if data_url_override
+                else "https://data.alpaca.markets"
+            )
         elif paper:
             self.base_url = "https://paper-api.alpaca.markets"
             self.data_url = "https://data.alpaca.markets"

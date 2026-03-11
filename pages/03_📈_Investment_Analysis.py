@@ -603,6 +603,22 @@ def display_mlflow_experiments(tickers):
     
     try:
         tracker = get_tracker()
+
+        # Cache experiment names to avoid repeated client calls while building
+        # and filtering the runs table.
+        experiment_name_cache = {}
+
+        def resolve_experiment_name(experiment_id):
+            experiment_id = str(experiment_id)
+            if experiment_id in experiment_name_cache:
+                return experiment_name_cache[experiment_id]
+            try:
+                experiment = tracker.client.get_experiment(experiment_id)
+                name = experiment.name if experiment else f"Experiment {experiment_id}"
+            except Exception:
+                name = f"Experiment {experiment_id}"
+            experiment_name_cache[experiment_id] = name
+            return name
         
         # Get recent runs
         st.subheader("Recent Experiments")
@@ -618,6 +634,8 @@ def display_mlflow_experiments(tickers):
         runs_data = []
         for run in recent_runs:
             run_data = {
+                'Experiment ID': run.info.experiment_id,
+                'Experiment Name': resolve_experiment_name(run.info.experiment_id),
                 'Run Name': run.info.run_name,
                 'Start Time': datetime.fromtimestamp(run.info.start_time / 1000).strftime('%Y-%m-%d %H:%M:%S'),
                 'Status': run.info.status,
@@ -638,7 +656,21 @@ def display_mlflow_experiments(tickers):
             runs_data.append(run_data)
         
         runs_df = pd.DataFrame(runs_data)
-        st.dataframe(runs_df, use_container_width=True, hide_index=True)
+        experiment_options = ['All'] + sorted(runs_df['Experiment Name'].dropna().unique().tolist())
+        selected_experiment = st.selectbox(
+            "Filter by experiment",
+            options=experiment_options,
+            index=0,
+            key="mlflow_experiment_filter"
+        )
+
+        if selected_experiment == 'All':
+            filtered_runs_df = runs_df
+        else:
+            filtered_runs_df = runs_df[runs_df['Experiment Name'] == selected_experiment]
+
+        st.caption(f"Showing {len(filtered_runs_df)} of {len(runs_df)} recent runs")
+        st.dataframe(filtered_runs_df, use_container_width=True, hide_index=True)
         
         # Ticker-specific analysis
         st.subheader("Ratio Analysis by Ticker")
@@ -647,9 +679,24 @@ def display_mlflow_experiments(tickers):
         
         if selected_ticker:
             ratio_runs = tracker.get_ratio_analysis_runs(ticker=selected_ticker, max_results=10)
+
+            if selected_experiment != 'All':
+                selected_experiment_ids = {
+                    str(experiment_id)
+                    for experiment_id in runs_df[runs_df['Experiment Name'] == selected_experiment]['Experiment ID']
+                }
+                ratio_runs = [
+                    run for run in ratio_runs
+                    if str(run.info.experiment_id) in selected_experiment_ids
+                ]
             
             if ratio_runs:
-                st.success(f"Found {len(ratio_runs)} ratio analysis runs for {selected_ticker}")
+                if selected_experiment == 'All':
+                    st.success(f"Found {len(ratio_runs)} ratio analysis runs for {selected_ticker}")
+                else:
+                    st.success(
+                        f"Found {len(ratio_runs)} ratio analysis runs for {selected_ticker} in {selected_experiment}"
+                    )
                 
                 # Extract and display ratio trends
                 ratio_data = []

@@ -28,7 +28,7 @@ import requests
 import time
 import logging
 import json
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, List
 from pathlib import Path
 import os
 from dataclasses import dataclass
@@ -48,6 +48,7 @@ class GatewayConfig:
     base_url: str = "https://localhost:5000"
     username: Optional[str] = None
     password: Optional[str] = None
+    account_id: Optional[str] = None
     verify_ssl: bool = False
     startup_timeout: int = 60
     login_timeout: int = 120
@@ -100,11 +101,33 @@ class IBKRGatewayClient:
             client.start_gateway()
         """
         try:
-            # Check if gateway is already running
-            if self.check_auth_status():
-                logger.info("Gateway already running and accessible")
-                return True
-            
+            # Prefer existing logged-in TWS/Gateway session and
+            # avoid process spawning.
+            try:
+                response = self.session.get(
+                    f"{self.config.base_url}/v1/api/iserver/auth/status",
+                    timeout=3
+                )
+                if response.status_code == 200:
+                    data = response.json() if response.content else {}
+                    self.authenticated = bool(data.get("authenticated", False))
+                    self.last_auth_check = datetime.now()
+                    logger.info(
+                        "Gateway endpoint reachable; reusing existing session"
+                    )
+                    return True
+            except Exception:
+                pass
+
+            # If no local executable is configured, do not try
+            # to auto-start anything.
+            if not self.config.gateway_path:
+                logger.warning(
+                    "Gateway not reachable and no gateway_path configured "
+                    "for auto-start"
+                )
+                return False
+
             # Verify gateway path exists
             gateway_path = Path(self.config.gateway_path)
             if not gateway_path.exists():
@@ -135,7 +158,7 @@ class IBKRGatewayClient:
             while time.time() - start_time < self.config.startup_timeout:
                 try:
                     response = self.session.get(
-                        f"{self.config.base_url}/v1/api/portal/iserver/auth/status",
+                        f"{self.config.base_url}/v1/api/iserver/auth/status",
                         timeout=2
                     )
                     if response.status_code == 200:
@@ -195,7 +218,8 @@ class IBKRGatewayClient:
         Wait for user to complete login via gateway UI
         
         Args:
-            timeout: Maximum wait time in seconds (default: config.login_timeout)
+            timeout: Maximum wait time in seconds
+                     (default: config.login_timeout)
             
         Returns:
             True if login successful
@@ -266,15 +290,15 @@ class IBKRGatewayClient:
             response.raise_for_status()
             
             data = response.json()
-            
-            # Check if reauthentication succeeded
-            if data.get('message') == 'triggered':
+
+            # Some IBKR deployments return varying response shapes.
+            if isinstance(data, dict) and data.get('message') == 'triggered':
                 logger.info("Session refresh triggered")
                 time.sleep(2)
                 return self.check_auth_status()
-            
-            logger.info("✅ Session refreshed successfully")
-            return True
+
+            time.sleep(1)
+            return self.check_auth_status()
             
         except Exception as e:
             logger.error(f"Session refresh failed: {e}")
@@ -288,7 +312,7 @@ class IBKRGatewayClient:
         data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         auto_retry: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Any]:
         """
         Make API request with auto-retry and session management
         
@@ -386,6 +410,139 @@ class IBKRGatewayClient:
         
         logger.error(f"API request failed after {attempts} attempts")
         return None
+
+    def get_accounts(self) -> Optional[List[str]]:
+        """Return available IBKR account IDs for current authenticated session."""
+        result = self.api_request("/iserver/accounts")
+        if isinstance(result, list):
+            return [str(x) for x in result]
+        logger.error("Failed to fetch IBKR accounts")
+        return None
+
+    def resolve_forex_conid(
+        self,
+        symbol: str,
+        exchange: str = "IDEALPRO"
+    ) -> Optional[int]:
+        """
+        Resolve a forex symbol (e.g. EURUSD, EUR/USD) to an IBKR contract ID.
+
+        IBKR orders require numeric conid values, not ticker-like symbols.
+        """
+        cleaned = symbol.replace("/", "").replace(".", "").upper().strip()
+        if len(cleaned) != 6:
+            logger.error(f"Unsupported FOREX symbol format: {symbol}")
+            return None
+
+        base = cleaned[:3]
+        quote = cleaned[3:]
+
+        result = self.api_request(
+            "/iserver/secdef/search",
+            params={"symbol": base}
+        )
+
+        if not isinstance(result, list):
+            logger.error(f"No contract search results for {symbol}")
+            return None
+
+        exchange_u = exchange.upper()
+
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+
+            raw_conid = item.get("conid") or item.get("conidEx")
+            try:
+                conid = int(raw_conid)
+            except (TypeError, ValueError):
+                continue
+
+            text_blob = " ".join([
+                str(item.get("symbol", "")),
+                str(item.get("description", "")),
+                str(item.get("companyName", "")),
+                str(item.get("listingExchange", "")),
+                str(item.get("exchange", "")),
+                str(item.get("assetClass", "")),
+            ]).upper()
+
+            asset_class = str(item.get("assetClass", "")).upper()
+            if quote in text_blob and exchange_u in text_blob and asset_class == "CASH":
+                logger.info(f"Resolved {symbol} -> conid={conid}")
+                return conid
+
+        logger.error(
+            f"Strict FOREX conid resolution failed for {symbol} (required: exchange={exchange_u}, assetClass=CASH, quote={quote})"
+        )
+        return None
+
+    def place_order(
+        self,
+        conid: int,
+        side: Literal["BUY", "SELL"],
+        quantity: float,
+        account_id: Optional[str] = None,
+        order_type: str = "MKT",
+        tif: str = "DAY",
+        price: Optional[float] = None,
+    ) -> Optional[Any]:
+        """Place account-scoped IBKR order and auto-confirm if prompt reply is returned."""
+        acct = account_id or self.config.account_id or os.getenv("IBKR_ACCOUNT_ID")
+        if not acct:
+            logger.error("IBKR account_id required (GatewayConfig.account_id or IBKR_ACCOUNT_ID)")
+            return None
+
+        order_payload: Dict[str, Any] = {
+            "acctId": acct,
+            "conid": int(conid),
+            "orderType": order_type,
+            "side": side,
+            "quantity": quantity,
+            "tif": tif,
+        }
+        if price is not None:
+            order_payload["price"] = price
+
+        result = self.api_request(
+            f"/iserver/account/{acct}/orders",
+            method="POST",
+            data={"orders": [order_payload]},
+        )
+
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            reply_id = result[0].get("id")
+            if reply_id:
+                return self.api_request(
+                    f"/iserver/reply/{reply_id}",
+                    method="POST",
+                    data={"confirmed": True},
+                )
+
+        return result
+
+    def place_forex_order(
+        self,
+        symbol: str,
+        side: Literal["BUY", "SELL"],
+        quantity: float,
+        account_id: Optional[str] = None,
+        exchange: str = "IDEALPRO",
+        order_type: str = "MKT",
+        tif: str = "DAY",
+    ) -> Optional[Any]:
+        """Resolve FOREX symbol -> conid and place order."""
+        conid = self.resolve_forex_conid(symbol, exchange=exchange)
+        if conid is None:
+            return None
+        return self.place_order(
+            conid=conid,
+            side=side,
+            quantity=quantity,
+            account_id=account_id,
+            order_type=order_type,
+            tif=tif,
+        )
     
     def tickle(self) -> bool:
         """
@@ -476,7 +633,8 @@ def create_client_from_env() -> IBKRGatewayClient:
         gateway_path=os.getenv("IBKR_GATEWAY_PATH", ""),
         base_url=os.getenv("IBKR_GATEWAY_URL", "https://localhost:5000"),
         username=os.getenv("IBKR_USERNAME"),
-        password=os.getenv("IBKR_PASSWORD")
+        password=os.getenv("IBKR_PASSWORD"),
+        account_id=os.getenv("IBKR_ACCOUNT_ID")
     )
     
     return IBKRGatewayClient(config)

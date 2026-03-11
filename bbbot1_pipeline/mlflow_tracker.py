@@ -201,12 +201,14 @@ class BentleyBotMLFlowTracker:
             List of MLFlow run objects
         """
         try:
-            experiment = mlflow.get_experiment_by_name(self.experiment_name)
-            if experiment is None:
+            # Query across all experiments so the dashboard reflects recently
+            # started runs even when they were logged under a different name.
+            experiment_ids = [exp.experiment_id for exp in self.client.search_experiments()]
+            if not experiment_ids:
                 return []
-            
+
             runs = self.client.search_runs(
-                experiment_ids=[experiment.experiment_id],
+                experiment_ids=experiment_ids,
                 order_by=["start_time DESC"],
                 max_results=max_results
             )
@@ -228,8 +230,10 @@ class BentleyBotMLFlowTracker:
             List of MLFlow run objects with ratio data
         """
         try:
-            experiment = mlflow.get_experiment_by_name(self.experiment_name)
-            if experiment is None:
+            # Search across all experiments; some training pipelines use
+            # non-default experiment names.
+            experiment_ids = [exp.experiment_id for exp in self.client.search_experiments()]
+            if not experiment_ids:
                 return []
             
             # Build filter query
@@ -238,7 +242,7 @@ class BentleyBotMLFlowTracker:
                 filter_string = f"params.ticker = '{ticker}'"
             
             runs = self.client.search_runs(
-                experiment_ids=[experiment.experiment_id],
+                experiment_ids=experiment_ids,
                 filter_string=filter_string,
                 order_by=["params.report_date DESC"],
                 max_results=max_results

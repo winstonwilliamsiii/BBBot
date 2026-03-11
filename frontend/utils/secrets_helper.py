@@ -8,6 +8,39 @@ import streamlit as st
 from typing import Optional
 
 
+def _clean_secret_value(value: Optional[str]) -> Optional[str]:
+    """Normalize env/secret values by trimming whitespace and wrapping quotes."""
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ("'", '"'):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
+def _lookup_secret_value(container, key: str) -> Optional[str]:
+    """Lookup key in a secrets mapping with case-insensitive fallback."""
+    if container is None:
+        return None
+
+    # Fast path exact match
+    try:
+        if key in container:
+            return str(container[key])
+    except Exception:
+        pass
+
+    # Case-insensitive fallback for differently cased keys in secrets
+    try:
+        for existing_key in container.keys():
+            if str(existing_key).lower() == key.lower():
+                return str(container[existing_key])
+    except Exception:
+        pass
+
+    return None
+
+
 def get_secret(key: str, default: Optional[str] = None, section: Optional[str] = None) -> str:
     """
     Get a secret value with priority:
@@ -34,13 +67,25 @@ def get_secret(key: str, default: Optional[str] = None, section: Optional[str] =
     try:
         if hasattr(st, 'secrets'):
             # Try section-specific first
-            if section and section in st.secrets:
-                if key in st.secrets[section]:
-                    return str(st.secrets[section][key])
+            if section:
+                section_obj = None
+                if section in st.secrets:
+                    section_obj = st.secrets[section]
+                else:
+                    # Case-insensitive section lookup
+                    for existing_section in st.secrets.keys():
+                        if str(existing_section).lower() == section.lower():
+                            section_obj = st.secrets[existing_section]
+                            break
+
+                section_value = _lookup_secret_value(section_obj, key)
+                if section_value is not None:
+                    return section_value
             
             # Try root level
-            if key in st.secrets:
-                return str(st.secrets[key])
+            root_value = _lookup_secret_value(st.secrets, key)
+            if root_value is not None:
+                return root_value
     except Exception:
         pass
     
@@ -113,12 +158,34 @@ def get_alpaca_config() -> dict:
         get_secret('ALPACA_API_KEY')
         or get_secret('APCA_API_KEY_ID')
         or get_secret('ALPACA_KEY_ID')
+        or get_secret('alpaca_api_key')
+        or get_secret('apca_api_key_id')
+        or get_secret('alpaca_key_id')
+        or get_secret('ALPACA_API_KEY', section='alpaca')
+        or get_secret('APCA_API_KEY_ID', section='alpaca')
+        or get_secret('alpaca_api_key', section='alpaca')
+        or get_secret('apca_api_key_id', section='alpaca')
+        or get_secret('api_key', section='alpaca')
+        or get_secret('key_id', section='alpaca')
     )
     secret_key = (
         get_secret('ALPACA_SECRET_KEY')
         or get_secret('APCA_API_SECRET_KEY')
         or get_secret('ALPACA_API_SECRET')
+        or get_secret('alpaca_secret_key')
+        or get_secret('apca_api_secret_key')
+        or get_secret('alpaca_api_secret')
+        or get_secret('ALPACA_SECRET_KEY', section='alpaca')
+        or get_secret('APCA_API_SECRET_KEY', section='alpaca')
+        or get_secret('ALPACA_SECRET', section='alpaca')
+        or get_secret('alpaca_secret_key', section='alpaca')
+        or get_secret('apca_api_secret_key', section='alpaca')
+        or get_secret('alpaca_secret', section='alpaca')
+        or get_secret('secret_key', section='alpaca')
+        or get_secret('secret', section='alpaca')
     )
+    api_key = _clean_secret_value(api_key)
+    secret_key = _clean_secret_value(secret_key)
     paper = get_secret('ALPACA_PAPER', default=None)
     if paper is None:
         env = get_secret('ALPACA_ENVIRONMENT', default='paper')

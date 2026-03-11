@@ -220,23 +220,9 @@ async function refreshSession(broker: BrokerName): Promise<string | null> {
         return process.env.ALPACA_KEY || null
       
       case 'ibkr':
-        // IBKR Gateway session refresh
-        const ibkrUrl = process.env.IBKR_GATEWAY_URL || 'http://localhost:5000'
-        const authResp = await fetch(`${ibkrUrl}/v1/api/iserver/auth/status`, {
-          method: 'POST'
-        })
-        
-        if (authResp.ok) {
-          const data = await authResp.json()
-          const token = data.sessionId || 'IBKR_SESSION'
-          sessionCache.set(broker, {
-            token,
-            expires: Date.now() + 3600000 // 1 hour
-          })
-          logger.info('Session refreshed successfully', { broker })
-          return token
-        }
-        break
+        // Python is canonical for IBKR session handling.
+        // TS layer is a thin proxy and does not manage IBKR sessions.
+        return 'IBKR_PYTHON_CANONICAL'
       
       case 'schwab':
         // OAuth2 token refresh logic
@@ -345,13 +331,32 @@ function mapToAlpacaPayload(asset: Asset) {
 }
 
 function mapToIBKRPayload(asset: Asset) {
+  const conid = Number(asset.params?.conid)
+  if (!Number.isFinite(conid) || conid <= 0) {
+    throw new Error('IBKR requires numeric params.conid for non-FOREX assets')
+  }
+
   return {
-    conid: asset.params?.conid, // Contract ID from IBKR
+    conid,
     orderType: asset.limitPrice ? 'LMT' : 'MKT',
     side: asset.side.toUpperCase(),
     quantity: asset.qty,
     price: asset.limitPrice
   }
+}
+
+function getIbkrAccountId(asset: Asset): string {
+  const accountFromAsset = String(asset.params?.accountId || '').trim()
+  const accountFromEnv = String(process.env.IBKR_ACCOUNT_ID || '').trim()
+  return accountFromAsset || accountFromEnv || 'U14774118'
+}
+
+function getIbkrPythonApiUrl(): string {
+  return (
+    process.env.BROKER_PYTHON_API_URL ||
+    process.env.CONTROL_CENTER_API_URL ||
+    'http://localhost:8000'
+  )
 }
 
 function mapToSchwabPayload(asset: Asset) {
@@ -463,37 +468,48 @@ async function ibkrTrade(asset: Asset): Promise<BrokerResponse> {
   const broker: BrokerName = 'ibkr'
   
   try {
-    const gatewayUrl = process.env.IBKR_GATEWAY_URL || 'http://localhost:5000'
-    
-    // Check/refresh session
-    let session = getSession(broker)
-    if (!session) {
-      session = await refreshSession(broker)
-      if (!session) {
-        throw new Error('IBKR session authentication failed')
-      }
-    }
+    const pythonApiUrl = getIbkrPythonApiUrl()
+    const accountId = getIbkrAccountId(asset)
 
-    const accountId = process.env.IBKR_ACCOUNT_ID
-    
-    const response = await fetch(`${gatewayUrl}/v1/api/iserver/account/${accountId}/orders`, {
+    const isForex = asset.class === 'forex'
+    const endpoint = isForex ? '/ibkr/forex/order' : '/ibkr/order'
+    const body = isForex
+      ? {
+          symbol: asset.symbol,
+          side: asset.side.toUpperCase(),
+          quantity: asset.qty,
+          account_id: accountId,
+          order_type: asset.limitPrice ? 'LMT' : 'MKT',
+          tif: 'DAY',
+          exchange: 'IDEALPRO'
+        }
+      : {
+          ...mapToIBKRPayload(asset),
+          account_id: accountId,
+          tif: 'DAY'
+        }
+
+    const response = await fetch(`${pythonApiUrl}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(mapToIBKRPayload(asset))
+      body: JSON.stringify(body)
     })
 
     if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || 'IBKR API error')
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || errorData.error || 'IBKR Python proxy error')
     }
 
     const data = await response.json()
+    const result = data.result || data
+    const orderId =
+      String(result?.order_id || result?.id || result?.orderId || 'PENDING')
     
     logger.audit('Trade executed', {
       broker,
-      orderId: data.order_id,
+      orderId,
       symbol: asset.symbol,
       qty: asset.qty,
       side: asset.side
@@ -502,7 +518,7 @@ async function ibkrTrade(asset: Asset): Promise<BrokerResponse> {
     return {
       broker,
       status: 'success',
-      orderId: data.order_id,
+      orderId,
       asset,
       timestamp: new Date().toISOString()
     }
@@ -658,7 +674,22 @@ async function binanceTrade(asset: Asset): Promise<BrokerResponse> {
     
     // Add timestamp and signature (simplified - use proper HMAC signing in production)
     const timestamp = Date.now()
-    const queryString = new URLSearchParams({ ...payload, timestamp: String(timestamp) }).toString()
+    const queryPayload: Record<string, string> = {
+      symbol: String(payload.symbol),
+      side: String(payload.side),
+      type: String(payload.type),
+      quantity: String(payload.quantity),
+      timestamp: String(timestamp)
+    }
+
+    if (payload.price !== undefined) {
+      queryPayload.price = String(payload.price)
+    }
+    if (payload.timeInForce !== undefined) {
+      queryPayload.timeInForce = String(payload.timeInForce)
+    }
+
+    const queryString = new URLSearchParams(queryPayload).toString()
 
     const response = await fetch(`${apiUrl}/api/v3/order?${queryString}`, {
       method: 'POST',

@@ -204,17 +204,47 @@ def api_request(endpoint, method="GET", data=None):
     """Make request to Flask API."""
     try:
         flask_api_url = resolve_control_center_api_url()
-        url = f"{flask_api_url}{endpoint}"
-        if method == "GET":
-            response = requests.get(url, timeout=5)
-        elif method == "POST":
-            response = requests.post(url, json=data, timeout=5)
-        elif method == "DELETE":
-            response = requests.delete(url, timeout=5)
-        
-        if response.status_code == 200:
-            return response.json()
-        show_control_center_api_notice_once(f"returning HTTP {response.status_code}")
+        normalized = endpoint if str(endpoint).startswith("/") else f"/{endpoint}"
+        endpoint_variants = [normalized]
+
+        # Local Flask app currently exposes `/admin/*`; some clients use `/api/admin/*`.
+        if normalized.startswith("/api/"):
+            endpoint_variants.append(normalized[4:])
+        elif normalized.startswith("/admin/"):
+            endpoint_variants.append(f"/api{normalized}")
+
+        last_status = None
+        for path in endpoint_variants:
+            url = f"{flask_api_url}{path}"
+            if method == "GET":
+                response = requests.get(url, timeout=5)
+            elif method == "POST":
+                response = requests.post(url, json=data, timeout=5)
+            elif method == "DELETE":
+                response = requests.delete(url, timeout=5)
+            else:
+                return None
+
+            last_status = response.status_code
+            if response.status_code == 200:
+                return response.json()
+
+            # Try alternate route shape before surfacing non-connectivity notice.
+            if response.status_code in (404, 405):
+                continue
+
+            show_control_center_api_notice_once(
+                f"returning HTTP {response.status_code}"
+            )
+            return None
+
+        # All route variants were not implemented; rely on page fallback data silently.
+        if last_status in (404, 405):
+            return None
+
+        show_control_center_api_notice_once(
+            f"returning HTTP {last_status or 'unknown'}"
+        )
         return None
     except requests.exceptions.ConnectionError:
         show_control_center_api_notice_once("unreachable")

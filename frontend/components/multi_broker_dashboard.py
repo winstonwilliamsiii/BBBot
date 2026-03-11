@@ -219,31 +219,65 @@ def connect_alpaca(
         if paper is None:
             paper = True
 
-        connector = AlpacaConnector(key, secret, bool(paper))
-        account = connector.get_account()
+        requested_mode = bool(paper)
+        attempted_modes: list[bool] = [requested_mode]
 
-        if account:
+        # If keys or env mode are mismatched, fallback to opposite mode automatically.
+        key_prefix = key[:2].upper() if key else ""
+        if key_prefix == "PK" and True not in attempted_modes:
+            attempted_modes.append(True)
+        elif key_prefix == "AK" and False not in attempted_modes:
+            attempted_modes.append(False)
+        elif len(attempted_modes) == 1:
+            attempted_modes.append(not requested_mode)
+
+        connected = False
+        connected_mode = requested_mode
+        account = None
+        connector = None
+
+        for mode_flag in attempted_modes:
+            connector_candidate = AlpacaConnector(key, secret, mode_flag)
+            account_candidate = connector_candidate.get_account()
+            if account_candidate:
+                connector = connector_candidate
+                account = account_candidate
+                connected = True
+                connected_mode = mode_flag
+                break
+
+        if connected and connector and account:
             st.session_state.brokers['alpaca'] = connector
-            portfolio_val = float(account['portfolio_value']) if account and 'portfolio_value' in account else 0.0
+            portfolio_val = float(account.get('portfolio_value', 0.0))
             st.session_state['alpaca_last_connect_error'] = ""
+            st.session_state['alpaca_connected_mode'] = (
+                "paper" if connected_mode else "live"
+            )
             if not silent:
+                source_msg = source
+                if connected_mode != requested_mode:
+                    source_msg += ", mode auto-corrected"
                 st.success(
-                    f"✅ Alpaca Connected ({source})! Portfolio: ${portfolio_val:,.2f}"
+                    f"✅ Alpaca Connected ({source_msg})! Portfolio: ${portfolio_val:,.2f}"
                 )
             if rerun_on_success:
                 st.rerun()
         else:
-            mode = "paper" if bool(paper) else "live"
+            requested_mode_name = "paper" if requested_mode else "live"
+            attempted_mode_names = ", ".join(
+                ["paper" if m else "live" for m in attempted_modes]
+            )
+            key_hint = "paper-key" if key_prefix == "PK" else (
+                "live-key" if key_prefix == "AK" else "unknown-key-type"
+            )
             err_msg = (
-                f"Alpaca connection failed ({mode} mode). "
-                "Verify ALPACA keys match mode and endpoint is reachable."
+                f"Alpaca connection failed (requested: {requested_mode_name}; "
+                f"attempted: {attempted_mode_names}; key: {key_hint}). "
+                "Verify production secrets and endpoint reachability."
             )
             st.session_state['alpaca_last_connect_error'] = err_msg
             if not silent:
                 st.error(f"❌ {err_msg}")
-                st.info(
-                    "Verify ALPACA keys are for the selected mode, and that the account endpoint is reachable."
-                )
     except Exception as e:
         st.session_state['alpaca_last_connect_error'] = str(e)
         if not silent:

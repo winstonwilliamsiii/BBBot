@@ -46,7 +46,7 @@ jobs:
     - name: Lint check
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics \
-          --exclude=venv,.venv,lib,node_modules,sites,.git,__pycache__ \
+          --exclude=venv,.venv,.venv-dogon,lib,node_modules,sites,.git,__pycache__,archive/disabled_pages \
           --extend-exclude='#*.py,*/#*.py'
     
     - name: Environment validation

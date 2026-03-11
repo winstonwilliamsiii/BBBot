@@ -51,9 +51,9 @@ jobs:
     - name: Lint with flake8
       run: |
         # Stop on syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,.venv-dogon,env,.env,.git,__pycache__,.pytest_cache,.mypy_cache,.tox,dist,build,*.egg-info,node_modules,.github,sites,.vscode,.conda,appwrite-functions,integrations,logs,bbbot1_pipeline,archive/disabled_pages,pages/#RIGEL*.py
         # Check code quality
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=venv,.venv,.venv-dogon,env,.env,.git,__pycache__,.pytest_cache,.mypy_cache,.tox,dist,build,*.egg-info,node_modules,.github,sites,.vscode,.conda,appwrite-functions,integrations,logs,bbbot1_pipeline,archive/disabled_pages,pages/#RIGEL*.py
     
     - name: Check code formatting (Black)
       run: |

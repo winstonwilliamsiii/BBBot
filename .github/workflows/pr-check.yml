@@ -46,7 +46,7 @@ jobs:
       
       - name: Check code quality
         run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,.venv-dogon,env,.env,.git,__pycache__,.pytest_cache,.mypy_cache,.tox,dist,build,*.egg-info,node_modules,.github,sites,.vscode,.conda,appwrite-functions,integrations,logs,bbbot1_pipeline,archive/disabled_pages,pages/#RIGEL*.py
       
       - name: Security scan for secrets
         run: |

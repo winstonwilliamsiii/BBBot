@@ -2,6 +2,7 @@
 exclude = 
     venv,
     .venv,
+    .venv-dogon,
     env,
     .env,
     .conda,
@@ -21,4 +22,5 @@ exclude =
     integrations,
     logs,
     bbbot1_pipeline,
+    archive/disabled_pages,
     */frontend/components/#*

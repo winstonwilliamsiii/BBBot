@@ -25,6 +25,13 @@ from typing import List, Dict, Optional, Tuple
 import logging
 
 try:
+    # Keep DB resolution consistent with the rest of the frontend stack.
+    from frontend.utils.secrets_helper import get_mysql_config
+    MYSQL_CONFIG_HELPER_AVAILABLE = True
+except ImportError:
+    MYSQL_CONFIG_HELPER_AVAILABLE = False
+
+try:
     import mysql.connector
     MYSQL_AVAILABLE = True
 except ImportError:
@@ -42,13 +49,45 @@ logger = logging.getLogger(__name__)
 
 # ---------- CONFIG ----------
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "127.0.0.1"),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "database": os.getenv("DB_NAME", "Bentley_Budget"),
-    "port": int(os.getenv("DB_PORT", "3306")),
-}
+def _build_db_config() -> Dict[str, object]:
+    """
+    Build MySQL connection config with a consistent precedence strategy.
+
+    Priority:
+    1) Explicit process env vars (MYSQL_* / DB_*)
+    2) Shared frontend helper (`get_mysql_config`) fallback
+    3) Local defaults
+    """
+    env_host = os.getenv("MYSQL_HOST") or os.getenv("DB_HOST")
+    env_port = os.getenv("MYSQL_PORT") or os.getenv("DB_PORT")
+    env_user = os.getenv("MYSQL_USER") or os.getenv("DB_USER")
+    env_password = os.getenv("MYSQL_PASSWORD") or os.getenv("DB_PASSWORD")
+    env_database = os.getenv("MYSQL_DATABASE") or os.getenv("DB_NAME")
+
+    # Prefer explicit env vars when present (typical local dev flow).
+    if any([env_host, env_port, env_user, env_password, env_database]):
+        return {
+            "host": env_host or "127.0.0.1",
+            "user": env_user or "root",
+            "password": env_password or "",
+            "database": env_database or "mansa_bot",
+            "port": int(env_port or "3306"),
+        }
+
+    requested_db = "mansa_bot"
+    if MYSQL_CONFIG_HELPER_AVAILABLE:
+        try:
+            return get_mysql_config(database=requested_db)
+        except Exception as e:
+            logger.warning(f"Falling back to local default DB config: {e}")
+
+    return {
+        "host": "127.0.0.1",
+        "user": "root",
+        "password": "",
+        "database": requested_db,
+        "port": 3306,
+    }
 
 # DCF assumptions (override per ticker if needed)
 DEFAULT_DISCOUNT_RATE = 0.10  # 10%
@@ -65,7 +104,8 @@ def get_db_connection():
         raise ImportError("mysql-connector-python is required for DCF analysis")
     
     try:
-        conn = mysql.connector.connect(**DB_CONFIG)
+        db_config = _build_db_config()
+        conn = mysql.connector.connect(**db_config)
         return conn
     except mysql.connector.Error as e:
         logger.error(f"Database connection failed: {e}")

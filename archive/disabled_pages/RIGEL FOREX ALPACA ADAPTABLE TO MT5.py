@@ -46,16 +46,10 @@ def on_tick():
                     PlaceBuyOrder(pair, lot_size, SL=sl, TP=tp)
                 else:
                     PlaceSellOrder(pair, lot_size, SL=sl, TP=tp)
-                    
-                    #ML INTEGRATION 
-                    # Placeholder for ML model prediction
-                    # ml_signal = MLModelPredict(pair)
-                    # if ml_signal == "BUY":
-                    #     PlaceBuyOrder(pair, lot_size, SL=sl, TP=tp)
-                    # elif ml_signal == "SELL":
-                    #     PlaceSellOrder(pair, lot_size, SL=sl, TP=tp)
-                    if ML_Predict(pair) == "mean_revert":
-    # confirm with technical signal
-    if mean_reversion_signal(pair):
-        execute_trade(pair)
+                # ML integration placeholder (kept as comments for scaffold only)
+                # ml_signal = MLModelPredict(pair)
+                # if ml_signal == "BUY":
+                #     PlaceBuyOrder(pair, lot_size, SL=sl, TP=tp)
+                # elif ml_signal == "SELL":
+                #     PlaceSellOrder(pair, lot_size, SL=sl, TP=tp)
         

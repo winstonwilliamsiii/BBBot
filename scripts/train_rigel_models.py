@@ -39,21 +39,21 @@ try:
     LSTM_AVAILABLE = True
 except ImportError:
     LSTM_AVAILABLE = False
-    print("⚠️ TensorFlow not available - LSTM training disabled")
+    print("[WARN] TensorFlow not available - LSTM training disabled")
 
 try:
     import xgboost as xgb
     XGB_AVAILABLE = True
 except ImportError:
     XGB_AVAILABLE = False
-    print("⚠️ XGBoost not available - XGBoost training disabled")
+    print("[WARN] XGBoost not available - XGBoost training disabled")
 
 try:
     import mlflow
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
-    print("⚠️ MLflow not available - training metrics will not be logged")
+    print("[WARN] MLflow not available - training metrics will not be logged")
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -138,7 +138,7 @@ class RigelModelTrainer:
                 'volume': 'volume'
             }, inplace=True)
             
-            logger.info(f"✓ Fetched {len(bars)} bars for {symbol}")
+            logger.info(f"[OK] Fetched {len(bars)} bars for {symbol}")
             return bars
             
         except Exception as e:
@@ -217,7 +217,7 @@ class RigelModelTrainer:
         # Drop NaN values from indicator calculations
         df = df.dropna()
         
-        logger.info(f"✓ Computed indicators, {len(df)} valid rows")
+        logger.info(f"[OK] Computed indicators, {len(df)} valid rows")
         return df
     
     def create_labels(self, df: pd.DataFrame, lookahead: int = 10) -> pd.Series:
@@ -262,7 +262,7 @@ class RigelModelTrainer:
         # Pad with neutral for lookahead period
         labels.extend([0] * lookahead)
         
-        logger.info(f"✓ Label distribution: "
+        logger.info(f"[OK] Label distribution: "
                    f"Neutral={labels.count(0)}, "
                    f"Revert={labels.count(1)}, "
                    f"Trend={labels.count(2)}")
@@ -348,7 +348,7 @@ class RigelModelTrainer:
         
         # Evaluate
         test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
-        logger.info(f"✓ LSTM Test Accuracy: {test_acc:.2%}")
+        logger.info(f"[OK] LSTM Test Accuracy: {test_acc:.2%}")
 
         metrics = {
             'lstm_test_loss': float(test_loss),
@@ -414,8 +414,8 @@ class RigelModelTrainer:
         train_acc = model.score(X_train, y_train)
         test_acc = model.score(X_test, y_test)
         
-        logger.info(f"✓ XGBoost Train Accuracy: {train_acc:.2%}")
-        logger.info(f"✓ XGBoost Test Accuracy: {test_acc:.2%}")
+        logger.info(f"[OK] XGBoost Train Accuracy: {train_acc:.2%}")
+        logger.info(f"[OK] XGBoost Test Accuracy: {test_acc:.2%}")
         
         metrics = {
             'xgb_train_accuracy': float(train_acc),
@@ -455,7 +455,7 @@ class RigelModelTrainer:
         # Save LSTM
         if LSTM_AVAILABLE and lstm_model:
             lstm_model.save(lstm_path)
-            logger.info(f"✓ Saved LSTM model: {lstm_path}")
+            logger.info(f"[OK] Saved LSTM model: {lstm_path}")
             saved_paths['lstm_model'] = str(lstm_path)
             # Maintain backwards-compatible path expected by runtime loader.
             canonical_lstm_path = self.models_dir / 'rigel_lstm_model.h5'
@@ -465,7 +465,7 @@ class RigelModelTrainer:
         # Save XGBoost
         if XGB_AVAILABLE and xgb_model:
             joblib.dump(xgb_model, xgb_path)
-            logger.info(f"✓ Saved XGBoost model: {xgb_path}")
+            logger.info(f"[OK] Saved XGBoost model: {xgb_path}")
             saved_paths['xgb_model'] = str(xgb_path)
             canonical_xgb_path = self.models_dir / 'rigel_xgb_model.pkl'
             joblib.dump(xgb_model, canonical_xgb_path)
@@ -474,7 +474,7 @@ class RigelModelTrainer:
         # Save scaler
         if scaler:
             joblib.dump(scaler, scaler_path)
-            logger.info(f"✓ Saved scaler: {scaler_path}")
+            logger.info(f"[OK] Saved scaler: {scaler_path}")
             saved_paths['scaler'] = str(scaler_path)
             canonical_scaler_path = self.models_dir / 'rigel_scaler.pkl'
             joblib.dump(scaler, canonical_scaler_path)
@@ -511,7 +511,7 @@ class RigelModelTrainer:
                 try:
                     if get_mlflow_tracking_uri:
                         mlflow.set_tracking_uri(get_mlflow_tracking_uri())
-                    mlflow.set_experiment('rigel_forex_training')
+                    mlflow.set_experiment('Rigel_FOREX_Training')
                     run_name = f"{symbol.replace('/', '')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
                     run_context = mlflow.start_run(run_name=run_name)
                     run_active = True
@@ -561,10 +561,10 @@ class RigelModelTrainer:
                         if os.path.exists(artifact_path):
                             mlflow.log_artifact(artifact_path)
 
-                logger.info(f"✅ Successfully trained models for {symbol}")
+                logger.info(f"[OK] Successfully trained models for {symbol}")
             
         except Exception as e:
-            logger.error(f"❌ Training failed for {symbol}: {e}")
+            logger.error(f"[ERROR] Training failed for {symbol}: {e}")
             raise
 
 
@@ -589,7 +589,7 @@ def main():
     api_secret = os.getenv('ALPACA_SECRET_KEY') or os.getenv('ALPACA_API_SECRET')
     
     if (not api_key or not api_secret) and not args.synthetic_data:
-        logger.error("❌ Missing Alpaca API credentials")
+        logger.error("[ERROR] Missing Alpaca API credentials")
         logger.error(
             "Set ALPACA_API_KEY and ALPACA_SECRET_KEY "
             "(or ALPACA_API_SECRET) environment variables"
@@ -597,7 +597,7 @@ def main():
         sys.exit(1)
 
     if args.synthetic_data and (not api_key or not api_secret):
-        logger.warning("⚠️ Running in synthetic-data mode without Alpaca credentials")
+        logger.warning("[WARN] Running in synthetic-data mode without Alpaca credentials")
         api_key = api_key or "synthetic"
         api_secret = api_secret or "synthetic"
     
@@ -631,7 +631,7 @@ def main():
         )
     
     logger.info("=" * 70)
-    logger.info("✅ TRAINING COMPLETE")
+    logger.info("[OK] TRAINING COMPLETE")
     logger.info("=" * 70)
 
 

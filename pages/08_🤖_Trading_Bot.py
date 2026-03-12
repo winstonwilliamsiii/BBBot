@@ -356,12 +356,19 @@ def load_titan_snapshot() -> dict:
     if not TITAN_AVAILABLE:
         return {}
 
-    config = TitanConfig.from_env()
-    bot = TitanBot(config)
+    try:
+        config = TitanConfig.from_env()
+        bot = TitanBot(config)
+    except Exception:
+        return {}
+
+    # Table bootstrap can fail when DB/schema is unavailable in some envs.
+    # Keep dashboard resilient so other tabs still render.
     try:
         bot.ensure_database_tables()
-    except (RuntimeError, OSError, ValueError):
+    except Exception:
         pass
+
     try:
         return bot.dashboard_snapshot()
     except Exception:
@@ -710,7 +717,10 @@ with tab5:
 with tab6:
     st.subheader("Broker Trading & ML Signals")
     st.caption("Single reconciled broker page embedded inside Trading Bot.")
-    render_multi_broker_dashboard()
+    try:
+        render_multi_broker_dashboard()
+    except Exception as e:
+        st.warning(f"Unified Broker dashboard is temporarily unavailable: {e}")
 
 # Footer
 st.markdown("---")

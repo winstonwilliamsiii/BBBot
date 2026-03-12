@@ -1,0 +1,7 @@
+# Rigel isolated training dependencies
+-r requirements-rigel.txt
+
+# Model training stack
+xgboost>=2.1.0
+tensorflow>=2.19.0
+mlflow>=2.14.0

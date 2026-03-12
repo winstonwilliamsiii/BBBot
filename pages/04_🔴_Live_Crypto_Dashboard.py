@@ -32,27 +32,28 @@ try:
     
     # Apply home page styling first
     apply_custom_styling()
-    
-    RBACManager.init_session_state()
-    show_user_info()
-    if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_CRYPTO):
-        st.error("🚫 Access Denied - CLIENT role required")
-        show_login_form()
-        st.stop()
-    # Hide admin-only pages 6–8 from sidebar for non-ADMIN users
-    if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
-        st.markdown(
-            f"""
-            <style>
-            [data-testid=\"stSidebarNav\"] li:nth-child(6),
-            [data-testid=\"stSidebarNav\"] li:nth-child(7),
-            [data-testid=\"stSidebarNav\"] li:nth-child(8) {{
-                display: none !important;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
+
+    if RBAC_AVAILABLE:
+        RBACManager.init_session_state()
+        show_user_info()
+        if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_CRYPTO):
+            st.error("🚫 Access Denied - Requires Client, Investor, or Admin role")
+            show_login_form()
+            st.stop()
+        # Hide admin-only pages 6–8 from sidebar for non-ADMIN users
+        if not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+            st.markdown(
+                f"""
+                <style>
+                [data-testid=\"stSidebarNav\"] li:nth-child(6),
+                [data-testid=\"stSidebarNav\"] li:nth-child(7),
+                [data-testid=\"stSidebarNav\"] li:nth-child(8) {{
+                    display: none !important;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
     
     # Add page-specific enhancements
     st.markdown(f"""
@@ -136,6 +137,86 @@ try:
 except ImportError:
     # Fallback if frontend modules not available
     st.warning("⚠️ Styling modules not found. Using fallback styles.")
+
+
+def fetch_crypto_market_data(selected_cryptos, crypto_pairs, timeframe):
+    """Fetch crypto history in one batch and enrich with lightweight quote details."""
+
+    if not YFINANCE_AVAILABLE:
+        return {}, []
+
+    selected_symbols = [crypto_pairs[name] for name in selected_cryptos]
+    errors = []
+    crypto_data = {}
+
+    try:
+        downloaded = yf.download(
+            selected_symbols,
+            period=timeframe,
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+            group_by="ticker",
+        )
+    except Exception as e:
+        downloaded = pd.DataFrame()
+        errors.append(f"Batch history download failed: {e}")
+
+    for name in selected_cryptos:
+        symbol = crypto_pairs[name]
+
+        hist = pd.DataFrame()
+        if isinstance(downloaded, pd.DataFrame) and not downloaded.empty:
+            try:
+                if isinstance(downloaded.columns, pd.MultiIndex):
+                    if symbol in downloaded.columns.get_level_values(0):
+                        hist = downloaded[symbol].dropna(how="all")
+                else:
+                    # Single-symbol download returns flat columns.
+                    hist = downloaded.dropna(how="all")
+            except Exception:
+                hist = pd.DataFrame()
+
+        quote = {}
+        try:
+            quote = dict(yf.Ticker(symbol).fast_info or {})
+        except Exception as e:
+            errors.append(f"{name}: quote fetch failed ({e})")
+
+        close_series = hist["Close"] if not hist.empty and "Close" in hist.columns else pd.Series(dtype=float)
+        latest_close = float(close_series.iloc[-1]) if not close_series.empty else 0.0
+        previous_close = float(close_series.iloc[-2]) if len(close_series) > 1 else latest_close
+
+        if not hist.empty and {"High", "Low"}.issubset(hist.columns):
+            day_high = float(hist["High"].iloc[-1])
+            day_low = float(hist["Low"].iloc[-1])
+        else:
+            day_high = float(quote.get("day_high") or latest_close or 0.0)
+            day_low = float(quote.get("day_low") or latest_close or 0.0)
+
+        volume_val = 0.0
+        if not hist.empty and "Volume" in hist.columns:
+            volume_val = float(hist["Volume"].iloc[-1] or 0.0)
+        if volume_val <= 0:
+            volume_val = float(quote.get("last_volume") or quote.get("regular_market_volume") or 0.0)
+
+        market_cap_val = float(quote.get("market_cap") or 0.0)
+
+        if hist.empty:
+            errors.append(f"{name}: no historical data returned")
+
+        crypto_data[name] = {
+            "symbol": symbol,
+            "history": hist,
+            "current_price": float(quote.get("last_price") or quote.get("regular_market_price") or latest_close),
+            "previous_close": float(quote.get("previous_close") or previous_close),
+            "volume": volume_val,
+            "market_cap": market_cap_val,
+            "day_high": day_high,
+            "day_low": day_low,
+        }
+
+    return crypto_data, errors
 
 # Import yfinance for crypto data
 try:
@@ -234,31 +315,13 @@ User: {config['user']}@localhost
     with st.spinner("Fetching live crypto data..."):
         fetch_start = time.time()
         
-        for name in selected_cryptos:
-            symbol = crypto_pairs[name]
-            try:
-                ticker = yf.Ticker(symbol)
-                
-                # Get current price info
-                info = ticker.info
-                
-                # Get historical data
-                hist = ticker.history(period=timeframe)
-                
-                crypto_data[name] = {
-                    "symbol": symbol,
-                    "info": info,
-                    "history": hist,
-                    "current_price": info.get('regularMarketPrice', info.get('currentPrice', 0)),
-                    "previous_close": info.get('previousClose', 0),
-                    "volume": info.get('volume', 0),
-                    "market_cap": info.get('marketCap', 0),
-                    "day_high": info.get('dayHigh', 0),
-                    "day_low": info.get('dayLow', 0),
-                }
-            except Exception as e:
-                st.warning(f"⚠️ Could not fetch {name}: {e}")
-                continue
+        crypto_data, fetch_errors = fetch_crypto_market_data(
+            selected_cryptos=selected_cryptos,
+            crypto_pairs=crypto_pairs,
+            timeframe=timeframe,
+        )
+        for fetch_error in fetch_errors:
+            st.warning(f"⚠️ {fetch_error}")
         
         fetch_time = time.time() - fetch_start
     

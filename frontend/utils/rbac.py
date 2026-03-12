@@ -84,6 +84,8 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
         Permission.CLIENT_WRITE_TRANSACTIONS,
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_BUDGET,
+        Permission.VIEW_ANALYSIS,
+        Permission.VIEW_CRYPTO,
     },
     UserRole.INVESTOR: {
         # bbbot1 read-only: prices, fundamentals, technicals + performance metrics
@@ -93,6 +95,7 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
         Permission.INVESTOR_READ_PERFORMANCE,
         Permission.VIEW_DASHBOARD,
         Permission.VIEW_ANALYSIS,
+        Permission.VIEW_CRYPTO,
         Permission.VIEW_BROKER_TRADING,
     },
     UserRole.ANALYST: {

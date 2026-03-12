@@ -38,6 +38,18 @@ if ($ForceDryRun.IsPresent) {
 # Keep paper mode explicit for morning automation.
 $env:ALPACA_PAPER = "true"
 
+# Keep IBKR connectivity explicit for morning automation.
+if (-not $env:IBKR_HOST) {
+    $env:IBKR_HOST = "127.0.0.1"
+}
+if (-not $env:IBKR_PORT) {
+    # 7496 = live TWS socket, 7497 = paper TWS socket.
+    $env:IBKR_PORT = "7496"
+}
+if (-not $env:IBKR_CLIENT_ID) {
+    $env:IBKR_CLIENT_ID = "1"
+}
+
 # Ensure Discord webhook is available for Titan notifications.
 if (-not $env:DISCORD_WEBHOOK_URL) {
     if ($env:DISCORD_WEBHOOK) {

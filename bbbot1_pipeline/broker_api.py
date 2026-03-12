@@ -7,6 +7,7 @@ Unified interface for trading across multiple brokers:
 """
 
 import os
+import socket
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -127,23 +128,62 @@ class IBKRClient:
     
     def __init__(self):
         self.host = os.getenv("IBKR_HOST", "127.0.0.1")
-        self.port = int(os.getenv("IBKR_PORT", "7497"))  # 7497 for TWS paper, 7496 for live
+        self.port = self._resolve_port()  # 7497 for TWS paper, 7496 for live
         self.client_id = int(os.getenv("IBKR_CLIENT_ID", "1"))
         self.app = None
+
+    def _is_port_open(self, port: int, timeout: float = 0.8) -> bool:
+        """Return True when the configured IBKR API socket is accepting connections."""
+        try:
+            with socket.create_connection((self.host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    def _resolve_port(self) -> int:
+        """Use IBKR_PORT when provided, otherwise auto-detect paper/live TWS socket."""
+        env_port = os.getenv("IBKR_PORT")
+        if env_port:
+            return int(env_port)
+
+        # Prefer paper by default, then fallback to live if that is the active port.
+        if self._is_port_open(7497):
+            return 7497
+        if self._is_port_open(7496):
+            return 7496
+
+        # Keep legacy default when neither port is reachable during initialization.
+        return 7497
         
     def connect(self):
         """Initialize IBKR connection"""
         try:
             from ibapi.client import EClient
             from ibapi.wrapper import EWrapper
-            from ibapi.contract import Contract
             
             class IBApp(EWrapper, EClient):
                 def __init__(self):
                     EClient.__init__(self, self)
+
+                def error(self, reqId, errorCode, errorString, advancedOrderRejectJson=""):
+                    logger.error(
+                        f"IBKR API error reqId={reqId} code={errorCode} msg={errorString}"
+                    )
+
+                def nextValidId(self, orderId):
+                    logger.info(f"IBKR API session ready. nextValidId={orderId}")
             
             self.app = IBApp()
             self.app.connect(self.host, self.port, self.client_id)
+
+            if not self.app.isConnected():
+                logger.error(
+                    f"❌ IBKR API not connected to {self.host}:{self.port}. "
+                    "Check TWS API settings, trusted IPs, and port."
+                )
+                self.app = None
+                return False
+
             logger.info(f"✅ IBKR connected successfully to {self.host}:{self.port}")
             return True
         

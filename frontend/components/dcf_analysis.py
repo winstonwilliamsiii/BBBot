@@ -101,13 +101,60 @@ DEFAULT_MARGIN_OF_SAFETY = 0.15  # 15% buffer for "undervalued" flag
 def get_db_connection():
     """Create and return a MySQL database connection."""
     if not MYSQL_AVAILABLE:
-        raise ImportError("mysql-connector-python is required for DCF analysis")
-    
+        raise ImportError(
+            "mysql-connector-python is required for DCF analysis"
+        )
+
+    db_config = _build_db_config()
+
     try:
-        db_config = _build_db_config()
-        conn = mysql.connector.connect(**db_config)
-        return conn
+        return mysql.connector.connect(**db_config)
     except mysql.connector.Error as e:
+        # Common local-dev mismatch: Docker MySQL is exposed on 3307.
+        if (
+            getattr(e, "errno", None) == 1049
+            and db_config.get("port") == 3306
+            and str(db_config.get("host")) in ("127.0.0.1", "localhost")
+        ):
+            alt_config = dict(db_config)
+            alt_config["port"] = 3307
+            logger.warning(
+                "Primary MySQL connection failed with unknown database on port 3306. "
+                "Retrying DCF connection on port 3307..."
+            )
+            try:
+                return mysql.connector.connect(**alt_config)
+            except mysql.connector.Error:
+                # Fall through to DB bootstrap attempt on original config.
+                pass
+
+        if getattr(e, "errno", None) == 1049:
+            database = str(db_config.get("database") or "").strip()
+            if not database:
+                logger.error(f"Database connection failed: {e}")
+                raise
+
+            # Create the requested schema if it does not exist, then reconnect.
+            bootstrap_config = dict(db_config)
+            bootstrap_config.pop("database", None)
+            try:
+                bootstrap_conn = mysql.connector.connect(**bootstrap_config)
+                bootstrap_cursor = bootstrap_conn.cursor()
+                bootstrap_cursor.execute(
+                    f"CREATE DATABASE IF NOT EXISTS `{database}`"
+                )
+                bootstrap_conn.commit()
+                bootstrap_cursor.close()
+                bootstrap_conn.close()
+                logger.info(
+                    f"Created missing MySQL database '{database}' "
+                    "for DCF analysis"
+                )
+                return mysql.connector.connect(**db_config)
+            except mysql.connector.Error as bootstrap_error:
+                logger.error(f"Database bootstrap failed: {bootstrap_error}")
+                raise
+
         logger.error(f"Database connection failed: {e}")
         raise
 

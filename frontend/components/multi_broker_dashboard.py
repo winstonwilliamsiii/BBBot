@@ -220,16 +220,15 @@ def connect_alpaca(
             paper = True
 
         requested_mode = bool(paper)
-        attempted_modes: list[bool] = [requested_mode]
-
-        # If keys or env mode are mismatched, fallback to opposite mode automatically.
         key_prefix = key[:2].upper() if key else ""
-        if key_prefix == "PK" and True not in attempted_modes:
-            attempted_modes.append(True)
-        elif key_prefix == "AK" and False not in attempted_modes:
-            attempted_modes.append(False)
-        elif len(attempted_modes) == 1:
-            attempted_modes.append(not requested_mode)
+
+        # Respect key type first to avoid invalid cross-mode attempts.
+        if key_prefix == "PK":
+            attempted_modes: list[bool] = [True]
+        elif key_prefix == "AK":
+            attempted_modes = [False]
+        else:
+            attempted_modes = [requested_mode, not requested_mode]
 
         connected = False
         connected_mode = requested_mode

@@ -234,6 +234,7 @@ def connect_alpaca(
         connected_mode = requested_mode
         account = None
         connector = None
+        failure_detail = ""
 
         for mode_flag in attempted_modes:
             connector_candidate = AlpacaConnector(key, secret, mode_flag)
@@ -244,6 +245,7 @@ def connect_alpaca(
                 connected = True
                 connected_mode = mode_flag
                 break
+            failure_detail = getattr(connector_candidate, "last_error", "") or failure_detail
 
         if connected and connector and account:
             st.session_state.brokers['alpaca'] = connector
@@ -274,6 +276,10 @@ def connect_alpaca(
                 f"attempted: {attempted_mode_names}; key: {key_hint}). "
                 "Verify production secrets and endpoint reachability."
             )
+            if failure_detail:
+                err_msg = f"{err_msg} Cause: {failure_detail}"
+                if "HTTP 401" in failure_detail or "HTTP 403" in failure_detail:
+                    err_msg += " (Auth failed: verify ALPACA/API secret pair and paper-mode key in production secrets.)"
             st.session_state['alpaca_last_connect_error'] = err_msg
             if not silent:
                 st.error(f"❌ {err_msg}")

@@ -119,6 +119,7 @@ class AlpacaConnector:
             'APCA-API-KEY-ID': self.api_key,
             'APCA-API-SECRET-KEY': self.secret_key
         })
+        self.last_error = ""
         
         logger.info(f"Alpaca connector initialized ({'PAPER' if paper else 'LIVE'} trading)")
 
@@ -154,8 +155,19 @@ class AlpacaConnector:
         try:
             response = self._request('GET', f"{self.base_url}/v2/account", timeout=5)
             response.raise_for_status()
+            self.last_error = ""
             return response.json()
+        except requests.exceptions.HTTPError as e:
+            status_code = getattr(getattr(e, 'response', None), 'status_code', 'unknown')
+            body = getattr(getattr(e, 'response', None), 'text', '')
+            body = (body or '').strip()
+            if len(body) > 240:
+                body = body[:240] + '...'
+            self.last_error = f"HTTP {status_code}: {body}" if body else f"HTTP {status_code}"
+            logger.error(f"Error getting account info: {self.last_error}")
+            return None
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"Error getting account info: {e}")
             return None
     

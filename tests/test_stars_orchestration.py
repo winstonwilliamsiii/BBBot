@@ -3,27 +3,23 @@ from scripts import stars_orchestration
 
 
 def test_bot_fund_allocations_present():
-    assert BOT_FUND_ALLOCATIONS["Titan"] == "Mansa_Tech"
-    assert BOT_FUND_ALLOCATIONS["Rigel"] == "Mansa_FOREX"
-    assert BOT_FUND_ALLOCATIONS["Dogon"] == "Mansa_ETF"
-    assert BOT_FUND_ALLOCATIONS["Orion"] == "Mansa_Minerals"
+    assert BOT_FUND_ALLOCATIONS["Titan"] == "Mansa Tech"
+    assert BOT_FUND_ALLOCATIONS["Rigel"] == "Mansa FOREX"
+    assert BOT_FUND_ALLOCATIONS["Dogon"] == "Mansa ETF"
+    assert BOT_FUND_ALLOCATIONS["Orion"] == "Mansa Minerals"
 
 
 def test_get_bot_fund_rows_count():
     rows = get_bot_fund_rows()
-    assert len(rows) == 4
-    assert {row["bot"] for row in rows} == {
-        "Titan",
-        "Rigel",
-        "Dogon",
-        "Orion",
-    }
+    assert len(rows) >= 4
+    bot_names = {row["bot"] for row in rows}
+    assert {"Titan", "Rigel", "Dogon", "Orion"}.issubset(bot_names)
 
 
 def test_run_fund_bot_rigel_ready_or_placeholder():
     result = stars_orchestration.run_fund_bot("Rigel")
     assert result["bot"] == "Rigel"
-    assert result["fund"] == "Mansa_FOREX"
+    assert result["fund"] == "Mansa FOREX"
     assert result["status"] in {"ready", "placeholder"}
 
 

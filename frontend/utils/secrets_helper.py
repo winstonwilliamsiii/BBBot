@@ -154,7 +154,7 @@ def get_alpaca_config() -> dict:
     Raises:
         ValueError: If credentials are not configured
     """
-    api_key = (
+    legacy_api_key = (
         get_secret('ALPACA_API_KEY')
         or get_secret('APCA_API_KEY_ID')
         or get_secret('ALPACA_KEY_ID')
@@ -168,7 +168,7 @@ def get_alpaca_config() -> dict:
         or get_secret('api_key', section='alpaca')
         or get_secret('key_id', section='alpaca')
     )
-    secret_key = (
+    legacy_secret_key = (
         get_secret('ALPACA_SECRET_KEY')
         or get_secret('APCA_API_SECRET_KEY')
         or get_secret('APCA_SECRET_KEY')
@@ -194,9 +194,39 @@ def get_alpaca_config() -> dict:
         or get_secret('secret_key', section='alpaca')
         or get_secret('secret', section='alpaca')
     )
-    api_key = _clean_secret_value(api_key)
-    secret_key = _clean_secret_value(secret_key)
-    paper = get_secret('ALPACA_PAPER', default=None)
+    paper_api_key = (
+        get_secret('ALPACA_PAPER_API_KEY')
+        or get_secret('ALPACA_API_KEY_PAPER')
+        or get_secret('paper_api_key', section='alpaca')
+        or get_secret('paper_key', section='alpaca')
+    )
+    paper_secret_key = (
+        get_secret('ALPACA_PAPER_SECRET_KEY')
+        or get_secret('ALPACA_SECRET_KEY_PAPER')
+        or get_secret('paper_secret_key', section='alpaca')
+        or get_secret('paper_secret', section='alpaca')
+    )
+    live_api_key = (
+        get_secret('ALPACA_LIVE_API_KEY')
+        or get_secret('ALPACA_API_KEY_LIVE')
+        or get_secret('live_api_key', section='alpaca')
+        or get_secret('live_key', section='alpaca')
+    )
+    live_secret_key = (
+        get_secret('ALPACA_LIVE_SECRET_KEY')
+        or get_secret('ALPACA_SECRET_KEY_LIVE')
+        or get_secret('live_secret_key', section='alpaca')
+        or get_secret('live_secret', section='alpaca')
+    )
+
+    legacy_api_key = _clean_secret_value(legacy_api_key)
+    legacy_secret_key = _clean_secret_value(legacy_secret_key)
+    paper_api_key = _clean_secret_value(paper_api_key)
+    paper_secret_key = _clean_secret_value(paper_secret_key)
+    live_api_key = _clean_secret_value(live_api_key)
+    live_secret_key = _clean_secret_value(live_secret_key)
+    # Allow local env override for quick paper/live switching during ops tests.
+    paper = os.getenv('ALPACA_PAPER') or get_secret('ALPACA_PAPER', default=None)
     if paper is None:
         env = get_secret('ALPACA_ENVIRONMENT', default='paper')
         if str(env).lower() not in ('paper', 'live'):
@@ -204,6 +234,14 @@ def get_alpaca_config() -> dict:
             env = 'paper' if 'paper-api.alpaca.markets' in str(base_url).lower() else 'live'
         paper = 'true' if str(env).lower() == 'paper' else 'false'
     
+    use_paper = paper.lower() in ('true', '1', 'yes')
+    if use_paper:
+        api_key = paper_api_key or legacy_api_key
+        secret_key = paper_secret_key or legacy_secret_key
+    else:
+        api_key = live_api_key or legacy_api_key
+        secret_key = live_secret_key or legacy_secret_key
+
     if not api_key or api_key == 'your-alpaca-api-key-here':
         raise ValueError(
             "❌ Alpaca credentials not configured.\n"
@@ -222,7 +260,7 @@ def get_alpaca_config() -> dict:
     return {
         'api_key': api_key,
         'secret_key': secret_key,
-        'paper': paper.lower() in ('true', '1', 'yes'),
+        'paper': use_paper,
     }
 
 

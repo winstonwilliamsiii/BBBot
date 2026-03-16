@@ -44,7 +44,8 @@ def render_multi_broker_dashboard():
         st.session_state.brokers = {
             'mt5': None,
             'alpaca': None,
-            'ibkr': None
+            'ibkr': None,
+            'axi': None,
         }
     
     # Broker status overview
@@ -57,23 +58,27 @@ def render_multi_broker_dashboard():
         "🔌 MT5 (FOREX/Futures)",
         "📈 Alpaca (Stocks/Crypto)",
         "🏦 IBKR (Multi-Asset)",
+        "🎯 AXI (Prop Firm)",
         "📊 Combined View",
         "🤖 ML Trading Signals"
     ])
-    
+
     with tabs[0]:
         render_mt5_section()
-    
+
     with tabs[1]:
         render_alpaca_section()
-    
+
     with tabs[2]:
         render_ibkr_section()
-    
+
     with tabs[3]:
-        render_combined_portfolio()
+        render_axi_section()
 
     with tabs[4]:
+        render_combined_portfolio()
+
+    with tabs[5]:
         render_ml_trading_signals()
 
 
@@ -92,7 +97,7 @@ def render_broker_status():
     
     st.subheader("🔗 Broker Connections")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         mt5_connected = st.session_state.brokers['mt5'] is not None
@@ -107,6 +112,9 @@ def render_broker_status():
         status = "🟢 Connected" if alpaca_connected else "🔴 Disconnected"
         st.metric("Alpaca (Stocks/Crypto)", status)
         if not alpaca_connected and ALPACA_AVAILABLE:
+            last_err = st.session_state.get('alpaca_last_connect_error', '')
+            if '401' in last_err or 'Auth failed' in last_err:
+                st.caption("⚠️ Auth failed — update keys in Alpaca tab")
             if st.button("Connect Alpaca", key="connect_alpaca_main_dashboard"):
                 connect_alpaca()
 
@@ -117,6 +125,14 @@ def render_broker_status():
         if not ibkr_connected and IBKR_AVAILABLE:
             if st.button("Connect IBKR", key="connect_ibkr_main_dashboard"):
                 connect_ibkr()
+
+    with col4:
+        axi_connected = st.session_state.brokers.get('axi') is not None
+        status = "🟢 Connected" if axi_connected else "🔴 Disconnected"
+        st.metric("AXI (Prop Firm)", status)
+        if not axi_connected and MT5_AVAILABLE:
+            if st.button("Connect AXI", key="connect_axi_main_dashboard"):
+                connect_axi()
 
     # Show open Alpaca orders below broker status
     if ALPACA_AVAILABLE and st.session_state.brokers['alpaca'] is not None:
@@ -291,25 +307,49 @@ def connect_ibkr():
     """Connect to IBKR Gateway"""
     try:
         from frontend.utils.ibkr_connector import IBKRConnector
-        
+
         gateway_url = os.getenv("IBKR_GATEWAY_URL", "https://localhost:5000")
-        
+
         connector = IBKRConnector(gateway_url)
-        
+
         if connector.is_authenticated():
             st.session_state.brokers['ibkr'] = connector
             accounts = connector.get_accounts()
             accounts_str = ', '.join(accounts) if accounts else 'None'
-            st.success(
-                f"✅ IBKR Connected! Accounts: {accounts_str}"
-            )
+            st.success(f"✅ IBKR Connected! Accounts: {accounts_str}")
             st.rerun()
         else:
-            st.error(
-                "❌ IBKR Gateway not authenticated. Make sure Gateway is running."
-            )
+            st.error("❌ IBKR Gateway not authenticated. Make sure Gateway is running.")
     except Exception as e:
         st.error(f"IBKR error: {e}")
+
+
+def connect_axi():
+    """Connect to AXI Select prop firm account via MT5 bridge"""
+    try:
+        from frontend.utils.mt5_connector import MT5Connector
+
+        api_url = os.getenv("AXI_MT5_API_URL") or os.getenv("MT5_API_URL", "http://localhost:8002")
+        connector = MT5Connector(api_url)
+
+        user = os.getenv("AXI_MT5_USER") or os.getenv("MT5_USER", "")
+        password = os.getenv("AXI_MT5_PASSWORD") or os.getenv("MT5_PASSWORD", "")
+        host = os.getenv("AXI_MT5_HOST", "")
+        port = int(os.getenv("AXI_MT5_PORT", "443"))
+
+        if not host:
+            st.error("❌ AXI MT5 host not configured. Set AXI_MT5_HOST in .env")
+            st.info("Example — AXI demo server: mt5-demo07.axi.com")
+            return
+
+        if connector.connect(user=user, password=password, host=host, port=port):
+            st.session_state.brokers['axi'] = connector
+            st.success("✅ AXI Select connected via MT5!")
+            st.rerun()
+        else:
+            st.error("❌ AXI MT5 connection failed — check credentials and server")
+    except Exception as e:
+        st.error(f"AXI connection error: {e}")
 
 
 def render_mt5_section():
@@ -385,23 +425,48 @@ def render_mt5_section():
 
 def render_alpaca_section():
     """Alpaca trading section"""
-    
+
     if not ALPACA_AVAILABLE:
         st.error("Alpaca connector not available")
         return
-    
+
     connector = st.session_state.brokers.get('alpaca')
-    
+
     if not connector:
-        st.info("👆 Connect to Alpaca to access Stock and Crypto trading")
-        
-        with st.expander("🔗 Alpaca Connection"):
-            api_key = st.text_input("API Key", value=os.getenv("ALPACA_API_KEY", ""), type="password")
-            secret_key = st.text_input("Secret Key", value=os.getenv("ALPACA_SECRET_KEY", ""), type="password")
-            paper = st.checkbox("Paper Trading", value=True)
-            
-            if st.button("Connect", type="primary", key="alpaca_connect_btn"):
-                connect_alpaca(api_key=api_key, secret_key=secret_key, paper=paper)
+        last_error = st.session_state.get('alpaca_last_connect_error', '')
+        is_auth_failure = ('401' in last_error or '403' in last_error or 'Auth failed' in last_error)
+
+        if is_auth_failure:
+            st.error(f"❌ {last_error}")
+            st.warning(
+                "🔑 The stored Alpaca credentials are invalid (HTTP 401). "
+                "Enter updated API key and secret below."
+            )
+        else:
+            st.info("👆 Connect to Alpaca to access Stock and Crypto trading")
+
+        with st.expander(
+            "🔗 Alpaca Connection" + (" — ⚠️ Update Credentials" if is_auth_failure else ""),
+            expanded=is_auth_failure,
+        ):
+            if is_auth_failure:
+                st.markdown(
+                    "**Steps to fix:**\n"
+                    "1. Go to [alpaca.markets](https://app.alpaca.markets) → Paper Trading → API Keys\n"
+                    "2. Regenerate or copy your key/secret\n"
+                    "3. Paste below and click Connect"
+                )
+            api_key = st.text_input("API Key", value="", type="password", key="alpaca_api_key_input")
+            secret_key = st.text_input("Secret Key", value="", type="password", key="alpaca_secret_key_input")
+            paper = st.checkbox("Paper Trading", value=True, key="alpaca_paper_input")
+
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("Connect", type="primary", use_container_width=True, key="alpaca_connect_btn"):
+                    connect_alpaca(api_key=api_key, secret_key=secret_key, paper=paper)
+            with col_btn2:
+                if st.button("Use .env / Secrets", use_container_width=True, key="alpaca_env_connect_btn"):
+                    connect_alpaca()
         return
     
     # Show Alpaca account info
@@ -445,22 +510,78 @@ def render_alpaca_section():
 
 def render_ibkr_section():
     """IBKR trading section"""
-    
+
     if not IBKR_AVAILABLE:
         st.error("IBKR connector not available")
         return
-    
+
     connector = st.session_state.brokers.get('ibkr')
-    
+
     if not connector:
         st.info("👆 Connect to IBKR Gateway to access multi-asset trading")
         st.markdown("""
         **Requirements:**
-        1. Install IBKR Gateway or TWS
-        2. Start Gateway (default port: 5000)
-        3. Configure API settings
-        4. Click Connect above
+        1. Install IBKR Gateway (port 5000) **or** TWS (port 7496/7497)
+        2. Enable API connections in Gateway/TWS → Settings → API
+        3. Click Connect above
         """)
+
+        # TWS socket connectivity test
+        with st.expander("🖥️ Test IBKR TWS Connection (Ports 7496/7497)"):
+            st.markdown(
+                "Trader Workstation (TWS) exposes a socket API on **port 7497** (paper) "
+                "or **port 7496** (live). This test checks whether TWS is running and "
+                "accepting API connections."
+            )
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                tws_host = st.text_input(
+                    "TWS Host", value=os.getenv("IBKR_HOST", "127.0.0.1"), key="tws_host_input"
+                )
+            with col_t2:
+                tws_port = st.selectbox(
+                    "TWS Port", [7497, 7496],
+                    format_func=lambda p: f"{p} ({'paper' if p == 7497 else 'live'})",
+                    key="tws_port_input",
+                )
+            if st.button("🧪 Test TWS Socket", key="test_tws_btn"):
+                import socket
+                try:
+                    with socket.create_connection((tws_host, int(tws_port)), timeout=3):
+                        st.success(
+                            f"✅ TWS port {tws_port} is open on {tws_host} — "
+                            "API connections accepted."
+                        )
+                except (socket.timeout, ConnectionRefusedError, OSError) as err:
+                    st.error(
+                        f"❌ TWS port {tws_port} not reachable on {tws_host}: {err}"
+                    )
+                    st.info(
+                        "Make sure TWS is running and API is enabled: "
+                        "TWS → Edit → Global Configuration → API → Settings → "
+                        "Enable ActiveX and Socket Clients."
+                    )
+
+        # Gateway manual connect form
+        with st.expander("🔗 IBKR Gateway Connection"):
+            gateway_url = st.text_input(
+                "Gateway URL",
+                value=os.getenv("IBKR_GATEWAY_URL", "https://localhost:5000"),
+                key="ibkr_gateway_url_input",
+            )
+            if st.button("Connect Gateway", type="primary", key="ibkr_gateway_connect_btn"):
+                try:
+                    from frontend.utils.ibkr_connector import IBKRConnector
+                    temp_connector = IBKRConnector(gateway_url)
+                    if temp_connector.is_authenticated():
+                        st.session_state.brokers['ibkr'] = temp_connector
+                        accounts = temp_connector.get_accounts()
+                        st.success(f"✅ IBKR Gateway connected! Accounts: {', '.join(accounts or [])}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Gateway not authenticated — check Gateway is running and logged in.")
+                except Exception as e:
+                    st.error(f"IBKR Gateway error: {e}")
         return
     
     # Get accounts
@@ -490,11 +611,142 @@ def render_ibkr_section():
             st.info("No open positions")
 
 
+def render_axi_section():
+    """AXI Select prop firm trading section (via MT5 bridge)"""
+
+    if not MT5_AVAILABLE:
+        st.error("MT5 connector not available — required for AXI Select")
+        return
+
+    connector = st.session_state.brokers.get('axi')
+
+    if not connector:
+        st.info("Connect to your AXI Select prop firm account through the MT5 API bridge.")
+
+        with st.expander("🎯 AXI Select Configuration", expanded=True):
+            st.markdown(
+                "**AXI Select** is a prop trading firm that provides funded accounts via "
+                "MetaTrader 5. Configure your AXI MT5 server credentials below.\n\n"
+                "Set `AXI_MT5_*` vars in your `.env` file to persist these settings."
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                axi_user = st.text_input(
+                    "AXI Account Number",
+                    value=os.getenv("AXI_MT5_USER", ""),
+                    key="axi_user_input",
+                )
+                axi_host = st.text_input(
+                    "AXI MT5 Server",
+                    value=os.getenv("AXI_MT5_HOST", "mt5-demo07.axi.com"),
+                    key="axi_host_input",
+                )
+            with col2:
+                axi_password = st.text_input(
+                    "Password",
+                    type="password",
+                    value="",
+                    key="axi_pass_input",
+                )
+                axi_port = st.number_input(
+                    "Port",
+                    value=int(os.getenv("AXI_MT5_PORT", "443")),
+                    key="axi_port_input",
+                )
+
+            axi_api_url = st.text_input(
+                "MT5 API Bridge URL",
+                value=os.getenv("AXI_MT5_API_URL", os.getenv("MT5_API_URL", "http://localhost:8002")),
+                key="axi_api_url_input",
+            )
+
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("Connect AXI", type="primary", use_container_width=True, key="axi_connect_btn"):
+                    with st.spinner("Connecting to AXI Select…"):
+                        try:
+                            from frontend.utils.mt5_connector import MT5Connector
+                            temp_connector = MT5Connector(axi_api_url)
+                            pwd = axi_password or os.getenv("AXI_MT5_PASSWORD", "")
+                            if temp_connector.connect(
+                                user=axi_user, password=pwd, host=axi_host, port=int(axi_port)
+                            ):
+                                st.session_state.brokers['axi'] = temp_connector
+                                st.success("✅ AXI Select connected via MT5!")
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "❌ AXI MT5 connection failed — verify account number, "
+                                    "password, and server address."
+                                )
+                        except Exception as e:
+                            st.error(f"AXI error: {e}")
+            with col_btn2:
+                if st.button("🏥 Test MT5 Bridge", use_container_width=True, key="axi_health_btn"):
+                    from frontend.utils.mt5_connector import MT5Connector
+                    temp = MT5Connector(axi_api_url)
+                    if temp.health_check():
+                        st.success("✅ MT5 API bridge is reachable")
+                    else:
+                        st.error("❌ MT5 API bridge not responding")
+                        st.info("Start the MT5 REST server: `START_MT5_SERVER.bat`")
+
+            st.markdown("---")
+            st.markdown("**Required `.env` settings:**")
+            st.code(
+                "AXI_MT5_USER=your_axi_account_number\n"
+                "AXI_MT5_PASSWORD=your_axi_password\n"
+                "AXI_MT5_HOST=mt5-demo07.axi.com\n"
+                "AXI_MT5_PORT=443\n"
+                "AXI_MT5_API_URL=http://localhost:8002  # shared MT5 bridge",
+                language="bash",
+            )
+        return
+
+    # ── Connected ──────────────────────────────────────────────────────────────
+    st.success("🟢 AXI Select connected via MT5")
+    account = connector.get_account_info()
+
+    if account:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("AXI Balance", f"${account.get('balance', 0):,.2f}")
+        with col2:
+            st.metric("Equity", f"${account.get('equity', 0):,.2f}")
+        with col3:
+            st.metric("Free Margin", f"${account.get('free_margin', 0):,.2f}")
+        with col4:
+            floating = account.get('equity', 0) - account.get('balance', 0)
+            st.metric("Floating P/L", f"${floating:,.2f}")
+
+    st.subheader("📊 AXI Positions")
+    positions = connector.get_positions()
+    if positions:
+        pos_data = [
+            {
+                'Symbol': p.symbol,
+                'Type': p.type,
+                'Volume': p.volume,
+                'Open Price': p.open_price,
+                'Current Price': p.current_price,
+                'Profit': p.profit,
+            }
+            for p in positions
+        ]
+        st.dataframe(pd.DataFrame(pos_data), use_container_width=True, hide_index=True)
+    else:
+        st.info("No open AXI positions")
+
+    if st.button("🔌 Disconnect AXI", key="axi_disconnect_btn"):
+        st.session_state.brokers['axi'] = None
+        st.rerun()
+
+
 def render_combined_portfolio():
     """Combined view of all portfolios"""
-    
+
     st.subheader("📊 Combined Portfolio View")
-    
+
     all_positions = []
     total_value = 0
     total_pnl = 0

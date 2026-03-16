@@ -116,10 +116,14 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "✅ MySQL is responding to connections!" -ForegroundColor Green
     
     # Show databases
-    Write-Host "`n📊 Available databases:" -ForegroundColor White
-    docker exec bentley-mysql mysql -uroot -proot -e "SHOW DATABASES;" 2>$null | ForEach-Object {
-        if ($_ -notmatch "mysql|information_schema|performance_schema|sys|Database") {
-            Write-Host "   📁 $_" -ForegroundColor Cyan
+    Write-Host "`nAvailable databases:" -ForegroundColor White
+    $dbRows = docker exec bentley-mysql mysql -uroot -proot -e "SHOW DATABASES;" 2>$null
+    foreach ($dbRow in $dbRows) {
+        if (
+            $dbRow -and
+            $dbRow -notin @("Database", "mysql", "information_schema", "performance_schema", "sys")
+        ) {
+            Write-Host "   - $dbRow" -ForegroundColor Cyan
         }
     }
 } else {
@@ -128,28 +132,28 @@ if ($LASTEXITCODE -eq 0) {
 
 # Step 6: Display connection info
 Write-Host "`n" -NoNewline
-Write-Host "=" * 60 -ForegroundColor Gray
-Write-Host "✅ MySQL Environment Ready!" -ForegroundColor Green
-Write-Host "=" * 60 -ForegroundColor Gray
+Write-Host ("=" * 60) -ForegroundColor Gray
+Write-Host "MySQL environment ready." -ForegroundColor Green
+Write-Host ("=" * 60) -ForegroundColor Gray
 
-Write-Host "`n📝 MySQL Workbench Connection Settings:" -ForegroundColor Cyan
-Write-Host "   Connection Name: Demo_Bots (Bentley)" -ForegroundColor White
+Write-Host "`nMySQL Workbench connection settings:" -ForegroundColor Cyan
+Write-Host "   Connection Name: Demo_Bots Bentley" -ForegroundColor White
 Write-Host "   Hostname: 127.0.0.1" -ForegroundColor White
 Write-Host "   Port: 3307" -ForegroundColor White
 Write-Host "   Username: root" -ForegroundColor White
 Write-Host "   Password: root" -ForegroundColor White
 Write-Host "   Default Schema: mansa_bot" -ForegroundColor White
 
-Write-Host "`n📚 Available Databases:" -ForegroundColor Cyan
-Write-Host "   • mansa_bot    - Main application database (Bbbot1, Tiingo, yfinance)" -ForegroundColor White
-Write-Host "   • airflow      - Airflow metadata & DAG runs" -ForegroundColor White
-Write-Host "   • mlflow_db    - MLflow experiments (if running)" -ForegroundColor White
+Write-Host "`nAvailable databases:" -ForegroundColor Cyan
+Write-Host "   - mansa_bot    - Main application database (Bbbot1, Tiingo, yfinance)" -ForegroundColor White
+Write-Host "   - airflow      - Airflow metadata and DAG runs" -ForegroundColor White
+Write-Host "   - mlflow_db    - MLflow experiments (if running)" -ForegroundColor White
 
-Write-Host "`n💡 Quick Commands:" -ForegroundColor Cyan
+Write-Host "`nQuick commands:" -ForegroundColor Cyan
 Write-Host "   View logs:      docker logs bentley-mysql" -ForegroundColor Gray
 Write-Host "   Stop MySQL:     docker stop bentley-mysql" -ForegroundColor Gray
 Write-Host "   Restart MySQL:  docker restart bentley-mysql" -ForegroundColor Gray
-Write-Host "   MySQL Shell:    docker exec -it bentley-mysql mysql -uroot -proot" -ForegroundColor Gray
+Write-Host "   MySQL shell:    docker exec -it bentley-mysql mysql -uroot -proot" -ForegroundColor Gray
 
 Write-Host "`n"
 

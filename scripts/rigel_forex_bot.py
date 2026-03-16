@@ -27,6 +27,9 @@ from enum import Enum
 import pandas as pd
 import numpy as np
 from alpaca_trade_api import REST, TimeFrame
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 try:
     from frontend.components.mt5_connector import MT5Connector
@@ -341,7 +344,7 @@ class MLPredictor:
                 try:
                     from tensorflow import keras
                     self.lstm_model = keras.models.load_model(lstm_path)
-                    logger.info(f"✓ LSTM model loaded from {lstm_path}")
+                    logger.info(f"LSTM model loaded from {lstm_path}")
                 except ImportError:
                     logger.warning("TensorFlow not installed - LSTM disabled")
             
@@ -349,13 +352,13 @@ class MLPredictor:
                 try:
                     import xgboost
                     self.xgb_model = joblib.load(xgb_path)
-                    logger.info(f"✓ XGBoost model loaded from {xgb_path}")
+                    logger.info(f"XGBoost model loaded from {xgb_path}")
                 except ImportError:
                     logger.warning("XGBoost not installed - XGBoost disabled")
             
             if os.path.exists(scaler_path):
                 self.scaler = joblib.load(scaler_path)
-                logger.info(f"✓ Feature scaler loaded")
+                logger.info("Feature scaler loaded")
             
             # If no models loaded, disable ML
             if not self.lstm_model and not self.xgb_model:
@@ -825,7 +828,7 @@ class RigelForexBot:
                         logger.error("Failed to connect to MT5 account")
                         return False
                     account = self.mt5_connector.get_account_info() or {}
-                    logger.info("✓ Connected to MT5 API")
+                    logger.info("Connected to MT5 API")
                     logger.info("  Balance: %s", account.get("balance", "N/A"))
                     logger.info("  Equity: %s", account.get("equity", "N/A"))
                 else:
@@ -847,7 +850,7 @@ class RigelForexBot:
             )
             
             account = self.api.get_account()
-            logger.info(f"✓ Connected to Alpaca API")
+            logger.info("Connected to Alpaca API")
             logger.info(f"  Account ID: {account.id[:8]}...")
             logger.info(f"  Portfolio Value: ${float(account.portfolio_value):,.2f}")
             logger.info(f"  Buying Power: ${float(account.buying_power):,.2f}")
@@ -988,7 +991,7 @@ class RigelForexBot:
 
                 if result and result.get("success"):
                     logger.info(
-                        "✓ MT5 order placed: %s",
+                        "MT5 order placed: %s",
                         result.get("ticket", "unknown"),
                     )
                 else:
@@ -1014,7 +1017,7 @@ class RigelForexBot:
                 take_profit={'limit_price': target_price}
             )
             
-            logger.info(f"✓ Order placed: {order.id}")
+            logger.info(f"Order placed: {order.id}")
             
         except Exception as e:
             logger.error(f"Failed to execute trade: {e}")

@@ -9,6 +9,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 from datetime import datetime, timedelta
+import json
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 
 # RBAC imports
 try:
@@ -61,21 +64,21 @@ try:
     /* CRITICAL: Force Streamlit metrics to match home page visibility */
     [data-testid="stMetricLabel"],
     [data-testid="stMetricLabel"] * {{
-        color: rgba(230, 238, 248, 0.9) !important;
+        color: #FFFFFF !important;
         font-size: 0.9rem !important;
         font-weight: 500 !important;
     }}
     
     [data-testid="stMetricValue"],
     [data-testid="stMetricValue"] * {{
-        color: {COLOR_SCHEME['text']} !important;
+        color: #FFFFFF !important;
         font-size: 1.6rem !important;
         font-weight: 700 !important;
     }}
     
     [data-testid="stMetricDelta"],
     [data-testid="stMetricDelta"] * {{
-        color: rgba(230, 238, 248, 0.9) !important;
+        color: #FFFFFF !important;
         opacity: 0.9 !important;
     }}
     
@@ -88,13 +91,13 @@ try:
     div[data-testid="stSelectbox"] label,
     div[data-testid="stSelectbox"] > label,
     .row-widget label {{
-        color: {COLOR_SCHEME['text']} !important;
+        color: #FFFFFF !important;
         font-weight: 500 !important;
     }}
     
     /* Headers and text */
     h1, h2, h3, h4, h5, h6, p, span, div {{
-        color: {COLOR_SCHEME['text']} !important;
+        color: #FFFFFF !important;
     }}
 
     /* DROPDOWN MENU OPTIONS - Ensure visibility */
@@ -106,13 +109,13 @@ try:
     [data-baseweb="menu"] li,
     [role="option"] {{
         background-color: {COLOR_SCHEME['secondary']} !important;
-        color: {COLOR_SCHEME['text']} !important;
+        color: #FFFFFF !important;
     }}
     
     [data-baseweb="menu"] li:hover,
     [role="option"]:hover {{
         background-color: rgba(6, 182, 212, 0.2) !important;
-        color: {COLOR_SCHEME['text']} !important;
+        color: #FFFFFF !important;
     }}
 
     /* Sidebar styling - prevent color changes */
@@ -121,15 +124,26 @@ try:
     }}
     
     [data-testid="stSidebar"] * {{
-        color: {COLOR_SCHEME['text']} !important;
+        color: #FFFFFF !important;
     }}
     
     [data-testid="stSidebar"] h1,
     [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3,
     [data-testid="stSidebar"] label {{
-        color: {COLOR_SCHEME['text']} !important;
+        color: #FFFFFF !important;
         font-weight: 500 !important;
+    }}
+
+    /* Ensure table text is bright white and readable */
+    table, th, td {{
+        color: #FFFFFF !important;
+    }}
+
+    /* Ensure helper text and captions are not dimmed */
+    small, .stCaption, [data-testid="stCaptionContainer"] * {{
+        color: #FFFFFF !important;
+        opacity: 1 !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -140,30 +154,41 @@ except ImportError:
 
 
 def fetch_crypto_market_data(selected_cryptos, crypto_pairs, timeframe):
-    """Fetch crypto history in one batch and enrich with lightweight quote details."""
-
-    if not YFINANCE_AVAILABLE:
-        return {}, []
+    """Fetch crypto history in one batch and derive display metrics from OHLCV."""
 
     selected_symbols = [crypto_pairs[name] for name in selected_cryptos]
     errors = []
     crypto_data = {}
+    downloaded = pd.DataFrame()
 
-    try:
-        downloaded = yf.download(
-            selected_symbols,
-            period=timeframe,
-            auto_adjust=False,
-            progress=False,
-            threads=True,
-            group_by="ticker",
-        )
-    except Exception as e:
-        downloaded = pd.DataFrame()
-        errors.append(f"Batch history download failed: {e}")
+    if YFINANCE_AVAILABLE:
+        try:
+            downloaded = yf.download(
+                selected_symbols,
+                period=timeframe,
+                auto_adjust=False,
+                progress=False,
+                threads=True,
+                group_by="ticker",
+            )
+        except Exception as e:
+            downloaded = pd.DataFrame()
+            errors.append(f"Batch history download failed: {e}")
+    else:
+        errors.append("yfinance unavailable, using CoinMarketCap fallback quotes")
+
+    cmc_symbol_map = {
+        name: symbol.split("-")[0].upper()
+        for name, symbol in crypto_pairs.items()
+    }
+    requested_cmc_symbols = [cmc_symbol_map[name] for name in selected_cryptos]
+    cmc_quotes = fetch_coinmarketcap_quotes(requested_cmc_symbols)
 
     for name in selected_cryptos:
         symbol = crypto_pairs[name]
+        cmc_symbol = cmc_symbol_map[name]
+        cmc_quote = cmc_quotes.get(cmc_symbol, {})
+        data_source = "Yahoo"
 
         hist = pd.DataFrame()
         if isinstance(downloaded, pd.DataFrame) and not downloaded.empty:
@@ -177,12 +202,6 @@ def fetch_crypto_market_data(selected_cryptos, crypto_pairs, timeframe):
             except Exception:
                 hist = pd.DataFrame()
 
-        quote = {}
-        try:
-            quote = dict(yf.Ticker(symbol).fast_info or {})
-        except Exception as e:
-            errors.append(f"{name}: quote fetch failed ({e})")
-
         close_series = hist["Close"] if not hist.empty and "Close" in hist.columns else pd.Series(dtype=float)
         latest_close = float(close_series.iloc[-1]) if not close_series.empty else 0.0
         previous_close = float(close_series.iloc[-2]) if len(close_series) > 1 else latest_close
@@ -191,32 +210,119 @@ def fetch_crypto_market_data(selected_cryptos, crypto_pairs, timeframe):
             day_high = float(hist["High"].iloc[-1])
             day_low = float(hist["Low"].iloc[-1])
         else:
-            day_high = float(quote.get("day_high") or latest_close or 0.0)
-            day_low = float(quote.get("day_low") or latest_close or 0.0)
+            day_high = latest_close
+            day_low = latest_close
 
         volume_val = 0.0
         if not hist.empty and "Volume" in hist.columns:
             volume_val = float(hist["Volume"].iloc[-1] or 0.0)
-        if volume_val <= 0:
-            volume_val = float(quote.get("last_volume") or quote.get("regular_market_volume") or 0.0)
-
-        market_cap_val = float(quote.get("market_cap") or 0.0)
+        market_cap_val = 0.0
 
         if hist.empty:
-            errors.append(f"{name}: no historical data returned")
+            fallback_price = float(cmc_quote.get("price") or 0.0)
+            fallback_prev = float(cmc_quote.get("previous_close") or fallback_price)
+            fallback_volume = float(cmc_quote.get("volume") or 0.0)
+            fallback_mcap = float(cmc_quote.get("market_cap") or 0.0)
+
+            if fallback_price > 0:
+                latest_close = fallback_price
+                previous_close = fallback_prev
+                day_high = fallback_price
+                day_low = fallback_price
+                volume_val = fallback_volume
+                market_cap_val = fallback_mcap
+                data_source = "CoinMarketCap"
+                errors.append(f"{name}: using CoinMarketCap fallback quote")
+            else:
+                data_source = "Unavailable"
+                errors.append(f"{name}: no historical data returned and no CoinMarketCap fallback quote")
 
         crypto_data[name] = {
             "symbol": symbol,
             "history": hist,
-            "current_price": float(quote.get("last_price") or quote.get("regular_market_price") or latest_close),
-            "previous_close": float(quote.get("previous_close") or previous_close),
+            "current_price": latest_close,
+            "previous_close": previous_close,
             "volume": volume_val,
             "market_cap": market_cap_val,
             "day_high": day_high,
             "day_low": day_low,
+            "source": data_source,
         }
 
     return crypto_data, errors
+
+
+def render_source_badge_html(source):
+    """Render a color badge while keeping text fully white for readability."""
+
+    source_lower = str(source).lower()
+    if source_lower == "yahoo":
+        return (
+            "<span style='background:#0f766e;color:#FFFFFF;padding:2px 8px;"
+            "border-radius:999px;font-size:0.8rem;font-weight:700;'>Yahoo</span>"
+        )
+    if source_lower == "coinmarketcap":
+        return (
+            "<span style='background:#b45309;color:#FFFFFF;padding:2px 8px;"
+            "border-radius:999px;font-size:0.8rem;font-weight:700;'>CoinMarketCap</span>"
+        )
+    return (
+        "<span style='background:#b91c1c;color:#FFFFFF;padding:2px 8px;"
+        "border-radius:999px;font-size:0.8rem;font-weight:700;'>Unavailable</span>"
+    )
+
+
+@st.cache_data(ttl=120)
+def fetch_coinmarketcap_quotes(symbols):
+    """Best-effort fallback quotes from public CoinMarketCap data API."""
+
+    if not symbols:
+        return {}
+
+    url = (
+        "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing"
+        "?start=1&limit=5000&sortBy=market_cap&sortType=desc&convert=USD"
+    )
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return {}
+
+    entries = payload.get("data", {}).get("cryptoCurrencyList", [])
+    wanted = {symbol.upper() for symbol in symbols}
+    results = {}
+
+    for entry in entries:
+        entry_symbol = str(entry.get("symbol", "")).upper()
+        if entry_symbol not in wanted:
+            continue
+
+        quotes = entry.get("quotes") or []
+        usd_quote = quotes[0] if quotes else {}
+
+        price = float(usd_quote.get("price") or 0.0)
+        pct_24h = float(usd_quote.get("percentChange24h") or 0.0)
+        previous_close = price
+        if price > 0 and pct_24h > -99.99:
+            previous_close = price / (1 + (pct_24h / 100.0))
+
+        results[entry_symbol] = {
+            "price": price,
+            "previous_close": previous_close,
+            "volume": float(usd_quote.get("volume24h") or 0.0),
+            "market_cap": float(usd_quote.get("marketCap") or 0.0),
+        }
+
+    return results
 
 # Import yfinance for crypto data
 try:
@@ -392,6 +498,7 @@ def display_live_prices(crypto_data):
                 value=f"${current_price:,.2f}",
                 delta=delta
             )
+            st.markdown(render_source_badge_html(data.get("source", "Unknown")), unsafe_allow_html=True)
     
     # Detailed table
     st.subheader("📋 Detailed Market Data")
@@ -405,6 +512,7 @@ def display_live_prices(crypto_data):
         table_data.append({
             "Crypto": name,
             "Symbol": data['symbol'],
+            "Data Source": data.get('source', 'Unknown'),
             "Price": f"${current_price:,.2f}",
             "Change %": f"{change_pct:+.2f}%",
             "Volume": f"{data['volume']:,.0f}",
@@ -414,7 +522,14 @@ def display_live_prices(crypto_data):
         })
     
     df = pd.DataFrame(table_data)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    table_for_html = df.copy()
+    table_for_html["Data Source"] = table_for_html["Data Source"].apply(render_source_badge_html)
+
+    st.markdown(
+        table_for_html.to_html(index=False, escape=False),
+        unsafe_allow_html=True,
+    )
     
     # Last updated timestamp
     st.caption(f"⏱️ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

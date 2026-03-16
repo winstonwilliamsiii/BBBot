@@ -186,6 +186,47 @@ docker ps
 # 3. Re-run commands above
 ```
 
+### Standard Bot ON/OFF Commands
+
+Use the shared launcher for consistent startup behavior across current Mansa Star bots:
+
+```powershell
+# Titan
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Titan -Mode ON
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Titan -Mode OFF
+
+# Vega
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Vega -Mode ON
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Vega -Mode OFF
+
+# Rigel
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Rigel -Mode ON
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Rigel -Mode OFF
+
+# Dogon
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Dogon -Mode ON
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Dogon -Mode OFF
+
+# Orion
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Orion -Mode ON
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Orion -Mode OFF
+```
+
+Contract extension for additional bots is now pre-wired:
+
+- `Draco`
+- `Altair`
+- `Procryon`
+- `Hydra`
+- `Triton`
+- `Dione`
+- `Cephei`
+- `Rhea`
+- `Jupicita`
+
+Use the same command format for these bots. They currently return a standardized
+placeholder payload until runtime executors are implemented.
+
 ---
 
 ## 🎉 You're All Set!

@@ -236,11 +236,20 @@ def get_alpaca_config() -> dict:
     
     use_paper = paper.lower() in ('true', '1', 'yes')
     if use_paper:
-        api_key = paper_api_key or legacy_api_key
-        secret_key = paper_secret_key or legacy_secret_key
+        # Do not mix paper key with legacy/live secret (or vice-versa).
+        if paper_api_key or paper_secret_key:
+            api_key = paper_api_key
+            secret_key = paper_secret_key
+        else:
+            api_key = legacy_api_key
+            secret_key = legacy_secret_key
     else:
-        api_key = live_api_key or legacy_api_key
-        secret_key = live_secret_key or legacy_secret_key
+        if live_api_key or live_secret_key:
+            api_key = live_api_key
+            secret_key = live_secret_key
+        else:
+            api_key = legacy_api_key
+            secret_key = legacy_secret_key
 
     if not api_key or api_key == 'your-alpaca-api-key-here':
         raise ValueError(
@@ -251,6 +260,16 @@ def get_alpaca_config() -> dict:
         )
     
     if not secret_key or secret_key == 'your-alpaca-secret-key-here':
+        if use_paper and paper_api_key and not paper_secret_key:
+            raise ValueError(
+                "❌ ALPACA_PAPER_API_KEY is set but ALPACA_PAPER_SECRET_KEY is missing.\n"
+                "Set both paper key and paper secret in the same secrets scope."
+            )
+        if (not use_paper) and live_api_key and not live_secret_key:
+            raise ValueError(
+                "❌ ALPACA_LIVE_API_KEY is set but ALPACA_LIVE_SECRET_KEY is missing.\n"
+                "Set both live key and live secret in the same secrets scope."
+            )
         raise ValueError(
             "❌ Alpaca secret key not configured.\n"
             "For Streamlit Cloud: Add to Settings → Secrets\n"

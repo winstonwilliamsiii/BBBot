@@ -1,4 +1,13 @@
 import streamlit as st
+
+# Page config must be the first Streamlit command in this script.
+st.set_page_config(
+    page_title="BBBot",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 import pandas as pd
 import os
 from dotenv import load_dotenv
@@ -372,14 +381,6 @@ def calculate_portfolio_metrics(portfolio_df):
 
 
 def main():
-    # Set page config first (Streamlit requires this before other writes)
-    st.set_page_config(
-        page_title="BBBot",
-        page_icon="🤖",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
-
     # Reload environment variables for cache-busting (ensures fresh values on every run)
     if ENV_RELOAD_AVAILABLE:
         reload_env()  # Override to break cache

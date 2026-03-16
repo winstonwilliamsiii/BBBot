@@ -732,40 +732,4 @@ User: {config['user']}@localhost
         st.exception(e)
 
 
-if __name__ == "__main__":
-    # RBAC authentication check
-    if RBAC_AVAILABLE:
-        if not RBACManager.is_authenticated():
-            st.title("🔴 Live Crypto Dashboard")
-            st.markdown("---")
-            st.warning("⚠️ Please login to access the Live Crypto Dashboard.")
-            st.info("This page shows real-time cryptocurrency prices and market data.")
-            
-            # Show login form in sidebar
-            with st.sidebar:
-                show_login_form()
-        elif not RBACManager.has_permission(Permission.VIEW_CRYPTO):
-            st.title("🔴 Live Crypto Dashboard")
-            st.markdown("---")
-            st.error("🚫 You don't have permission to view the Live Crypto Dashboard.")
-            
-            user = RBACManager.get_current_user()
-            st.info(f"""
-            **Your Current Access:**
-            - Role: {user.role.value.title()}
-            - Agreement: {user.agreement_type}
-            
-            **Required:** Pages 1-4 access (Client, Investor, or Admin role)
-            
-            💡 Contact your administrator to upgrade your account.
-            """)
-            
-            if st.button("🏠 Return to Home"):
-                st.switch_page("streamlit_app.py")
-        else:
-            # User is authenticated and has permission
-            display_live_crypto_dashboard()
-    else:
-        # RBAC not available, show with warning
-        st.warning("⚠️ Authentication system not available.")
-        display_live_crypto_dashboard()
+display_live_crypto_dashboard()

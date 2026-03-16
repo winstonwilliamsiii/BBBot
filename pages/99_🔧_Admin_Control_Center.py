@@ -15,8 +15,11 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
+import json
+import subprocess
 import sys
 import os
+from pathlib import Path
 from urllib.parse import urlparse
 
 # Add project root to path for imports
@@ -302,6 +305,120 @@ def get_status_badge(status):
         return f'<span class="status-error">● {status.upper()}</span>'
 
 
+def get_vega_ibkr_schedule_status() -> dict:
+    """Return task scheduler metadata for the Vega IBKR 9:30 automation task."""
+    task_name = "Bentley-Vega-IBKR-930"
+    cmd = ["schtasks", "/query", "/tn", task_name, "/fo", "LIST", "/v"]
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {
+                "exists": False,
+                "task_name": task_name,
+                "error": (result.stderr or result.stdout or "Task not found").strip(),
+            }
+
+        info = {
+            "exists": True,
+            "task_name": task_name,
+            "next_run": "Unknown",
+            "last_run": "Unknown",
+            "last_result": "Unknown",
+            "status": "Unknown",
+        }
+        for line in (result.stdout or "").splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            k = key.strip().lower()
+            v = value.strip()
+            if k == "next run time":
+                info["next_run"] = v
+            elif k == "last run time":
+                info["last_run"] = v
+            elif k == "last result":
+                info["last_result"] = v
+            elif k == "status":
+                info["status"] = v
+        return info
+    except Exception as exc:
+        return {
+            "exists": False,
+            "task_name": task_name,
+            "error": str(exc),
+        }
+
+
+def get_last_bot_mode_event() -> dict | None:
+    """Load latest launcher event produced by start_bot_mode.ps1."""
+    repo_root = Path(__file__).resolve().parents[1]
+    latest_path = repo_root / "logs" / "last_bot_mode_event.json"
+    if not latest_path.exists():
+        return None
+
+    try:
+        with latest_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+            if isinstance(payload, dict):
+                return payload
+    except Exception:
+        return None
+    return None
+
+
+def run_bot_mode(bot_name: str, mode: str) -> dict:
+    """Run start_bot_mode.ps1 and return execution result."""
+    repo_root = Path(__file__).resolve().parents[1]
+    launcher = repo_root / "start_bot_mode.ps1"
+
+    if not launcher.exists():
+        return {
+            "ok": False,
+            "output": f"Launcher not found: {launcher}",
+        }
+
+    cmd = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(launcher),
+        "-Bot",
+        bot_name,
+        "-Mode",
+        mode,
+        "-Broker",
+        "IBKR",
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        merged = "\n".join(
+            part for part in [result.stdout.strip(), result.stderr.strip()] if part
+        )
+        return {
+            "ok": result.returncode == 0,
+            "output": merged or "No output",
+        }
+    except Exception as exc:
+        return {"ok": False, "output": str(exc)}
+
+
 # Main App
 def main():
     # Check authentication first
@@ -411,6 +528,64 @@ def main():
             "strategy": "Proposed Strategy",
         })
         st.dataframe(catalog_df, use_container_width=True, hide_index=True)
+        st.markdown("---")
+
+        st.subheader("Vega IBKR 9:30 Automation")
+        schedule = get_vega_ibkr_schedule_status()
+        last_event = get_last_bot_mode_event()
+
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            st.metric("Task", "Configured" if schedule.get("exists") else "Missing")
+        with col_b:
+            st.metric("Next Run", schedule.get("next_run", "Unknown"))
+        with col_c:
+            st.metric("Last Result", schedule.get("last_result", "Unknown"))
+        with col_d:
+            event_status = (last_event or {}).get("status", "n/a")
+            st.metric("Last Vega Status", str(event_status))
+
+        btn_on, btn_off = st.columns(2)
+        with btn_on:
+            if st.button("Vega ON", type="primary", use_container_width=True):
+                with st.spinner("Running Vega ON..."):
+                    execution = run_bot_mode("Vega", "ON")
+                st.session_state["vega_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Vega ON completed.")
+                else:
+                    st.error("Vega ON failed.")
+                st.rerun()
+        with btn_off:
+            if st.button("Vega OFF", use_container_width=True):
+                with st.spinner("Running Vega OFF..."):
+                    execution = run_bot_mode("Vega", "OFF")
+                st.session_state["vega_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Vega OFF completed.")
+                else:
+                    st.error("Vega OFF failed.")
+                st.rerun()
+
+        if schedule.get("exists"):
+            st.caption(
+                f"Task {schedule.get('task_name')} status: {schedule.get('status', 'Unknown')}"
+            )
+        else:
+            st.warning(
+                "Vega 9:30 task is not configured yet. "
+                "Run setup from terminal to register Bentley-Vega-IBKR-930."
+            )
+
+        if last_event:
+            st.caption("Latest launcher event (from logs/last_bot_mode_event.json)")
+            st.json(last_event)
+
+        vega_output = st.session_state.get("vega_mode_output")
+        if vega_output:
+            with st.expander("Last Vega Command Output", expanded=False):
+                st.code(vega_output, language="text")
+
         st.markdown("---")
         
         # Bot deployment controls
@@ -526,311 +701,60 @@ def main():
     # TAB 3: Broker Health
     with tab3:
         st.markdown('<div class="section-header"><h2>Multi-Broker Orchestration</h2></div>', unsafe_allow_html=True)
-
-        col_refresh, col_spacer = st.columns([1, 5])
-        with col_refresh:
-            if st.button("🔄 Refresh All"):
-                for key in ("_broker_test_alpaca", "_broker_test_ibkr", "_broker_test_mt5", "_broker_test_axi"):
-                    st.session_state.pop(key, None)
-                st.rerun()
-
+        
+        # Refresh button
+        if st.button("🔄 Refresh All Sessions"):
+            st.info("Refreshing broker sessions...")
+        
         st.markdown("---")
-
-        # ── Alpaca ────────────────────────────────────────────────────────────
-        with st.container():
+        
+        # Broker status cards
+        brokers_data = api_request("/api/admin/brokers/health")
+        
+        if not brokers_data:
+            # Sample broker data
+            brokers = [
+                {"name": "Alpaca", "status": "healthy", "latency": "45ms", "orders_today": 12, "last_sync": "2 min ago"},
+                {"name": "Schwab", "status": "warning", "latency": "120ms", "orders_today": 0, "last_sync": "15 min ago"},
+                {"name": "IBKR", "status": "error", "latency": "N/A", "orders_today": 0, "last_sync": "Never"},
+                {"name": "Binance", "status": "healthy", "latency": "35ms", "orders_today": 8, "last_sync": "1 min ago"},
+                {"name": "Coinbase", "status": "idle", "latency": "N/A", "orders_today": 0, "last_sync": "Never"},
+            ]
+        else:
+            brokers = brokers_data.get("brokers", [])
+        
+        for broker in brokers:
             col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
+            
             with col1:
-                st.markdown("### 📈 Alpaca")
-                st.caption("Stocks / Crypto / Paper")
+                st.markdown(f"### {broker['name']}")
             with col2:
-                alpaca_result = st.session_state.get("_broker_test_alpaca")
-                if alpaca_result is None:
-                    st.markdown(get_status_badge("idle"), unsafe_allow_html=True)
-                elif alpaca_result.get("ok"):
-                    st.markdown(get_status_badge("healthy"), unsafe_allow_html=True)
-                else:
-                    st.markdown(get_status_badge("error"), unsafe_allow_html=True)
+                st.markdown(get_status_badge(broker['status']), unsafe_allow_html=True)
             with col3:
-                st.metric("Latency", alpaca_result.get("latency", "—") if alpaca_result else "—")
+                st.metric("Latency", broker['latency'])
             with col4:
-                st.metric("Portfolio $", alpaca_result.get("portfolio", "—") if alpaca_result else "—")
+                st.metric("Orders Today", broker['orders_today'])
             with col5:
-                st.caption(alpaca_result.get("note", "Not tested") if alpaca_result else "Not tested")
-
-            col_a1, col_a2, col_a3 = st.columns(3)
-            with col_a1:
-                if st.button("🧪 Test Alpaca", key="admin_alpaca_test"):
-                    import time as _time
-                    t0 = _time.time()
-                    try:
-                        from frontend.utils.secrets_helper import get_alpaca_config
-                        from frontend.components.alpaca_connector import AlpacaConnector
-                        cfg = get_alpaca_config()
-                        conn = AlpacaConnector(cfg["api_key"], cfg["secret_key"], bool(cfg["paper"]))
-                        acct = conn.get_account()
-                        latency_ms = int((_time.time() - t0) * 1000)
-                        if acct:
-                            st.session_state["_broker_test_alpaca"] = {
-                                "ok": True,
-                                "latency": f"{latency_ms}ms",
-                                "portfolio": f"${float(acct.get('portfolio_value', 0)):,.0f}",
-                                "note": "paper" if cfg["paper"] else "live",
-                            }
-                            st.success("✅ Alpaca connected")
-                        else:
-                            st.session_state["_broker_test_alpaca"] = {
-                                "ok": False, "latency": f"{latency_ms}ms",
-                                "portfolio": "—",
-                                "note": conn.last_error or "get_account returned None",
-                            }
-                            st.error(f"❌ {conn.last_error}")
-                    except ValueError as ve:
-                        st.session_state["_broker_test_alpaca"] = {"ok": False, "latency": "—", "portfolio": "—", "note": str(ve)}
-                        st.error(f"❌ {ve}")
-                    st.rerun()
-
-            with col_a2:
-                with st.expander("🔑 Update Credentials"):
-                    new_key = st.text_input("API Key", type="password", key="admin_alpaca_new_key", placeholder="PKxxxx…")
-                    new_secret = st.text_input("Secret Key", type="password", key="admin_alpaca_new_secret", placeholder="secret…")
-                    new_paper = st.checkbox("Paper trading", value=True, key="admin_alpaca_paper")
-                    if st.button("Save & Test", key="admin_alpaca_save"):
-                        import time as _time
-                        t0 = _time.time()
-                        try:
-                            from frontend.components.alpaca_connector import AlpacaConnector
-                            conn = AlpacaConnector(new_key.strip(), new_secret.strip(), new_paper)
-                            acct = conn.get_account()
-                            latency_ms = int((_time.time() - t0) * 1000)
-                            if acct:
-                                st.session_state["_broker_test_alpaca"] = {
-                                    "ok": True, "latency": f"{latency_ms}ms",
-                                    "portfolio": f"${float(acct.get('portfolio_value', 0)):,.0f}",
-                                    "note": "paper (manual override)" if new_paper else "live (manual override)",
-                                }
-                                st.success(
-                                    "✅ Credentials valid! Update your .env / Streamlit secrets with:\n"
-                                    f"ALPACA_API_KEY={new_key[:6]}…\n"
-                                    "ALPACA_SECRET_KEY=<secret>"
-                                )
-                            else:
-                                st.error(f"❌ Still failing: {conn.last_error}")
-                        except Exception as ex:
-                            st.error(f"❌ {ex}")
-
-            with col_a3:
-                st.markdown(
-                    "[🌐 Alpaca Dashboard](https://app.alpaca.markets)  \n"
-                    "[📄 Paper API Keys](https://app.alpaca.markets/paper/dashboard/overview)"
-                )
-
-        st.markdown("---")
-
-        # ── MT5 (Generic) ─────────────────────────────────────────────────────
-        with st.container():
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
-            mt5_result = st.session_state.get("_broker_test_mt5")
+                st.text(f"Last sync: {broker['last_sync']}")
+            
+            # Action buttons
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.markdown("### 🔌 MT5 (FOREX/Futures)")
-                st.caption(f"Bridge: {os.getenv('MT5_API_URL', 'http://localhost:8002')}")
+                if st.button(f"Test Connection", key=f"{broker['name']}_test"):
+                    st.info(f"Testing {broker['name']} connection...")
             with col2:
-                if mt5_result is None:
-                    st.markdown(get_status_badge("idle"), unsafe_allow_html=True)
-                elif mt5_result.get("ok"):
-                    st.markdown(get_status_badge("healthy"), unsafe_allow_html=True)
-                else:
-                    st.markdown(get_status_badge("error"), unsafe_allow_html=True)
+                if st.button(f"Refresh Token", key=f"{broker['name']}_refresh"):
+                    st.info(f"Refreshing {broker['name']} token...")
             with col3:
-                st.metric("Latency", mt5_result.get("latency", "—") if mt5_result else "—")
+                if st.button(f"View Orders", key=f"{broker['name']}_orders"):
+                    st.info(f"Loading {broker['name']} orders...")
             with col4:
-                st.metric("Balance", mt5_result.get("balance", "—") if mt5_result else "—")
-            with col5:
-                st.caption(mt5_result.get("note", "Not tested") if mt5_result else "Not tested")
-
-            col_m1, _m2 = st.columns([1, 3])
-            with col_m1:
-                if st.button("🧪 Test MT5", key="admin_mt5_test"):
-                    import time as _time
-                    t0 = _time.time()
-                    try:
-                        from frontend.utils.mt5_connector import MT5Connector
-                        api_url = os.getenv("MT5_API_URL", "http://localhost:8002")
-                        conn = MT5Connector(api_url)
-                        healthy = conn.health_check()
-                        latency_ms = int((_time.time() - t0) * 1000)
-                        if healthy:
-                            connected = conn.connect(
-                                user=os.getenv("MT5_USER", ""),
-                                password=os.getenv("MT5_PASSWORD", ""),
-                                host=os.getenv("MT5_HOST", ""),
-                                port=int(os.getenv("MT5_PORT", "443")),
-                            )
-                            acct = conn.get_account_info() if connected else {}
-                            balance = f"${acct.get('balance', 0):,.0f}" if acct else "bridge up"
-                            st.session_state["_broker_test_mt5"] = {
-                                "ok": True, "latency": f"{latency_ms}ms",
-                                "balance": balance, "note": os.getenv("MT5_HOST", ""),
-                            }
-                            st.success("✅ MT5 bridge reachable")
-                        else:
-                            st.session_state["_broker_test_mt5"] = {
-                                "ok": False, "latency": f"{latency_ms}ms",
-                                "balance": "—", "note": "Bridge not responding",
-                            }
-                            st.error("❌ MT5 bridge not responding — run START_MT5_SERVER.bat")
-                    except Exception as ex:
-                        st.session_state["_broker_test_mt5"] = {"ok": False, "latency": "—", "balance": "—", "note": str(ex)}
-                        st.error(f"❌ {ex}")
-                    st.rerun()
-
-        st.markdown("---")
-
-        # ── AXI Select ────────────────────────────────────────────────────────
-        with st.container():
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
-            axi_result = st.session_state.get("_broker_test_axi")
-            with col1:
-                st.markdown("### 🎯 AXI Select (Prop)")
-                axi_host_cfg = os.getenv("AXI_MT5_HOST", "not configured")
-                st.caption(f"Server: {axi_host_cfg}")
-            with col2:
-                if axi_result is None:
-                    st.markdown(get_status_badge("idle"), unsafe_allow_html=True)
-                elif axi_result.get("ok"):
-                    st.markdown(get_status_badge("healthy"), unsafe_allow_html=True)
-                else:
-                    st.markdown(get_status_badge("error"), unsafe_allow_html=True)
-            with col3:
-                st.metric("Latency", axi_result.get("latency", "—") if axi_result else "—")
-            with col4:
-                st.metric("Balance", axi_result.get("balance", "—") if axi_result else "—")
-            with col5:
-                st.caption(axi_result.get("note", "Not tested") if axi_result else "Not tested")
-
-            col_ax1, _ax2 = st.columns([1, 3])
-            with col_ax1:
-                if st.button("🧪 Test AXI", key="admin_axi_test"):
-                    import time as _time
-                    t0 = _time.time()
-                    axi_host = os.getenv("AXI_MT5_HOST", "")
-                    if not axi_host:
-                        st.warning("⚠️ AXI_MT5_HOST not set in .env — cannot test AXI")
-                        st.session_state["_broker_test_axi"] = {"ok": False, "latency": "—", "balance": "—", "note": "AXI_MT5_HOST not configured"}
-                    else:
-                        try:
-                            from frontend.utils.mt5_connector import MT5Connector
-                            api_url = os.getenv("AXI_MT5_API_URL", os.getenv("MT5_API_URL", "http://localhost:8002"))
-                            conn = MT5Connector(api_url)
-                            healthy = conn.health_check()
-                            latency_ms = int((_time.time() - t0) * 1000)
-                            if healthy:
-                                connected = conn.connect(
-                                    user=os.getenv("AXI_MT5_USER", os.getenv("MT5_USER", "")),
-                                    password=os.getenv("AXI_MT5_PASSWORD", os.getenv("MT5_PASSWORD", "")),
-                                    host=axi_host,
-                                    port=int(os.getenv("AXI_MT5_PORT", "443")),
-                                )
-                                acct = conn.get_account_info() if connected else {}
-                                balance = f"${acct.get('balance', 0):,.0f}" if acct else "bridge up"
-                                st.session_state["_broker_test_axi"] = {
-                                    "ok": True, "latency": f"{latency_ms}ms",
-                                    "balance": balance, "note": axi_host,
-                                }
-                                st.success("✅ AXI MT5 reachable")
-                            else:
-                                st.session_state["_broker_test_axi"] = {
-                                    "ok": False, "latency": f"{latency_ms}ms",
-                                    "balance": "—", "note": "MT5 bridge not responding",
-                                }
-                                st.error("❌ MT5 bridge not responding")
-                        except Exception as ex:
-                            st.session_state["_broker_test_axi"] = {"ok": False, "latency": "—", "balance": "—", "note": str(ex)}
-                            st.error(f"❌ {ex}")
-                    st.rerun()
-
-            with st.expander("⚙️ AXI Configuration"):
-                st.markdown(
-                    "Set these in your `.env` file, then click **Test AXI** above.\n"
-                    "The AXI Select server is distinct from your generic MT5 demo account."
-                )
-                st.code(
-                    "AXI_MT5_USER=your_axi_account_number\n"
-                    "AXI_MT5_PASSWORD=your_axi_password\n"
-                    "AXI_MT5_HOST=mt5-demo07.axi.com\n"
-                    "AXI_MT5_PORT=443\n"
-                    "# Reuse the same MT5 bridge (START_MT5_SERVER.bat)\n"
-                    "AXI_MT5_API_URL=http://localhost:8002",
-                    language="bash",
-                )
-
-        st.markdown("---")
-
-        # ── IBKR ──────────────────────────────────────────────────────────────
-        with st.container():
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
-            ibkr_result = st.session_state.get("_broker_test_ibkr")
-            with col1:
-                st.markdown("### 🏦 IBKR (Multi-Asset)")
-                st.caption("Gateway / TWS")
-            with col2:
-                if ibkr_result is None:
-                    st.markdown(get_status_badge("idle"), unsafe_allow_html=True)
-                elif ibkr_result.get("ok"):
-                    st.markdown(get_status_badge("healthy"), unsafe_allow_html=True)
-                else:
-                    st.markdown(get_status_badge("error"), unsafe_allow_html=True)
-            with col3:
-                st.metric("Latency", ibkr_result.get("latency", "—") if ibkr_result else "—")
-            with col4:
-                st.metric("Accounts", ibkr_result.get("accounts", "—") if ibkr_result else "—")
-            with col5:
-                st.caption(ibkr_result.get("note", "Not tested") if ibkr_result else "Not tested")
-
-            col_i1, col_i2 = st.columns(2)
-            with col_i1:
-                if st.button("🧪 Test IBKR Gateway", key="admin_ibkr_test"):
-                    import time as _time
-                    t0 = _time.time()
-                    try:
-                        from frontend.utils.ibkr_connector import IBKRConnector
-                        gw_url = os.getenv("IBKR_GATEWAY_URL", "https://localhost:5000")
-                        conn = IBKRConnector(gw_url)
-                        authed = conn.is_authenticated()
-                        latency_ms = int((_time.time() - t0) * 1000)
-                        if authed:
-                            accounts = conn.get_accounts() or []
-                            st.session_state["_broker_test_ibkr"] = {
-                                "ok": True, "latency": f"{latency_ms}ms",
-                                "accounts": str(len(accounts)), "note": gw_url,
-                            }
-                            st.success(f"✅ IBKR Gateway authenticated — {len(accounts)} account(s)")
-                        else:
-                            st.session_state["_broker_test_ibkr"] = {
-                                "ok": False, "latency": f"{latency_ms}ms",
-                                "accounts": "0", "note": "Not authenticated",
-                            }
-                            st.error("❌ IBKR Gateway not authenticated — log in via Gateway UI")
-                    except Exception as ex:
-                        st.session_state["_broker_test_ibkr"] = {"ok": False, "latency": "—", "accounts": "0", "note": str(ex)}
-                        st.error(f"❌ {ex}")
-                    st.rerun()
-
-            with col_i2:
-                if st.button("🧪 Test TWS Socket", key="admin_ibkr_tws_test"):
-                    import socket, time as _time
-                    host = os.getenv("IBKR_HOST", "127.0.0.1")
-                    for port, label in [(7497, "paper"), (7496, "live")]:
-                        t0 = _time.time()
-                        try:
-                            with socket.create_connection((host, port), timeout=2):
-                                latency_ms = int((_time.time() - t0) * 1000)
-                                st.success(f"✅ TWS {label} port {port} open on {host} ({latency_ms}ms)")
-                                break
-                        except (socket.timeout, ConnectionRefusedError, OSError):
-                            st.warning(f"⚠️ TWS {label} port {port} not reachable on {host}")
-
-        st.markdown("---")
-
+                if st.button(f"Settings", key=f"{broker['name']}_settings"):
+                    st.info(f"Opening {broker['name']} settings...")
+            
+            st.markdown("---")
+    
+    # TAB 4: Prop Firms
     with tab4:
         st.markdown('<div class="section-header"><h2>Prop Firm Execution Management</h2></div>', unsafe_allow_html=True)
         

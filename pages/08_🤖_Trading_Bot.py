@@ -7,12 +7,20 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import subprocess
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 from frontend.components.multi_broker_dashboard import render_multi_broker_dashboard
+
+# Page config must be the first Streamlit command in this script.
+st.set_page_config(
+    page_title="ML Trading Bot Dashboard",
+    page_icon="🤖",
+    layout="wide"
+)
 
 # Import cache-busting reload function
 try:
@@ -126,13 +134,6 @@ if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permissi
 # Apply custom styling
 if STYLING_AVAILABLE:
     apply_custom_styling()
-
-# Page config
-st.set_page_config(
-    page_title="ML Trading Bot Dashboard",
-    page_icon="🤖",
-    layout="wide"
-)
 
 # Custom CSS
 st.markdown("""
@@ -722,6 +723,61 @@ def _execute_bot_mode(bot_name: str, mode: str) -> dict:
         return {"ok": False, "output": str(exc)}
 
 
+def _vega_automation_status() -> dict:
+    """Read 9:30 Vega task metadata and latest launcher event from logs."""
+    repo_root = Path(__file__).resolve().parents[1]
+    task_name = "Bentley-Vega-IBKR-930"
+    schedule = {
+        "exists": False,
+        "task_name": task_name,
+        "next_run": "Unknown",
+        "last_run": "Unknown",
+        "last_result": "Unknown",
+    }
+
+    try:
+        result = subprocess.run(
+            ["schtasks", "/query", "/tn", task_name, "/fo", "LIST", "/v"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        if result.returncode == 0:
+            schedule["exists"] = True
+            for line in (result.stdout or "").splitlines():
+                if ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                k = key.strip().lower()
+                v = value.strip()
+                if k == "next run time":
+                    schedule["next_run"] = v
+                elif k == "last run time":
+                    schedule["last_run"] = v
+                elif k == "last result":
+                    schedule["last_result"] = v
+    except Exception:
+        pass
+
+    latest_event = None
+    latest_path = repo_root / "logs" / "last_bot_mode_event.json"
+    if latest_path.exists():
+        try:
+            with latest_path.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+                if isinstance(payload, dict):
+                    latest_event = payload
+        except Exception:
+            latest_event = None
+
+    return {
+        "schedule": schedule,
+        "latest_event": latest_event,
+    }
+
+
 def _render_quick_launch_buttons() -> None:
     launch_bots = ["Titan", "Vega", "Rigel", "Dogon", "Orion"]
 
@@ -777,6 +833,23 @@ def _render_quick_launch_buttons() -> None:
     if selected_output:
         with st.expander("Last Command Output", expanded=False):
             st.code(selected_output, language="text")
+
+    automation = _vega_automation_status()
+    schedule = automation["schedule"]
+    latest_event = automation["latest_event"]
+
+    st.markdown("**Vega IBKR Scheduled Automation (09:30 ET)**")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Task", "Configured" if schedule.get("exists") else "Missing")
+    with c2:
+        st.metric("Next Run", schedule.get("next_run", "Unknown"))
+    with c3:
+        st.metric("Last Result", schedule.get("last_result", "Unknown"))
+
+    if latest_event:
+        st.caption("Latest launcher event")
+        st.json(latest_event)
 
 
 @st.cache_data(ttl=30)

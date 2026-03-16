@@ -21,6 +21,14 @@ load_dotenv(override=True)
 
 import streamlit as st
 
+# Page config must be the first Streamlit command in this script.
+st.set_page_config(
+    page_title="Personal Budget | BBBot",
+    page_icon="💰",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Import cache-busting reload function
 try:
     from config_env import reload_env
@@ -62,15 +70,7 @@ from frontend.styles.colors import COLOR_SCHEME
 
 def main():
     """Main function for the budget page."""
-    
-    # Page config
-    st.set_page_config(
-        page_title="Personal Budget | BBBot",
-        page_icon="💰",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
+
     # Reload environment variables for cache-busting
     if ENV_RELOAD_AVAILABLE:
         reload_env()

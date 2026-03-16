@@ -29,6 +29,15 @@ try:
     from frontend.utils.styling import apply_custom_styling
     
     # Apply home page styling first
+    
+    # Page config must be called BEFORE any other st command
+    st.set_page_config(
+        page_title="Investment Analysis - BentleyBot",
+        page_icon="📈",
+        layout="wide"
+    )
+    
+    # Apply home page styling
     apply_custom_styling()
     RBACManager.init_session_state()
     show_user_info()
@@ -67,7 +76,7 @@ try:
     /* CRITICAL: Force Streamlit metrics to match home page exactly */
     [data-testid="stMetricLabel"],
     [data-testid="stMetricLabel"] * {{
-        color: rgba(230, 238, 248, 0.9) !important;
+        color: #FFFFFF !important;
         font-size: 0.9rem !important;
         font-weight: 500 !important;
     }}
@@ -81,7 +90,7 @@ try:
     
     [data-testid="stMetricDelta"],
     [data-testid="stMetricDelta"] * {{
-        color: rgba(230, 238, 248, 0.9) !important;
+        color: #FFFFFF !important;
         opacity: 0.9 !important;
     }}
     
@@ -103,7 +112,7 @@ try:
     
     /* Caption text */
     .stCaption {{
-        color: rgba(230, 238, 248, 0.8) !important;
+        color: #FFFFFF !important;
     }}
     
     /* Ensure all text in columns is white */
@@ -1263,11 +1272,4 @@ def display_broker_connections_tab():
         display_connection_health()
 
 
-if __name__ == "__main__":
-    st.set_page_config(
-        page_title="Investment Analysis - BentleyBot",
-        page_icon="📈",
-        layout="wide"
-    )
-    
-    display_investment_page()
+display_investment_page()

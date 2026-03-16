@@ -154,77 +154,42 @@ def get_alpaca_config() -> dict:
     Raises:
         ValueError: If credentials are not configured
     """
-    legacy_api_key = (
-        get_secret('ALPACA_API_KEY')
-        or get_secret('APCA_API_KEY_ID')
-        or get_secret('ALPACA_KEY_ID')
-        or get_secret('alpaca_api_key')
-        or get_secret('apca_api_key_id')
-        or get_secret('alpaca_key_id')
-        or get_secret('ALPACA_API_KEY', section='alpaca')
-        or get_secret('APCA_API_KEY_ID', section='alpaca')
-        or get_secret('alpaca_api_key', section='alpaca')
-        or get_secret('apca_api_key_id', section='alpaca')
-        or get_secret('api_key', section='alpaca')
-        or get_secret('key_id', section='alpaca')
-    )
-    legacy_secret_key = (
-        get_secret('ALPACA_SECRET_KEY')
-        or get_secret('APCA_API_SECRET_KEY')
-        or get_secret('APCA_SECRET_KEY')
-        or get_secret('APCA_API_SECRET')
-        or get_secret('ALPACA_API_SECRET')
-        or get_secret('ALPACA_SECRET')
-        or get_secret('alpaca_secret_key')
-        or get_secret('apca_api_secret_key')
-        or get_secret('apca_secret_key')
-        or get_secret('apca_api_secret')
-        or get_secret('alpaca_api_secret')
-        or get_secret('alpaca_secret')
-        or get_secret('ALPACA_SECRET_KEY', section='alpaca')
-        or get_secret('APCA_API_SECRET_KEY', section='alpaca')
-        or get_secret('APCA_SECRET_KEY', section='alpaca')
-        or get_secret('APCA_API_SECRET', section='alpaca')
-        or get_secret('ALPACA_SECRET', section='alpaca')
-        or get_secret('alpaca_secret_key', section='alpaca')
-        or get_secret('apca_api_secret_key', section='alpaca')
-        or get_secret('apca_secret_key', section='alpaca')
-        or get_secret('apca_api_secret', section='alpaca')
-        or get_secret('alpaca_secret', section='alpaca')
-        or get_secret('secret_key', section='alpaca')
-        or get_secret('secret', section='alpaca')
-    )
-    paper_api_key = (
-        get_secret('ALPACA_PAPER_API_KEY')
-        or get_secret('ALPACA_API_KEY_PAPER')
-        or get_secret('paper_api_key', section='alpaca')
-        or get_secret('paper_key', section='alpaca')
-    )
-    paper_secret_key = (
-        get_secret('ALPACA_PAPER_SECRET_KEY')
-        or get_secret('ALPACA_SECRET_KEY_PAPER')
-        or get_secret('paper_secret_key', section='alpaca')
-        or get_secret('paper_secret', section='alpaca')
-    )
-    live_api_key = (
-        get_secret('ALPACA_LIVE_API_KEY')
-        or get_secret('ALPACA_API_KEY_LIVE')
-        or get_secret('live_api_key', section='alpaca')
-        or get_secret('live_key', section='alpaca')
-    )
-    live_secret_key = (
-        get_secret('ALPACA_LIVE_SECRET_KEY')
-        or get_secret('ALPACA_SECRET_KEY_LIVE')
-        or get_secret('live_secret_key', section='alpaca')
-        or get_secret('live_secret', section='alpaca')
-    )
+    def _resolve_first_complete_pair(candidates: list[tuple[str, str, Optional[str]]]) -> tuple[Optional[str], Optional[str]]:
+        """Return the first credential pair where both key and secret are present."""
+        for key_name, secret_name, section_name in candidates:
+            key_val = _clean_secret_value(get_secret(key_name, section=section_name))
+            secret_val = _clean_secret_value(
+                get_secret(secret_name, section=section_name)
+            )
+            if key_val and secret_val:
+                return key_val, secret_val
+        return None, None
 
-    legacy_api_key = _clean_secret_value(legacy_api_key)
-    legacy_secret_key = _clean_secret_value(legacy_secret_key)
-    paper_api_key = _clean_secret_value(paper_api_key)
-    paper_secret_key = _clean_secret_value(paper_secret_key)
-    live_api_key = _clean_secret_value(live_api_key)
-    live_secret_key = _clean_secret_value(live_secret_key)
+    # Resolve complete pairs only, to avoid mismatching key from one naming scheme
+    # with secret from another (which causes intermittent 401 in mixed environments).
+    paper_api_key, paper_secret_key = _resolve_first_complete_pair([
+        ('ALPACA_PAPER_API_KEY', 'ALPACA_PAPER_SECRET_KEY', None),
+        ('ALPACA_API_KEY_PAPER', 'ALPACA_SECRET_KEY_PAPER', None),
+        ('paper_api_key', 'paper_secret_key', 'alpaca'),
+        ('paper_key', 'paper_secret', 'alpaca'),
+    ])
+
+    live_api_key, live_secret_key = _resolve_first_complete_pair([
+        ('ALPACA_LIVE_API_KEY', 'ALPACA_LIVE_SECRET_KEY', None),
+        ('ALPACA_API_KEY_LIVE', 'ALPACA_SECRET_KEY_LIVE', None),
+        ('live_api_key', 'live_secret_key', 'alpaca'),
+        ('live_key', 'live_secret', 'alpaca'),
+    ])
+
+    legacy_api_key, legacy_secret_key = _resolve_first_complete_pair([
+        ('ALPACA_API_KEY', 'ALPACA_SECRET_KEY', None),
+        ('APCA_API_KEY_ID', 'APCA_API_SECRET_KEY', None),
+        ('ALPACA_KEY_ID', 'APCA_SECRET_KEY', None),
+        ('alpaca_api_key', 'alpaca_secret_key', None),
+        ('apca_api_key_id', 'apca_api_secret_key', None),
+        ('api_key', 'secret_key', 'alpaca'),
+        ('key_id', 'secret', 'alpaca'),
+    ])
     # Allow local env override for quick paper/live switching during ops tests.
     paper = os.getenv('ALPACA_PAPER') or get_secret('ALPACA_PAPER', default=None)
     if paper is None:

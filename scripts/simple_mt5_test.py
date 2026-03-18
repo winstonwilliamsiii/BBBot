@@ -2,7 +2,11 @@
 import MetaTrader5 as mt5
 
 print("Testing MT5...")
-result = mt5.initialize()
+result = mt5.initialize(
+    login=531220202,
+    password="*zH4!B5ZGB!8a",
+    server="FTMO-Server3",
+)
 
 if result:
     print("\n✅ SUCCESS! MT5 Connected!")

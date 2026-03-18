@@ -101,8 +101,8 @@ def main():
     print("🎯 Next Steps:")
     print("   1. Visit MLflow UI: http://localhost:5000")
     print("   2. Open Streamlit: streamlit run streamlit_app.py")
-    print("   3. Navigate to Admin Control Center (Page 99)")
-    print("   4. Check MLflow Training Dashboard (Page 98)")
+    print("   3. Open Prediction Analytics and validate forecast outputs")
+    print("   4. Validate optimization/rebalancing pipeline logs")
     print()
     
     return True

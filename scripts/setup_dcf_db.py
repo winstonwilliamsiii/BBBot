@@ -14,11 +14,11 @@ load_dotenv()
 
 # Database connection details
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "127.0.0.1"),
-    "port": int(os.getenv("DB_PORT", "3306")),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),  # Will prompt if empty
-    "database": os.getenv("DB_NAME", "Bentley_Budget")
+    "host": os.getenv("MYSQL_HOST", os.getenv("DB_HOST", "127.0.0.1")),
+    "port": int(os.getenv("MYSQL_PORT", os.getenv("DB_PORT", "3306"))),
+    "user": os.getenv("MYSQL_USER", os.getenv("DB_USER", "root")),
+    "password": os.getenv("MYSQL_PASSWORD", os.getenv("DB_PASSWORD", "")),  # Will prompt if empty
+    "database": os.getenv("MYSQL_DATABASE", os.getenv("DB_NAME", "mansa_bot"))
 }
 
 def get_password():
@@ -54,7 +54,19 @@ def run_sql_setup():
         for i, statement in enumerate(statements, 1):
             if statement:
                 try:
-                    cursor.execute(statement)
+                    normalized = statement.strip().lower()
+
+                    # Keep setup scoped to the configured target database.
+                    if normalized.startswith("use "):
+                        cursor.execute(f"USE `{DB_CONFIG['database']}`")
+                    else:
+                        cursor.execute(statement)
+
+                    # Consume result sets from verification SELECT statements
+                    # so mysql-connector doesn't raise "Unread result found".
+                    if getattr(cursor, "with_rows", False):
+                        cursor.fetchall()
+
                     print(f"  ✅ Statement {i}/{len(statements)} executed")
                 except mysql.connector.Error as e:
                     print(f"  ⚠️  Statement {i} warning: {e}")

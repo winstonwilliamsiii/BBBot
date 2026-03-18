@@ -95,6 +95,8 @@ DEFAULT_TERM_YEARS = 10  # 5-10 years
 DEFAULT_PERP_GROWTH = 0.02  # 2% terminal growth
 DEFAULT_MARGIN_OF_SAFETY = 0.15  # 15% buffer for "undervalued" flag
 
+DCF_REQUIRED_TABLES = ("fundamentals_annual", "prices_latest")
+
 
 # ---------- DB LAYER ----------
 
@@ -157,6 +159,143 @@ def get_db_connection():
 
         logger.error(f"Database connection failed: {e}")
         raise
+
+
+def _table_exists(conn, table_name: str, database: Optional[str] = None) -> bool:
+    """Check whether a table exists in a given schema."""
+    try:
+        cursor = conn.cursor()
+        if database:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = %s AND table_name = %s
+                LIMIT 1
+                """,
+                (database, table_name),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE() AND table_name = %s
+                LIMIT 1
+                """,
+                (table_name,),
+            )
+        exists = cursor.fetchone() is not None
+        cursor.close()
+        return exists
+    except Exception:
+        return False
+
+
+def _switch_database(conn, database: str) -> None:
+    """Switch the active schema on an open connection."""
+    cursor = conn.cursor()
+    cursor.execute(f"USE `{database}`")
+    cursor.close()
+
+
+def _create_dcf_tables_if_missing(conn) -> None:
+    """Create DCF tables in the current schema if they do not exist."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fundamentals_annual (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(10) NOT NULL,
+            fiscal_year INT NOT NULL,
+            revenue DECIMAL(20,2) DEFAULT NULL,
+            free_cash_flow DECIMAL(20,2) DEFAULT NULL,
+            shares_outstanding DECIMAL(20,2) DEFAULT NULL,
+            net_debt DECIMAL(20,2) DEFAULT 0,
+            cash DECIMAL(20,2) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_ticker_year (ticker, fiscal_year),
+            INDEX idx_ticker (ticker),
+            INDEX idx_fiscal_year (fiscal_year)
+        ) ENGINE=InnoDB
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS prices_latest (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(10) NOT NULL,
+            price DECIMAL(12,4) NOT NULL,
+            as_of_date DATE NOT NULL,
+            volume BIGINT DEFAULT NULL,
+            market_cap DECIMAL(20,2) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_ticker_date (ticker, as_of_date),
+            INDEX idx_ticker (ticker),
+            INDEX idx_as_of_date (as_of_date)
+        ) ENGINE=InnoDB
+        """
+    )
+    conn.commit()
+    cursor.close()
+
+
+def ensure_dcf_schema(conn) -> str:
+    """
+    Ensure DCF tables are available on the current connection.
+
+    Strategy:
+    1) Use current schema if both tables exist.
+    2) Try known alternate schemas and switch if both tables exist there.
+    3) Create missing DCF tables in current schema to prevent SQL 1146 failures.
+    """
+    current_db = (getattr(conn, "database", None) or "").strip()
+    if not current_db:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DATABASE()")
+        row = cursor.fetchone()
+        cursor.close()
+        current_db = str(row[0]) if row and row[0] else ""
+
+    if current_db and all(_table_exists(conn, t, current_db) for t in DCF_REQUIRED_TABLES):
+        return current_db
+
+    candidate_dbs = []
+    for db_name in (
+        current_db,
+        os.getenv("MYSQL_DATABASE"),
+        os.getenv("DB_NAME"),
+        "mansa_bot",
+        "Bentley_Budget",
+        "bentley_budget",
+    ):
+        db_name = (db_name or "").strip()
+        if db_name and db_name not in candidate_dbs:
+            candidate_dbs.append(db_name)
+
+    for db_name in candidate_dbs:
+        if db_name == current_db:
+            continue
+        if all(_table_exists(conn, t, db_name) for t in DCF_REQUIRED_TABLES):
+            _switch_database(conn, db_name)
+            logger.warning(
+                "DCF tables not found in '%s'; switched DCF queries to '%s'",
+                current_db or "(unknown)",
+                db_name,
+            )
+            return db_name
+
+    # Last resort: create tables in the active schema so DCF query path remains stable.
+    _create_dcf_tables_if_missing(conn)
+    logger.warning(
+        "DCF tables were missing in '%s' and were auto-created. "
+        "Populate fundamentals_annual/prices_latest (or run scripts/setup_dcf_db.py) "
+        "for full analysis results.",
+        current_db or "current database",
+    )
+    return current_db or ""
 
 
 def fetch_historical_fundamentals(
@@ -526,6 +665,8 @@ def run_equity_dcf(
     
     conn = get_db_connection()
     try:
+        ensure_dcf_schema(conn)
+
         # Fetch data
         fundamentals_df = fetch_historical_fundamentals(ticker, conn, min_years=5)
         current_price = fetch_current_price(ticker, conn)

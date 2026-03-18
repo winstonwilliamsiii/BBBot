@@ -165,21 +165,36 @@ def render_broker_status():
             connect_ibkr()
 
 
-def connect_mt5():
+def connect_mt5(
+    user: str | None = None,
+    password: str | None = None,
+    host: str | None = None,
+    port: int | None = None,
+    api_url: str | None = None,
+):
     """Connect to MT5"""
     try:
         from frontend.utils.mt5_connector import MT5Connector
         
         # Use MT5_API_URL or MT5_REST_API_URL (fallback to 8002, not 8000 which is Airbyte)
         default_url = "http://localhost:8002"
-        api_url = os.getenv("MT5_API_URL") or os.getenv("MT5_REST_API_URL", default_url)
-        connector = MT5Connector(api_url)
+        resolved_api_url = (
+            (api_url or "").strip()
+            or os.getenv("MT5_API_URL")
+            or os.getenv("MT5_REST_API_URL", default_url)
+        )
+        resolved_user = (user or os.getenv("MT5_USER", "")).strip()
+        resolved_password = password or os.getenv("MT5_PASSWORD", "")
+        resolved_host = (host or os.getenv("MT5_HOST", "")).strip()
+        resolved_port = int(port if port is not None else os.getenv("MT5_PORT", "443"))
+
+        connector = MT5Connector(resolved_api_url)
         
         if connector.connect(
-            user=os.getenv("MT5_USER", ""),
-            password=os.getenv("MT5_PASSWORD", ""),
-            host=os.getenv("MT5_HOST", ""),
-            port=int(os.getenv("MT5_PORT", "443"))
+            user=resolved_user,
+            password=resolved_password,
+            host=resolved_host,
+            port=resolved_port,
         ):
             st.session_state.brokers['mt5'] = connector
             st.success("✅ MT5 Connected!")
@@ -368,6 +383,8 @@ def render_mt5_section():
         
         with st.expander("🔗 MT5 Connection"):
             col1, col2 = st.columns(2)
+            default_url = "http://localhost:8002"
+            api_url_value = os.getenv("MT5_API_URL") or os.getenv("MT5_REST_API_URL", default_url)
             
             with col1:
                 user = st.text_input("MT5 Account", value=os.getenv("MT5_USER", ""))
@@ -376,15 +393,22 @@ def render_mt5_section():
             with col2:
                 password = st.text_input("Password", type="password", value=os.getenv("MT5_PASSWORD", ""))
                 port = st.number_input("Port", value=int(os.getenv("MT5_PORT", "443")))
+            api_url = st.text_input("MT5 API URL", value=api_url_value)
             
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
                 if st.button("Connect", type="primary", use_container_width=True):
-                    connect_mt5()
+                    connect_mt5(
+                        user=user,
+                        password=password,
+                        host=host,
+                        port=int(port),
+                        api_url=api_url,
+                    )
             
             with col_btn2:
                 if st.button("🏥 Health Check", use_container_width=True):
-                    base_url = os.getenv("MT5_API_URL", "http://localhost:8000")
+                    base_url = (api_url or "").strip() or api_url_value
                     temp_connector = MT5Connector(base_url)
                     if temp_connector.health_check():
                         st.success("✅ MT5 API server is healthy")

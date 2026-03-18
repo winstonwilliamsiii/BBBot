@@ -453,32 +453,29 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fu
         for ticker in tickers:
             try:
                 df = fetch_stock_data(ticker, start_date, end_date)
-                if df is None or df.empty:
-                    st.warning(f"No data available for {ticker}")
-                    continue
-
-                # Handle MultiIndex columns from yfinance
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                
-                # Reset index to make Date a column
-                df = df.reset_index()
-                
-                # Add ticker column
-                df['Ticker'] = ticker
-                
-                # Select only the columns we need (handle missing columns gracefully)
-                cols_to_keep = []
-                for col in ['Date', 'Ticker', 'Close', 'Volume']:
-                    if col in df.columns or col == 'Ticker':
-                        cols_to_keep.append(col)
-                
-                if 'Close' in df.columns and 'Date' in df.columns:
-                    # Reset index to avoid duplicate index errors during concat
-                    df_to_add = df[cols_to_keep].reset_index(drop=True)
-                    data_frames.append(df_to_add)
-                else:
-                    st.warning(f"⚠️ {ticker}: Missing required columns")
+                if not df.empty:
+                    # Handle MultiIndex columns from yfinance
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    
+                    # Reset index to make Date a column
+                    df = df.reset_index()
+                    
+                    # Add ticker column
+                    df['Ticker'] = ticker
+                    
+                    # Select only the columns we need (handle missing columns gracefully)
+                    cols_to_keep = []
+                    for col in ['Date', 'Ticker', 'Close', 'Volume']:
+                        if col in df.columns or col == 'Ticker':
+                            cols_to_keep.append(col)
+                    
+                    if 'Close' in df.columns and 'Date' in df.columns:
+                        # Reset index to avoid duplicate index errors during concat
+                        df_to_add = df[cols_to_keep].reset_index(drop=True)
+                        data_frames.append(df_to_add)
+                    else:
+                        st.warning(f"⚠️ {ticker}: Missing required columns")
             except Exception as e:
                 st.warning(f"⚠️ Could not fetch {ticker}: {e}")
         

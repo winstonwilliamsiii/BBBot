@@ -19,6 +19,7 @@ import json
 
 class UserRole(Enum):
     """User roles in the system with database-level access"""
+    GUEST = "guest"            # Local development/demo access
     CLIENT = "client"          # Budgets + transactions (mydb)
     INVESTOR = "investor"      # Read-only: bbbot1 prices, fundamentals, technicals
     ANALYST = "analyst"        # mansa_quant + mlflow_db (experiments, sentiment)
@@ -250,12 +251,24 @@ class RBACManager:
     """
     
     # Demo users for testing (in production, use database)
+    # GUEST: Local demo access for dashboard, budget, analysis, and crypto
     # CLIENT: mydb (budgets, transactions via Plaid)
     # INVESTOR: bbbot1 read-only (prices, fundamentals, technicals, performance)
     # ANALYST: mansa_quant (trading signals) + mlflow_db (experiments, sentiment)
     # ADMIN: All databases - Full CRUD access
     # PARTNER: External services (Stripe, KYC, Lovable)
     DEMO_USERS = {
+        'guest': {
+            'password_hash': hashlib.sha256('guest123'.encode()).hexdigest(),
+            'role': UserRole.GUEST,
+            'kyc_completed': False,
+            'investment_agreement_signed': False,
+            'kyc_date': None,
+            'agreement_date': None,
+            'agreement_type': 'dev_testing',
+            'email': 'dev@bentleybot.com',
+            'databases': [],
+        },
         'client': {
             'password_hash': hashlib.sha256('client123'.encode()).hexdigest(),
             'role': UserRole.CLIENT,

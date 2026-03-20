@@ -107,7 +107,7 @@ def main():
                 st.switch_page("streamlit_app.py")
             
             if st.button("📈 Investment Analysis", use_container_width=True):
-                st.switch_page("pages/02_📈_Investment_Analysis.py")
+                st.switch_page("pages/03_📈_Investment_Analysis.py")
             
             st.markdown("---")
             

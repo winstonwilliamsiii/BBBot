@@ -391,9 +391,15 @@ st.markdown(f"""
         border-radius: 0.5rem;
         padding: 1.5rem;
         border-left: 3px solid {COLOR_SCHEME['accent_teal']};
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-sizing: border-box;
     }}
     .metric-label {{
-        color: #E5E7EB;
+        color: #FFFFFF;
+        opacity: 0.92;
         font-size: 0.875rem;
         font-weight: 500;
         margin-bottom: 0.5rem;
@@ -405,7 +411,8 @@ st.markdown(f"""
         margin-bottom: 0.25rem;
     }}
     .metric-change {{
-        color: #10B981;
+        color: #FFFFFF;
+        opacity: 0.78;
         font-size: 0.875rem;
     }}
     .tab-header {{

@@ -421,7 +421,7 @@ st.markdown(f"""
         font-size: 1.1rem !important;
     }}
     .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {{
-        color: #F3F4F6 !important;
+        color: #FFFFFF !important;
         font-size: 1.05rem !important;
         font-weight: 600 !important;
     }}
@@ -492,7 +492,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 with tab1:
-    st.markdown("<h3 style='color: #F3F4F6;'>Active Prediction Markets</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #FFFFFF;'>Active Prediction Markets</h3>", unsafe_allow_html=True)
     
     # Platform filter
     platform_filter = st.selectbox("Filter by Platform", ["All", "Kalshi", "Polymarket"], key="platform_tab1")
@@ -541,7 +541,7 @@ with tab1:
         st.code("pip install prediction-analytics", language="bash")
 
 with tab2:
-    st.markdown("<h3 style='color: #F3F4F6;'>Your Prediction Market Portfolio</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #FFFFFF;'>Your Prediction Market Portfolio</h3>", unsafe_allow_html=True)
     
     # Exchange selector
     exchange_filter = st.selectbox("Filter by Exchange", ["All", "Kalshi", "Polymarket"], key="exchange_tab2")
@@ -698,11 +698,11 @@ with tab2:
                 st.error(f"Error preparing export: {e}")
 
 with tab3:
-    st.markdown("<h3 style='color: #F3F4F6;'>Probability Predictions</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #FFFFFF;'>Probability Predictions</h3>", unsafe_allow_html=True)
     
     st.info("📊 ML Probability Engine - Coming Soon")
     st.markdown("""
-    <div style='color: #F3F4F6; margin-top: 1rem;'>
+    <div style='color: #FFFFFF; margin-top: 1rem;'>
         <strong>Planned Features:</strong><br>
         • Machine learning predictions for market outcomes<br>
         • Confidence scores and edge detection<br>
@@ -712,11 +712,11 @@ with tab3:
     """, unsafe_allow_html=True)
 
 with tab4:
-    st.markdown("<h3 style='color: #F3F4F6;'>Sentiment Analysis</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #FFFFFF;'>Sentiment Analysis</h3>", unsafe_allow_html=True)
     
     st.info("💬 Market Sentiment Engine - Coming Soon")
     st.markdown("""
-    <div style='color: #F3F4F6; margin-top: 1rem;'>
+    <div style='color: #FFFFFF; margin-top: 1rem;'>
         <strong>Planned Features:</strong><br>
         • News and social media sentiment aggregation<br>
         • On-chain activity analysis<br>

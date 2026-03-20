@@ -242,7 +242,7 @@ st.markdown("""
 <style>
     .stApp {
         background: radial-gradient(circle at top left, #111827 0%, #0b1220 55%, #030712 100%);
-        color: #e5e7eb;
+        color: #ffffff;
     }
     [data-testid="stHeader"], [data-testid="stSidebar"] {
         background: #0b1220;
@@ -250,12 +250,36 @@ st.markdown("""
     [data-testid="stSidebar"] {
         border-right: 1px solid #1f2937;
     }
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricLabel"] *,
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricValue"] *,
+    [data-testid="stMetricDelta"],
+    [data-testid="stMetricDelta"] *,
+    [data-testid="stCaptionContainer"] *,
+    [data-testid="stMarkdownContainer"] *,
+    p,
+    span,
+    div,
+    li,
+    label,
+    td,
+    th,
+    small {
+        color: #ffffff !important;
+        opacity: 1 !important;
+    }
     .metric-card {
         background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
         padding: 20px;
         border-radius: 10px;
         color: white;
         margin: 10px 0;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-sizing: border-box;
     }
     .status-healthy { color: #10b981; font-weight: bold; }
     .status-warning { color: #f59e0b; font-weight: bold; }
@@ -751,7 +775,8 @@ def main():
         # Deploy modal
         if st.session_state.get("show_deploy_modal", False):
             with st.expander("Deploy New Bot", expanded=True):
-                bot_select = st.selectbox("Select Bot", [f"Bot {i}" for i in range(1, 14)])
+                _catalog = get_bot_catalog_rows()
+                bot_select = st.selectbox("Select Bot", [row["bot"] for row in _catalog])
                 broker_select = st.selectbox("Select Broker", ["Alpaca", "IBKR", "Binance", "MT5 (FTMO)", "MT5 (Axi)"])
                 environment = st.radio("Environment", ["Sandbox", "Live"], horizontal=True)
                 

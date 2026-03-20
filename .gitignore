@@ -245,3 +245,6 @@ ehthumbs.db
 # Local configuration overrides
 config.local.json
 settings.local.json
+
+# Runtime broker mode config (auto-generated at runtime, not for version control)
+config/broker_modes.json

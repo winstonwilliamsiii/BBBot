@@ -164,6 +164,14 @@ def get_alpaca_config() -> dict:
             if key_val and secret_val:
                 return key_val, secret_val
         return None, None
+    
+    # Get effective mode from broker config (respects env var and file overrides)
+    try:
+        from config.broker_mode_config import get_config
+        mode = get_config().get_broker_mode("alpaca")
+        use_paper_from_config = mode == "paper"
+    except Exception:
+        use_paper_from_config = None
 
     # Resolve complete pairs only, to avoid mismatching key from one naming scheme
     # with secret from another (which causes intermittent 401 in mixed environments).
@@ -198,26 +206,31 @@ def get_alpaca_config() -> dict:
         ('key_id', 'secret', 'alpaca'),
     ])
     # Allow local env override for quick paper/live switching during ops tests.
-    paper = (
-        os.getenv('ALPACA_PAPER')
-        or get_secret('ALPACA_PAPER', default=None)
-        or get_secret('ALPACA_PAPER', section='alpaca', default=None)
-    )
-    if paper is None:
-        env = get_secret(
-            'ALPACA_ENVIRONMENT',
-            default=get_secret('ALPACA_ENVIRONMENT', section='alpaca', default='paper')
+    # Determine which mode to use (priority: broker config override > env var > secrets)
+    if use_paper_from_config is not None:
+        use_paper = use_paper_from_config
+    else:
+        # Fallback to original logic if broker config unavailable
+        paper = (
+            os.getenv('ALPACA_PAPER')
+            or get_secret('ALPACA_PAPER', default=None)
+            or get_secret('ALPACA_PAPER', section='alpaca', default=None)
         )
-        if str(env).lower() not in ('paper', 'live'):
-            base_url = (
-                get_secret('ALPACA_BASE_URL', default='')
-                or get_secret('ALPACA_BASE_URL', section='alpaca', default='')
-                or ''
+        if paper is None:
+            env = get_secret(
+                'ALPACA_ENVIRONMENT',
+                default=get_secret('ALPACA_ENVIRONMENT', section='alpaca', default='paper')
             )
-            env = 'paper' if 'paper-api.alpaca.markets' in str(base_url).lower() else 'live'
-        paper = 'true' if str(env).lower() == 'paper' else 'false'
-    
-    use_paper = paper.lower() in ('true', '1', 'yes')
+            if str(env).lower() not in ('paper', 'live'):
+                base_url = (
+                    get_secret('ALPACA_BASE_URL', default='')
+                    or get_secret('ALPACA_BASE_URL', section='alpaca', default='')
+                    or ''
+                )
+                env = 'paper' if 'paper-api.alpaca.markets' in str(base_url).lower() else 'live'
+            paper = 'true' if str(env).lower() == 'paper' else 'false'
+        
+        use_paper = paper.lower() in ('true', '1', 'yes')
     if use_paper:
         # Do not mix paper key with legacy/live secret (or vice-versa).
         if paper_api_key or paper_secret_key:

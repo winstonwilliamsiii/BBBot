@@ -77,6 +77,12 @@ class Permission(Enum):
 
 # Role-Permission mapping based on database and feature access
 ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
+    UserRole.GUEST: {
+        Permission.VIEW_DASHBOARD,
+        Permission.VIEW_BUDGET,
+        Permission.VIEW_ANALYSIS,
+        Permission.VIEW_CRYPTO,
+    },
     UserRole.CLIENT: {
         # mydb: Budgets + Transactions
         Permission.CLIENT_READ_BUDGETS,

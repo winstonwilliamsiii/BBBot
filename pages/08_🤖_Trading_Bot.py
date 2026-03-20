@@ -152,7 +152,7 @@ st.markdown("""
     }
     
     [data-testid="stMetricValue"] {
-        color: #E6EEF8 !important;
+        color: #FFFFFF !important;
         font-size: 1.6rem !important;
         font-weight: 700 !important;
     }
@@ -957,7 +957,7 @@ with tab1:
 
     # ── 9 Aggregate Metric Cards ───────────────────────────────────────────
     st.markdown(
-        "<p style='font-size:0.75rem;color:#6B7280;margin-bottom:6px;'>"
+        "<p style='font-size:0.75rem;color:#FFFFFF;margin-bottom:6px;opacity:0.92;'>"
         "Aggregate across all broker bot trades — "
         + ("live DB" if DB_AVAILABLE else "estimated demo")
         + "</p>",
@@ -974,12 +974,13 @@ with tab1:
         return (
             f"<div style='background:rgba(15,23,42,0.7);border:1px solid rgba(255,255,255,0.08);"
             f"border-left:3px solid {accent};border-radius:8px;"
-            f"padding:14px 16px 10px;margin-bottom:10px;'>"
-            f"<p style='margin:0;font-size:0.72rem;color:#9CA3AF;letter-spacing:.04em;"  
+            f"padding:14px 16px 10px;margin-bottom:10px;min-height:124px;height:100%;"
+            f"display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box;'>"
+            f"<p style='margin:0;font-size:0.72rem;color:#FFFFFF;opacity:0.92;letter-spacing:.04em;"
             f"text-transform:uppercase;'>{label}</p>"
-            f"<p style='margin:4px 0 2px;font-size:1.45rem;font-weight:700;color:{accent};"  
+            f"<p style='margin:4px 0 2px;font-size:1.45rem;font-weight:700;color:{accent};"
             f"font-family:monospace;'>{value}</p>"
-            + (f"<p style='margin:0;font-size:0.72rem;color:#6B7280;'>{sub}</p>" if sub else "")
+            + (f"<p style='margin:0;font-size:0.72rem;color:#FFFFFF;opacity:0.78;line-height:1.35;'>{sub}</p>" if sub else "")
             + "</div>"
         )
 

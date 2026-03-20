@@ -15,13 +15,18 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 import os
+import requests
 from pathlib import Path
 from dotenv import load_dotenv
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 
-# Load environment variables - use explicit path
-env_path = Path(__file__).parent.parent / '.env'
+# Load environment variables - prefer local overrides when present
+env_root = Path(__file__).parent.parent
+env_path = env_root / '.env'
+env_local_path = env_root / '.env.local'
 load_dotenv(dotenv_path=env_path)
+if env_local_path.exists():
+    load_dotenv(dotenv_path=env_local_path, override=True)
 
 # Import color scheme and styling from home page
 try:
@@ -261,6 +266,14 @@ try:
 except ImportError:
     APPWRITE_SERVICES_AVAILABLE = False
 
+# Import optional market-data helpers
+try:
+    from frontend.utils.secrets_helper import get_secret, get_alpaca_config
+    from frontend.components.alpaca_connector import AlpacaConnector
+    ALPACA_MARKET_DATA_AVAILABLE = True
+except ImportError:
+    ALPACA_MARKET_DATA_AVAILABLE = False
+
 
 def display_investment_page():
     """Main investment analysis page with MLFlow integration"""
@@ -407,24 +420,173 @@ def display_investment_page():
         display_fundamental_ratios(selected_tickers, enable_logging)
 
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def fetch_stock_data(ticker, start_date, end_date):
-    """Cached function to fetch stock data from yfinance
-    
-    Args:
-        ticker: Stock ticker symbol
-        start_date: Start date for data
-        end_date: End date for data
-    
-    Returns:
-        DataFrame with stock data or None if error
-    """
-    try:
-        df = yf.download(ticker, start=start_date, end=end_date, progress=False)
-        return df if not df.empty else None
-    except Exception as e:
-        st.warning(f"⚠️ Failed to fetch {ticker}: {str(e)}")
+def _normalize_ohlcv_frame(df: pd.DataFrame) -> pd.DataFrame | None:
+    """Normalize data frames from different providers into a common OHLCV shape."""
+    if df is None or df.empty:
         return None
+
+    normalized = df.copy()
+    if isinstance(normalized.columns, pd.MultiIndex):
+        normalized.columns = normalized.columns.get_level_values(0)
+
+    rename_map = {
+        'date': 'Date',
+        'timestamp': 'Date',
+        't': 'Date',
+        'open': 'Open',
+        'o': 'Open',
+        'high': 'High',
+        'h': 'High',
+        'low': 'Low',
+        'l': 'Low',
+        'close': 'Close',
+        'c': 'Close',
+        'volume': 'Volume',
+        'v': 'Volume',
+    }
+    normalized = normalized.rename(columns={column: rename_map.get(str(column).lower(), column) for column in normalized.columns})
+
+    if 'Date' not in normalized.columns:
+        normalized = normalized.reset_index()
+        normalized = normalized.rename(columns={normalized.columns[0]: 'Date'})
+
+    required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+    if any(column not in normalized.columns for column in required_columns):
+        return None
+
+    normalized = normalized[required_columns].copy()
+    normalized['Date'] = pd.to_datetime(normalized['Date'], utc=False, errors='coerce')
+    normalized = normalized.dropna(subset=['Date', 'Open', 'High', 'Low', 'Close'])
+    normalized['Volume'] = pd.to_numeric(normalized['Volume'], errors='coerce').fillna(0)
+    normalized = normalized.sort_values('Date').drop_duplicates(subset=['Date'])
+    normalized = normalized.set_index('Date')
+    return normalized if not normalized.empty else None
+
+
+def _fetch_stock_data_from_alpaca(ticker, start_date, end_date):
+    """Fetch daily OHLCV from Alpaca market data if credentials are configured."""
+    if not ALPACA_MARKET_DATA_AVAILABLE:
+        return None
+
+    try:
+        config = get_alpaca_config()
+        connector = AlpacaConnector(config['api_key'], config['secret_key'], config['paper'])
+        bars_response = connector.get_bars(
+            ticker,
+            timeframe='1Day',
+            start=pd.Timestamp(start_date).strftime('%Y-%m-%dT00:00:00Z'),
+            end=pd.Timestamp(end_date).strftime('%Y-%m-%dT23:59:59Z'),
+            limit=max((pd.Timestamp(end_date) - pd.Timestamp(start_date)).days + 10, 30),
+        )
+        bars = (bars_response or {}).get('bars') or []
+        if not bars:
+            return None
+        return _normalize_ohlcv_frame(pd.DataFrame(bars))
+    except Exception:
+        return None
+
+
+def _fetch_stock_data_from_alpha_vantage(ticker, start_date, end_date):
+    """Fetch daily OHLCV from Alpha Vantage."""
+    api_key = get_secret('ALPHA_VANTAGE_API_KEY') if 'get_secret' in globals() else os.getenv('ALPHA_VANTAGE_API_KEY')
+    if not api_key or api_key == 'your_alpha_vantage_key_here':
+        return None
+
+    try:
+        response = requests.get(
+            'https://www.alphavantage.co/query',
+            params={
+                'function': 'TIME_SERIES_DAILY_ADJUSTED',
+                'symbol': ticker,
+                'outputsize': 'full',
+                'apikey': api_key,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        series = payload.get('Time Series (Daily)') or {}
+        if not series:
+            return None
+
+        rows = []
+        for trade_date, values in series.items():
+            rows.append({
+                'Date': trade_date,
+                'Open': values.get('1. open'),
+                'High': values.get('2. high'),
+                'Low': values.get('3. low'),
+                'Close': values.get('4. close'),
+                'Volume': values.get('6. volume'),
+            })
+
+        df = pd.DataFrame(rows)
+        df = _normalize_ohlcv_frame(df)
+        if df is None:
+            return None
+        return df.loc[(df.index >= pd.Timestamp(start_date)) & (df.index <= pd.Timestamp(end_date))]
+    except Exception:
+        return None
+
+
+def _fetch_stock_data_from_tiingo(ticker, start_date, end_date):
+    """Fetch daily OHLCV from Tiingo."""
+    api_key = get_secret('TIINGO_API_KEY') if 'get_secret' in globals() else os.getenv('TIINGO_API_KEY')
+    if not api_key or api_key == 'your_tiingo_api_key_here':
+        return None
+
+    try:
+        response = requests.get(
+            f'https://api.tiingo.com/tiingo/daily/{ticker}/prices',
+            params={
+                'startDate': pd.Timestamp(start_date).strftime('%Y-%m-%d'),
+                'endDate': pd.Timestamp(end_date).strftime('%Y-%m-%d'),
+                'token': api_key,
+                'resampleFreq': 'daily',
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not payload:
+            return None
+        df = _normalize_ohlcv_frame(pd.DataFrame(payload))
+        return df
+    except Exception:
+        return None
+
+
+def _fetch_stock_data_from_yahoo(ticker, start_date, end_date):
+    """Fetch daily OHLCV from Yahoo as the last fallback."""
+    if not YFINANCE_AVAILABLE:
+        return None
+
+    try:
+        df = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
+        return _normalize_ohlcv_frame(df)
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=3600)
+def fetch_stock_data(ticker, start_date, end_date):
+    """Fetch investment history with provider fallback priority.
+
+    Order: Alpaca -> Alpha Vantage -> Tiingo -> Yahoo Finance.
+    """
+    providers = (
+        _fetch_stock_data_from_alpaca,
+        _fetch_stock_data_from_alpha_vantage,
+        _fetch_stock_data_from_tiingo,
+        _fetch_stock_data_from_yahoo,
+    )
+
+    for provider in providers:
+        df = provider(ticker, start_date, end_date)
+        if df is not None and not df.empty:
+            return df
+
+    return None
 
 
 def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fund_names=None):
@@ -440,9 +602,7 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fu
     
     st.header("📊 Mansa Capital Fund Performance")
     
-    if not YFINANCE_AVAILABLE:
-        st.error("yfinance package required for portfolio data")
-        return
+    st.caption("Market data source priority: Alpaca -> Alpha Vantage -> Tiingo -> Yahoo Finance")
     
     # Fetch data with timing
     start_time = time.time()
@@ -502,7 +662,7 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fu
         try:
             tracker = get_tracker()
             tracker.log_data_ingestion(
-                source="yfinance",
+                source="multi_source_equity_data",
                 tickers=tickers,
                 rows_fetched=len(portfolio_df),
                 success=True,
@@ -764,9 +924,7 @@ def display_technical_analysis(tickers, start_date, end_date, fund_names=None):
     
     st.header("📈 Technical Analysis")
     
-    if not YFINANCE_AVAILABLE:
-        st.error("yfinance package required")
-        return
+    st.caption("Technical analysis source priority: Alpaca -> Alpha Vantage -> Tiingo -> Yahoo Finance")
     
     # Create ticker options with fund names
     if fund_names:
@@ -862,19 +1020,19 @@ def display_fundamental_ratios(tickers, enable_logging):
         data_source = st.radio(
             "Data Source",
             [
-                "Auto (Alpha Vantage → yfinance)",
+                "Auto (Alpha Vantage → Tiingo → yfinance)",
                 "Alpha Vantage only",
-                "yfinance only",
-                "Tiingo only"
+                "Tiingo only",
+                "yfinance only"
             ],
             horizontal=True,
-            help="Auto tries Alpha Vantage first, then falls back to yfinance. Configure API keys in .env file."
+            help="Auto tries Alpha Vantage first, then Tiingo, then yfinance. Configure API keys in your environment or secrets."
         )
         
         # Determine source priority based on selection
         if "Auto" in data_source:
             use_multi_source = True
-            source_priority = ['alpha_vantage', 'yfinance']
+            source_priority = ['alpha_vantage', 'tiingo', 'yfinance']
         elif "Alpha Vantage only" in data_source:
             use_multi_source = True
             source_priority = ['alpha_vantage']
@@ -969,10 +1127,12 @@ def display_fundamental_ratios(tickers, enable_logging):
                     # Only show errors if this is a single-source mode
                     # For Auto mode, silently fall back to yfinance
                     if len(source_priority) == 1:
-                        if 'alpha_vantage' in source_priority:
-                            st.warning("⚠️ Alpha Vantage unavailable, trying yfinance fallback...")
+                        if 'alpha_vantage' in source_priority and 'tiingo' in source_priority:
+                            st.warning("⚠️ Alpha Vantage unavailable, trying Tiingo and Yahoo fallback...")
+                        elif 'alpha_vantage' in source_priority:
+                            st.warning("⚠️ Alpha Vantage unavailable, trying Yahoo fallback...")
                         elif 'tiingo' in source_priority:
-                            st.warning("⚠️ Tiingo unavailable, trying yfinance fallback...")
+                            st.warning("⚠️ Tiingo unavailable, trying Yahoo fallback...")
                             st.info("💡 **Tiingo Subscription Note:**\n"
                                    "If you just purchased a subscription, API access may take 15-30 minutes to activate. "
                                    "Check your email for confirmation and API key updates.")

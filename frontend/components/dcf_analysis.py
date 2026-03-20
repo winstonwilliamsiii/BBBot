@@ -24,6 +24,8 @@ import datetime as dt
 from typing import List, Dict, Optional, Tuple
 import logging
 
+import requests
+
 try:
     # Keep DB resolution consistent with the rest of the frontend stack.
     from frontend.utils.secrets_helper import get_mysql_config
@@ -42,6 +44,12 @@ try:
     PANDAS_AVAILABLE = True
 except ImportError:
     PANDAS_AVAILABLE = False
+
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -298,6 +306,283 @@ def ensure_dcf_schema(conn) -> str:
     return current_db or ""
 
 
+def _safe_float(value, default: float = 0.0) -> float:
+    """Safely cast numeric-like API values to float."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned in ("", "None", "null", "-"):
+            return default
+        value = cleaned.replace(",", "")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _fetch_alpha_vantage_fundamentals(ticker: str, min_years: int) -> List[Dict[str, float]]:
+    """Fetch annual fundamentals from Alpha Vantage endpoints."""
+    api_key = (os.getenv("ALPHA_VANTAGE_API_KEY") or "").strip()
+    if not api_key:
+        return []
+
+    base_url = "https://www.alphavantage.co/query"
+
+    def _av_call(function_name: str) -> Dict[str, object]:
+        resp = requests.get(
+            base_url,
+            params={"function": function_name, "symbol": ticker, "apikey": api_key},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, dict) and ("Note" in payload or "Error Message" in payload):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    overview = _av_call("OVERVIEW")
+    cash_flow = _av_call("CASH_FLOW")
+    income = _av_call("INCOME_STATEMENT")
+    balance = _av_call("BALANCE_SHEET")
+
+    cf_reports = {str(r.get("fiscalDateEnding", ""))[:4]: r for r in cash_flow.get("annualReports", [])}
+    inc_reports = {str(r.get("fiscalDateEnding", ""))[:4]: r for r in income.get("annualReports", [])}
+    bal_reports = {str(r.get("fiscalDateEnding", ""))[:4]: r for r in balance.get("annualReports", [])}
+
+    candidate_years = sorted(
+        [y for y in set(cf_reports.keys()) | set(inc_reports.keys()) | set(bal_reports.keys()) if y.isdigit()],
+        reverse=True,
+    )
+
+    shares_outstanding = _safe_float(overview.get("SharesOutstanding"), 1.0)
+    results: List[Dict[str, float]] = []
+
+    for year_str in candidate_years:
+        cf = cf_reports.get(year_str, {})
+        inc = inc_reports.get(year_str, {})
+        bal = bal_reports.get(year_str, {})
+
+        op_cf = _safe_float(cf.get("operatingCashflow"), 0.0)
+        capex = _safe_float(cf.get("capitalExpenditures"), 0.0)
+        fcf = _safe_float(cf.get("freeCashFlow"), op_cf + capex)
+
+        if fcf == 0.0:
+            continue
+
+        cash_value = _safe_float(
+            bal.get("cashAndCashEquivalentsAtCarryingValue"),
+            _safe_float(bal.get("cashAndShortTermInvestments"), 0.0),
+        )
+        total_debt = _safe_float(
+            bal.get("totalDebt"),
+            _safe_float(bal.get("shortLongTermDebtTotal"), 0.0),
+        )
+
+        results.append(
+            {
+                "fiscal_year": int(year_str),
+                "revenue": _safe_float(inc.get("totalRevenue"), 0.0),
+                "free_cash_flow": fcf,
+                "shares_outstanding": shares_outstanding,
+                "net_debt": total_debt - cash_value,
+                "cash": cash_value,
+            }
+        )
+        if len(results) >= max(min_years, 5):
+            break
+
+    return results
+
+
+def _get_yf_row(frame, labels: List[str]):
+    """Return first matching row from a yfinance statement DataFrame."""
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    index_map = {str(i).lower(): i for i in frame.index}
+    for label in labels:
+        matched = index_map.get(label.lower())
+        if matched is not None:
+            return frame.loc[matched]
+    return None
+
+
+def _fetch_yfinance_fundamentals(ticker: str, min_years: int) -> List[Dict[str, float]]:
+    """Fetch annual fundamentals from yfinance financial statements."""
+    if not YFINANCE_AVAILABLE:
+        return []
+
+    try:
+        tk = yf.Ticker(ticker)
+        cashflow = tk.cashflow
+        income = tk.financials
+        balance = tk.balance_sheet
+
+        shares = _safe_float((tk.info or {}).get("sharesOutstanding"), 1.0)
+
+        fcf_row = _get_yf_row(cashflow, ["Free Cash Flow"])
+        opcf_row = _get_yf_row(cashflow, ["Operating Cash Flow", "Total Cash From Operating Activities"])
+        capex_row = _get_yf_row(cashflow, ["Capital Expenditure", "Capital Expenditures"])
+        rev_row = _get_yf_row(income, ["Total Revenue"])
+        debt_row = _get_yf_row(balance, ["Total Debt", "Long Term Debt"])
+        cash_row = _get_yf_row(balance, ["Cash And Cash Equivalents", "Cash", "Cash Cash Equivalents And Short Term Investments"])
+
+        columns = []
+        for frame in (cashflow, income, balance):
+            if frame is not None and not frame.empty:
+                columns.extend(list(frame.columns))
+
+        years = sorted({int(c.year) for c in columns if hasattr(c, "year")}, reverse=True)
+
+        rows: List[Dict[str, float]] = []
+        for year in years:
+            year_col = None
+            for c in columns:
+                if hasattr(c, "year") and int(c.year) == year:
+                    year_col = c
+                    break
+            if year_col is None:
+                continue
+
+            fcf_val = 0.0
+            if fcf_row is not None:
+                fcf_val = _safe_float(fcf_row.get(year_col), 0.0)
+            if fcf_val == 0.0:
+                fcf_val = _safe_float(opcf_row.get(year_col), 0.0) + _safe_float(capex_row.get(year_col), 0.0)
+            if fcf_val == 0.0:
+                continue
+
+            cash_val = _safe_float(cash_row.get(year_col), 0.0)
+            debt_val = _safe_float(debt_row.get(year_col), 0.0)
+            rows.append(
+                {
+                    "fiscal_year": int(year),
+                    "revenue": _safe_float(rev_row.get(year_col), 0.0),
+                    "free_cash_flow": fcf_val,
+                    "shares_outstanding": shares,
+                    "net_debt": debt_val - cash_val,
+                    "cash": cash_val,
+                }
+            )
+            if len(rows) >= max(min_years, 5):
+                break
+
+        return rows
+    except Exception as e:
+        logger.warning("yfinance fundamentals fetch failed for %s: %s", ticker, e)
+        return []
+
+
+def _upsert_fundamentals(conn, ticker: str, rows: List[Dict[str, float]]) -> int:
+    """Persist fetched annual fundamentals to MySQL for DCF reuse."""
+    if not rows:
+        return 0
+
+    cursor = conn.cursor()
+    upsert_sql = """
+        INSERT INTO fundamentals_annual (
+            ticker, fiscal_year, revenue, free_cash_flow,
+            shares_outstanding, net_debt, cash
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            revenue = VALUES(revenue),
+            free_cash_flow = VALUES(free_cash_flow),
+            shares_outstanding = VALUES(shares_outstanding),
+            net_debt = VALUES(net_debt),
+            cash = VALUES(cash)
+    """
+
+    count = 0
+    for row in rows:
+        cursor.execute(
+            upsert_sql,
+            (
+                ticker,
+                int(row.get("fiscal_year", 0)),
+                float(row.get("revenue", 0.0)),
+                float(row.get("free_cash_flow", 0.0)),
+                float(row.get("shares_outstanding", 1.0)),
+                float(row.get("net_debt", 0.0)),
+                float(row.get("cash", 0.0)),
+            ),
+        )
+        count += 1
+
+    conn.commit()
+    cursor.close()
+    return count
+
+
+def _fetch_and_store_missing_fundamentals(ticker: str, conn, min_years: int = 5) -> int:
+    """Backfill missing DCF fundamentals from APIs and store in MySQL."""
+    rows = _fetch_alpha_vantage_fundamentals(ticker, min_years=min_years)
+    source = "alpha_vantage"
+    if not rows:
+        rows = _fetch_yfinance_fundamentals(ticker, min_years=min_years)
+        source = "yfinance"
+
+    inserted = _upsert_fundamentals(conn, ticker, rows)
+    if inserted > 0:
+        logger.info("Backfilled %s annual fundamental rows for %s via %s", inserted, ticker, source)
+    return inserted
+
+
+def _fetch_and_store_missing_price(ticker: str, conn) -> bool:
+    """Backfill missing latest price from APIs and store in prices_latest."""
+    price = None
+
+    # Try Alpha Vantage global quote first.
+    api_key = (os.getenv("ALPHA_VANTAGE_API_KEY") or "").strip()
+    if api_key:
+        try:
+            resp = requests.get(
+                "https://www.alphavantage.co/query",
+                params={"function": "GLOBAL_QUOTE", "symbol": ticker, "apikey": api_key},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            price = _safe_float((payload.get("Global Quote") or {}).get("05. price"), 0.0)
+            if price <= 0:
+                price = None
+        except Exception as e:
+            logger.warning("Alpha Vantage price fetch failed for %s: %s", ticker, e)
+
+    # yfinance fallback.
+    if price is None and YFINANCE_AVAILABLE:
+        try:
+            tk = yf.Ticker(ticker)
+            fast_info = getattr(tk, "fast_info", {}) or {}
+            price = _safe_float(fast_info.get("lastPrice"), 0.0)
+            if price <= 0:
+                hist = tk.history(period="5d")
+                if hist is not None and not hist.empty:
+                    price = _safe_float(hist["Close"].dropna().iloc[-1], 0.0)
+            if price <= 0:
+                price = None
+        except Exception as e:
+            logger.warning("yfinance price fetch failed for %s: %s", ticker, e)
+
+    if price is None:
+        return False
+
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO prices_latest (ticker, price, as_of_date)
+        VALUES (%s, %s, CURDATE())
+        ON DUPLICATE KEY UPDATE
+            price = VALUES(price),
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (ticker, float(price)),
+    )
+    conn.commit()
+    cursor.close()
+    logger.info("Backfilled latest price for %s: %.4f", ticker, price)
+    return True
+
+
 def fetch_historical_fundamentals(
     ticker: str,
     conn,
@@ -348,7 +633,19 @@ def fetch_historical_fundamentals(
     try:
         df = pd.read_sql(query, conn, params=(ticker, min_years))
         if df.empty:
-            raise ValueError(f"No fundamentals found for {ticker}")
+            inserted = _fetch_and_store_missing_fundamentals(
+                ticker=ticker,
+                conn=conn,
+                min_years=min_years,
+            )
+            if inserted > 0:
+                df = pd.read_sql(query, conn, params=(ticker, min_years))
+
+        if df.empty:
+            raise ValueError(
+                f"No fundamentals found for {ticker}. "
+                "API backfill from Alpha Vantage/yfinance also returned no usable annual cash flow data."
+            )
         
         # Sort oldest to newest for analysis
         return df.sort_values("fiscal_year")
@@ -392,7 +689,18 @@ def fetch_current_price(ticker: str, conn) -> float:
         cursor.close()
         
         if not row:
-            raise ValueError(f"No current price found for {ticker}")
+            inserted = _fetch_and_store_missing_price(ticker=ticker, conn=conn)
+            if inserted:
+                cursor = conn.cursor()
+                cursor.execute(query, (ticker,))
+                row = cursor.fetchone()
+                cursor.close()
+
+        if not row:
+            raise ValueError(
+                f"No current price found for {ticker}. "
+                "API backfill from Alpha Vantage/yfinance failed."
+            )
         
         return float(row[0])
     except Exception as e:

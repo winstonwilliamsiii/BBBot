@@ -169,33 +169,51 @@ def get_alpaca_config() -> dict:
     # with secret from another (which causes intermittent 401 in mixed environments).
     paper_api_key, paper_secret_key = _resolve_first_complete_pair([
         ('ALPACA_PAPER_API_KEY', 'ALPACA_PAPER_SECRET_KEY', None),
+        ('ALPACA_PAPER_API_KEY', 'ALPACA_PAPER_SECRET_KEY', 'alpaca'),
         ('ALPACA_API_KEY_PAPER', 'ALPACA_SECRET_KEY_PAPER', None),
+        ('ALPACA_API_KEY_PAPER', 'ALPACA_SECRET_KEY_PAPER', 'alpaca'),
         ('paper_api_key', 'paper_secret_key', 'alpaca'),
         ('paper_key', 'paper_secret', 'alpaca'),
     ])
 
     live_api_key, live_secret_key = _resolve_first_complete_pair([
         ('ALPACA_LIVE_API_KEY', 'ALPACA_LIVE_SECRET_KEY', None),
+        ('ALPACA_LIVE_API_KEY', 'ALPACA_LIVE_SECRET_KEY', 'alpaca'),
         ('ALPACA_API_KEY_LIVE', 'ALPACA_SECRET_KEY_LIVE', None),
+        ('ALPACA_API_KEY_LIVE', 'ALPACA_SECRET_KEY_LIVE', 'alpaca'),
         ('live_api_key', 'live_secret_key', 'alpaca'),
         ('live_key', 'live_secret', 'alpaca'),
     ])
 
     legacy_api_key, legacy_secret_key = _resolve_first_complete_pair([
         ('ALPACA_API_KEY', 'ALPACA_SECRET_KEY', None),
+        ('ALPACA_API_KEY', 'ALPACA_SECRET_KEY', 'alpaca'),
         ('APCA_API_KEY_ID', 'APCA_API_SECRET_KEY', None),
+        ('APCA_API_KEY_ID', 'APCA_API_SECRET_KEY', 'alpaca'),
         ('ALPACA_KEY_ID', 'APCA_SECRET_KEY', None),
+        ('ALPACA_KEY_ID', 'APCA_SECRET_KEY', 'alpaca'),
         ('alpaca_api_key', 'alpaca_secret_key', None),
         ('apca_api_key_id', 'apca_api_secret_key', None),
         ('api_key', 'secret_key', 'alpaca'),
         ('key_id', 'secret', 'alpaca'),
     ])
     # Allow local env override for quick paper/live switching during ops tests.
-    paper = os.getenv('ALPACA_PAPER') or get_secret('ALPACA_PAPER', default=None)
+    paper = (
+        os.getenv('ALPACA_PAPER')
+        or get_secret('ALPACA_PAPER', default=None)
+        or get_secret('ALPACA_PAPER', section='alpaca', default=None)
+    )
     if paper is None:
-        env = get_secret('ALPACA_ENVIRONMENT', default='paper')
+        env = get_secret(
+            'ALPACA_ENVIRONMENT',
+            default=get_secret('ALPACA_ENVIRONMENT', section='alpaca', default='paper')
+        )
         if str(env).lower() not in ('paper', 'live'):
-            base_url = get_secret('ALPACA_BASE_URL', default='') or ''
+            base_url = (
+                get_secret('ALPACA_BASE_URL', default='')
+                or get_secret('ALPACA_BASE_URL', section='alpaca', default='')
+                or ''
+            )
             env = 'paper' if 'paper-api.alpaca.markets' in str(base_url).lower() else 'live'
         paper = 'true' if str(env).lower() == 'paper' else 'false'
     

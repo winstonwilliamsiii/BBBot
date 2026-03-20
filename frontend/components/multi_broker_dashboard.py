@@ -349,12 +349,16 @@ def connect_axi():
 
         user = os.getenv("AXI_MT5_USER") or os.getenv("MT5_USER", "")
         password = os.getenv("AXI_MT5_PASSWORD") or os.getenv("MT5_PASSWORD", "")
-        host = os.getenv("AXI_MT5_HOST", "")
+        host = (
+            os.getenv("AXI_MT5_HOST")
+            or os.getenv("AXI_MT5_SERVER")
+            or os.getenv("MT5_HOST", "")
+        )
         port = int(os.getenv("AXI_MT5_PORT", "443"))
 
         if not host:
-            st.error("❌ AXI MT5 host not configured. Set AXI_MT5_HOST in .env")
-            st.info("Example — AXI demo server: mt5-demo07.axi.com")
+            st.error("❌ AXI MT5 server not configured. Set AXI_MT5_SERVER or AXI_MT5_HOST in .env")
+            st.info("Examples — AXI demo: mt5-demo07.axi.com | AXI live: Axi-US51-Live")
             return
 
         if connector.connect(user=user, password=password, host=host, port=port):
@@ -661,8 +665,12 @@ def render_axi_section():
                     key="axi_user_input",
                 )
                 axi_host = st.text_input(
-                    "AXI MT5 Server",
-                    value=os.getenv("AXI_MT5_HOST", "mt5-demo07.axi.com"),
+                    "AXI MT5 Server / Host",
+                    value=(
+                        os.getenv("AXI_MT5_HOST")
+                        or os.getenv("AXI_MT5_SERVER")
+                        or "mt5-demo07.axi.com"
+                    ),
                     key="axi_host_input",
                 )
             with col2:
@@ -701,7 +709,7 @@ def render_axi_section():
                             else:
                                 st.error(
                                     "❌ AXI MT5 connection failed — verify account number, "
-                                    "password, and server address."
+                                    "password, and server/host value."
                                 )
                         except Exception as e:
                             st.error(f"AXI error: {e}")
@@ -720,7 +728,7 @@ def render_axi_section():
             st.code(
                 "AXI_MT5_USER=your_axi_account_number\n"
                 "AXI_MT5_PASSWORD=your_axi_password\n"
-                "AXI_MT5_HOST=mt5-demo07.axi.com\n"
+                "AXI_MT5_SERVER=Axi-US51-Live  # or AXI_MT5_HOST=mt5-demo07.axi.com\n"
                 "AXI_MT5_PORT=443\n"
                 "AXI_MT5_API_URL=http://localhost:8002  # shared MT5 bridge",
                 language="bash",

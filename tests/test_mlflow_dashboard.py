@@ -14,7 +14,6 @@ from bbbot1_pipeline.mlflow_config import (
     get_mlflow_config,
     get_mlflow_tracking_uri,
     get_mlflow_artifact_path,
-    MLFLOW_MYSQL_CONFIG
 )
 
 
@@ -82,7 +81,7 @@ class TestMLflowImport:
 
 
 class TestMLflowDashboardPage:
-    """Test MLflow dashboard integration in Admin Control Center."""
+    """Test legacy dashboard pages are removed."""
     
     def test_standalone_dashboard_removed(self):
         """Test that legacy standalone MLflow page has been removed."""
@@ -95,44 +94,16 @@ class TestMLflowDashboardPage:
 
 
 class TestAdminControlCenter:
-    """Test Admin Control Center MLflow integration."""
+    """Test Admin Control Center removal."""
     
-    def test_admin_control_center_exists(self):
-        """Test that Admin Control Center file exists."""
+    def test_admin_control_center_removed(self):
+        """Test that Admin Control Center file has been removed."""
         admin_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "pages",
             "99_🔧_Admin_Control_Center.py"
         )
-        assert os.path.exists(admin_path)
-    
-    def test_mlflow_url_configured(self):
-        """Test that MLFLOW_URL is configured in Admin Control Center."""
-        admin_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "pages",
-            "99_🔧_Admin_Control_Center.py"
-        )
-        
-        with open(admin_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            
-            assert "MLFLOW_URL" in content
-            assert "MLflow" in content or "mlflow" in content
-    
-    def test_mlflow_tab_exists(self):
-        """Test that MLflow tab is present in Admin Control Center."""
-        admin_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "pages",
-            "99_🔧_Admin_Control_Center.py"
-        )
-        
-        with open(admin_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            
-            # Check for MLflow tab
-            assert "MLflow" in content or "🧠" in content
+        assert not os.path.exists(admin_path)
 
 
 def run_tests():

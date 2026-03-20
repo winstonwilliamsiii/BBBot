@@ -1,239 +1,53 @@
-# 🚀 Quick Start - Admin Control Center
+# Quick Start - Jupicita Strategy Scope
 
-**Created:** February 15, 2026  
-**Status:** ✅ Ready to Use
+**Updated:** March 18, 2026  
+**Status:** Active direction
 
----
+## Change Summary
 
-## 🔑 Login Credentials
+The previous Admin Control Center / Bot Manager page has been removed from the Streamlit app.
 
-**URL:** http://localhost:8501 (Streamlit app)  
-**Navigate to:** Sidebar → "🔧 Admin Control Center"
+Current focus for Jupicita is:
 
-```
-Username: admin
-Password: admin
-```
+- Alpha generation via price forecasting
+- Portfolio optimization
+- Simulated rebalancing guidance
+- Execution-aware deployment
 
-⚠️ **IMPORTANT:** These are DEVELOPMENT credentials only. Change before production!
+## Default Strategy Label
 
----
+Jupicita strategy is set as a proposed default and can be overridden once the exact production label is finalized.
 
-## 🎯 What's Running
+## Immediate Priorities
 
-### ✅ Flask API (Backend)
-- **Status:** ✅ RUNNING in background terminal
-- **URL:** http://localhost:5000
-- **Health Check:** http://localhost:5000/health
-- **Test Endpoint:** http://localhost:5000/admin/test
+1. Forecasting layer
 
-### ⏳ Streamlit App (Frontend)
-- **Status:** Need to start
-- **Command:** `streamlit run streamlit_app.py`
-- **URL:** http://localhost:8501
+- Define feature set, horizon, and retraining cadence.
+- Produce confidence-aware return forecasts for tradable universe candidates.
 
----
+1. Optimization layer
 
-## 📋 Start Everything
+- Translate forecasts into constrained portfolio weights.
+- Include liquidity, turnover, and exposure constraints.
 
-### Step 1: Flask API is Already Running! ✅
-The backend API is running in the background. You should see it in your terminal.
+1. Simulated rebalancing layer
 
-### Step 2: Start Streamlit
+- Run paper rebalances on schedule and event triggers.
+- Track slippage assumptions, drift, and cost-aware outcomes.
 
-Open a **NEW** PowerShell terminal and run:
+1. Execution-aware deployment
+
+- Attach order sizing and venue/broker execution constraints.
+- Gate live execution using health checks and risk controls.
+
+## Run the Main App
+
 ```powershell
 cd C:\Users\winst\BentleyBudgetBot
 streamlit run streamlit_app.py
 ```
 
-### Step 3: Open Admin Dashboard
+## Notes
 
-1. Browser will open to http://localhost:8501
-2. Look in the **left sidebar**
-3. Scroll down to find: **"🔧 Admin Control Center"**
-4. Click it
-5. Enter credentials:
-   - Username: `admin`
-   - Password: `admin`
-
----
-
-## 🎨 What You'll See
-
-### 6 Tabs Available:
-
-1. **📊 Overview** - System health, metrics, Docker services
-2. **🤖 Bot Manager** - Deploy and manage 13 AI bots
-3. **🔌 Broker Health** - Monitor Alpaca, Schwab, IBKR, Binance, Coinbase
-4. **🏢 Prop Firms** - FTMO, Axi, Zenit management
-5. **🛡️ Risk Engine** - Drawdown limits, position sizing
-6. **📈 System Logs** - Real-time monitoring
-
----
-
-## 🔧 If Something's Not Working
-
-### Flask API Not Responding?
-
-Check if it's running:
-```powershell
-# Test the health endpoint
-curl http://localhost:5000/health
-```
-
-Should return:
-```json
-{"status":"healthy","service":"Bentley Bot Control Center API"}
-```
-
-If not responding, restart Flask:
-```powershell
-cd backend/api
-C:/Users/winst/BentleyBudgetBot/.venv/Scripts/python.exe app.py
-```
-
-### Streamlit Not Loading?
-
-```powershell
-# Kill any existing Streamlit processes
-Get-Process *streamlit* | Stop-Process -Force
-
-# Restart Streamlit
-streamlit run streamlit_app.py
-```
-
-### Can't Login to Admin?
-
-Make sure you're using:
-- Username: `admin` (all lowercase)
-- Password: `admin` (all lowercase)
-
-### APIs Showing Errors?
-
-The Control Center has **fallback mode**! If Flask API isn't available, it will show sample data instead. Everything will still work visually, just won't connect to real systems.
-
----
-
-## 📊 Current System Status
-
-### What's Working ✅
-- Flask API (running on port 5000)
-- Admin UI with 6 tabs
-- Authentication system
-- Sample data fallback
-- Docker service monitoring (if Docker is running)
-
-### What Needs Backend Endpoints 🔨
-These will show "API not available" until Week 1-2 endpoints are built:
-- Bot deployment actions
-- Broker health checks (real data)
-- Risk settings updates
-- Log streaming
-
----
-
-## 🚀 Next Steps
-
-### Immediate (Today)
-1. ✅ Start Streamlit: `streamlit run streamlit_app.py`
-2. ✅ Login to Admin Control Center
-3. ✅ Explore all 6 tabs
-4. ✅ Familiarize yourself with the UI
-
-### Week 1-2 (Building Out Backend)
-1. Create Flask Blueprints in `backend/api/admin/`
-2. Connect real bot data
-3. Integrate broker APIs
-4. Add risk engine logic
-
-See: [CONTROL_CENTER_QUICK_START.md](docs/CONTROL_CENTER_QUICK_START.md)
-
----
-
-## 🔗 Important Links
-
-- **Flask API:** http://localhost:5001
-- **Streamlit App:** http://localhost:8501
-- **MLflow:** http://localhost:5000 (if Docker running)
-- **Airflow:** http://localhost:8080 (if Docker running)
-- **Airbyte:** http://localhost:8000 (if Docker running)
-
----
-
-## 📞 Getting Help
-
-### Documentation
-- [CONTROL_CENTER_ADMIN_UI_GUIDE.md](docs/CONTROL_CENTER_ADMIN_UI_GUIDE.md) - Full UI guide
-- [CONTROL_CENTER_QUICK_START.md](docs/CONTROL_CENTER_QUICK_START.md) - Week-by-week plan
-- [FLASK_STREAMLIT_UPDATE.md](docs/FLASK_STREAMLIT_UPDATE.md) - Tech stack info
-
-### Quick Commands
-
-```powershell
-# Check Flask API status
-curl http://localhost:5001/health
-
-# Check Streamlit status
-Get-Process *streamlit*
-
-# View Docker services
-docker ps
-
-# Restart everything
-# 1. Ctrl+C in Flask terminal
-# 2. Ctrl+C in Streamlit terminal
-# 3. Re-run commands above
-```
-
-### Standard Bot ON/OFF Commands
-
-Use the shared launcher for consistent startup behavior across current Mansa Star bots:
-
-```powershell
-# Titan
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Titan -Mode ON
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Titan -Mode OFF
-
-# Vega
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Vega -Mode ON
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Vega -Mode OFF
-
-# Rigel
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Rigel -Mode ON
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Rigel -Mode OFF
-
-# Dogon
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Dogon -Mode ON
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Dogon -Mode OFF
-
-# Orion
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Orion -Mode ON
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Orion -Mode OFF
-```
-
-Contract extension for additional bots is now pre-wired:
-
-- `Draco`
-- `Altair`
-- `Procryon`
-- `Hydra`
-- `Triton`
-- `Dione`
-- `Cephei`
-- `Rhea`
-- `Jupicita`
-
-Use the same command format for these bots. They currently return a standardized
-placeholder payload until runtime executors are implemented.
-
----
-
-## 🎉 You're All Set!
-
-The Control Center is ready to explore. Remember:
-- **Login:** admin / admin
-- **Flask API:** Already running in background
-- **Streamlit:** Run `streamlit run streamlit_app.py`
-
-Happy exploring! 🚀
+- This file is intentionally retained as a transition pointer from earlier admin-oriented docs.
+- If needed, it can be renamed in a follow-up cleanup once links are updated.

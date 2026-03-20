@@ -343,18 +343,37 @@ def connect_axi():
     """Connect to AXI Select prop firm account via MT5 bridge"""
     try:
         from frontend.utils.mt5_connector import MT5Connector
+        from frontend.utils.secrets_helper import get_secret
 
-        api_url = os.getenv("AXI_MT5_API_URL") or os.getenv("MT5_API_URL", "http://localhost:8002")
+        api_url = (
+            get_secret("AXI_MT5_API_URL", section="axi", default=None)
+            or get_secret("AXI_MT5_API_URL", default=None)
+            or get_secret("MT5_API_URL", default="http://localhost:8002")
+        )
         connector = MT5Connector(api_url)
 
-        user = os.getenv("AXI_MT5_USER") or os.getenv("MT5_USER", "")
-        password = os.getenv("AXI_MT5_PASSWORD") or os.getenv("MT5_PASSWORD", "")
-        host = (
-            os.getenv("AXI_MT5_HOST")
-            or os.getenv("AXI_MT5_SERVER")
-            or os.getenv("MT5_HOST", "")
+        user = (
+            get_secret("AXI_MT5_USER", section="axi", default=None)
+            or get_secret("AXI_MT5_USER", default=None)
+            or get_secret("MT5_USER", default="")
         )
-        port = int(os.getenv("AXI_MT5_PORT", "443"))
+        password = (
+            get_secret("AXI_MT5_PASSWORD", section="axi", default=None)
+            or get_secret("AXI_MT5_PASSWORD", default=None)
+            or get_secret("MT5_PASSWORD", default="")
+        )
+        host = (
+            get_secret("AXI_MT5_HOST", section="axi", default=None)
+            or get_secret("AXI_MT5_SERVER", section="axi", default=None)
+            or get_secret("AXI_MT5_HOST", default=None)
+            or get_secret("AXI_MT5_SERVER", default=None)
+            or get_secret("MT5_HOST", default="")
+        )
+        port = int(
+            get_secret("AXI_MT5_PORT", section="axi", default=None)
+            or get_secret("AXI_MT5_PORT", default=None)
+            or get_secret("MT5_PORT", default="443")
+        )
 
         if not host:
             st.error("❌ AXI MT5 server not configured. Set AXI_MT5_SERVER or AXI_MT5_HOST in .env")
@@ -652,6 +671,8 @@ def render_axi_section():
         st.info("Connect to your AXI Select prop firm account through the MT5 API bridge.")
 
         with st.expander("🎯 AXI Select Configuration", expanded=True):
+            from frontend.utils.secrets_helper import get_secret
+
             st.markdown(
                 "**AXI Select** is a prop trading firm that provides funded accounts via "
                 "MetaTrader 5. Configure your AXI MT5 server credentials below.\n\n"
@@ -661,14 +682,19 @@ def render_axi_section():
             with col1:
                 axi_user = st.text_input(
                     "AXI Account Number",
-                    value=os.getenv("AXI_MT5_USER", ""),
+                    value=(
+                        get_secret("AXI_MT5_USER", section="axi", default=None)
+                        or get_secret("AXI_MT5_USER", default="")
+                    ),
                     key="axi_user_input",
                 )
                 axi_host = st.text_input(
                     "AXI MT5 Server / Host",
                     value=(
-                        os.getenv("AXI_MT5_HOST")
-                        or os.getenv("AXI_MT5_SERVER")
+                        get_secret("AXI_MT5_HOST", section="axi", default=None)
+                        or get_secret("AXI_MT5_SERVER", section="axi", default=None)
+                        or get_secret("AXI_MT5_HOST", default=None)
+                        or get_secret("AXI_MT5_SERVER", default=None)
                         or "mt5-demo07.axi.com"
                     ),
                     key="axi_host_input",
@@ -682,13 +708,20 @@ def render_axi_section():
                 )
                 axi_port = st.number_input(
                     "Port",
-                    value=int(os.getenv("AXI_MT5_PORT", "443")),
+                    value=int(
+                        get_secret("AXI_MT5_PORT", section="axi", default=None)
+                        or get_secret("AXI_MT5_PORT", default="443")
+                    ),
                     key="axi_port_input",
                 )
 
             axi_api_url = st.text_input(
                 "MT5 API Bridge URL",
-                value=os.getenv("AXI_MT5_API_URL", os.getenv("MT5_API_URL", "http://localhost:8002")),
+                value=(
+                    get_secret("AXI_MT5_API_URL", section="axi", default=None)
+                    or get_secret("AXI_MT5_API_URL", default=None)
+                    or get_secret("MT5_API_URL", default="http://localhost:8002")
+                ),
                 key="axi_api_url_input",
             )
 
@@ -699,7 +732,11 @@ def render_axi_section():
                         try:
                             from frontend.utils.mt5_connector import MT5Connector
                             temp_connector = MT5Connector(axi_api_url)
-                            pwd = axi_password or os.getenv("AXI_MT5_PASSWORD", "")
+                            pwd = (
+                                axi_password
+                                or get_secret("AXI_MT5_PASSWORD", section="axi", default=None)
+                                or get_secret("AXI_MT5_PASSWORD", default="")
+                            )
                             if temp_connector.connect(
                                 user=axi_user, password=pwd, host=axi_host, port=int(axi_port)
                             ):

@@ -23,7 +23,17 @@ def apply_custom_styling():
     .stMarkdown li,
     [data-testid="stWidgetLabel"] *,
     [data-testid="stMetricLabel"] *,
-    [data-testid="stCaptionContainer"] * {{
+    [data-testid="stCaptionContainer"] *,
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricDelta"],
+    [data-testid="stMetricDelta"] *,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stMarkdownContainer"] li,
+    small,
+    label,
+    .stCaption {{
         color: {COLOR_SCHEME['text']} !important;
         opacity: 1 !important;
     }}
@@ -50,7 +60,7 @@ def apply_custom_styling():
 
     .metric-label {{ font-size: 0.9rem; color: {COLOR_SCHEME['text']}; }}
     .metric-value {{ font-size: 1.6rem; font-weight: 700; margin-top: .25rem; color: {COLOR_SCHEME['accent_gold']}; }}
-    .metric-delta {{ font-size: 0.9rem; opacity: .9; margin-left: .5rem; color: {COLOR_SCHEME['accent_teal']}; }}
+    .metric-delta {{ font-size: 0.9rem; opacity: 1; margin-left: .5rem; color: {COLOR_SCHEME['text']}; }}
 
     .app-footer {{
         text-align: center;

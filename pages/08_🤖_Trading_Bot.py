@@ -1136,7 +1136,7 @@ with tab2:
         )
     with pf2:
         st.markdown(
-            f"<br><small style='color:#9CA3AF'>Period: {date_range}</small>",
+            f"<br><small style='color:#FFFFFF;opacity:0.9;'>Period: {date_range}</small>",
             unsafe_allow_html=True,
         )
 

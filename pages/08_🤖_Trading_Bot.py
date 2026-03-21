@@ -617,6 +617,10 @@ def load_bot_analytics(bot_name: str, days: int) -> dict:
         en_s = rng.randint(8 * 3600, 11 * 3600)
         ex_s = rng.randint(12 * 3600, 15 * 3600 + 3000)
         hd_s = abs(ex_s - en_s) + rng.randint(-1800, 1800)
+        # Simulate per-trade daily returns for Sharpe Ratio calculation
+        daily_ret_mean = (roi / 100) / max(trades, 1)
+        daily_ret_std = abs(daily_ret_mean) * rng.uniform(1.5, 3.5) if daily_ret_mean != 0 else 0.01
+        sharpe = round((daily_ret_mean - 0.045 / 252) / max(daily_ret_std, 1e-9) * (252 ** 0.5), 2)
         return dict(
             bot=name, total_trades=trades,
             win_trades=int(trades * wr), loss_trades=int(trades * (1 - wr)),
@@ -628,6 +632,7 @@ def load_bot_analytics(bot_name: str, days: int) -> dict:
             exit_fill_price=round(xp * (1 + xs / 100), 2),
             exit_limit_price=round(xp * 1.004, 2),
             total_pnl=round(pnl, 2), roi_pct=round(roi, 2),
+            sharpe_ratio=sharpe,
             best_trade=round(abs((xp - ep) * qty) * rng.uniform(2.2, 3.8), 2),
             worst_trade=round(-abs((xp - ep) * qty) * rng.uniform(0.7, 1.4), 2),
             avg_pnl_per_trade=round(pnl / max(trades, 1), 2),
@@ -1208,9 +1213,13 @@ with tab2:
             pc1.metric("Total P/L", f"${_bot['total_pnl']:+,.0f}")
             pc2.metric("ROI", f"{_bot['roi_pct']:+.2f}%")
             pc3.metric("Avg P/L / Trade", f"${_bot['avg_pnl_per_trade']:+.2f}")
-            pc4, pc5, _ = st.columns(3)
+            pc4, pc5, pc6 = st.columns(3)
             pc4.metric("Best Trade", f"${_bot['best_trade']:+,.2f}")
             pc5.metric("Worst Trade", f"${_bot['worst_trade']:+,.2f}")
+            _sr = _bot.get('sharpe_ratio', 0)
+            _sr_delta = "Good" if _sr >= 1 else ("Fair" if _sr >= 0 else "Poor")
+            pc6.metric("Sharpe Ratio", f"{_sr:.2f}", delta=_sr_delta,
+                       delta_color="normal" if _sr >= 0 else "inverse")
             if len(_bots) > 1:
                 st.markdown("---")
 
@@ -1272,6 +1281,7 @@ with tab2:
         "Win %":      f"{b['win_rate']:.1f}%",
         "P/L ($)":    f"${b['total_pnl']:+,.0f}",
         "ROI":        f"{b['roi_pct']:+.2f}%",
+        "Sharpe":     f"{b.get('sharpe_ratio', 0):.2f}",
         "Entry Fill": f"${b['entry_fill_price']:.2f}",
         "Exit Fill":  f"${b['exit_fill_price']:.2f}",
         "Exit Limit": f"${b['exit_limit_price']:.2f}",

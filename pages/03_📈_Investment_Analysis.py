@@ -10,6 +10,7 @@ PERFORMANCE OPTIMIZATIONS (Dec 25, 2025):
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
@@ -562,7 +563,7 @@ def _fetch_stock_data_from_yahoo(ticker, start_date, end_date):
         return None
 
     try:
-        df = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
+        df = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False, timeout=15)
         return _normalize_ohlcv_frame(df)
     except Exception:
         return None
@@ -672,8 +673,29 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fu
         except Exception as e:
             st.warning(f"⚠️ MLFlow logging failed: {e}")
     
+    # Calculate Sharpe Ratio for the portfolio
+    sharpe_ratio = None
+    try:
+        # Build a simple equal-weight daily portfolio return series
+        daily_returns_list = []
+        for ticker in tickers:
+            ticker_df = portfolio_df[portfolio_df['Ticker'] == ticker].sort_values('Date')
+            if len(ticker_df) > 1:
+                returns = ticker_df['Close'].pct_change().dropna()
+                daily_returns_list.append(returns.values)
+        if daily_returns_list:
+            min_len = min(len(r) for r in daily_returns_list)
+            trimmed = np.array([r[-min_len:] for r in daily_returns_list])
+            port_returns = trimmed.mean(axis=0)
+            if len(port_returns) > 1 and np.std(port_returns) > 0:
+                # Annualized Sharpe (assume 252 trading days, risk-free ~4.5%)
+                excess = port_returns - (0.045 / 252)
+                sharpe_ratio = round(float(np.mean(excess) / np.std(excess) * np.sqrt(252)), 2)
+    except Exception:
+        sharpe_ratio = None
+
     # Display metrics
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         try:
@@ -705,6 +727,15 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fu
             st.metric("Total Return", f"{portfolio_return:+.2f}%")
         except (TypeError, ValueError, ZeroDivisionError) as e:
             st.metric("Total Return", "N/A")
+
+    with col5:
+        if sharpe_ratio is not None:
+            delta_color = "normal" if sharpe_ratio >= 0 else "inverse"
+            st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}",
+                      delta="Good" if sharpe_ratio >= 1 else ("Fair" if sharpe_ratio >= 0 else "Poor"),
+                      delta_color=delta_color)
+        else:
+            st.metric("Sharpe Ratio", "N/A")
     
     # Plot portfolio performance
     st.subheader("Fund Price Performance")
@@ -740,17 +771,29 @@ def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fu
     
     ticker_metrics = []
     for ticker in tickers:
-        ticker_data = portfolio_df[portfolio_df['Ticker'] == ticker]
+        ticker_data = portfolio_df[portfolio_df['Ticker'] == ticker].sort_values('Date')
         if not ticker_data.empty:
             first_price = ticker_data['Close'].iloc[0]
             last_price = ticker_data['Close'].iloc[-1]
             pct_change = ((last_price - first_price) / first_price) * 100 if first_price > 0 else 0
+            
+            # Per-ticker Sharpe Ratio
+            ticker_sharpe = "N/A"
+            if len(ticker_data) > 2:
+                try:
+                    t_returns = ticker_data['Close'].pct_change().dropna().values
+                    if len(t_returns) > 1 and np.std(t_returns) > 0:
+                        t_excess = t_returns - (0.045 / 252)
+                        ticker_sharpe = f"{np.mean(t_excess) / np.std(t_excess) * np.sqrt(252):.2f}"
+                except Exception:
+                    pass
             
             ticker_metrics.append({
                 'Ticker': ticker,
                 'Start Price': f"${first_price:.2f}",
                 'Current Price': f"${last_price:.2f}",
                 'Change': f"{pct_change:+.2f}%",
+                'Sharpe Ratio': ticker_sharpe,
                 'Volume': f"{ticker_data['Volume'].iloc[-1]:,.0f}"
             })
     

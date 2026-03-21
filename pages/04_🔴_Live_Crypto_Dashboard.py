@@ -170,6 +170,7 @@ def fetch_crypto_market_data(selected_cryptos, crypto_pairs, timeframe):
                 progress=False,
                 threads=True,
                 group_by="ticker",
+                timeout=15,
             )
         except Exception as e:
             downloaded = pd.DataFrame()
@@ -421,13 +422,17 @@ User: {config['user']}@localhost
     with st.spinner("Fetching live crypto data..."):
         fetch_start = time.time()
         
-        crypto_data, fetch_errors = fetch_crypto_market_data(
-            selected_cryptos=selected_cryptos,
-            crypto_pairs=crypto_pairs,
-            timeframe=timeframe,
-        )
-        for fetch_error in fetch_errors:
-            st.warning(f"⚠️ {fetch_error}")
+        try:
+            crypto_data, fetch_errors = fetch_crypto_market_data(
+                selected_cryptos=selected_cryptos,
+                crypto_pairs=crypto_pairs,
+                timeframe=timeframe,
+            )
+            for fetch_error in fetch_errors:
+                st.warning(f"⚠️ {fetch_error}")
+        except Exception as e:
+            crypto_data = {}
+            st.error(f"⚠️ Data fetch failed: {e}. Showing cached data if available.")
         
         fetch_time = time.time() - fetch_start
     

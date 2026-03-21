@@ -332,7 +332,7 @@ def check_admin_auth():
 
 
 # Helper Functions
-def api_request(endpoint, method="GET", data=None):
+def api_request(endpoint, method="GET", data=None, show_notice=False):
     """Make request to Flask API."""
     try:
         flask_api_url = resolve_control_center_api_url()
@@ -365,24 +365,28 @@ def api_request(endpoint, method="GET", data=None):
             if response.status_code in (404, 405):
                 continue
 
-            show_control_center_api_notice_once(
-                f"returning HTTP {response.status_code}"
-            )
+            if show_notice:
+                show_control_center_api_notice_once(
+                    f"returning HTTP {response.status_code}"
+                )
             return None
 
         # All route variants were not implemented; rely on page fallback data silently.
         if last_status in (404, 405):
             return None
 
-        show_control_center_api_notice_once(
-            f"returning HTTP {last_status or 'unknown'}"
-        )
+        if show_notice:
+            show_control_center_api_notice_once(
+                f"returning HTTP {last_status or 'unknown'}"
+            )
         return None
     except requests.exceptions.ConnectionError:
-        show_control_center_api_notice_once("unreachable")
+        if show_notice:
+            show_control_center_api_notice_once("unreachable")
         return None
     except Exception:
-        show_control_center_api_notice_once("temporarily unavailable")
+        if show_notice:
+            show_control_center_api_notice_once("temporarily unavailable")
         return None
 
 
@@ -394,6 +398,83 @@ def get_status_badge(status):
         return f'<span class="status-warning">● {status.upper()}</span>'
     else:
         return f'<span class="status-error">● {status.upper()}</span>'
+
+
+def get_local_docker_services_status():
+    """Return grouped Docker service status from local `docker ps` output."""
+    cmd = ["docker", "ps", "--format", "{{.Names}}|{{.Status}}"]
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+    except Exception:
+        return None
+
+    containers = []
+    for raw_line in (result.stdout or "").splitlines():
+        line = raw_line.strip()
+        if not line or "|" not in line:
+            continue
+        name, status_text = line.split("|", 1)
+        containers.append({"name": name.strip(), "status_text": status_text.strip()})
+
+    if not containers:
+        return None
+
+    def normalize_container_status(status_text: str) -> str:
+        lowered = (status_text or "").lower()
+        if "restarting" in lowered or "unhealthy" in lowered:
+            return "warning"
+        if lowered.startswith("up"):
+            return "running"
+        return "error"
+
+    # Group by logical service so multiple containers (e.g., Airflow components)
+    # render as a single service row.
+    service_patterns = [
+        ("Airflow", ["airflow"]),
+        ("MLflow", ["mlflow"]),
+        ("Airbyte", ["airbyte"]),
+        ("MySQL", ["mysql"]),
+        ("Redis", ["redis"]),
+    ]
+
+    grouped = []
+    for service_name, patterns in service_patterns:
+        matches = [
+            c for c in containers
+            if any(pattern in c["name"].lower() for pattern in patterns)
+        ]
+        if not matches:
+            grouped.append({
+                "name": service_name,
+                "status": "error",
+                "containers": [],
+            })
+            continue
+
+        normalized = [normalize_container_status(c["status_text"]) for c in matches]
+        if "error" in normalized:
+            overall = "error"
+        elif "warning" in normalized:
+            overall = "warning"
+        else:
+            overall = "running"
+
+        grouped.append({
+            "name": service_name,
+            "status": overall,
+            "containers": [c["name"] for c in matches],
+        })
+
+    return grouped
 
 
 def get_vega_ibkr_schedule_status() -> dict:
@@ -569,19 +650,33 @@ def main():
         
         with col1:
             st.subheader("Docker Services")
-            services_data = api_request("/api/admin/monitoring/docker-services")
-            
-            if services_data:
-                for service in services_data.get("services", []):
-                    status_html = get_status_badge(service.get("status", "unknown"))
-                    st.markdown(f"{service['name']}: {status_html}", unsafe_allow_html=True)
+            local_services = get_local_docker_services_status()
+
+            if local_services:
+                for service in local_services:
+                    st.markdown(
+                        get_status_badge(service["status"]) + f" **{service['name']}**",
+                        unsafe_allow_html=True,
+                    )
+                    if service["name"] == "MySQL" and len(service["containers"]) > 1:
+                        st.caption(
+                            "Grouped MySQL containers: "
+                            + ", ".join(service["containers"])
+                        )
             else:
-                # Fallback if API not available
-                st.markdown(get_status_badge("running") + " **Airflow**", unsafe_allow_html=True)
-                st.markdown(get_status_badge("running") + " **MLflow**", unsafe_allow_html=True)
-                st.markdown(get_status_badge("running") + " **Airbyte**", unsafe_allow_html=True)
-                st.markdown(get_status_badge("running") + " **MySQL**", unsafe_allow_html=True)
-                st.markdown(get_status_badge("running") + " **Redis**", unsafe_allow_html=True)
+                services_data = api_request(
+                    "/api/admin/monitoring/docker-services",
+                    show_notice=False,
+                )
+                if services_data:
+                    for service in services_data.get("services", []):
+                        status_html = get_status_badge(service.get("status", "unknown"))
+                        st.markdown(
+                            f"{service['name']}: {status_html}",
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.info("Docker status unavailable. Start Docker Desktop and run containers.")
         
         with col2:
             st.subheader("Recent Activity")

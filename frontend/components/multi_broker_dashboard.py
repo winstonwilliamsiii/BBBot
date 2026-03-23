@@ -503,16 +503,62 @@ def render_alpaca_section():
                     "2. Regenerate or copy your key/secret\n"
                     "3. Paste below and click Connect"
                 )
-            api_key = st.text_input("API Key", value="", type="password", key="alpaca_api_key_input")
-            secret_key = st.text_input("Secret Key", value="", type="password", key="alpaca_secret_key_input")
-            paper = st.checkbox("Paper Trading", value=True, key="alpaca_paper_input")
+            # Initialize session state for Alpaca credentials if not present
+            if 'alpaca_api_key_stored' not in st.session_state:
+                st.session_state.alpaca_api_key_stored = ""
+            if 'alpaca_secret_key_stored' not in st.session_state:
+                st.session_state.alpaca_secret_key_stored = ""
+            if 'alpaca_paper_trading' not in st.session_state:
+                st.session_state.alpaca_paper_trading = True
 
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                if st.button("Connect", type="primary", use_container_width=True, key="alpaca_connect_btn"):
-                    connect_alpaca(api_key=api_key, secret_key=secret_key, paper=paper)
-            with col_btn2:
-                if st.button("Use .env / Secrets", use_container_width=True, key="alpaca_env_connect_btn"):
+            # Use form to properly handle inputs and submission
+            with st.form(key="alpaca_connection_form", clear_on_submit=False):
+                api_key = st.text_input(
+                    "API Key",
+                    value=st.session_state.alpaca_api_key_stored,
+                    type="password",
+                    key="alpaca_api_key_form_input"
+                )
+                secret_key = st.text_input(
+                    "Secret Key",
+                    value=st.session_state.alpaca_secret_key_stored,
+                    type="password",
+                    key="alpaca_secret_key_form_input"
+                )
+                paper = st.checkbox(
+                    "Paper Trading (Test Account)",
+                    value=st.session_state.alpaca_paper_trading,
+                    key="alpaca_paper_form_input"
+                )
+
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    submit_manual = st.form_submit_button(
+                        "🔑 Connect with API Keys",
+                        type="primary",
+                        use_container_width=True,
+                        key="alpaca_connect_form_btn"
+                    )
+                with col_btn2:
+                    submit_env = st.form_submit_button(
+                        "🔧 Use .env / Secrets",
+                        use_container_width=True,
+                        key="alpaca_env_connect_form_btn"
+                    )
+
+                if submit_manual:
+                    if api_key and secret_key:
+                        st.session_state.alpaca_api_key_stored = api_key
+                        st.session_state.alpaca_secret_key_stored = secret_key
+                        st.session_state.alpaca_paper_trading = paper
+                        connect_alpaca(api_key=api_key, secret_key=secret_key, paper=paper)
+                    else:
+                        st.error("❌ API Key and Secret Key are required for manual connection")
+
+                if submit_env:
+                    # Clear stored values to use env/secrets
+                    st.session_state.alpaca_api_key_stored = ""
+                    st.session_state.alpaca_secret_key_stored = ""
                     connect_alpaca()
         return
     

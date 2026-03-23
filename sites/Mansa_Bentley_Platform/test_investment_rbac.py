@@ -28,8 +28,8 @@ def test_imports():
     
     try:
         from frontend.utils.broker_connections import (
-            BrokerConnection, WebullFund, BrokerConnectionManager,
-            display_broker_connections, display_webull_funds
+            BrokerConnection, BrokerConnectionManager,
+            display_broker_connections
         )
         print("✅ Broker connections module imported successfully")
     except ImportError as e:
@@ -159,17 +159,6 @@ def test_broker_data():
         print("❌ No demo connections retrieved")
         return False
     
-    # Test demo funds
-    funds = BrokerConnectionManager.get_demo_webull_funds()
-    if len(funds) > 0:
-        print(f"✅ Retrieved {len(funds)} demo WeFolio funds")
-        
-        total_value = sum(fund.value for fund in funds)
-        print(f"   Total fund value: ${total_value:,.2f}")
-    else:
-        print("❌ No demo funds retrieved")
-        return False
-    
     print()
     return True
 
@@ -201,16 +190,6 @@ def test_data_serialization():
             print("✅ Connection serialization works")
         else:
             print("❌ Connection serialization failed")
-            return False
-    
-    # Test fund serialization
-    funds = BrokerConnectionManager.get_demo_webull_funds()
-    if funds:
-        fund_dict = funds[0].to_dict()
-        if 'Fund Name' in fund_dict and 'Value' in fund_dict:
-            print("✅ Fund serialization works")
-        else:
-            print("❌ Fund serialization failed")
             return False
     
     print()

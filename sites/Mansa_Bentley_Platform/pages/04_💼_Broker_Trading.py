@@ -1,6 +1,6 @@
 """
 Broker Trading Dashboard
-Monitor positions and execute trades across Webull, IBKR, and Binance
+Monitor positions and execute trades across IBKR and Binance
 """
 
 import streamlit as st
@@ -107,7 +107,6 @@ try:
     from bbbot1_pipeline.broker_api import (
         execute_trade, 
         get_all_positions,
-        WebullClient,
         IBKRClient,
         BinanceClient
     )
@@ -185,7 +184,6 @@ def main():
         ```
         
         **Available locally:**
-        - Webull (Equities & ETFs)
         - Interactive Brokers (Forex, Futures, Commodities)
         - Binance (Cryptocurrency)
         
@@ -203,13 +201,13 @@ def main():
         
         broker = st.selectbox(
             "Broker",
-            ["webull", "ibkr", "binance"],
-            help="Webull: Equities/ETFs | IBKR: Forex/Futures | Binance: Crypto"
+            ["ibkr", "binance"],
+            help="IBKR: Forex/Futures | Binance: Crypto"
         )
         
         symbol = st.text_input(
             "Symbol",
-            value="AAPL" if broker == "webull" else "BTCUSDT" if broker == "binance" else "ES"
+            value="BTCUSDT" if broker == "binance" else "ES"
         )
         
         side = st.radio("Side", ["BUY", "SELL"])
@@ -253,7 +251,7 @@ def main():
     # Main content - Positions across all brokers
     st.header("📊 Current Positions")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     # Fetch all positions
     if st.button("🔄 Refresh Positions", key="refresh"):
@@ -269,23 +267,8 @@ def main():
     if "positions" in st.session_state:
         positions = st.session_state.positions
         
-        # Webull positions
-        with col1:
-            st.subheader("💼 Webull (Equities/ETFs)")
-            webull_positions = positions.get('webull', [])
-            
-            if webull_positions and isinstance(webull_positions, list) and len(webull_positions) > 0:
-                # Convert to DataFrame if not already
-                if isinstance(webull_positions[0], dict):
-                    df_webull = pd.DataFrame(webull_positions)
-                    st.dataframe(df_webull, use_container_width=True)
-                else:
-                    st.info("No Webull positions")
-            else:
-                st.info("No Webull positions")
-        
         # IBKR positions
-        with col2:
+        with col1:
             st.subheader("🌐 IBKR (Forex/Futures)")
             ibkr_positions = positions.get('ibkr', [])
             
@@ -297,7 +280,7 @@ def main():
                 st.caption("Note: IBKR positions require async callback handling")
         
         # Binance positions
-        with col3:
+        with col2:
             st.subheader("₿ Binance (Crypto)")
             binance_positions = positions.get('binance', [])
             
@@ -392,19 +375,8 @@ def main():
     with st.expander("⚙️ Broker API Configuration Guide"):
         st.markdown("""
         ### Setup Instructions
-        
-        #### 1. Webull (Equities & ETFs)
-        ```bash
-        pip install webull
-        ```
-        Add to `.env`:
-        ```
-        WEBULL_USERNAME=your_email@example.com
-        WEBULL_PASSWORD=your_password
-        WEBULL_DEVICE_ID=your_device_id
-        ```
-        
-        #### 2. Interactive Brokers (Forex/Futures/Commodities)
+
+        #### 1. Interactive Brokers (Forex/Futures/Commodities)
         ```bash
         pip install ibapi
         ```
@@ -418,8 +390,8 @@ def main():
         IBKR_PORT=7497
         IBKR_CLIENT_ID=1
         ```
-        
-        #### 3. Binance (Cryptocurrency)
+
+        #### 2. Binance (Cryptocurrency)
         ```bash
         pip install python-binance
         ```

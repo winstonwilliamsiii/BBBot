@@ -223,7 +223,6 @@ try:
     )
     from frontend.components.broker_connections import (
         display_broker_connections,
-        display_webull_funds,
         display_position_analysis,
         display_connection_health,
     )
@@ -1455,23 +1454,19 @@ def display_broker_connections_tab():
     st.markdown("Manage your connected broker accounts and monitor fund positions")
     
     # Create sub-tabs for different connection views
-    conn_tab1, conn_tab2, conn_tab3, conn_tab4 = st.tabs([
+    conn_tab1, conn_tab2, conn_tab3 = st.tabs([
         "🏦 Accounts",
-        "💼 WeFolio Funds",
         "📊 Positions",
         "🔍 Health Monitor"
     ])
     
     with conn_tab1:
         display_broker_connections()
-    
+
     with conn_tab2:
-        display_webull_funds()
-    
-    with conn_tab3:
         display_position_analysis()
-    
-    with conn_tab4:
+
+    with conn_tab3:
         display_connection_health()
 
 

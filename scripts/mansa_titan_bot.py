@@ -22,7 +22,10 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from scripts.load_screener_csv import load_bot_trade_candidates
+try:
+    from scripts.load_screener_csv import load_bot_trade_candidates
+except ModuleNotFoundError:
+    from load_screener_csv import load_bot_trade_candidates
 
 try:
     import yaml

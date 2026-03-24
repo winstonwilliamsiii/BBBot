@@ -1,5 +1,5 @@
 """
-Trading Strategies for WeBull Equities & ETFs
+Equities & ETFs Trading Strategies
 Compares Mean Reversion vs Random Forest Regression with MACD/RSI signals
 """
 

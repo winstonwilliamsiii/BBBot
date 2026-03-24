@@ -21,8 +21,10 @@ from sklearn.preprocessing import StandardScaler
 try:
     import mlflow
     import mlflow.sklearn
+    from mlflow.exceptions import MlflowException
 except ImportError:
     mlflow = None
+    MlflowException = RuntimeError
 
 try:
     import yfinance as yf
@@ -241,7 +243,13 @@ def run_training(
                         )
 
             mlflow_logged = True
-        except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        except (
+            RuntimeError,
+            ValueError,
+            TypeError,
+            OSError,
+            MlflowException,
+        ) as exc:
             logger.warning(
                 "MLflow logging failed; training artifacts still saved: %s",
                 exc,

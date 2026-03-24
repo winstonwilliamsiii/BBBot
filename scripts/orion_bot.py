@@ -21,6 +21,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 _mlflow_spec = importlib.util.find_spec("mlflow")
 mlflow = importlib.import_module("mlflow") if _mlflow_spec else None
+if mlflow is not None:
+    try:
+        from mlflow.exceptions import MlflowException
+    except ImportError:
+        MlflowException = RuntimeError
+else:
+    MlflowException = RuntimeError
 
 _yfinance_spec = importlib.util.find_spec("yfinance")
 yf = importlib.import_module("yfinance") if _yfinance_spec else None
@@ -95,28 +102,37 @@ def run_cycle(days: int = 120, log_mlflow: bool = True) -> Dict[str, Any]:
 
     mlflow_logged = False
     if log_mlflow and mlflow is not None:
-        tracking_uri = (
-            get_mlflow_tracking_uri()
-            if get_mlflow_tracking_uri is not None
-            else os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-        )
-        mlflow.set_tracking_uri(tracking_uri)
-        mlflow.set_experiment("Orion_Mansa_Minerals")
-        with mlflow.start_run(
-            run_name=(
-                "orion_cycle_"
-                f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        try:
+            tracking_uri = (
+                get_mlflow_tracking_uri()
+                if get_mlflow_tracking_uri is not None
+                else os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
             )
-        ):
-            mlflow.log_param("bot", "Orion")
-            mlflow.log_param("fund", "Mansa_Minerals")
-            mlflow.log_param("strategy", "Gold_RSI")
-            mlflow.log_param("lookback_days", days)
-            mlflow.log_param("signal", signal)
-            mlflow.log_metric("latest_price", latest_price or 0.0)
-            if rsi is not None:
-                mlflow.log_metric("rsi_14", float(rsi))
-            mlflow_logged = True
+            mlflow.set_tracking_uri(tracking_uri)
+            mlflow.set_experiment("Orion_Mansa_Minerals")
+            with mlflow.start_run(
+                run_name=(
+                    "orion_cycle_"
+                    f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+                )
+            ):
+                mlflow.log_param("bot", "Orion")
+                mlflow.log_param("fund", "Mansa_Minerals")
+                mlflow.log_param("strategy", "Gold_RSI")
+                mlflow.log_param("lookback_days", days)
+                mlflow.log_param("signal", signal)
+                mlflow.log_metric("latest_price", latest_price or 0.0)
+                if rsi is not None:
+                    mlflow.log_metric("rsi_14", float(rsi))
+                mlflow_logged = True
+        except (
+            RuntimeError,
+            ValueError,
+            TypeError,
+            OSError,
+            MlflowException,
+        ) as exc:
+            logger.warning("Orion MLflow logging skipped: %s", exc)
 
     result = {
         "bot": "Orion",

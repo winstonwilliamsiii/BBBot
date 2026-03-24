@@ -296,7 +296,6 @@ BentleyBudgetBot/
 │   │   ├── alpaca/               # Alpaca Markets
 │   │   ├── plaid/                # Banking APIs
 │   │   └── binance/              # Cryptocurrency
-│   ├── webull-sdk/               # Webull integration
 │   └── sdk/                      # Custom SDK modules
 │
 ├── 📊 Data Pipelines
@@ -655,9 +654,8 @@ python test_api_connections.py
 
 #### Broker API Failures
 ```bash
-# Test individual broker connections
+# Test broker connections
 python test_alpaca_connection.py
-python test_webull_connection.py
 
 # Check API credentials in .env file
 python check_env.py

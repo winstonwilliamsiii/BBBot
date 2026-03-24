@@ -63,9 +63,6 @@ keras-tcn>=3.5.6
 # BROKER TRADING APIs (Optional)
 # ============================================
 
-# Webull - Equities & ETFs
-webull>=0.2.4
-
 # Interactive Brokers - Forex, Futures, Commodities
 ibapi>=10.19.2
 

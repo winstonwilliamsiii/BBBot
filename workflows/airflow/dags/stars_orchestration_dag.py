@@ -1,15 +1,27 @@
-"""Stars orchestration DAG: Titan gatekeeper with downstream bot routing."""
+"""Stars orchestration DAG with 7AM Orion training refresh."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import logging
+import os
+import sys
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from airflow import DAG
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 
-from scripts.stars_orchestration import evaluate_titan_gate, run_fund_bot
+
+REPO_ROOT = os.getenv("BENTLEY_REPO_ROOT", "/opt/bentley")
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from scripts.stars_orchestration import (  # noqa: E402
+    evaluate_titan_gate,
+    run_fund_bot,
+    train_orion_for_refresh,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -41,15 +53,26 @@ def run_bot(bot_name: str, **kwargs):
     return result
 
 
+def train_orion(**kwargs):
+    result = train_orion_for_refresh()
+    kwargs["ti"].xcom_push(key="orion_training_status", value=result)
+    logger.info("Orion training status: %s", result)
+    return result
+
+
 dag = DAG(
     dag_id="stars_orchestration",
     default_args=default_args,
-    description=(
-        "Titan gate + multi-bot orchestration for "
-        "Mansa_Tech/Mansa_FOREX/Mansa_ETF/Mansa_Minerals"
+    description="Titan gate + multi-bot orchestration with Orion training",
+    schedule="0 7 * * 1-5",
+    start_date=datetime(
+        2026,
+        3,
+        24,
+        7,
+        0,
+        tzinfo=ZoneInfo("America/New_York"),
     ),
-    schedule_interval="30 9 * * 1-5",
-    start_date=datetime(2026, 2, 19),
     catchup=False,
     tags=["stars", "trading", "titan", "rigel", "dogon", "orion"],
 )
@@ -81,6 +104,11 @@ with dag:
         op_kwargs={"bot_name": "Dogon"},
     )
 
+    train_orion_model = PythonOperator(
+        task_id="train_orion_model",
+        python_callable=train_orion,
+    )
+
     run_orion = PythonOperator(
         task_id="run_orion",
         python_callable=run_bot,
@@ -95,6 +123,8 @@ with dag:
     titan_guard.set_downstream(blocked_by_titan)
     blocked_by_titan.set_downstream(orchestration_done)
 
+    train_orion_model.set_downstream(orchestration_done)
+
     titan_guard.set_downstream(run_titan)
     run_titan.set_downstream(run_rigel)
     run_titan.set_downstream(run_dogon)
@@ -103,3 +133,4 @@ with dag:
     run_rigel.set_downstream(orchestration_done)
     run_dogon.set_downstream(orchestration_done)
     run_orion.set_downstream(orchestration_done)
+

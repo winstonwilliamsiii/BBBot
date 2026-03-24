@@ -1,9 +1,9 @@
--- Webull WeFolio Funds Table Schema
--- Stores fund information from Webull API for portfolio tracking
+-- WeFolio Funds Table Schema
+-- Stores fund information for portfolio tracking
 
 CREATE TABLE IF NOT EXISTS wefolio_funds (
     -- Primary key
-    id VARCHAR(50) PRIMARY KEY COMMENT 'Unique fund identifier from Webull',
+    id VARCHAR(50) PRIMARY KEY COMMENT 'Unique fund identifier',
     
     -- Fund details
     name VARCHAR(255) NOT NULL COMMENT 'Fund display name',
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS wefolio_funds (
     INDEX idx_value (value)
     
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-COMMENT='Webull WeFolio fund positions';
+COMMENT='WeFolio fund positions';
 
 
 -- Broker Connections Table
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS broker_connections (
     
     -- Connection details
     user_id INT NOT NULL COMMENT 'Reference to user account',
-    broker_name VARCHAR(100) NOT NULL COMMENT 'Broker name (Webull, TD Ameritrade, etc.)',
+    broker_name VARCHAR(100) NOT NULL COMMENT 'Broker name (IBKR, Binance, etc.)',
     account_number VARCHAR(100) NOT NULL COMMENT 'Masked account number',
     
     -- Status tracking

@@ -4,7 +4,7 @@ Base Trading Strategy - Abstract strategy interface
 
 All trading strategies inherit from this base class.
 Strategies only use the BrokerClient interface, so they
-work with ANY broker (Alpaca, MT5, IBKR, Webull).
+work with ANY broker (Alpaca, MT5, IBKR, Binance).
 
 Example strategies:
 - GoldRsiStrategy: Trade gold ETF (GLD) on Alpaca

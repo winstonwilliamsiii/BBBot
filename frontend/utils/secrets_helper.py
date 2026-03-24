@@ -207,6 +207,30 @@ def get_alpaca_config() -> dict:
     ])
     # Allow local env override for quick paper/live switching during ops tests.
     # Determine which mode to use (priority: broker config override > env var > secrets)
+    # Directly read st.secrets root-level keys so we can give them explicit priority
+    # over .env mode-specific keys (st.secrets is always the authoritative source).
+    _stkeys_paper_api = None
+    _stkeys_paper_secret = None
+    _stkeys_api = None
+    _stkeys_secret = None
+    try:
+        _secrets_obj = getattr(st, 'secrets', None)
+        if _secrets_obj is not None:
+            _stkeys_paper_api = _clean_secret_value(
+                _lookup_secret_value(_secrets_obj, 'ALPACA_PAPER_API_KEY')
+            )
+            _stkeys_paper_secret = _clean_secret_value(
+                _lookup_secret_value(_secrets_obj, 'ALPACA_PAPER_SECRET_KEY')
+            )
+            _stkeys_api = _clean_secret_value(
+                _lookup_secret_value(_secrets_obj, 'ALPACA_API_KEY')
+            )
+            _stkeys_secret = _clean_secret_value(
+                _lookup_secret_value(_secrets_obj, 'ALPACA_SECRET_KEY')
+            )
+    except Exception:
+        pass
+
     if use_paper_from_config is not None:
         use_paper = use_paper_from_config
     else:
@@ -233,7 +257,17 @@ def get_alpaca_config() -> dict:
         use_paper = paper.lower() in ('true', '1', 'yes')
     if use_paper:
         # Do not mix paper key with legacy/live secret (or vice-versa).
-        if paper_api_key or paper_secret_key:
+        # Priority: st.secrets explicit paper keys > st.secrets generic keys
+        # > .env paper-specific keys > .env generic keys.
+        # st.secrets always wins over .env to prevent stale local env files from
+        # overriding production/Streamlit-Cloud secrets and causing 401 errors.
+        if _stkeys_paper_api and _stkeys_paper_secret:
+            api_key = _stkeys_paper_api
+            secret_key = _stkeys_paper_secret
+        elif _stkeys_api and _stkeys_secret:
+            api_key = _stkeys_api
+            secret_key = _stkeys_secret
+        elif paper_api_key and paper_secret_key:
             api_key = paper_api_key
             secret_key = paper_secret_key
         else:

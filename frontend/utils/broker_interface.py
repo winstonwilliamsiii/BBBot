@@ -2,7 +2,7 @@
 Broker Interface - Abstract all brokers behind a common API
 ============================================================
 
-This interface makes Alpaca, MT5, IBKR, and Webull look identical
+This interface makes Alpaca, MT5, and IBKR look identical
 to your trading strategies. Strategies only use this interface,
 never calling broker APIs directly.
 
@@ -377,7 +377,7 @@ def create_broker_client(broker_name: str) -> BrokerClient:
     Factory function to create the right broker client
     
     Args:
-        broker_name: 'alpaca', 'mt5', 'ibkr', or 'webull'
+        broker_name: 'alpaca', 'mt5', or 'ibkr'
     
     Returns:
         BrokerClient implementation
@@ -395,8 +395,5 @@ def create_broker_client(broker_name: str) -> BrokerClient:
     elif broker_name == 'ibkr':
         # TODO: Implement IBKRBrokerClient
         raise NotImplementedError("IBKR broker client coming soon")
-    elif broker_name == 'webull':
-        # TODO: Implement WebullBrokerClient
-        raise NotImplementedError("Webull broker client coming soon")
     else:
         raise ValueError(f"Unknown broker: {broker_name}")

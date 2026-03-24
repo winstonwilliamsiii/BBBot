@@ -88,12 +88,17 @@ def render_broker_status():
     # Streamlit session state resets on app restarts/sleep.
     # Auto-reconnect Alpaca periodically so production recovers without manual clicks.
     if ALPACA_AVAILABLE and st.session_state.brokers.get('alpaca') is None:
-        now_ts = time.time()
-        last_attempt_ts = st.session_state.get('alpaca_auto_connect_last_attempt', 0.0)
-        cooldown_seconds = 60
-        if now_ts - float(last_attempt_ts) >= cooldown_seconds:
-            st.session_state['alpaca_auto_connect_last_attempt'] = now_ts
-            connect_alpaca(silent=True, rerun_on_success=False)
+        _last_err = st.session_state.get('alpaca_last_connect_error', '')
+        _is_auth_fail = '401' in _last_err or '403' in _last_err or 'Auth failed' in _last_err
+        # Skip auto-reconnect on auth failures — they require user action (new credentials).
+        # Only auto-retry transient errors (network timeouts, server unavailable, etc.).
+        if not _is_auth_fail:
+            now_ts = time.time()
+            last_attempt_ts = st.session_state.get('alpaca_auto_connect_last_attempt', 0.0)
+            cooldown_seconds = 60
+            if now_ts - float(last_attempt_ts) >= cooldown_seconds:
+                st.session_state['alpaca_auto_connect_last_attempt'] = now_ts
+                connect_alpaca(silent=True, rerun_on_success=False)
     
     st.subheader("🔗 Broker Connections")
     
@@ -116,7 +121,18 @@ def render_broker_status():
             if '401' in last_err or 'Auth failed' in last_err:
                 st.caption("⚠️ Auth failed — update keys in Alpaca tab")
             if st.button("Connect Alpaca", key="connect_alpaca_main_dashboard"):
-                connect_alpaca()
+                # Use manually-entered session credentials if the user already typed them
+                # in the Alpaca tab form; otherwise fall back to env/secrets.
+                _stored_key = st.session_state.get('alpaca_api_key_stored', '')
+                _stored_secret = st.session_state.get('alpaca_secret_key_stored', '')
+                if _stored_key and _stored_secret:
+                    connect_alpaca(
+                        api_key=_stored_key,
+                        secret_key=_stored_secret,
+                        paper=st.session_state.get('alpaca_paper_trading', True),
+                    )
+                else:
+                    connect_alpaca()
 
     with col3:
         ibkr_connected = st.session_state.brokers['ibkr'] is not None

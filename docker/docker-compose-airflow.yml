@@ -53,12 +53,19 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: mansa_bot
       MLFLOW_TRACKING_URI: http://mlflow:5000
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
       AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
       AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
-      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
+      DISCORD_WEBHOOK_NOOMO: ${DISCORD_WEBHOOK_NOOMO:-}
+      BENTLEY_REPO_ROOT: /opt/bentley
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
     ports:
       - "8080:8080"
     volumes:
@@ -66,6 +73,7 @@ services:
       - ../airflow/config/logs:/opt/airflow/logs
       - ../data:/opt/airflow/data
       - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
+      - ..:/opt/bentley
     command: webserver
     restart: unless-stopped
     healthcheck:
@@ -94,15 +102,24 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: mansa_bot
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
       AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
       AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
+      DISCORD_WEBHOOK_NOOMO: ${DISCORD_WEBHOOK_NOOMO:-}
+      BENTLEY_REPO_ROOT: /opt/bentley
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/config/logs:/opt/airflow/logs
       - ../data:/opt/airflow/data
       - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
+      - ..:/opt/bentley
     command: scheduler
     restart: unless-stopped
 
@@ -124,17 +141,25 @@ services:
       AIRFLOW__CORE__FERNET_KEY: 'ZqWX8ht3KYRLjKTf1RrL4gFKjh5dBv6zB9IqYjXzKjM='
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: mansa_bot
       MLFLOW_TRACKING_URI: http://mlflow:5000
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
       AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
       AIRBYTE_CONNECTION_ID: ${AIRBYTE_CONNECTION_ID:-NOT_CONFIGURED}
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
-      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3'
+      DISCORD_WEBHOOK_NOOMO: ${DISCORD_WEBHOOK_NOOMO:-}
+      BENTLEY_REPO_ROOT: /opt/bentley
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/config/logs:/opt/airflow/logs
       - ../data:/opt/airflow/data
       - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
+      - ..:/opt/bentley
     command: celery worker
     restart: unless-stopped
 
@@ -159,7 +184,7 @@ services:
                --host 0.0.0.0 
                --port 5000 
                --serve-artifacts
-               --gunicorn-opts '--bind 0.0.0.0:5000'"
+               --gunicorn-opts '--bind 0.0.0.0:5000 --workers 1 --timeout 180'"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000 || exit 1"]

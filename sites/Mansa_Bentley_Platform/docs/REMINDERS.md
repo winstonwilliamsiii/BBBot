@@ -24,12 +24,11 @@
 ---
 
 #### Priority 3: Broker Logos on Investment Analysis Page  
-**Goal:** Display actual broker logos for WeBull, IBKR, Binance, NinjaTrader, Meta5
+**Goal:** Display actual broker logos for Alpaca, IBKR, Binance, NinjaTrader, Meta5
 
 **Implementation Steps:**
 1. Create `assets/images/` directory
 2. Download broker logos from official press kits:
-   - WeBull: https://www.webull.com/press
    - Interactive Brokers: https://www.interactivebrokers.com/
    - Binance: https://www.binance.com/en/official-brand-assets
    - NinjaTrader: https://ninjatrader.com/

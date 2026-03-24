@@ -59,7 +59,7 @@
   - Budget management (full RW access)
   - Broker trading interface
   - Trade execution capabilities
-  - WeBull, IBKR, Binance, NinjaTrader, Meta5 connections
+  - Alpaca, IBKR, Binance, NinjaTrader, Meta5 connections
 
 ### Admin
 - **Access:** All pages (1-6) + Admin Panel

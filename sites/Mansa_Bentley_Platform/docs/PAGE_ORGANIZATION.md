@@ -45,7 +45,6 @@ The application has been reorganized with the following page structure:
 - Portfolio overview and performance
 - Fundamental analysis (Alpha Vantage, Tiingo, yfinance)
 - Broker connections display
-  - WeBull
   - Interactive Brokers (IBKR)
   - Binance
   - NinjaTrader
@@ -80,7 +79,6 @@ The application has been reorganized with the following page structure:
 - Broker-specific features
 
 **Supported Brokers:**
-- WeBull
 - Interactive Brokers (IBKR)
 - Binance
 - NinjaTrader
@@ -214,7 +212,6 @@ Live Crypto Dashboard (03)
 └── Binance API / CoinGecko API
 
 Broker Trading (04)
-├── WeBull API
 ├── IBKR API
 ├── Binance API
 ├── NinjaTrader API

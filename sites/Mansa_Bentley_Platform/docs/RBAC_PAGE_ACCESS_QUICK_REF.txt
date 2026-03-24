@@ -141,7 +141,7 @@
 │  │  • Budget management (full RW)                               │ │
 │  │  • Broker trading interface                                  │ │
 │  │  • Trade execution                                           │ │
-│  │  • WeBull, IBKR, Binance, NinjaTrader, Meta5               │ │
+│  │  • Alpaca, IBKR, Binance, NinjaTrader, Meta5              │ │
 │  └──────────────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────────┘
 

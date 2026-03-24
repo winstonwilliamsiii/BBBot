@@ -188,7 +188,7 @@ st.markdown("<h4 style='text-align: center; color: rgba(230,238,248,0.7);'>Our P
 col1, col2, col3, col4, col5 = st.columns(5)
 
 logos = [
-    ("assets/images/webull_logo.png", "WeBull"),
+    ("assets/images/alpaca_logo.png", "Alpaca"),
     ("assets/images/ibkr_logo.png", "IBKR"),
     ("assets/images/binance_logo.png", "Binance"),
     ("assets/images/ninjatrader_logo.png", "NinjaTrader"),
@@ -245,7 +245,7 @@ BentleyBudgetBot/
 │   ├── images/
 │   │   ├── mansa_capital_logo.png
 │   │   ├── bentley_icon.png
-│   │   ├── webull_logo.png
+│   │   ├── alpaca_logo.png
 │   │   ├── ibkr_logo.png
 │   │   ├── binance_logo.png
 │   │   ├── ninjatrader_logo.png
@@ -343,7 +343,6 @@ else:
 
 ### Broker Logos:
 Download from official press kits:
-- WeBull: https://www.webull.com/press
 - Interactive Brokers: https://www.interactivebrokers.com/
 - Binance: https://www.binance.com/en/official-brand-assets
 - NinjaTrader: https://ninjatrader.com/

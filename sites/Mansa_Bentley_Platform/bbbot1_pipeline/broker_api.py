@@ -1,7 +1,6 @@
 """
 Broker API Integration Module
 Unified interface for trading across multiple brokers:
-- Webull (equities, ETFs)
 - Interactive Brokers (forex, futures, commodities)
 - Binance (crypto)
 """
@@ -14,105 +13,6 @@ from datetime import datetime
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-# ============================================
-# WEBULL API - Equities & ETFs
-# ============================================
-
-class WebullClient:
-    """
-    Webull API client for equities and ETFs
-    Docs: https://github.com/tedchou12/webull
-    """
-    
-    def __init__(self):
-        self.username = os.getenv("WEBULL_USERNAME")
-        self.password = os.getenv("WEBULL_PASSWORD")
-        self.device_id = os.getenv("WEBULL_DEVICE_ID")
-        self.client = None
-        
-    def connect(self):
-        """Initialize Webull connection"""
-        try:
-            from webull import webull
-            self.client = webull()
-            self.client.login(self.username, self.password, device_name=self.device_id)
-            logger.info("✅ Webull connected successfully")
-            return True
-        except ImportError:
-            logger.error("❌ webull package not installed. Run: pip install webull")
-            return False
-        except Exception as e:
-            logger.error(f"❌ Webull connection failed: {e}")
-            return False
-    
-    def place_order(self, symbol: str, side: str, quantity: float, order_type: str = "MKT") -> Dict[str, Any]:
-        """
-        Place order on Webull
-        
-        Args:
-            symbol: Stock ticker (e.g., 'AAPL', 'SPY')
-            side: 'BUY' or 'SELL'
-            quantity: Number of shares (must be integer for equities)
-            order_type: 'MKT' (market) or 'LMT' (limit)
-        
-        Returns:
-            Order confirmation dict with order_id and status
-        """
-        if not self.client:
-            self.connect()
-        
-        try:
-            # Webull requires integer quantity for equities
-            quantity = int(quantity)
-            
-            if side.upper() == "BUY":
-                result = self.client.place_order(
-                    stock=symbol,
-                    action="BUY",
-                    orderType=order_type,
-                    quant=quantity,
-                    enforce="DAY"
-                )
-            elif side.upper() == "SELL":
-                result = self.client.place_order(
-                    stock=symbol,
-                    action="SELL",
-                    orderType=order_type,
-                    quant=quantity,
-                    enforce="DAY"
-                )
-            else:
-                raise ValueError(f"Invalid side: {side}. Must be 'BUY' or 'SELL'")
-            
-            logger.info(f"✅ Webull {side} order placed: {symbol} x{quantity}")
-            return {
-                "broker": "webull",
-                "symbol": symbol,
-                "side": side,
-                "quantity": quantity,
-                "order_type": order_type,
-                "result": result,
-                "timestamp": datetime.now().isoformat()
-            }
-        
-        except Exception as e:
-            logger.error(f"❌ Webull order failed: {e}")
-            return {"error": str(e), "broker": "webull"}
-    
-    def get_positions(self):
-        """Get current Webull positions"""
-        if not self.client:
-            self.connect()
-        
-        try:
-            positions = self.client.get_positions()
-            logger.info(f"✅ Retrieved {len(positions)} Webull positions")
-            return positions
-        except Exception as e:
-            logger.error(f"❌ Failed to get Webull positions: {e}")
-            return []
 
 
 # ============================================
@@ -341,7 +241,7 @@ def execute_trade(broker: str, symbol: str, side: str, quantity: float, **kwargs
     Unified trade execution across all brokers
     
     Args:
-        broker: 'webull', 'ibkr', or 'binance'
+        broker: 'ibkr' or 'binance'
         symbol: Ticker/contract symbol
         side: 'BUY' or 'SELL'
         quantity: Amount to trade
@@ -351,9 +251,6 @@ def execute_trade(broker: str, symbol: str, side: str, quantity: float, **kwargs
         Order confirmation dict
     
     Example:
-        # Equities on Webull
-        execute_trade('webull', 'AAPL', 'BUY', 100)
-        
         # Futures on IBKR
         execute_trade('ibkr', 'ES', 'BUY', 1, sec_type='FUT', exchange='CME')
         
@@ -362,11 +259,7 @@ def execute_trade(broker: str, symbol: str, side: str, quantity: float, **kwargs
     """
     broker = broker.lower()
     
-    if broker == "webull":
-        client = WebullClient()
-        return client.place_order(symbol, side, quantity, **kwargs)
-    
-    elif broker == "ibkr":
+    if broker == "ibkr":
         client = IBKRClient()
         return client.place_order(symbol, side, quantity, **kwargs)
     
@@ -375,7 +268,7 @@ def execute_trade(broker: str, symbol: str, side: str, quantity: float, **kwargs
         return client.place_order(symbol, side, quantity, **kwargs)
     
     else:
-        error_msg = f"Unknown broker: {broker}. Supported: webull, ibkr, binance"
+        error_msg = f"Unknown broker: {broker}. Supported: ibkr, binance"
         logger.error(f"❌ {error_msg}")
         return {"error": error_msg}
 
@@ -388,14 +281,6 @@ def get_all_positions() -> Dict[str, list]:
         Dict with broker names as keys and position lists as values
     """
     positions = {}
-    
-    # Webull positions
-    try:
-        webull_client = WebullClient()
-        positions['webull'] = webull_client.get_positions()
-    except Exception as e:
-        logger.error(f"Failed to get Webull positions: {e}")
-        positions['webull'] = []
     
     # IBKR positions
     try:
@@ -426,23 +311,18 @@ if __name__ == "__main__":
     print("🧪 Testing Broker API Integrations")
     print("=" * 70)
     
-    # Test Webull
-    print("\n1️⃣  Testing Webull (Equities/ETFs)...")
-    webull_test = execute_trade("webull", "AAPL", "BUY", 1)
-    print(f"Result: {webull_test}")
-    
     # Test IBKR
-    print("\n2️⃣  Testing IBKR (Forex/Futures/Commodities)...")
+    print("\n1️⃣  Testing IBKR (Forex/Futures/Commodities)...")
     ibkr_test = execute_trade("ibkr", "ES", "BUY", 1, sec_type="FUT", exchange="CME")
     print(f"Result: {ibkr_test}")
     
     # Test Binance
-    print("\n3️⃣  Testing Binance (Crypto)...")
+    print("\n2️⃣  Testing Binance (Crypto)...")
     binance_test = execute_trade("binance", "BTCUSDT", "BUY", 0.001)
     print(f"Result: {binance_test}")
     
     # Get all positions
-    print("\n4️⃣  Getting all positions...")
+    print("\n3️⃣  Getting all positions...")
     all_positions = get_all_positions()
     for broker, positions in all_positions.items():
         print(f"{broker.upper()}: {len(positions)} positions")

@@ -150,6 +150,6 @@ if __name__ == "__main__":
     print("\nNext steps:")
     print("1. Review the results above")
     print("2. Setup MySQL tables: mysql -u root -p < mysql_config/ml_trading_bot_schema.sql")
-    print("3. Deploy Airflow DAG: cp airflow/dags/ml_trading_bot_webull.py $AIRFLOW_HOME/dags/")
+    print("3. Deploy Airflow DAG: cp airflow/dags/bentleybot_trading_dag.py $AIRFLOW_HOME/dags/")
     print("4. Launch Streamlit: streamlit run streamlit_app.py")
     print("\nSee docs/ML_TRADING_BOT_GUIDE.md for full setup instructions\n")

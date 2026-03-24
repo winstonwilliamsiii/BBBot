@@ -221,8 +221,8 @@ def execute_trade():
                         # Forex or Futures -> IBKR
                         result = place_order("ibkr", SYMBOL, action, QUANTITY, sec_type="FUT", exchange="CME")
                     else:
-                        # Equities/ETFs -> Webull
-                        result = place_order("webull", SYMBOL, action, QUANTITY)
+                        # Equities/ETFs -> IBKR
+                        result = place_order("ibkr", SYMBOL, action, QUANTITY, sec_type="STK", exchange="SMART")
                     
                     result["status"] = "executed"
                     

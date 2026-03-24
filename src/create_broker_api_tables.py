@@ -2,7 +2,6 @@
 Create Broker API Credentials Table - Multi-Tenant Support
 ============================================================
 Creates a unified table for storing broker API credentials across all platforms:
-- Webull (equities, ETFs, funds)
 - Interactive Brokers / IBKR (FOREX, futures, commodities)
 - Binance (crypto assets)
 - NinjaTrader (Options, Futures, FOREX)
@@ -53,7 +52,6 @@ CREATE TABLE IF NOT EXISTS broker_api_credentials (
     
     -- Broker Information
     broker ENUM(
-        'webull', 
         'ibkr', 
         'binance', 
         'ninjatrader', 
@@ -65,7 +63,7 @@ CREATE TABLE IF NOT EXISTS broker_api_credentials (
     access_token TEXT NOT NULL COMMENT 'Encrypted API access token or password',
     api_key VARCHAR(255) NULL COMMENT 'API key (for platforms that use key+secret)',
     api_secret TEXT NULL COMMENT 'Encrypted API secret',
-    device_id VARCHAR(255) NULL COMMENT 'Device ID for Webull authentication',
+    device_id VARCHAR(255) NULL COMMENT 'Device ID for API authentication',
     account_number VARCHAR(100) NULL COMMENT 'Masked broker account number',
     
     -- Connection Status
@@ -114,9 +112,8 @@ CREATE TABLE IF NOT EXISTS broker_connections (
     user_id INT NOT NULL COMMENT 'Reference to user account',
     
     -- Broker Information
-    broker_name VARCHAR(100) NOT NULL COMMENT 'Broker name (Webull, IBKR, Binance, etc.)',
+    broker_name VARCHAR(100) NOT NULL COMMENT 'Broker name (IBKR, Binance, etc.)',
     broker ENUM(
-        'webull', 
         'ibkr', 
         'binance', 
         'ninjatrader', 
@@ -223,11 +220,6 @@ def verify_broker_readiness():
     print(f"{'='*70}\n")
     
     broker_files = {
-        'Webull': [
-            'frontend/utils/webull_integration.py',
-            'bbbot1_pipeline/broker_api.py',
-            '#Fetch and Display Webull Funds.py'
-        ],
         'IBKR': [
             'bbbot1_pipeline/broker_api.py'
         ],
@@ -246,12 +238,6 @@ def verify_broker_readiness():
     }
     
     broker_status = {
-        'Webull': {
-            'equities': '✅ READY',
-            'etfs': '✅ READY', 
-            'funds': '✅ READY (WeFolio)',
-            'implementation': 'Complete with MFA support'
-        },
         'IBKR': {
             'forex': '✅ READY',
             'futures': '✅ READY',
@@ -327,9 +313,6 @@ if __name__ == "__main__":
     
     print(f"\n📌 Next Steps:")
     print(f"   1. Add API keys to .env:")
-    print(f"      WEBULL_USERNAME=your_email")
-    print(f"      WEBULL_PASSWORD=your_password")
-    print(f"      WEBULL_DEVICE_ID=your_device_id")
     print(f"      IBKR_HOST=127.0.0.1")
     print(f"      IBKR_PORT=7497")
     print(f"      BINANCE_API_KEY=your_key")

@@ -6,7 +6,10 @@ def send_discord_trade_notification(symbol, side, qty, order_type, limit_price=N
     Send a Discord notification for an Alpaca trade via webhook.
     """
     if webhook_url is None:
-        webhook_url = os.getenv("DISCORD_ALPACA_WEBHOOK")
+        webhook_url = (
+            os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
+            or os.getenv("DISCORD_ALPACA_WEBHOOK", "").strip()
+        )
     if not webhook_url:
         return False
     color = 3066993 if side.lower() == "buy" else 15158332

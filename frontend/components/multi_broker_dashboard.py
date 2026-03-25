@@ -8,6 +8,7 @@ import pandas as pd
 import os
 import time
 from dotenv import load_dotenv
+from frontend.utils.broker_trade_sync import sync_connected_brokers
 
 load_dotenv(override=True)
 
@@ -150,6 +151,37 @@ def render_broker_status():
             if st.button("Connect AXI", key="connect_axi_main_dashboard"):
                 connect_axi()
 
+    action_col1, action_col2 = st.columns(2)
+    with action_col1:
+        if st.button("🧪 Test Connected Brokers", key="test_connected_brokers_btn", use_container_width=True):
+            results = _run_connected_broker_smoke_tests(st.session_state.brokers)
+            st.session_state["broker_test_results"] = results
+    with action_col2:
+        if st.button("🔄 Sync Broker Trades", key="sync_broker_trades_btn", use_container_width=True):
+            with st.spinner("Syncing broker trades into Trade History..."):
+                sync_results = sync_connected_brokers(st.session_state.brokers)
+            st.session_state["broker_sync_results"] = [
+                {
+                    "Broker": item.broker,
+                    "Inserted": item.inserted,
+                    "Skipped": item.skipped,
+                    "Notified": item.notified,
+                    "Errors": item.errors,
+                }
+                for item in sync_results
+            ]
+            st.cache_data.clear()
+
+    test_results = st.session_state.get("broker_test_results")
+    if test_results:
+        st.markdown("**Latest Broker Connection Test**")
+        st.dataframe(pd.DataFrame(test_results), use_container_width=True, hide_index=True)
+
+    sync_results = st.session_state.get("broker_sync_results")
+    if sync_results:
+        st.markdown("**Latest Broker Trade Sync**")
+        st.dataframe(pd.DataFrame(sync_results), use_container_width=True, hide_index=True)
+
     # Show open Alpaca orders below broker status
     if ALPACA_AVAILABLE and st.session_state.brokers['alpaca'] is not None:
         connector = st.session_state.brokers['alpaca']
@@ -176,9 +208,57 @@ def render_broker_status():
             st.info("No open orders")
 
 
-    if not ibkr_connected and IBKR_AVAILABLE:
-        if st.button("Connect IBKR", key="connect_ibkr_main"):
-            connect_ibkr()
+def _run_connected_broker_smoke_tests(brokers: dict) -> list[dict]:
+    """Run lightweight connection tests without placing any orders."""
+    checks: list[dict] = []
+
+    mt5 = brokers.get('mt5')
+    if mt5 is None:
+        checks.append({"Broker": "MT5", "Result": "SKIPPED", "Details": "Not connected"})
+    else:
+        ok = bool(mt5.health_check())
+        checks.append({
+            "Broker": "MT5",
+            "Result": "PASS" if ok else "FAIL",
+            "Details": "API bridge reachable" if ok else "MT5 API bridge unavailable",
+        })
+
+    axi = brokers.get('axi')
+    if axi is None:
+        checks.append({"Broker": "AXI", "Result": "SKIPPED", "Details": "Not connected"})
+    else:
+        ok = bool(axi.health_check())
+        checks.append({
+            "Broker": "AXI",
+            "Result": "PASS" if ok else "FAIL",
+            "Details": "AXI MT5 bridge reachable" if ok else "AXI MT5 bridge unavailable",
+        })
+
+    alpaca = brokers.get('alpaca')
+    if alpaca is None:
+        checks.append({"Broker": "Alpaca", "Result": "SKIPPED", "Details": "Not connected"})
+    else:
+        account = alpaca.get_account()
+        ok = bool(account)
+        details = "Authenticated" if ok else (getattr(alpaca, "last_error", "Account query failed") or "Account query failed")
+        checks.append({
+            "Broker": "Alpaca",
+            "Result": "PASS" if ok else "FAIL",
+            "Details": details,
+        })
+
+    ibkr = brokers.get('ibkr')
+    if ibkr is None:
+        checks.append({"Broker": "IBKR", "Result": "SKIPPED", "Details": "Not connected"})
+    else:
+        ok = bool(ibkr.is_authenticated())
+        checks.append({
+            "Broker": "IBKR",
+            "Result": "PASS" if ok else "FAIL",
+            "Details": "Gateway authenticated" if ok else "Gateway not authenticated",
+        })
+
+    return checks
 
 
 def connect_mt5(

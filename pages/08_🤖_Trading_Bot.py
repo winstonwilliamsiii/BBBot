@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 from frontend.components.multi_broker_dashboard import render_multi_broker_dashboard
+from frontend.utils.broker_trade_sync import sync_connected_brokers
 
 # Page config must be the first Streamlit command in this script.
 st.set_page_config(
@@ -40,7 +41,7 @@ except ImportError:
         'primary': '#06B6D4',
         'secondary': '#0F172A',
         'accent': '#FF8C00',
-        'text': '#E6EEF8'
+        'text': '#FFFFFF'
     }
 
     def create_metric_card(title, value, delta=None):
@@ -141,7 +142,7 @@ st.markdown("""
     /* Gradient background matching home page */
     .stApp {
         background: linear-gradient(135deg, #0F172A 0%, #0B1220 100%);
-        color: #E6EEF8;
+        color: #FFFFFF;
     }
     
     /* Metric styling */
@@ -217,7 +218,7 @@ st.markdown("""
     [data-baseweb="menu"] li,
     [role="option"] {{
         background-color: #0B1220 !important;
-        color: #E6EEF8 !important;
+        color: #FFFFFF !important;
     }}
     
     [data-baseweb="menu"] li:hover,
@@ -232,16 +233,32 @@ st.markdown("""
     }}
     
     [data-testid="stSidebar"] * {{
-        color: #E6EEF8 !important;
+        color: #FFFFFF !important;
     }}
     
     [data-testid="stSidebar"] h1,
     [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3,
     [data-testid="stSidebar"] label {{
-        color: #E6EEF8 !important;
+        color: #FFFFFF !important;
         font-weight: 500 !important;
     }}
+
+    /* Button contrast fix: keep labels visible on light button backgrounds */
+    div[data-testid="stButton"] > button {
+        color: #0B1220 !important;
+        font-weight: 700 !important;
+    }
+
+    div[data-testid="stButton"] > button p,
+    div[data-testid="stButton"] > button span,
+    div[data-testid="stButton"] > button div {
+        color: #0B1220 !important;
+    }
+
+    div[data-testid="stButton"] > button:hover {
+        color: #0B1220 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -496,7 +513,7 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
     for i, lbl in enumerate(day_labels):
         fig.add_annotation(
             x=i + 0.5, y=0.45, text=f"<b>{lbl}</b>",
-            font=dict(size=12, color="#9CA3AF"),
+            font=dict(size=12, color="#FFFFFF"),
             showarrow=False, xanchor="center", yanchor="middle",
         )
     for wi, week in enumerate(month_weeks):
@@ -519,7 +536,7 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
                     cell_lbl = f"-${abs(pnl):,.0f}"
             else:
                 fill = "rgba(255,255,255,0.03)"
-                tc = "#4B5563"
+                tc = "#FFFFFF"
                 cell_lbl = ""
             fig.add_shape(
                 type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
@@ -527,7 +544,7 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
             )
             fig.add_annotation(
                 x=x0 + 0.07, y=y1 - 0.09, text=str(day),
-                font=dict(size=10, color="#9CA3AF"),
+                font=dict(size=10, color="#FFFFFF"),
                 showarrow=False, xanchor="left", yanchor="top",
             )
             if cell_lbl:
@@ -540,7 +557,7 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
     fig.update_layout(
         title=dict(
             text=f"<b>{month_label}</b> — Daily Aggregated P&L",
-            font=dict(size=15, color="#E6EEF8"), x=0.5, xanchor="center",
+            font=dict(size=15, color="#FFFFFF"), x=0.5, xanchor="center",
         ),
         xaxis=dict(range=[-0.06, 7.06], showgrid=False, zeroline=False,
                    showticklabels=False, fixedrange=True),
@@ -550,7 +567,7 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
         paper_bgcolor="rgba(11,18,32,0.95)",
         height=nw * 96 + 80,
         margin=dict(l=8, r=8, t=50, b=8),
-        font=dict(color="#E6EEF8"),
+        font=dict(color="#FFFFFF"),
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -1116,10 +1133,10 @@ with tab1:
         ))
         _bar_fig.add_hline(y=0, line_color="rgba(255,255,255,0.25)", line_width=1)
         _bar_fig.update_layout(
-            title=dict(text="Daily P&L", font=dict(color="#E6EEF8", size=13)),
+            title=dict(text="Daily P&L", font=dict(color="#FFFFFF", size=13)),
             xaxis_title="Date", yaxis_title="P&L ($)",
             plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#E6EEF8"), height=230,
+            font=dict(color="#FFFFFF"), height=230,
             margin=dict(l=10, r=10, t=40, b=10),
         )
         _bar_fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.07)")
@@ -1239,13 +1256,13 @@ with tab2:
                 x=_ap, y=_ab, orientation="h",
                 marker_color=_ac, marker_opacity=0.85,
                 text=[f"${p:+,.0f}" for p in _ap], textposition="outside",
-                textfont=dict(color="#E6EEF8", size=11),
+                textfont=dict(color="#FFFFFF", size=11),
                 hovertemplate="<b>%{y}</b><br>P/L: $%{x:+,.2f}<extra></extra>",
             ))
             _attr_fig.update_layout(
                 xaxis_title="P/L ($)",
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#E6EEF8", size=11), height=230,
+                font=dict(color="#FFFFFF", size=11), height=230,
                 margin=dict(l=10, r=65, t=10, b=30),
             )
             _attr_fig.update_xaxes(
@@ -1261,14 +1278,14 @@ with tab2:
                 values=[_bot["win_trades"], _bot["loss_trades"]],
                 marker=dict(colors=["#10B981", "#EF4444"]),
                 hole=0.55, textinfo="percent+label",
-                textfont=dict(color="#E6EEF8"),
+                textfont=dict(color="#FFFFFF"),
                 hovertemplate="%{label}: %{value}<extra></extra>",
             ))
             _pie_fig.update_layout(
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#E6EEF8"), height=230,
+                font=dict(color="#FFFFFF"), height=230,
                 margin=dict(l=10, r=10, t=10, b=10),
-                showlegend=True, legend=dict(font=dict(color="#E6EEF8")),
+                showlegend=True, legend=dict(font=dict(color="#FFFFFF")),
             )
             st.plotly_chart(_pie_fig, use_container_width=True)
 
@@ -1340,6 +1357,36 @@ with tab3:
 # TAB 4: Trade History
 with tab4:
     st.subheader("Recent Trade History")
+
+    sync_col1, sync_col2 = st.columns([1, 3])
+    with sync_col1:
+        if st.button("🔄 Sync Broker Trades Now", key="sync_broker_trades_history_btn", use_container_width=True):
+            brokers = st.session_state.get("brokers", {})
+            if not brokers:
+                st.warning("No broker session found yet. Connect a broker in Unified Broker tab first.")
+            else:
+                with st.spinner("Syncing connected broker trades..."):
+                    sync_stats = sync_connected_brokers(brokers)
+                st.session_state["broker_sync_results"] = [
+                    {
+                        "Broker": item.broker,
+                        "Inserted": item.inserted,
+                        "Skipped": item.skipped,
+                        "Notified": item.notified,
+                        "Errors": item.errors,
+                    }
+                    for item in sync_stats
+                ]
+                st.cache_data.clear()
+                st.success("Broker trade sync completed.")
+
+    with sync_col2:
+        if st.session_state.get("broker_sync_results"):
+            st.dataframe(
+                pd.DataFrame(st.session_state["broker_sync_results"]),
+                use_container_width=True,
+                hide_index=True,
+            )
     
     if not trades_df.empty:
         # Format dataframe

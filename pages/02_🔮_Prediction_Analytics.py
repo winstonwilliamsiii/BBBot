@@ -53,7 +53,7 @@ st.markdown(f"""
         <span style='color: {COLOR_SCHEME['accent_teal']}'>🔮</span>
         Prediction Analytics
     </h1>
-    <p style='color: rgba(255,255,255,0.9); font-size: 1rem;'>
+    <p style='color: #FFFFFF; font-size: 1rem;'>
         Real-time probability predictions from Polymarket & Kalshi
     </p>
 </div>

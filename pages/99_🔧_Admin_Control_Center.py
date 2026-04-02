@@ -409,6 +409,230 @@ def get_status_badge(status):
         return f'<span class="status-error">● {status.upper()}</span>'
 
 
+def probe_http_service(
+    base_url: str,
+    probe_paths: list[str] | None = None,
+) -> tuple[str, str]:
+    """Probe a local HTTP service and return (status, note)."""
+    paths = probe_paths or ["/"]
+    saw_timeout = False
+    saw_server_error = False
+
+    for path in paths:
+        try:
+            response = requests.get(
+                f"{base_url}{path}",
+                timeout=3,
+                allow_redirects=True,
+            )
+            if response.status_code == 200:
+                return "healthy", f"Reachable at {path} (HTTP 200)."
+            if response.status_code < 500:
+                return (
+                    "warning",
+                    f"Reachable at {path} (HTTP {response.status_code}).",
+                )
+            saw_server_error = True
+        except requests.exceptions.Timeout:
+            saw_timeout = True
+        except requests.exceptions.RequestException:
+            continue
+
+    if saw_timeout:
+        return "warning", "Timed out while probing the local endpoint."
+    if saw_server_error:
+        return "warning", "Service responded with a server-side error."
+    return "error", "Service is not responding on localhost."
+
+
+def get_service_dashboard_entries(
+    local_services: list[dict] | None = None,
+) -> list[dict]:
+    """Return service dashboard cards for the admin UI."""
+    docker_index = {
+        service["name"]: service for service in (local_services or [])
+    }
+    resolved_mlflow_url, resolved_probe_note = resolve_mlflow_server_url()
+    definitions = [
+        {
+            "name": "Airflow",
+            "icon": "📊",
+            "url": "http://localhost:8080",
+            "button": "Open Airflow UI",
+            "description": "Workflow orchestration and scheduled DAG runs.",
+            "details": "DAGs: /workflows/airflow/dags/",
+            "credentials": "admin / admin",
+            "probe_paths": ["/health", "/"],
+        },
+        {
+            "name": "MLflow",
+            "icon": "🧠",
+            "url": resolved_mlflow_url,
+            "button": "Open MLflow UI",
+            "description": "Experiment tracking and model run history.",
+            "details": "Tracking URI resolved dynamically from local config.",
+            "probe": "mlflow",
+        },
+        {
+            "name": "KNIME",
+            "icon": "📈",
+            "button": "Managed Through Airflow",
+            "description": "Visual analytics workflows executed through DAGs.",
+            "details": "Workflows: /workflows/knime/dags/",
+            "status": "healthy",
+            "note": "KNIME jobs are integrated through Airflow orchestration.",
+        },
+        {
+            "name": "Streamlit",
+            "icon": "💰",
+            "url": "http://localhost:8501",
+            "button": "Open Budget Dashboard",
+            "description": (
+                "Portfolio, budget, and admin interface entrypoint."
+            ),
+            "details": "Main UI entry: streamlit_app.py",
+            "probe_paths": ["/_stcore/health", "/"],
+        },
+        {
+            "name": "Airbyte",
+            "icon": "🔄",
+            "url": "http://localhost:8000",
+            "button": "Open Airbyte UI",
+            "description": "Data ingestion and ETL pipeline management.",
+            "details": "Workflows: /workflows/airbyte/dags/",
+            "probe_paths": ["/api/v1/health", "/"],
+        },
+    ]
+
+    entries = []
+    for definition in definitions:
+        status = definition.get("status", "error")
+        note = definition.get("note", "Status unavailable.")
+
+        if definition.get("probe") == "mlflow":
+            connected, host_reachable, probe_note = probe_mlflow_server(
+                definition["url"],
+            )
+            if connected:
+                status = "healthy"
+            elif host_reachable:
+                status = "warning"
+            else:
+                status = "error"
+            note = probe_note
+            if resolved_probe_note and resolved_probe_note != probe_note:
+                note = f"{note} {resolved_probe_note}"
+        elif definition.get("probe_paths"):
+            status, note = probe_http_service(
+                definition["url"],
+                definition["probe_paths"],
+            )
+
+        docker_service = docker_index.get(definition["name"])
+        container_note = None
+        if docker_service:
+            containers = ", ".join(docker_service.get("containers", []))
+            if containers:
+                container_note = (
+                    f"Docker: {docker_service['status']} ({containers})"
+                )
+            else:
+                container_note = f"Docker: {docker_service['status']}"
+
+        entries.append({
+            **definition,
+            "status": status,
+            "note": note,
+            "container_note": container_note,
+        })
+
+    return entries
+
+
+def render_service_dashboard(local_services: list[dict] | None = None) -> None:
+    """Render the former HTML service dashboard directly in Streamlit."""
+    st.markdown(
+        '<div class="section-header"><h2>🖥️ Service Dashboard</h2></div>',
+        unsafe_allow_html=True,
+    )
+    control_col, info_col = st.columns([1, 3])
+    with control_col:
+        if st.button(
+            "Refresh Service Status",
+            key="refresh_service_dashboard",
+        ):
+            st.rerun()
+    with info_col:
+        st.caption(
+            "Live probes run against localhost endpoints and available Docker "
+            "containers on each refresh."
+        )
+
+    entries = get_service_dashboard_entries(local_services)
+    healthy_count = sum(1 for entry in entries if entry["status"] == "healthy")
+    warning_count = sum(1 for entry in entries if entry["status"] == "warning")
+    error_count = sum(1 for entry in entries if entry["status"] == "error")
+
+    metric_col1, metric_col2, metric_col3 = st.columns(3)
+    with metric_col1:
+        st.metric("Healthy Services", healthy_count)
+    with metric_col2:
+        st.metric("Warnings", warning_count)
+    with metric_col3:
+        st.metric("Errors", error_count)
+
+    left_col, right_col = st.columns(2)
+    for index, entry in enumerate(entries):
+        target_col = left_col if index % 2 == 0 else right_col
+        with target_col:
+            with st.container(border=True):
+                st.markdown(f"### {entry['icon']} {entry['name']}")
+                st.markdown(
+                    get_status_badge(entry["status"]),
+                    unsafe_allow_html=True,
+                )
+                st.write(entry["description"])
+                st.caption(entry["details"])
+                if entry.get("credentials"):
+                    st.caption(f"Credentials: {entry['credentials']}")
+                if entry.get("container_note"):
+                    st.caption(entry["container_note"])
+                if entry.get("url"):
+                    st.link_button(
+                        entry["button"],
+                        entry["url"],
+                        use_container_width=True,
+                    )
+                else:
+                    st.button(
+                        entry["button"],
+                        key=f"{entry['name']}_managed_button",
+                        disabled=True,
+                        use_container_width=True,
+                    )
+                st.caption(entry["note"])
+
+    st.markdown("### 🔧 Service Status & Troubleshooting")
+    st.markdown(
+        "- Airbyte stability depends on the container environment variables "
+        "and "
+        "network wiring.\n"
+        "- MLflow can appear reachable on localhost while a container is "
+        "still "
+        "restarting; use Docker status together with the HTTP probe.\n"
+        "- KNIME workflows are managed through Airflow, so there is no "
+        "separate "
+        "local web console to open from this page."
+    )
+    st.code(
+        ".\\fix_services.ps1\n"
+        "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\"\n"
+        "docker logs bentley-mlflow --tail 50\n"
+        "docker logs bentley-airflow-webserver --tail 50",
+        language="powershell",
+    )
+
+
 def _admin_broker_name_to_slug(name: str) -> str:
     return (name or "").strip().lower()
 
@@ -828,11 +1052,12 @@ def main():
         st.markdown(f"[MLflow UI]({resolved_mlflow_url})")
         st.markdown("[Airflow](http://localhost:8080)")
         st.markdown("[Airbyte](http://localhost:8000)")
-        st.markdown("[Service Dashboard](../sites/Mansa_Bentley_Platform/service_dashboard.html)")
+        st.caption("Service Dashboard is available in the Services tab.")
     
     # Navigation Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 Overview",
+        "🖥️ Services",
         "🤖 Bot Manager",
         "🔌 Broker Health",
         "🏢 Prop Firms",
@@ -840,6 +1065,7 @@ def main():
         "🧠 MLflow",
         "📈 System Logs"
     ])
+    local_services = get_local_docker_services_status()
     
     # TAB 1: Overview Dashboard
     with tab1:
@@ -864,8 +1090,6 @@ def main():
         
         with col1:
             st.subheader("Docker Services")
-            local_services = get_local_docker_services_status()
-
             if local_services:
                 for service in local_services:
                     st.markdown(
@@ -899,9 +1123,13 @@ def main():
             st.text("13:12 - FTMO trade executed (EURUSD)")
             st.text("11:30 - Risk limit updated (max drawdown)")
             st.text("09:15 - Daily reconciliation completed")
-    
-    # TAB 2: Bot Manager
+
+    # TAB 2: Service Dashboard
     with tab2:
+        render_service_dashboard(local_services)
+    
+    # TAB 3: Bot Manager
+    with tab3:
         st.markdown('<div class="section-header"><h2>AI/ML Bot Orchestration</h2></div>', unsafe_allow_html=True)
 
         catalog_rows = get_bot_catalog_rows()
@@ -1107,8 +1335,8 @@ def main():
                         st.session_state.show_deploy_modal = False
                         st.rerun()
     
-    # TAB 3: Broker Health
-    with tab3:
+    # TAB 4: Broker Health
+    with tab4:
         st.markdown('<div class="section-header"><h2>Multi-Broker Orchestration</h2></div>', unsafe_allow_html=True)
         
         # Refresh button
@@ -1189,8 +1417,8 @@ def main():
             
             st.markdown("---")
     
-    # TAB 4: Prop Firms
-    with tab4:
+    # TAB 5: Prop Firms
+    with tab5:
         st.markdown('<div class="section-header"><h2>Prop Firm Execution Management</h2></div>', unsafe_allow_html=True)
         
         # Prop firm status
@@ -1229,8 +1457,8 @@ def main():
             
             st.markdown("---")
     
-    # TAB 5: Risk Engine
-    with tab5:
+    # TAB 6: Risk Engine
+    with tab6:
         st.markdown('<div class="section-header"><h2>Risk Management & Compliance</h2></div>', unsafe_allow_html=True)
         st.caption(
             "Portfolio optimization lens: monitor liquidity, drawdown, and concentration "
@@ -1368,8 +1596,8 @@ def main():
         st.subheader("Recent Risk Events")
         st.text("No violations in the last 24 hours ✓")
     
-    # TAB 6: MLflow Integration
-    with tab6:
+    # TAB 7: MLflow Integration
+    with tab7:
         st.markdown('<div class="section-header"><h2>🧠 MLflow Experiment Tracking</h2></div>', unsafe_allow_html=True)
 
         col1, col2 = st.columns([2, 1])
@@ -1515,8 +1743,8 @@ BACKEND_STORE_URI: {get_mlflow_backend_store_uri()}
 - Use BACKEND_STORE_URI for `mlflow db upgrade`.
             """, language="text")
     
-    # TAB 7: System Logs
-    with tab7:
+    # TAB 8: System Logs
+    with tab8:
         st.markdown('<div class="section-header"><h2>Execution Logs & Monitoring</h2></div>', unsafe_allow_html=True)
         
         # Log filters

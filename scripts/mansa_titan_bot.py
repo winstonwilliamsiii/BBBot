@@ -38,20 +38,17 @@ except ModuleNotFoundError:
     )
 
 try:
-    import yaml
-except ImportError:
-    yaml = None
-
-try:
     import alpaca_trade_api as tradeapi
 except ImportError:
     tradeapi = None
 
 try:
     import mlflow
+    import mlflow.sklearn as mlflow_sklearn
     from mlflow.exceptions import MlflowException
 except ImportError:
     mlflow = None
+    mlflow_sklearn = None
     MlflowException = RuntimeError
 
 try:
@@ -97,7 +94,10 @@ def _load_active_bot_profile(
         return profile
 
     try:
-        bot_profile = load_runtime_bot_config(active_name, config_path=config_path)
+        bot_profile = load_runtime_bot_config(
+            active_name,
+            config_path=config_path,
+        )
     except (OSError, ValueError, TypeError, FileNotFoundError) as exc:
         logger.warning("Failed reading bot config %s: %s", config_path, exc)
         return profile
@@ -108,7 +108,10 @@ def _load_active_bot_profile(
         "bot_name": str(bot_profile.get("bot_name") or active_name),
     }
 
-    if "risk_rules" not in merged or not isinstance(merged["risk_rules"], dict):
+    if (
+        "risk_rules" not in merged
+        or not isinstance(merged["risk_rules"], dict)
+    ):
         merged["risk_rules"] = profile["risk_rules"]
 
     return merged
@@ -242,13 +245,17 @@ class TitanConfig:
                 str(
                     bot_profile.get(
                         "strategy_label",
-                        bot_profile.get("strategy_name", "Mansa Tech - Titan Bot"),
+                        bot_profile.get(
+                            "strategy_name",
+                            "Mansa Tech - Titan Bot",
+                        ),
                     )
                 ),
             ),
             active_bot_name=str(bot_profile.get("bot_name", "Titan_Bot")),
             screener_file=str(
-                bot_profile.get("screener_file") or "titan_tech_fundamentals.csv"
+                bot_profile.get("screener_file")
+                or "titan_tech_fundamentals.csv"
             ),
             universe=str(bot_profile.get("universe") or "Mag7+Tech"),
             position_size=_as_float(
@@ -422,7 +429,8 @@ raise SystemExit(1)
             )
         except subprocess.TimeoutExpired as exc:
             raise requests.Timeout(
-                f"Timed out submitting Alpaca order after {self.config.order_timeout_seconds}s"
+                "Timed out submitting Alpaca order after "
+                f"{self.config.order_timeout_seconds}s"
             ) from exc
 
         if completed.returncode != 0:
@@ -517,7 +525,8 @@ raise SystemExit(1)
             return 200 <= response.status_code < 300
         except requests.RequestException:
             logger.info(
-                "Skipping MLflow model load because tracking URI is unavailable: %s",
+                "Skipping MLflow model load because tracking URI is "
+                "unavailable: %s",
                 health_url,
             )
             return False
@@ -700,7 +709,10 @@ raise SystemExit(1)
         try:
             return self._fetch_live_account_snapshot()
         except (requests.RequestException, RuntimeError, ValueError) as exc:
-            logger.warning("Using cached Alpaca snapshot after live failure: %s", exc)
+            logger.warning(
+                "Using cached Alpaca snapshot after live failure: %s",
+                exc,
+            )
             return self._read_cached_account_snapshot() or {
                 "cash": 0.0,
                 "equity": 0.0,
@@ -784,7 +796,11 @@ raise SystemExit(1)
             return float(self.config.position_size)
         return float(qty)
 
-    def _compute_rsi(self, close: pd.Series, period: int = 14) -> Optional[float]:
+    def _compute_rsi(
+        self,
+        close: pd.Series,
+        period: int = 14,
+    ) -> Optional[float]:
         if close.empty or len(close) <= period:
             return None
         delta = close.diff()
@@ -895,7 +911,8 @@ raise SystemExit(1)
 
         if self.api is None:
             logger.warning(
-                "TITAN_SELECTION_MODE=technical but Alpaca client unavailable; using CSV order"
+                "TITAN_SELECTION_MODE=technical but Alpaca client unavailable; "
+                "using CSV order"
             )
             return candidates
 
@@ -920,11 +937,15 @@ raise SystemExit(1)
         return enriched
 
     def load_model(self):
-        if mlflow is None or not self._mlflow_tracking_is_reachable():
+        if (
+            mlflow is None
+            or mlflow_sklearn is None
+            or not self._mlflow_tracking_is_reachable()
+        ):
             return None
         try:
             mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
-            return mlflow.sklearn.load_model(self.config.titan_model_uri)
+            return mlflow_sklearn.load_model(self.config.titan_model_uri)
         except (
             AttributeError,
             OSError,
@@ -935,20 +956,43 @@ raise SystemExit(1)
             logger.warning("MLflow model load failed: %s", exc)
             return None
 
+    def _prepare_model_features(
+        self,
+        model: Any,
+        features: Sequence[float],
+    ) -> List[float]:
+        vector = [float(value) for value in features] if features else []
+        expected = getattr(model, "n_features_in_", None)
+
+        if expected is None:
+            return vector or [0.0]
+
+        if len(vector) < int(expected):
+            vector.extend([0.0] * (int(expected) - len(vector)))
+        elif len(vector) > int(expected):
+            vector = vector[: int(expected)]
+
+        return vector or [0.0] * int(expected)
+
     def titan_predict(self, features: Sequence[float]) -> Tuple[int, float]:
         model = self.load_model()
         if model is None:
             return 1, 0.5
 
+        prepared = self._prepare_model_features(model, features)
+
         try:
-            prediction = int(model.predict([list(features)])[0])
+            prediction = int(model.predict([prepared])[0])
         except (AttributeError, IndexError, TypeError, ValueError) as exc:
-            logger.warning("Prediction inference failed, using fallback: %s", exc)
+            logger.warning(
+                "Prediction inference failed, using fallback: %s",
+                exc,
+            )
             return 1, 0.5
 
         probability = 0.5
         try:
-            probability = float(model.predict_proba([list(features)])[0][1])
+            probability = float(model.predict_proba([prepared])[0][1])
         except (AttributeError, IndexError, TypeError, ValueError):
             probability = 0.5
 
@@ -1222,8 +1266,14 @@ raise SystemExit(1)
                     "executed": order is not None,
                     "fundamentals": fundamentals,
                     "technical_score": candidate.get("technical_score"),
-                    "technical_metrics": candidate.get("technical_metrics", {}),
-                    "selection_reason": candidate.get("selection_reason", "csv_order"),
+                    "technical_metrics": candidate.get(
+                        "technical_metrics",
+                        {},
+                    ),
+                    "selection_reason": candidate.get(
+                        "selection_reason",
+                        "csv_order",
+                    ),
                 }
             )
 

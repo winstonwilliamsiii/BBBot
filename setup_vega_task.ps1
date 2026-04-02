@@ -1,7 +1,7 @@
 param(
     [ValidateSet("Create", "Delete", "List", "Test")]
     [string]$Action = "Create",
-    [string]$TaskName = "Bentley-Vega-IBKR-930",
+    [string]$TaskName = "Bentley-Vega",
     [string]$MorningTime = "09:30",
     [int]$MaxTrades = 1,
     [ValidateSet("buy", "sell")]
@@ -11,7 +11,7 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$runner = Join-Path $repoRoot "run_vega_ibkr_930.ps1"
+$runner = Join-Path $repoRoot "run_vega.ps1"
 
 if (-not (Test-Path $runner)) {
     Write-Error "Runner script not found: $runner"

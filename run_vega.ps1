@@ -14,7 +14,7 @@ $vegaScript = Join-Path $repoRoot "scripts\vega_bot.py"
 $pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $logDir = Join-Path $repoRoot "logs"
 $latestEventPath = Join-Path $logDir "last_bot_mode_event.json"
-$runLogPath = Join-Path $logDir "vega_ibkr_930_last_run.log"
+$runLogPath = Join-Path $logDir "vega_last_run.log"
 
 if (-not (Test-Path $launcher)) {
     Write-Error "Launcher not found: $launcher"
@@ -72,7 +72,7 @@ if (-not $env:IBKR_PORT) {
     }
 }
 
-Write-Host "Running Vega IBKR 9:30 launcher..." -ForegroundColor Cyan
+Write-Host "Running Vega launcher..." -ForegroundColor Cyan
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -Bot Vega -Mode ON -Broker IBKR -TradingMode $resolvedTradingMode
 
 if (-not (Test-Path $latestEventPath)) {
@@ -87,7 +87,7 @@ if (-not $event.ibkr_connect_ok) {
 }
 
 $timestamp = (Get-Date).ToUniversalTime().ToString("o")
-Add-Content -Path $runLogPath -Value ("[$timestamp] Vega IBKR 9:30 run started")
+Add-Content -Path $runLogPath -Value ("[$timestamp] Vega run started")
 
 & $pythonExe $vegaScript --max-trades $MaxTrades --side $Side 2>&1 | Tee-Object -FilePath $runLogPath -Append
 
@@ -96,4 +96,4 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-Write-Host "Vega_Bot 9:30 run completed." -ForegroundColor Green
+Write-Host "Vega_Bot run completed." -ForegroundColor Green

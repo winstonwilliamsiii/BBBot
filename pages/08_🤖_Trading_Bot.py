@@ -783,9 +783,9 @@ def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> 
 
 
 def _vega_automation_status() -> dict:
-    """Read 9:30 Vega task metadata and latest launcher event from logs."""
+    """Read Vega task metadata and latest launcher event from logs."""
     repo_root = Path(__file__).resolve().parents[1]
-    task_name = "Bentley-Vega-IBKR-930"
+    task_name = "Bentley-Vega"
     schedule = {
         "exists": False,
         "task_name": task_name,
@@ -910,7 +910,7 @@ def _render_quick_launch_buttons() -> None:
     schedule = automation["schedule"]
     latest_event = automation["latest_event"]
 
-    st.markdown("**Vega IBKR Scheduled Automation (09:30 ET)**")
+    st.markdown("**Vega Scheduled Automation (09:30 ET)**")
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Task", "Configured" if schedule.get("exists") else "Missing")

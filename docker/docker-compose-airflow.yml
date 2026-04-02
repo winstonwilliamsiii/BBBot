@@ -1,4 +1,4 @@
-version: '3.8'
+name: bentley-airflow
 
 services:
   # MySQL Database (shared between Airflow and Streamlit app)

@@ -71,17 +71,17 @@ bots:
 		strategy_label: Vega Mansa Retail MTF-ML
 ```
 
-## 3.2) Vega 9:30 IBKR automation
+## 3.2) Vega automation
 
 Register the task expected by Admin Control Center:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action Create
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action Create
 ```
 
-This creates the weekday `Bentley-Vega-IBKR-930` task and runs:
+This creates the weekday `Bentley-Vega` task and runs:
 
-- `run_vega_ibkr_930.ps1`
+- `run_vega.ps1`
 - `start_bot_mode.ps1 -Bot Vega -Mode ON -Broker IBKR`
 - `scripts/vega_bot.py`
 

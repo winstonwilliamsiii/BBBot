@@ -88,33 +88,33 @@ Use valid JSON in TradingView alert message.
 }
 ```
 
-## 4) Optional Windows 9:30 IBKR Scheduler
+## 4) Optional Windows Vega Scheduler
 
 The repository now includes a scheduled task setup that matches the Admin
-Control Center check for `Bentley-Vega-IBKR-930`.
+Control Center check for `Bentley-Vega`.
 
 Create the task:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action Create
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action Create
 ```
 
 List the task:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action List
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action List
 ```
 
 Test the task:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action Test
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action Test
 ```
 
 Execution path:
 
-- `setup_vega_ibkr_task.ps1` registers the scheduled task.
-- `run_vega_ibkr_930.ps1` performs the 9:30 launch sequence.
+- `setup_vega_task.ps1` registers the scheduled task.
+- `run_vega.ps1` performs the 9:30 launch sequence.
 - `start_bot_mode.ps1 -Bot Vega -Mode ON -Broker IBKR` checks IBKR connectivity.
 - `scripts/vega_bot.py` runs the dedicated Vega_Bot fundamentals runtime.
 

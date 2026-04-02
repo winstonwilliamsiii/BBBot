@@ -886,8 +886,8 @@ def get_local_docker_services_status():
 
 
 def get_vega_ibkr_schedule_status() -> dict:
-    """Return task scheduler metadata for the Vega IBKR 9:30 automation task."""
-    task_name = "Bentley-Vega-IBKR-930"
+    """Return task scheduler metadata for the Vega automation task."""
+    task_name = "Bentley-Vega"
     cmd = ["schtasks", "/query", "/tn", task_name, "/fo", "LIST", "/v"]
     try:
         result = subprocess.run(
@@ -1155,7 +1155,7 @@ def main():
         st.dataframe(catalog_df, use_container_width=True, hide_index=True)
         st.markdown("---")
 
-        st.subheader("Vega IBKR 9:30 Automation")
+        st.subheader("Vega Automation")
         schedule = get_vega_ibkr_schedule_status()
         last_event = get_last_bot_mode_event()
         vega_launch_mode = st.radio(
@@ -1209,8 +1209,8 @@ def main():
             )
         else:
             st.warning(
-                "Vega 9:30 task is not configured yet. "
-                "Run setup from terminal to register Bentley-Vega-IBKR-930."
+                "Vega task is not configured yet. "
+                "Run setup from terminal to register Bentley-Vega."
             )
 
         if last_event:

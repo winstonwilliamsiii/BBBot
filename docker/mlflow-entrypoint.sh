@@ -74,8 +74,9 @@ echo "  Artifact Root: ${ARTIFACT_ROOT}"
 # Start MLflow server with MySQL backend
 exec mlflow server \
     --backend-store-uri "${BACKEND_STORE_URI}" \
-    --default-artifact-root "${ARTIFACT_ROOT}" \
+    --default-artifact-root "mlflow-artifacts:/" \
+    --artifacts-destination "${ARTIFACT_ROOT}" \
     --host 0.0.0.0 \
     --port 5000 \
-    --allowed-hosts "mlflow,bentley-mlflow,localhost,127.0.0.1" \
+    --allowed-hosts "mlflow,mlflow:5000,bentley-mlflow,bentley-mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000" \
     --serve-artifacts

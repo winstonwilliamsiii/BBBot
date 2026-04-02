@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV MLFLOW_HOME=/mlflow
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    mlflow==2.8.1 \
+    gunicorn==21.2.0 \
+    pymysql==1.1.0
+
+WORKDIR /mlflow
+RUN mkdir -p /mlflow/artifacts
+
+CMD ["mlflow", "server", "--backend-store-uri", "sqlite:////mlflow/mlflow.db", "--default-artifact-root", "/mlflow/artifacts", "--host", "0.0.0.0", "--port", "5000", "--serve-artifacts", "--gunicorn-opts", "--bind 0.0.0.0:5000 --workers 1 --timeout 180"]

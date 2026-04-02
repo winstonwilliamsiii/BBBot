@@ -386,6 +386,97 @@ class TitanBot:
             )
             return False
 
+    def _start_mlflow_trade_run(
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+    ) -> bool:
+        if mlflow is None or not self._mlflow_tracking_is_reachable():
+            return False
+
+        try:
+            mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
+            if mlflow.active_run() is None:
+                mlflow.start_run(
+                    run_name=(
+                        f"{self.config.active_bot_name}-{symbol}-{side}"
+                    )
+                )
+                mlflow.set_tags(
+                    {
+                        "bot": self.config.active_bot_name,
+                        "strategy": self.config.strategy_name,
+                        "symbol": symbol,
+                        "side": side,
+                    }
+                )
+                mlflow.log_params(
+                    {
+                        "active_bot": self.config.active_bot_name,
+                        "strategy_label": self.config.strategy_name,
+                        "symbol": symbol,
+                        "side": side,
+                        "qty": qty,
+                        "dry_run": self.config.dry_run,
+                        "enable_trading": self.config.enable_trading,
+                    }
+                )
+                return True
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow run start failed: %s", exc)
+
+        return False
+
+    def _log_mlflow_trade_result(
+        self,
+        prediction: int,
+        probability: float,
+        status: str,
+        order_id: Optional[str] = None,
+    ) -> None:
+        if mlflow is None or mlflow.active_run() is None:
+            return
+
+        try:
+            mlflow.log_metric(
+                "titan_prediction_probability",
+                float(probability),
+            )
+            mlflow.log_metric(
+                "titan_prediction_label",
+                float(prediction),
+            )
+            mlflow.set_tag("trade_status", status)
+            if order_id:
+                mlflow.set_tag("alpaca_order_id", order_id)
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow trade logging failed: %s", exc)
+
+    def _end_mlflow_trade_run(self, started_run: bool) -> None:
+        if not started_run or mlflow is None:
+            return
+
+        try:
+            mlflow.end_run()
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ):
+            pass
+
     def _init_alpaca_client(self):
         if tradeapi is None:
             logger.warning(
@@ -780,6 +871,11 @@ class TitanBot:
     ):
         effective_qty = self._effective_order_qty(qty)
         prediction, probability = self.titan_predict(features)
+        mlflow_run_started = self._start_mlflow_trade_run(
+            symbol=symbol,
+            side=side,
+            qty=effective_qty,
+        )
         passes_ml_gate = (
             prediction == 1
             and probability >= self.config.prediction_threshold
@@ -790,118 +886,159 @@ class TitanBot:
         )
 
         try:
-            if mlflow is not None:
-                mlflow.log_param("active_bot", self.config.active_bot_name)
-                mlflow.log_param("strategy_label", self.config.strategy_name)
-        except (RuntimeError, TypeError, ValueError):
-            pass
+            if not passes_ml_gate:
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "blocked",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes="ML gate rejected trade",
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "blocked_ml_gate",
+                )
+                return None
 
-        if not passes_ml_gate:
+            if not passes_risk_gate:
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "blocked",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes="Liquidity guard blocked trade",
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "blocked_liquidity",
+                )
+                return None
+
+            if not passes_fundamental_risk_rules:
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "blocked",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=(
+                        "Risk rule blocked trade: "
+                        f"{failed_risk_rule}"
+                    ),
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    f"blocked_{failed_risk_rule}",
+                )
+                return None
+
+            if (
+                self.config.dry_run
+                or not self.config.enable_trading
+                or self.api is None
+            ):
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "simulated",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes="Dry-run mode",
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "simulated",
+                )
+                return None
+
+            try:
+                order = self._submit_alpaca_order(
+                    symbol=symbol,
+                    qty=effective_qty,
+                    side=side,
+                )
+            except requests.RequestException as exc:
+                logger.error(
+                    "Alpaca order submission failed for %s: %s",
+                    symbol,
+                    exc,
+                )
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "error",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=f"Alpaca submit failed: {exc}",
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "error_submit",
+                )
+                return None
+            except RuntimeError as exc:
+                logger.error(
+                    "Alpaca order submission blocked for %s: %s",
+                    symbol,
+                    exc,
+                )
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "error",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=str(exc),
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "error_runtime",
+                )
+                return None
+
+            order_id = self._extract_order_id(order)
             self.log_trade(
                 symbol,
                 side,
                 effective_qty,
                 "MARKET",
-                "blocked",
+                "submitted",
+                order_id=order_id,
                 prediction_label=prediction,
                 prediction_probability=probability,
-                notes="ML gate rejected trade",
             )
-            return None
-
-        if not passes_risk_gate:
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "blocked",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes="Liquidity guard blocked trade",
+            self._log_mlflow_trade_result(
+                prediction,
+                probability,
+                "submitted",
+                order_id=order_id,
             )
-            return None
-
-        if not passes_fundamental_risk_rules:
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "blocked",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes=(
-                    "Risk rule blocked trade: "
-                    f"{failed_risk_rule}"
-                ),
+            self._notify_discord(
+                f"Titan executed {side} order for {effective_qty} {symbol}"
             )
-            return None
-
-        if (
-            self.config.dry_run
-            or not self.config.enable_trading
-            or self.api is None
-        ):
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "simulated",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes="Dry-run mode",
-            )
-            return None
-
-        try:
-            order = self._submit_alpaca_order(
-                symbol=symbol,
-                qty=effective_qty,
-                side=side,
-            )
-        except requests.RequestException as exc:
-            logger.error("Alpaca order submission failed for %s: %s", symbol, exc)
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "error",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes=f"Alpaca submit failed: {exc}",
-            )
-            return None
-        except RuntimeError as exc:
-            logger.error("Alpaca order submission blocked for %s: %s", symbol, exc)
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "error",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes=str(exc),
-            )
-            return None
-
-        self.log_trade(
-            symbol,
-            side,
-            effective_qty,
-            "MARKET",
-            "submitted",
-            order_id=self._extract_order_id(order),
-            prediction_label=prediction,
-            prediction_probability=probability,
-        )
-        self._notify_discord(
-            f"Titan executed {side} order for {effective_qty} {symbol}"
-        )
-        return order
+            return order
+        finally:
+            self._end_mlflow_trade_run(mlflow_run_started)
 
     def execute_from_screener(
         self,

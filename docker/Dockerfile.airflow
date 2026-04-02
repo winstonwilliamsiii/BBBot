@@ -7,10 +7,13 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
     default-libmysqlclient-dev \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates \
+    && ln -sf /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-bundle.crt
 
 USER airflow
-RUN pip install --no-cache-dir \
+RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org --no-cache-dir \
     pymysql==1.1.0 \
     mysqlclient \
     apache-airflow[mysql] \

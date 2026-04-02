@@ -151,9 +151,9 @@ These files have hardcoded credentials that need manual review:
    - Line 20: MySQL config
    - **Action:** Use environment variables (partially done)
 
-3. **`service_dashboard.html`**
-   - Line 34: Default admin credentials
-   - **Action:** Change default password
+3. **`pages/99_🔧_Admin_Control_Center.py`**
+   - Development login still uses `admin` / `admin`
+   - **Action:** Replace with proper authentication
 
 ---
 

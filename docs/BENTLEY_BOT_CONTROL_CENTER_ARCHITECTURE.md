@@ -318,7 +318,7 @@ Scripts:
 #### Existing Components ✅
 ```
 Monitoring:
-├── Service Dashboard (service_dashboard.html) ✅
+├── Service Dashboard (Admin Control Center → Services) ✅
 ├── Docker health checks ✅
 └── Basic error logging ✅
 
@@ -695,7 +695,7 @@ BentleyBudgetBot/
 - IBKR integration (stub exists)
 - MT5 and prop-firm routing expansion
 - Risk engine (basic checks in strategies)
-- Admin dashboard (service_dashboard.html only)
+- Admin dashboard includes a native Streamlit Services tab
   - ✅ **NEW:** Control Center Admin UI created (`pages/99_🔧_Admin_Control_Center.py`)
 
 ### 🔨 To Build (Priority Order)

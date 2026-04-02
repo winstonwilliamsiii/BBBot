@@ -190,7 +190,7 @@ Connects to existing Docker containers:
 - **Redis** (localhost:6379)
 
 ### Service Dashboard
-Links to existing `sites/Mansa_Bentley_Platform/service_dashboard.html` in sidebar Quick Links.
+Rendered directly inside the Admin Control Center on the **Services** tab.
 
 ### Bot Integrations
 Uses bot modules from `/bentley-bot/bots/` folder:

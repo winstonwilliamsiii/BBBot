@@ -112,7 +112,7 @@ python backend/api/app.py
 # 3. Start Streamlit app (in another terminal)
 streamlit run streamlit_app.py
 
-# 4. Open service dashboard
+# 4. Open service dashboard in Streamlit
 start open_dashboard.ps1
 ```
 
@@ -327,6 +327,8 @@ BentleyBudgetBot/
 .\open_dashboard.ps1
 ```
 
+This opens Streamlit and the service dashboard now lives in **Admin Control Center → Services**.
+
 ### Fix Any Issues
 ```powershell
 .\fix_services.ps1
@@ -407,7 +409,7 @@ docker logs bentley-airflow-webserver --tail 50
 ### Resources
 - GitHub: [winstonwilliamsiii/BBBot](https://github.com/winstonwilliamsiii/BBBot)
 - Streamlit Cloud: [bbbot305.streamlit.app](https://bbbot305.streamlit.app)
-- Service Dashboard: [open_dashboard.ps1](open_dashboard.ps1)
+- Service Dashboard: [pages/99_🔧_Admin_Control_Center.py](pages/99_🔧_Admin_Control_Center.py) → Services tab
 
 ---
 

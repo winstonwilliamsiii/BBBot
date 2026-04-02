@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
-    mlflow==2.8.1 \
+    mlflow==3.6.0 \
     gunicorn==21.2.0 \
     pymysql==1.1.0
 
@@ -19,6 +19,6 @@ RUN mkdir -p /mlflow/artifacts
 
 # Add startup script to wait for MySQL
 COPY docker/mlflow-entrypoint.sh /mlflow-entrypoint.sh
-RUN chmod +x /mlflow-entrypoint.sh
+RUN sed -i 's/\r$//' /mlflow-entrypoint.sh && chmod +x /mlflow-entrypoint.sh
 
 ENTRYPOINT ["/mlflow-entrypoint.sh"]

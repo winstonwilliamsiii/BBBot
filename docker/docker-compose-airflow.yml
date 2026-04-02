@@ -65,7 +65,7 @@ services:
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
       DISCORD_WEBHOOK_NOOMO: ${DISCORD_WEBHOOK_NOOMO:-}
       BENTLEY_REPO_ROOT: /opt/bentley
-      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==3.6.0 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
     ports:
       - "8080:8080"
     volumes:
@@ -113,7 +113,7 @@ services:
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
       DISCORD_WEBHOOK_NOOMO: ${DISCORD_WEBHOOK_NOOMO:-}
       BENTLEY_REPO_ROOT: /opt/bentley
-      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==3.6.0 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/config/logs:/opt/airflow/logs
@@ -153,7 +153,7 @@ services:
       AIRBYTE_API_KEY: ${AIRBYTE_API_KEY:-}
       DISCORD_WEBHOOK_NOOMO: ${DISCORD_WEBHOOK_NOOMO:-}
       BENTLEY_REPO_ROOT: /opt/bentley
-      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==2.8.1 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
+      _PIP_ADDITIONAL_REQUIREMENTS: 'mlflow==3.6.0 pymysql==1.1.0 requests==2.31.0 pandas==2.1.4 numpy==1.24.3 scikit-learn==1.5.2 joblib==1.4.2 yfinance==0.2.54'
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/config/logs:/opt/airflow/logs

@@ -24,6 +24,8 @@ FEATURE_COLUMNS = [
     "debt_to_equity",
 ]
 
+EXPERIMENT_NAME = "Titan Models Local"
+
 
 BASELINE_ROWS = [
     {
@@ -115,7 +117,21 @@ def build_training_frame() -> pd.DataFrame:
 def main() -> None:
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
     mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment("Titan Models")
+    client = MlflowClient(tracking_uri=tracking_uri)
+    artifact_root = (
+        "file:///c:/Users/winst/BentleyBudgetBot/data/mlflow/artifacts/"
+        "titan-models"
+    )
+    experiment = client.get_experiment_by_name(EXPERIMENT_NAME)
+    if experiment is None:
+        experiment_id = client.create_experiment(
+            EXPERIMENT_NAME,
+            artifact_location=artifact_root,
+        )
+    else:
+        experiment_id = experiment.experiment_id
+
+    mlflow.set_experiment(experiment_id=experiment_id)
 
     training_frame = build_training_frame()
     features = training_frame[FEATURE_COLUMNS]
@@ -145,7 +161,6 @@ def main() -> None:
             name="TitanRiskModel",
         )
 
-    client = MlflowClient(tracking_uri=tracking_uri)
     client.transition_model_version_stage(
         name="TitanRiskModel",
         version=registered.version,

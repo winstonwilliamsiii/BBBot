@@ -8,33 +8,44 @@ This structure consolidates all control center code into a clean, modular organi
 /bentley-bot/                          # Control Center Root Directory
 ├── bots/                              # Trading Bot Modules (13 bots)
 │   ├── __init__.py
-│   ├── bot1.py                        # Bot 1: GoldRSI Strategy
-│   ├── bot2.py                        # Bot 2: USD/COP Short Strategy
-│   ├── bot3.py                        # Bot 3: Portfolio Optimizer
-│   ├── bot4.py                        # Bot 4: Sentiment Analyzer
-│   ├── bot5.py                        # Bot 5: Technical Indicator Bot
-│   ├── bot6.py                        # Bot 6: Multi-timeframe Strategy
-│   ├── bot7.py                        # Bot 7: Crypto Arbitrage
-│   ├── bot8.py                        # Bot 8: Mean Reversion
-│   ├── bot9.py                        # Bot 9: Momentum Strategy
-│   ├── bot10.py                       # Bot 10: Options Strategy
-│   ├── bot11.py                       # Bot 11: Pairs Trading
-│   ├── bot12.py                       # Bot 12: News Trading
-│   └── bot13.py                       # Bot 13: ML Ensemble
+│   ├── titan.py                       # Titan | Mansa Tech | CNN with Deep Learning
+│   ├── vega.py                        # Vega | Mansa Retail | Breakout Strategy
+│   ├── draco.py                       # Draco | Mansa Money Bag | Sentiment Analyzer
+│   ├── altair.py                      # Altair | Mansa AI | News Trading
+│   ├── procryon.py                    # Procryon | Crypto Fund | Crypto Arbitrage
+│   ├── hydra.py                       # Hydra | Mansa Health | Momentum Strategy
+│   ├── triton.py                      # Triton | Mansa Transportation | Pending
+│   ├── dione.py                       # Dione | Mansa Options | Put Call Parity
+│   ├── dogon.py                       # Dogon | Mansa ETF | Portfolio Optimizer
+│   ├── rigel.py                       # Rigel | Mansa FOREX | Mean Reversion
+│   ├── orion.py                       # Orion | Mansa Minerals | GoldRSI Strategy
+│   ├── rhea.py                        # Rhea | Mansa ADI | Intra-Day / Swing
+│   └── jupicita.py                    # Jupicita | Mansa_Smalls | Pairs Trading
 │
-├── brokers/                           # Broker API Clients
+├── brokers/                           # Brokerage & Execution Clients
 │   ├── __init__.py
-│   ├── alpaca.py                      # Alpaca Markets API client
-│   ├── schwab.py                      # Schwab/TD Ameritrade API client
-│   ├── ibkr.py                        # Interactive Brokers TWS client
-│   ├── binance.py                     # Binance crypto API client
-│   └── coinbase.py                    # Coinbase Advanced Trade API client
+│   ├── alpaca_client.py               # Alpaca markets brokerage client
+│   ├── ibkr_client.py                 # Interactive Brokers TWS client
+│   ├── mt5_client.py                  # MetaTrader 5 execution client
+│   ├── prop_firm_ftmo.py              # FTMO execution adapter
+│   ├── prop_firm_axi.py               # Axi Select execution adapter
+│   └── prop_firm_zenit.py             # Zenit execution adapter
 │
-├── prop_firms/                        # Prop Firm Execution Connectors
-│   ├── __init__.py
-│   ├── ftmo_mt5.py                    # FTMO challenge account via MT5
-│   ├── axi_mt5.py                     # Axi Select via MT5
-│   └── zenit_ninja.py                 # Zenit via NinjaTrader bridge
+├── config/                            # Bot strategy and execution profiles
+│   └── bots/
+│       ├── titan.yml                  # Titan runtime profile
+│       ├── vega.yml                   # Vega runtime profile
+│       ├── draco.yml                  # Draco runtime profile
+│       ├── altair.yml                 # Altair runtime profile
+│       ├── procryon.yml               # Procryon runtime profile
+│       ├── hydra.yml                  # Hydra runtime profile
+│       ├── triton.yml                 # Triton runtime profile
+│       ├── dione.yml                  # Dione runtime profile
+│       ├── dogon.yml                  # Dogon runtime profile
+│       ├── rigel.yml                  # Rigel runtime profile
+│       ├── orion.yml                  # Orion runtime profile
+│       ├── rhea.yml                   # Rhea runtime profile
+│       └── jupicita.yml               # Jupicita runtime profile
 │
 ├── mlflow/                            # ML Experiment Tracking & Training
 │   ├── __init__.py
@@ -61,19 +72,19 @@ This structure consolidates all control center code into a clean, modular organi
 - Each bot is a standalone module implementing specific trading strategies
 - Common interface: `start()`, `stop()`, `get_status()`, `configure()`
 - Can be deployed independently or as ensembles
-- Examples: GoldRSI (bot1), USD/COP Short (bot2), ML Ensemble (bot13)
+- Modules are organized by bot name, with the fund name and strategy documented alongside each file
+- Examples: Titan (Mansa Tech, CNN with Deep Learning), Orion (Mansa Minerals, GoldRSI Strategy), Jupicita (Mansa_Smalls, Pairs Trading)
 
-### Broker Clients (`/brokers/`)
-- Standardized interface for multi-broker execution
-- Inherits from `BrokerClient` abstract base class in `frontend/utils/broker_interface.py`
-- Handles authentication, order placement, position tracking
-- Supports equities (Alpaca, Schwab, IBKR) and crypto (Binance, Coinbase)
+### Brokerage Clients (`/brokers/`)
+- Unified execution layer for broker and prop-firm connectivity
+- Inherits from `BrokerClient` abstract base class in `frontend/utils/broker_interface.py` where practical
+- Handles authentication, order placement, position tracking, and venue-specific execution rules
+- Current supported adapters: Alpaca, IBKR, MT5, FTMO, Axi Select, and Zenit
 
-### Prop Firm Connectors (`/prop_firms/`)
-- Bridge to prop firm challenge accounts (no public APIs)
-- FTMO & Axi: MT5 Python bridge (`MetaTrader5` package)
-- Zenit: NinjaTrader C# automation or REST API
-- Enforces prop firm rules (max drawdown, daily loss limits, forbidden instruments)
+### Bot Config YAML (`/config/bots/`)
+- One YAML profile per bot for strategy metadata, broker routing, and runtime defaults
+- Keeps strategy configuration separate from secrets and infrastructure credentials
+- Mirrors the existing repo pattern where bot profiles live in YAML and credentials remain in environment variables
 
 ### MLflow Integration (`/mlflow/`)
 - Training pipeline: Feature engineering → model training → hyperparameter tuning
@@ -122,20 +133,20 @@ mkdir -p bentley-bot
 # Create bot modules
 mkdir -p bentley-bot/bots
 cd bentley-bot/bots
-touch __init__.py bot{1..13}.py
+touch __init__.py titan.py vega.py draco.py altair.py procryon.py hydra.py triton.py dione.py dogon.py rigel.py orion.py rhea.py jupicita.py
 cd ../..
 
-# Create broker clients
+# Create brokerage clients
 mkdir -p bentley-bot/brokers
 cd bentley-bot/brokers
-touch __init__.py alpaca.py schwab.py ibkr.py binance.py coinbase.py
+touch __init__.py alpaca_client.py ibkr_client.py mt5_client.py prop_firm_ftmo.py prop_firm_axi.py prop_firm_zenit.py
 cd ../..
 
-# Create prop firm connectors
-mkdir -p bentley-bot/prop_firms
-cd bentley-bot/prop_firms
-touch __init__.py ftmo_mt5.py axi_mt5.py zenit_ninja.py
-cd ../..
+# Create bot config YAML files
+mkdir -p bentley-bot/config/bots
+cd bentley-bot/config/bots
+touch titan.yml vega.yml draco.yml altair.yml procryon.yml hydra.yml triton.yml dione.yml dogon.yml rigel.yml orion.yml rhea.yml jupicita.yml
+cd ../../..
 
 # Create MLflow pipelines
 mkdir -p bentley-bot/mlflow
@@ -160,16 +171,16 @@ cd ../..
 
 1. **Week 1**: Create folder structure, stub out modules
 2. **Week 2-3**: Migrate existing bot code from `/trading/` to `/bentley-bot/bots/`
-3. **Week 4-5**: Implement broker clients using patterns from `frontend/utils/broker_interface.py`
-4. **Week 6-8**: Build prop firm connectors (MT5 bridge for FTMO/Axi)
+3. **Week 4-5**: Implement brokerage clients using patterns from `frontend/utils/broker_interface.py`
+4. **Week 6-8**: Extend brokerage adapters for MT5 and prop firm execution rules
 5. **Week 9-12**: Create Streamlit admin UI and Flask API endpoints
 6. **Week 13+**: MLflow integration, risk engine, VPS automation
 
 ## 📊 Success Metrics
 
-- **Code Modularity**: Each bot/broker/prop firm is independently testable
+- **Code Modularity**: Each bot and brokerage adapter is independently testable
 - **Reusability**: Streamlit dashboard components shared across admin + investor UIs
-- **Scalability**: Add new bots by creating `bot14.py` following existing pattern
+- **Scalability**: Add new bots by creating a new named module that follows the same bot-name, fund-name, strategy convention
 - **Maintainability**: Clear separation of concerns (trading logic, execution, UI, risk)
 
 ## 🔗 Related Documentation

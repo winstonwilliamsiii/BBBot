@@ -24,14 +24,14 @@
 │              BENTLEY BOT CONTROL CENTER                      │
 │            (Internal Admin & Orchestration)                  │
 ├─────────────────────────────────────────────────────────────┤
-│  Broker API         │  Prop Firm          │  ML Bot          │
-│  Orchestration      │  Execution          │  Orchestration   │
-│  ─────────────      │  ─────────          │  ─────────────   │
+│  Brokerage API      │  Execution Rules    │  ML Bot          │
+│  Orchestration      │  & Venue Routing    │  Orchestration   │
+│  ─────────────      │  ───────────────    │  ─────────────   │
 │  • Alpaca           │  • FTMO → MT5       │  • 13 AI Bots    │
-│  • Schwab/TD        │  • Axi → MT5        │  • MLflow        │
-│  • IBKR             │  • Zenit → Ninja    │  • Backtesting   │
-│  • Binance          │  • Prop Rules       │  • Deployment    │
-│  • Coinbase         │  • Scaling Plans    │  • Versioning    │
+│  • IBKR             │  • Axi → MT5        │  • MLflow        │
+│  • MT5              │  • Zenit Adapter    │  • Backtesting   │
+│  • Session Mgmt     │  • Prop Rules       │  • Deployment    │
+│  • Order Routing    │  • Scaling Plans    │  • Versioning    │
 │                     │                     │                  │
 │  Risk Engine        │  Infrastructure     │  Monitoring      │
 │  ────────────       │  ──────────────     │  ──────────      │
@@ -53,7 +53,7 @@
 | **Portfolio Dashboard** | Streamlit | ✅ Live | [localhost:8501](http://localhost:8501) |
 | **Budget Management** | Streamlit | ✅ Live | Multi-tenant + CSV upload |
 | **Investment Analysis** | yfinance, pandas | ✅ Live | Stock screener, charts |
-| **Crypto Dashboard** | Binance SDK | ✅ Live | Real-time prices |
+| **Trading Dashboard** | Streamlit + broker adapters | 🟡 Partial | Broker-linked workflows |
 | **Plaid Integration** | Plaid API | 🟡 Testing | Docker quickstart |
 | **Multi-Broker UI** | Streamlit | 🟡 Partial | Order placement |
 | **Bot Performance** | Appwrite | ✅ Live | Metrics API |
@@ -119,8 +119,7 @@ User Request → Streamlit UI → Flask API → MySQL/Appwrite → Response
 ├── BrokerClient (Abstract Base)
 ├── AlpacaBrokerClient ✅
 ├── MT5BrokerClient ✅
-├── IBKRBrokerClient (stub)
-└── WebullBrokerClient (stub)
+└── IBKRBrokerClient (stub)
 
 Database: broker_api_credentials table
 ├── Multi-tenant support ✅
@@ -134,11 +133,11 @@ Database: broker_api_credentials table
 | Broker | Type | API Status | Execution | Notes |
 |--------|------|-----------|-----------|-------|
 | **Alpaca** | Equities | ✅ Complete | REST + WebSocket | Pending business account |
-| **Schwab/TD** | Equities | 🟡 Migration | OAuth pending | TD → Schwab transition |
 | **IBKR** | Multi-asset | 🔨 Stub | TWS API needed | Complex integration |
-| **Binance** | Crypto | ✅ Complete | REST | Live crypto trading |
-| **Coinbase** | Crypto | 🔨 Planned | REST | Pro API integration |
-| **Webull** | Equities | 🔨 SDK | Python SDK | Reverse-engineered |
+| **MT5** | Forex/CFDs | ✅ Ready | Python API | Used for broker and prop execution |
+| **FTMO** | Prop Firm | ✅ Ready | MT5 bridge | Challenge rule enforcement |
+| **Axi Select** | Prop Firm | ✅ Ready | MT5 bridge | Funded account workflow |
+| **Zenit** | Prop Firm | 🟡 Planned | External bridge | Adapter under design |
 
 #### Required Components 🔨
 - [ ] **Broker Health Dashboard**
@@ -187,7 +186,6 @@ Database: broker_api_credentials table
 | **FTMO** | MT4/MT5 | ✅ Ready | MT5 Python API | 🔨 To Build |
 | **Axi Select** | MT4/MT5 | ✅ Ready | MT5 Python API | 🔨 To Build |
 | **Zenit** | NinjaTrader | 🔨 Planned | Rithmic API | 🔨 To Build |
-| **TopStep** | NinjaTrader | 🔨 Planned | NinjaTrader API | 🔨 To Build |
 
 #### Required Components 🔨
 - [ ] **Prop Firm Rule Engine**
@@ -375,9 +373,9 @@ Data:
 ├──────────────────────────────────────────────────────────────────┤
 │  Brokers:          │  Prop Firms:      │  Data:                  │
 │  • Alpaca          │  • FTMO           │  • Yahoo Finance        │
-│  • Schwab          │  • Axi            │  • Plaid                │
-│  • IBKR            │  • Zenit          │  • Binance WebSocket    │
-│  • Binance         │  • TopStep        │  • Alpha Vantage        │
+│  • IBKR            │  • Axi Select     │  • Plaid                │
+│  • MT5             │  • Zenit          │  • Alpha Vantage        │
+│  • Session Layer   │  • Rule Engine    │  • Internal trade logs  │
 └──────────┬───────────────────┬──────────────────┬────────────────┘
            │                   │                  │
            ▼                   ▼                  ▼
@@ -446,7 +444,6 @@ Data:
    
 2. **Week 3-4: Broker Orchestration**
    - [ ] Complete IBKR integration
-   - [ ] Complete Schwab OAuth migration
    - [ ] Build broker health monitoring
    - [ ] Implement session manager
    
@@ -561,31 +558,33 @@ Data:
 ```
 /bentley-bot/                          # NEW: Organized control center code
 ├── bots/                              # All 13 AI/ML trading bots
-│   ├── bot1.py                        # Bot 1: GoldRSI Strategy
-│   ├── bot2.py                        # Bot 2: USD/COP Short
-│   ├── bot3.py                        # Bot 3: Portfolio Optimizer
-│   ├── bot4.py                        # Bot 4: Sentiment Analyzer
-│   ├── bot5.py                        # Bot 5: Technical Indicator Bot
-│   ├── bot6.py                        # Bot 6: Multi-timeframe Strategy
-│   ├── bot7.py                        # Bot 7: Crypto Arbitrage
-│   ├── bot8.py                        # Bot 8: Mean Reversion
-│   ├── bot9.py                        # Bot 9: Momentum Strategy
-│   ├── bot10.py                       # Bot 10: Options Strategy
-│   ├── bot11.py                       # Bot 11: Pairs Trading
-│   ├── bot12.py                       # Bot 12: News Trading
-│   └── bot13.py                       # Bot 13: ML Ensemble
+│   ├── titan.py                       # Titan | Mansa Tech | CNN with Deep Learning
+│   ├── vega.py                        # Vega | Mansa Retail | Breakout Strategy
+│   ├── draco.py                       # Draco | Mansa Money Bag | Sentiment Analyzer
+│   ├── altair.py                      # Altair | Mansa AI | News Trading
+│   ├── procryon.py                    # Procryon | Crypto Fund | Crypto Arbitrage
+│   ├── hydra.py                       # Hydra | Mansa Health | Momentum Strategy
+│   ├── triton.py                      # Triton | Mansa Transportation | Pending
+│   ├── dione.py                       # Dione | Mansa Options | Put Call Parity
+│   ├── dogon.py                       # Dogon | Mansa ETF | Portfolio Optimizer
+│   ├── rigel.py                       # Rigel | Mansa FOREX | Mean Reversion
+│   ├── orion.py                       # Orion | Mansa Minerals | GoldRSI Strategy
+│   ├── rhea.py                        # Rhea | Mansa ADI | Intra-Day / Swing
+│   └── jupicita.py                    # Jupicita | Mansa_Smalls | Pairs Trading
 │
-├── brokers/                           # Broker API clients
-│   ├── alpaca.py                      # Alpaca equities client
-│   ├── schwab.py                      # Schwab/TD Ameritrade client
-│   ├── ibkr.py                        # Interactive Brokers client
-│   ├── binance.py                     # Binance crypto client
-│   └── coinbase.py                    # Coinbase crypto client
+├── brokers/                           # Brokerage and execution clients
+│   ├── alpaca_client.py               # Alpaca brokerage client
+│   ├── ibkr_client.py                 # Interactive Brokers client
+│   ├── mt5_client.py                  # MetaTrader 5 client
+│   ├── prop_firm_ftmo.py              # FTMO execution adapter
+│   ├── prop_firm_axi.py               # Axi Select execution adapter
+│   └── prop_firm_zenit.py             # Zenit execution adapter
 │
-├── prop_firms/                        # Prop firm execution connectors
-│   ├── ftmo_mt5.py                    # FTMO via MT5 bridge
-│   ├── axi_mt5.py                     # Axi Select via MT5
-│   └── zenit_ninja.py                 # Zenit via NinjaTrader
+├── config/                            # Bot runtime profiles
+│   └── bots/
+│       ├── titan.yml                  # Titan profile
+│       ├── ...
+│       └── jupicita.yml               # Jupicita profile
 │
 ├── mlflow/                            # ML experiment tracking
 │   ├── train.py                       # Model training pipeline
@@ -609,8 +608,8 @@ Data:
 BentleyBudgetBot/
 ├── bentley-bot/                       # 🆕 NEW: Organized control center
 │   ├── bots/                          # 13 trading bots
-│   ├── brokers/                       # Broker clients
-│   ├── prop_firms/                    # Prop firm connectors
+│   ├── brokers/                       # Brokerage and prop-firm execution clients
+│   ├── config/                        # YAML bot profiles
 │   ├── mlflow/                        # ML pipelines
 │   ├── streamlit_app/                 # UI modules
 │   └── utils/                         # Shared utilities
@@ -694,8 +693,7 @@ BentleyBudgetBot/
 
 ### 🟡 Partially Complete
 - IBKR integration (stub exists)
-- Webull integration (SDK available)
-- Schwab OAuth (TD migration pending)
+- MT5 and prop-firm routing expansion
 - Risk engine (basic checks in strategies)
 - Admin dashboard (service_dashboard.html only)
   - ✅ **NEW:** Control Center Admin UI created (`pages/99_🔧_Admin_Control_Center.py`)

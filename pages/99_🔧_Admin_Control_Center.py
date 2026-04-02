@@ -400,6 +400,181 @@ def get_status_badge(status):
         return f'<span class="status-error">● {status.upper()}</span>'
 
 
+def _admin_broker_name_to_slug(name: str) -> str:
+    return (name or "").strip().lower()
+
+
+def _admin_get_alpaca_connector():
+    from frontend.utils.secrets_helper import get_alpaca_config
+    from frontend.utils.alpaca_connector import AlpacaConnector
+
+    cfg = get_alpaca_config()
+    return AlpacaConnector(
+        api_key=str(cfg["api_key"]),
+        secret_key=str(cfg["secret_key"]),
+        paper=bool(cfg.get("paper", True)),
+    )
+
+
+def _admin_get_ibkr_connector():
+    from frontend.utils.ibkr_connector import IBKRConnector
+
+    gateway_url = os.getenv("IBKR_GATEWAY_URL", "https://localhost:5000")
+    return IBKRConnector(gateway_url)
+
+
+def _admin_get_mt5_connector(prefix: str = "MT5"):
+    from frontend.utils.mt5_connector import MT5Connector
+
+    api_url = os.getenv(f"{prefix}_API_URL") or os.getenv(
+        "MT5_API_URL", "http://localhost:8002"
+    )
+    connector = MT5Connector(api_url)
+    user = os.getenv(f"{prefix}_USER") or os.getenv("MT5_USER", "")
+    password = os.getenv(f"{prefix}_PASSWORD") or os.getenv("MT5_PASSWORD", "")
+    host = (
+        os.getenv(f"{prefix}_HOST")
+        or os.getenv(f"{prefix}_SERVER")
+        or os.getenv("MT5_HOST", "")
+    )
+    port = int(os.getenv(f"{prefix}_PORT") or os.getenv("MT5_PORT", "443"))
+
+    if not host or not user or not password:
+        raise ValueError(
+            f"Missing {prefix} credentials. Set {prefix}_USER/{prefix}_PASSWORD/{prefix}_HOST"
+        )
+
+    if not connector.connect(user=user, password=password, host=host, port=port):
+        raise RuntimeError(
+            connector.last_connect_error or f"{prefix} connection failed"
+        )
+    return connector
+
+
+def _admin_broker_action(broker_name: str, action: str) -> dict:
+    slug = _admin_broker_name_to_slug(broker_name)
+
+    try:
+        if slug == "alpaca":
+            connector = _admin_get_alpaca_connector()
+            if action == "test":
+                account = connector.get_account()
+                return {
+                    "ok": bool(account),
+                    "message": "Alpaca authenticated" if account else (connector.last_error or "Alpaca test failed"),
+                }
+            if action == "refresh":
+                account = connector.get_account()
+                return {
+                    "ok": bool(account),
+                    "message": "Alpaca session refreshed" if account else (connector.last_error or "Refresh failed"),
+                }
+            if action == "orders":
+                open_orders = connector.get_orders(status="open") or []
+                return {
+                    "ok": True,
+                    "message": f"Loaded {len(open_orders)} open Alpaca orders",
+                    "orders": open_orders[:25],
+                }
+            if action == "settings":
+                return {
+                    "ok": True,
+                    "message": "Alpaca settings loaded",
+                    "settings": {
+                        "base_url": connector.base_url,
+                        "mode": "paper" if connector.paper else "live",
+                        "api_key_prefix": f"{connector.api_key[:4]}..." if connector.api_key else "",
+                    },
+                }
+
+        if slug == "ibkr":
+            connector = _admin_get_ibkr_connector()
+            if action == "test":
+                ok = connector.is_authenticated()
+                return {
+                    "ok": ok,
+                    "message": "IBKR Gateway authenticated" if ok else "IBKR Gateway not authenticated",
+                }
+            if action == "refresh":
+                ok = connector.reauthenticate()
+                return {
+                    "ok": ok,
+                    "message": "IBKR reauthentication triggered" if ok else "IBKR reauthentication failed",
+                }
+            if action == "orders":
+                orders = connector.get_live_orders() or []
+                return {
+                    "ok": True,
+                    "message": f"Loaded {len(orders) if isinstance(orders, list) else 0} IBKR live orders",
+                    "orders": orders[:25] if isinstance(orders, list) else orders,
+                }
+            if action == "settings":
+                return {
+                    "ok": True,
+                    "message": "IBKR settings loaded",
+                    "settings": {
+                        "gateway_url": connector.base_url,
+                        "websocket_url": connector.ws_url,
+                        "verify_ssl": connector.verify_ssl,
+                    },
+                }
+
+        if slug in {"mt5 (ftmo)", "mt5", "axi", "mt5 (axi)"}:
+            prefix = "AXI_MT5" if "axi" in slug else "MT5"
+            connector = _admin_get_mt5_connector(prefix=prefix)
+            if action == "test":
+                ok = connector.health_check()
+                return {
+                    "ok": ok,
+                    "message": f"{prefix} bridge reachable" if ok else f"{prefix} bridge unavailable",
+                }
+            if action == "refresh":
+                account = connector.get_account_info()
+                return {
+                    "ok": bool(account),
+                    "message": "Account session refreshed" if account else "MT5 account refresh failed",
+                }
+            if action == "orders":
+                positions = connector.get_positions() or []
+                data = [
+                    {
+                        "ticket": getattr(p, "ticket", ""),
+                        "symbol": getattr(p, "symbol", ""),
+                        "type": getattr(p, "type", ""),
+                        "volume": getattr(p, "volume", ""),
+                        "profit": getattr(p, "profit", ""),
+                    }
+                    for p in positions
+                ]
+                return {
+                    "ok": True,
+                    "message": f"Loaded {len(data)} open MT5 positions",
+                    "orders": data,
+                }
+            if action == "settings":
+                return {
+                    "ok": True,
+                    "message": "MT5 settings loaded",
+                    "settings": {
+                        "api_url": connector.base_url,
+                        "prefix": prefix,
+                    },
+                }
+
+        return {
+            "ok": False,
+            "message": (
+                f"{broker_name} is not wired in this environment yet. "
+                "Supported now: Alpaca, IBKR, MT5/AXI."
+            ),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "message": f"{broker_name} {action} failed: {exc}",
+        }
+
+
 def get_local_docker_services_status():
     """Return grouped Docker service status from local `docker ps` output."""
     cmd = ["docker", "ps", "--format", "{{.Names}}|{{.Status}}"]
@@ -695,10 +870,6 @@ def main():
             "Focus: alpha generation via price forecasting and portfolio optimization, "
             "including simulated rebalancing guidance and execution-aware deployment."
         )
-        st.caption(
-            "Jupicita strategy is set as a proposed default and can be overridden "
-            "once you finalize the exact production label."
-        )
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -928,17 +1099,43 @@ def main():
             # Action buttons
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                if st.button(f"Test Connection", key=f"{broker['name']}_test"):
-                    st.info(f"Testing {broker['name']} connection...")
+                if st.button("Test Connection", key=f"{broker['name']}_test"):
+                    result = _admin_broker_action(broker['name'], "test")
+                    if result.get("ok"):
+                        st.success(result.get("message", "Connection test passed"))
+                    else:
+                        st.error(result.get("message", "Connection test failed"))
             with col2:
-                if st.button(f"Refresh Token", key=f"{broker['name']}_refresh"):
-                    st.info(f"Refreshing {broker['name']} token...")
+                if st.button("Refresh Token", key=f"{broker['name']}_refresh"):
+                    result = _admin_broker_action(broker['name'], "refresh")
+                    if result.get("ok"):
+                        st.success(result.get("message", "Refresh completed"))
+                    else:
+                        st.error(result.get("message", "Refresh failed"))
             with col3:
-                if st.button(f"View Orders", key=f"{broker['name']}_orders"):
-                    st.info(f"Loading {broker['name']} orders...")
+                if st.button("View Orders", key=f"{broker['name']}_orders"):
+                    result = _admin_broker_action(broker['name'], "orders")
+                    if result.get("ok"):
+                        st.success(result.get("message", "Orders loaded"))
+                        orders_payload = result.get("orders")
+                        if isinstance(orders_payload, list) and orders_payload:
+                            st.dataframe(pd.DataFrame(orders_payload), use_container_width=True, hide_index=True)
+                        elif orders_payload:
+                            st.json(orders_payload)
+                        else:
+                            st.info("No orders available")
+                    else:
+                        st.error(result.get("message", "Order load failed"))
             with col4:
-                if st.button(f"Settings", key=f"{broker['name']}_settings"):
-                    st.info(f"Opening {broker['name']} settings...")
+                if st.button("Settings", key=f"{broker['name']}_settings"):
+                    result = _admin_broker_action(broker['name'], "settings")
+                    if result.get("ok"):
+                        st.success(result.get("message", "Settings loaded"))
+                        settings_payload = result.get("settings")
+                        if settings_payload:
+                            st.json(settings_payload)
+                    else:
+                        st.error(result.get("message", "Settings unavailable"))
             
             st.markdown("---")
     

@@ -13,53 +13,95 @@ New-Item -ItemType Directory -Path "bentley-bot/bots" -Force | Out-Null
 New-Item -ItemType File -Path "bentley-bot/bots/__init__.py" -Force | Out-Null
 
 $botNames = @(
-    @{num=1; name="GoldRSI Strategy"},
-    @{num=2; name="USD/COP Short Strategy"},
-    @{num=3; name="Portfolio Optimizer"},
-    @{num=4; name="Sentiment Analyzer"},
-    @{num=5; name="Technical Indicator Bot"},
-    @{num=6; name="Multi-timeframe Strategy"},
-    @{num=7; name="Crypto Arbitrage"},
-    @{num=8; name="Mean Reversion"},
-    @{num=9; name="Momentum Strategy"},
-    @{num=10; name="Options Strategy"},
-    @{num=11; name="Pairs Trading"},
-    @{num=12; name="News Trading"},
-    @{num=13; name="ML Ensemble"}
+    @{id=1; file="titan"; name="Titan"; fund="Mansa Tech"; strategy="CNN with Deep Learning"; broker="alpaca_client"},
+    @{id=2; file="vega"; name="Vega"; fund="Mansa Retail"; strategy="Breakout Strategy"; broker="ibkr_client"},
+    @{id=3; file="draco"; name="Draco"; fund="Mansa Money Bag"; strategy="Sentiment Analyzer"; broker="alpaca_client"},
+    @{id=4; file="altair"; name="Altair"; fund="Mansa AI"; strategy="News Trading"; broker="alpaca_client"},
+    @{id=5; file="procryon"; name="Procryon"; fund="Crypto Fund"; strategy="Crypto Arbitrage"; broker="alpaca_client"},
+    @{id=6; file="hydra"; name="Hydra"; fund="Mansa Health"; strategy="Momentum Strategy"; broker="alpaca_client"},
+    @{id=7; file="triton"; name="Triton"; fund="Mansa Transportation"; strategy="Pending"; broker="alpaca_client"},
+    @{id=8; file="dione"; name="Dione"; fund="Mansa Options"; strategy="Put Call Parity"; broker="alpaca_client"},
+    @{id=9; file="dogon"; name="Dogon"; fund="Mansa ETF"; strategy="Portfolio Optimizer"; broker="mt5_client"},
+    @{id=10; file="rigel"; name="Rigel"; fund="Mansa FOREX"; strategy="Mean Reversion"; broker="mt5_client"},
+    @{id=11; file="orion"; name="Orion"; fund="Mansa Minerals"; strategy="GoldRSI Strategy"; broker="mt5_client"},
+    @{id=12; file="rhea"; name="Rhea"; fund="Mansa ADI"; strategy="Intra-Day / Swing"; broker="alpaca_client"},
+    @{id=13; file="jupicita"; name="Jupicita"; fund="Mansa_Smalls"; strategy="Pairs Trading"; broker="alpaca_client"}
 )
 
 foreach ($bot in $botNames) {
     $content = @"
 """
-Bot $($bot.num): $($bot.name)
+Bot $($bot.id): $($bot.name)
 
-This module implements the $($bot.name) trading strategy.
+Fund: $($bot.fund)
+Strategy: $($bot.strategy)
 """
 
 def start():
     """Start the bot."""
-    print("Starting Bot $($bot.num): $($bot.name)")
+    print("Starting $($bot.name) ($($bot.fund))")
     pass
 
 def stop():
     """Stop the bot."""
-    print("Stopping Bot $($bot.num): $($bot.name)")
+    print("Stopping $($bot.name) ($($bot.fund))")
     pass
 
 def get_status():
     """Get bot status."""
-    return {"id": $($bot.num), "name": "$($bot.name)", "status": "idle"}
+    return {
+        "id": $($bot.id),
+        "name": "$($bot.name)",
+        "fund": "$($bot.fund)",
+        "strategy": "$($bot.strategy)",
+        "status": "idle"
+    }
 
 def configure(config):
     """Configure bot parameters."""
-    print(f"Configuring Bot $($bot.num) with: {config}")
+    print(f"Configuring $($bot.name) with: {config}")
     pass
 
 if __name__ == "__main__":
-    print("$($bot.name) - Ready")
+    print("$($bot.name) | $($bot.fund) | $($bot.strategy) - Ready")
 "@
-    $content | Out-File -FilePath "bentley-bot/bots/bot$($bot.num).py" -Encoding utf8 -Force
-    Write-Host "  ✓ Created bot$($bot.num).py - $($bot.name)" -ForegroundColor Green
+    $content | Out-File -FilePath "bentley-bot/bots/$($bot.file).py" -Encoding utf8 -Force
+    Write-Host ("  - Created {0}.py for {1} ({2})" -f $bot.file, $bot.name, $bot.fund) -ForegroundColor Green
+}
+
+# Bot config directory
+Write-Host "`n📁 Creating bot config directory..." -ForegroundColor Yellow
+New-Item -ItemType Directory -Path "bentley-bot/config" -Force | Out-Null
+New-Item -ItemType Directory -Path "bentley-bot/config/bots" -Force | Out-Null
+
+foreach ($bot in $botNames) {
+    $yamlLines = @(
+        'bot:'
+        ('  id: {0}' -f $bot.id)
+        ('  name: {0}' -f $bot.name)
+        ('  fund: {0}' -f $bot.fund)
+        ('  strategy: {0}' -f $bot.strategy)
+        ('  module: bentley-bot/bots/{0}.py' -f $bot.file)
+        ''
+        'execution:'
+        ('  primary_client: {0}' -f $bot.broker)
+        '  mode: paper'
+        '  enabled: false'
+        ''
+        'strategy:'
+        '  screener_file: ""'
+        '  universe: ""'
+        '  timeframe: ""'
+        '  position_size: 0'
+        ''
+        'risk:'
+        '  max_position_size: 0'
+        '  max_daily_loss_pct: 0.0'
+        '  max_open_positions: 0'
+    )
+    $yamlContent = [string]::Join("`n", $yamlLines)
+    $yamlContent | Out-File -FilePath "bentley-bot/config/bots/$($bot.file).yml" -Encoding utf8 -Force
+    Write-Host ("  - Created {0}.yml for {1}" -f $bot.file, $bot.name) -ForegroundColor Green
 }
 
 # Brokers directory
@@ -67,17 +109,24 @@ Write-Host "`n📁 Creating brokers directory..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Path "bentley-bot/brokers" -Force | Out-Null
 New-Item -ItemType File -Path "bentley-bot/brokers/__init__.py" -Force | Out-Null
 
-$brokers = @("alpaca", "schwab", "ibkr", "binance", "coinbase")
-foreach ($broker in $brokers) {
+$brokerClients = @(
+    @{file="alpaca_client"; title="Alpaca Client"; className="AlpacaClient"; venue="Alpaca"},
+    @{file="ibkr_client"; title="IBKR Client"; className="IbkrClient"; venue="IBKR"},
+    @{file="mt5_client"; title="MT5 Client"; className="Mt5Client"; venue="MT5"},
+    @{file="prop_firm_ftmo"; title="FTMO Prop Firm Adapter"; className="PropFirmFtmoClient"; venue="FTMO"},
+    @{file="prop_firm_axi"; title="Axi Prop Firm Adapter"; className="PropFirmAxiClient"; venue="Axi Select"},
+    @{file="prop_firm_zenit"; title="Zenit Prop Firm Adapter"; className="PropFirmZenitClient"; venue="Zenit"}
+)
+foreach ($broker in $brokerClients) {
     $content = @"
 """
-$($broker.ToUpper()) Broker Client
+$($broker.title)
 
-Implements broker interface for $($broker.ToUpper()) API.
+Implements execution interface for $($broker.venue).
 """
 
-class $($broker.Substring(0,1).ToUpper())$($broker.Substring(1))Client:
-    """$($broker.ToUpper()) broker client implementation."""
+class $($broker.className):
+    """$($broker.venue) execution client implementation."""
     
     def __init__(self, api_key, api_secret):
         self.api_key = api_key
@@ -85,13 +134,13 @@ class $($broker.Substring(0,1).ToUpper())$($broker.Substring(1))Client:
         self.authenticated = False
     
     def connect(self):
-        """Establish connection to $($broker.ToUpper()) API."""
-        print(f"Connecting to $($broker.ToUpper())...")
+        """Establish connection to $($broker.venue)."""
+        print(f"Connecting to $($broker.venue)...")
         self.authenticated = True
     
     def disconnect(self):
-        """Disconnect from $($broker.ToUpper()) API."""
-        print(f"Disconnecting from $($broker.ToUpper())...")
+        """Disconnect from $($broker.venue)."""
+        print(f"Disconnecting from $($broker.venue)...")
         self.authenticated = False
     
     def place_order(self, symbol, quantity, side, order_type="market"):
@@ -105,80 +154,13 @@ class $($broker.Substring(0,1).ToUpper())$($broker.Substring(1))Client:
     
     def get_account_info(self):
         """Get account information."""
-        return {"broker": "$broker", "balance": 0}
+        return {"broker": "$($broker.venue)", "balance": 0}
 
 if __name__ == "__main__":
-    print("$($broker.ToUpper()) Client - Ready")
+    print("$($broker.title) - Ready")
 "@
-    $content | Out-File -FilePath "bentley-bot/brokers/$broker.py" -Encoding utf8 -Force
-    Write-Host "  ✓ Created $broker.py" -ForegroundColor Green
-}
-
-# Prop firms directory
-Write-Host "`n📁 Creating prop_firms directory..." -ForegroundColor Yellow
-New-Item -ItemType Directory -Path "bentley-bot/prop_firms" -Force | Out-Null
-New-Item -ItemType File -Path "bentley-bot/prop_firms/__init__.py" -Force | Out-Null
-
-$propFirms = @(
-    @{file="ftmo_mt5"; name="FTMO"; platform="MT5"},
-    @{file="axi_mt5"; name="Axi Select"; platform="MT5"},
-    @{file="zenit_ninja"; name="Zenit"; platform="NinjaTrader"}
-)
-
-foreach ($firm in $propFirms) {
-    $content = @"
-"""
-$($firm.name) Prop Firm Connector
-
-Executes trades on $($firm.name) challenge accounts via $($firm.platform).
-"""
-
-class $($firm.name.Replace(' ', ''))Connector:
-    """$($firm.name) prop firm connector via $($firm.platform)."""
-    
-    def __init__(self, account_id, challenge_type="standard"):
-        self.account_id = account_id
-        self.challenge_type = challenge_type
-        self.connected = False
-    
-    def connect(self):
-        """Connect to $($firm.platform) terminal."""
-        print(f"Connecting to $($firm.name) account {self.account_id} via $($firm.platform)...")
-        self.connected = True
-    
-    def disconnect(self):
-        """Disconnect from $($firm.platform)."""
-        print(f"Disconnecting from $($firm.name)...")
-        self.connected = False
-    
-    def validate_trade(self, symbol, quantity, side):
-        """Validate trade against $($firm.name) challenge rules."""
-        # Check max drawdown, daily loss limit, forbidden instruments
-        print(f"Validating trade: {side} {quantity} {symbol}")
-        return True
-    
-    def execute_trade(self, symbol, quantity, side, order_type="market"):
-        """Execute trade via $($firm.platform)."""
-        if not self.validate_trade(symbol, quantity, side):
-            raise ValueError("Trade validation failed")
-        print(f"Executing {side} order: {quantity} {symbol}")
-        return {"order_id": "MT5_12345", "status": "filled"}
-    
-    def get_challenge_status(self):
-        """Get challenge progress and metrics."""
-        return {
-            "account_id": self.account_id,
-            "challenge_type": self.challenge_type,
-            "profit": 0,
-            "max_drawdown": 0,
-            "daily_loss": 0
-        }
-
-if __name__ == "__main__":
-    print("$($firm.name) Connector - Ready")
-"@
-    $content | Out-File -FilePath "bentley-bot/prop_firms/$($firm.file).py" -Encoding utf8 -Force
-    Write-Host "  ✓ Created $($firm.file).py" -ForegroundColor Green
+    $content | Out-File -FilePath "bentley-bot/brokers/$($broker.file).py" -Encoding utf8 -Force
+    Write-Host "  ✓ Created $($broker.file).py" -ForegroundColor Green
 }
 
 # MLflow directory
@@ -292,9 +274,9 @@ if __name__ == "__main__":
 # Summary
 Write-Host "`n✅ Bentley Bot Control Center structure created successfully!" -ForegroundColor Green
 Write-Host "`n📊 Structure Summary:" -ForegroundColor Cyan
-Write-Host "  • 13 bot modules (bot1.py - bot13.py)" -ForegroundColor White
-Write-Host "  • 5 broker clients (alpaca, schwab, ibkr, binance, coinbase)" -ForegroundColor White
-Write-Host "  • 3 prop firm connectors (ftmo_mt5, axi_mt5, zenit_ninja)" -ForegroundColor White
+Write-Host "  • 13 named bot modules (titan.py through jupicita.py)" -ForegroundColor White
+Write-Host "  • 13 bot YAML profiles (config/bots/*.yml)" -ForegroundColor White
+Write-Host "  • 6 brokerage clients (alpaca_client, ibkr_client, mt5_client, prop_firm_ftmo, prop_firm_axi, prop_firm_zenit)" -ForegroundColor White
 Write-Host "  • 3 MLflow modules (train, backtest, register)" -ForegroundColor White
 Write-Host "  • 3 Streamlit UI modules (admin, investor, dashboards)" -ForegroundColor White
 Write-Host "  • 3 utility modules (risk, config, secrets)" -ForegroundColor White
@@ -302,6 +284,7 @@ Write-Host "  • 3 utility modules (risk, config, secrets)" -ForegroundColor Wh
 Write-Host "`n📁 Directory: $(Get-Location)\bentley-bot\" -ForegroundColor Yellow
 Write-Host "`n📖 Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Review FOLDER_STRUCTURE.md for detailed documentation" -ForegroundColor White
-Write-Host "  2. Start implementing bot logic in bentley-bot/bots/" -ForegroundColor White
-Write-Host "  3. Configure broker clients with API credentials" -ForegroundColor White
-Write-Host "  4. See CONTROL_CENTER_QUICK_START.md for Week 1 tasks" -ForegroundColor White
+Write-Host "  2. Fill in bot YAML profiles in bentley-bot/config/bots/" -ForegroundColor White
+Write-Host "  3. Start implementing bot logic in bentley-bot/bots/" -ForegroundColor White
+Write-Host "  4. Configure broker clients with API credentials" -ForegroundColor White
+Write-Host "  5. See CONTROL_CENTER_QUICK_START.md for Week 1 tasks" -ForegroundColor White

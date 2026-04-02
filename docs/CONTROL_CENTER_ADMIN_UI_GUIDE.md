@@ -24,16 +24,16 @@ The Bentley Bot Control Center is a comprehensive Streamlit-based admin interfac
 - Bot-specific metrics viewing
 - Sandbox vs Live environment selection
 
-### 3. **Broker Health (Tab 3)**
-- Multi-broker status monitoring (Alpaca, Schwab, IBKR, Binance, Coinbase)
+### 3. **Brokerage Health (Tab 3)**
+- Brokerage status monitoring (Alpaca, IBKR, MT5)
 - Connection latency tracking
 - Order count and last sync time
 - Session refresh controls
 - Per-broker action buttons (test, refresh, view orders, settings)
 
-### 4. **Prop Firm Management (Tab 4)**
+### 4. **Prop Firm Execution (Tab 4)**
 - FTMO, Axi Select, Zenit tracking
-- Platform identification (MT5, NinjaTrader)
+- Venue and bridge identification
 - Active account counts
 - Daily P&L per prop firm
 - Challenge status monitoring
@@ -194,24 +194,28 @@ Links to existing `sites/Mansa_Bentley_Platform/service_dashboard.html` in sideb
 
 ### Bot Integrations
 Uses bot modules from `/bentley-bot/bots/` folder:
-- `bot1.py` (GoldRSI Strategy)
-- `bot2.py` (USD/COP Short)
-- `bot3.py` (Portfolio Optimizer)
-- ... (bot4 through bot13)
+- `titan.py` (Titan | Mansa Tech | CNN with Deep Learning)
+- `vega.py` (Vega | Mansa Retail | Breakout Strategy)
+- `draco.py` (Draco | Mansa Money Bag | Sentiment Analyzer)
+- `altair.py` (Altair | Mansa AI | News Trading)
+- `procryon.py` (Procryon | Crypto Fund | Crypto Arbitrage)
+- `hydra.py` (Hydra | Mansa Health | Momentum Strategy)
+- `triton.py` (Triton | Mansa Transportation | Pending)
+- `dione.py` (Dione | Mansa Options | Put Call Parity)
+- `dogon.py` (Dogon | Mansa ETF | Portfolio Optimizer)
+- `rigel.py` (Rigel | Mansa FOREX | Mean Reversion)
+- `orion.py` (Orion | Mansa Minerals | GoldRSI Strategy)
+- `rhea.py` (Rhea | Mansa ADI | Intra-Day / Swing)
+- `jupicita.py` (Jupicita | Mansa_Smalls | Pairs Trading)
 
-### Broker Clients
-Integrates with broker implementations:
-- `bentley-bot/brokers/alpaca.py`
-- `bentley-bot/brokers/schwab.py`
-- `bentley-bot/brokers/ibkr.py`
-- `bentley-bot/brokers/binance.py`
-- `bentley-bot/brokers/coinbase.py`
-
-### Prop Firm Connectors
-Manages prop firm integrations:
-- `bentley-bot/prop_firms/ftmo_mt5.py`
-- `bentley-bot/prop_firms/axi_mt5.py`
-- `bentley-bot/prop_firms/zenit_ninja.py`
+### Brokerage Clients
+Integrates with brokerage and execution implementations:
+- `bentley-bot/brokers/alpaca_client.py`
+- `bentley-bot/brokers/ibkr_client.py`
+- `bentley-bot/brokers/mt5_client.py`
+- `bentley-bot/brokers/prop_firm_ftmo.py`
+- `bentley-bot/brokers/prop_firm_axi.py`
+- `bentley-bot/brokers/prop_firm_zenit.py`
 
 ---
 

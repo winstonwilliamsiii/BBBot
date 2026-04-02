@@ -22,10 +22,6 @@ websockets>=9,<11
 # Kalshi prediction markets - Official SDK
 kalshi>=0.2.0
 
-# Webull Trading API
-# Original package name not available on PyPI; using official `webull` client
-webull>=0.6.1
-
 # Web scraping
 beautifulsoup4>=4.11.0
 lxml>=4.9.0

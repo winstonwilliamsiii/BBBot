@@ -77,5 +77,5 @@ exec mlflow server \
     --default-artifact-root "${ARTIFACT_ROOT}" \
     --host 0.0.0.0 \
     --port 5000 \
-    --serve-artifacts \
-    --gunicorn-opts "--bind 0.0.0.0:5000 --workers 1 --timeout 180 --worker-class sync"
+    --allowed-hosts "mlflow,bentley-mlflow,localhost,127.0.0.1" \
+    --serve-artifacts

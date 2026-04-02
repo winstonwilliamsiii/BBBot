@@ -289,6 +289,47 @@ class TitanBot:
         self.config = config or TitanConfig.from_env()
         self.api = self._init_alpaca_client()
 
+    def _account_snapshot_cache_path(self) -> str:
+        return os.path.join(
+            os.getcwd(),
+            "data",
+            "titan_last_account_snapshot.json",
+        )
+
+    def _read_cached_account_snapshot(self) -> Optional[Dict[str, float]]:
+        path = self._account_snapshot_cache_path()
+        if not os.path.exists(path):
+            return None
+
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError, TypeError):
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+
+        try:
+            cash = float(payload.get("cash", 0.0))
+            equity = float(payload.get("equity", 0.0))
+        except (TypeError, ValueError):
+            return None
+
+        return {"cash": cash, "equity": equity}
+
+    def _write_cached_account_snapshot(
+        self,
+        snapshot: Dict[str, float],
+    ) -> None:
+        path = self._account_snapshot_cache_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(snapshot, handle)
+        except OSError:
+            logger.warning("Failed writing Titan account snapshot cache")
+
     def _alpaca_headers(self) -> Dict[str, str]:
         return {
             "APCA-API-KEY-ID": self.config.alpaca_api_key or "",
@@ -338,16 +379,37 @@ class TitanBot:
             self.config.order_timeout_seconds
         )
 
-        submit_script = (
-            "import json, os, requests;"
-            "endpoint=os.environ['TITAN_SUBMIT_ENDPOINT'];"
-            "payload=json.loads(os.environ['TITAN_SUBMIT_PAYLOAD']);"
-            "headers=json.loads(os.environ['TITAN_SUBMIT_HEADERS']);"
-            "timeout=float(os.environ['TITAN_ORDER_TIMEOUT_SECONDS']);"
-            "resp=requests.post(endpoint, headers=headers, json=payload, timeout=timeout);"
-            "resp.raise_for_status();"
-            "print(json.dumps(resp.json()))"
+        submit_script = """
+import json
+import os
+import time
+
+import requests
+
+endpoint = os.environ['TITAN_SUBMIT_ENDPOINT']
+payload = json.loads(os.environ['TITAN_SUBMIT_PAYLOAD'])
+headers = json.loads(os.environ['TITAN_SUBMIT_HEADERS'])
+timeout = float(os.environ['TITAN_ORDER_TIMEOUT_SECONDS'])
+last_error = ''
+
+for _ in range(3):
+    try:
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
         )
+        response.raise_for_status()
+        print(json.dumps(response.json()))
+        raise SystemExit(0)
+    except Exception as exc:
+        last_error = str(exc)
+        time.sleep(0.4)
+
+print(last_error)
+raise SystemExit(1)
+        """.strip()
 
         try:
             completed = subprocess.run(
@@ -370,6 +432,80 @@ class TitanBot:
             )
 
         return json.loads(completed.stdout.strip())
+
+    def _fetch_live_account_snapshot(self) -> Dict[str, float]:
+        if not self.config.alpaca_api_key or not self.config.alpaca_secret_key:
+            raise RuntimeError("Alpaca credentials missing")
+
+        endpoint = f"{self.config.alpaca_base_url.rstrip('/')}/v2/account"
+        env = os.environ.copy()
+        env["TITAN_ACCOUNT_ENDPOINT"] = endpoint
+        env["TITAN_SUBMIT_HEADERS"] = json.dumps(self._alpaca_headers())
+        env["TITAN_ORDER_TIMEOUT_SECONDS"] = str(
+            self.config.order_timeout_seconds
+        )
+
+        account_script = """
+import json
+import os
+import time
+
+import requests
+
+endpoint = os.environ['TITAN_ACCOUNT_ENDPOINT']
+headers = json.loads(os.environ['TITAN_SUBMIT_HEADERS'])
+timeout = float(os.environ['TITAN_ORDER_TIMEOUT_SECONDS'])
+last_error = ''
+
+for _ in range(3):
+    try:
+        response = requests.get(endpoint, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+        print(
+            json.dumps(
+                {
+                    'cash': payload.get('cash', 0.0),
+                    'equity': payload.get('equity', 0.0),
+                }
+            )
+        )
+        raise SystemExit(0)
+    except Exception as exc:
+        last_error = str(exc)
+        time.sleep(0.4)
+
+print(last_error)
+raise SystemExit(1)
+        """.strip()
+
+        try:
+            completed = subprocess.run(
+                [sys.executable, "-c", account_script],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=self.config.order_timeout_seconds + 3.0,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise requests.Timeout(
+                "Timed out retrieving Alpaca account snapshot"
+            ) from exc
+
+        if completed.returncode != 0:
+            stderr = (completed.stderr or completed.stdout or "").strip()
+            raise requests.RequestException(
+                stderr or "Unknown Alpaca account snapshot failure"
+            )
+
+        payload = json.loads(completed.stdout.strip())
+        snapshot = {
+            "cash": float(payload.get("cash", 0.0)),
+            "equity": float(payload.get("equity", 0.0)),
+        }
+        self._write_cached_account_snapshot(snapshot)
+        return snapshot
 
     def _mlflow_tracking_is_reachable(self) -> bool:
         if mlflow is None:
@@ -556,13 +692,19 @@ class TitanBot:
 
     def get_account_snapshot(self) -> Dict[str, float]:
         if self.api is None:
-            return {"cash": 0.0, "equity": 0.0}
+            return self._read_cached_account_snapshot() or {
+                "cash": 0.0,
+                "equity": 0.0,
+            }
 
-        account = self.api.get_account()
-        return {
-            "cash": float(account.cash),
-            "equity": float(account.equity),
-        }
+        try:
+            return self._fetch_live_account_snapshot()
+        except (requests.RequestException, RuntimeError, ValueError) as exc:
+            logger.warning("Using cached Alpaca snapshot after live failure: %s", exc)
+            return self._read_cached_account_snapshot() or {
+                "cash": 0.0,
+                "equity": 0.0,
+            }
 
     def titan_guard(self, buffer_threshold: Optional[float] = None) -> bool:
         if buffer_threshold is None:

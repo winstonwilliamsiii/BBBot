@@ -1,0 +1,26 @@
+bot:
+  id: 4
+  name: Altair
+  runtime_name: Altair_Bot
+  fund: Mansa AI
+  strategy: News Trading
+  module: bentley-bot/bots/altair.py
+
+execution:
+  primary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Altair_News_Trading
+  screener_file: altair_news_signals.csv
+  universe: AI_News_Momentum
+  timeframe: 30m
+  position_size: 1800
+
+risk:
+  min_news_score: 0.70
+  max_holding_hours: 24
+  max_daily_loss_pct: 1.5
+  max_open_positions: 4

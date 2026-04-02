@@ -1,0 +1,27 @@
+bot:
+  id: 10
+  name: Rigel
+  runtime_name: Rigel_Bot
+  fund: Mansa FOREX
+  strategy: Mean Reversion
+  module: bentley-bot/bots/rigel.py
+
+execution:
+  primary_client: mt5_client
+  venue: axi
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Rigel_Forex_Mean_Reversion
+  screener_file: rigel_fx_fundamentals.csv
+  universe: Forex_Macro
+  timeframe: H1
+  position_size: 3000
+
+risk:
+  max_spread_pips: 2.0
+  mean_reversion_zscore: 2.0
+  max_daily_loss_pct: 1.5
+  max_open_positions: 4

@@ -1,0 +1,26 @@
+bot:
+  id: 13
+  name: Jupicita
+  runtime_name: Jupicita_Bot
+  fund: Mansa_Smalls
+  strategy: Pairs Trading
+  module: bentley-bot/bots/jupicita.py
+
+execution:
+  primary_client: alpaca_client
+  secondary_client: ibkr_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Jupicita_Pairs_Trading
+  screener_file: jupicita_pairs_candidates.csv
+  universe: Small_Cap_Pairs
+  timeframe: 1H
+  position_size: 1400
+
+risk:
+  max_pair_divergence_zscore: 2.5
+  max_daily_loss_pct: 1.25
+  max_open_positions: 4

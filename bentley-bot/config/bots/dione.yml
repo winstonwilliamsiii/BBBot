@@ -1,0 +1,27 @@
+bot:
+  id: 8
+  name: Dione
+  runtime_name: Dione_Bot
+  fund: Mansa Options
+  strategy: Put Call Parity
+  module: bentley-bot/bots/dione.py
+
+execution:
+  primary_client: ibkr_client
+  secondary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Dione_Put_Call_Parity
+  screener_file: dione_options_parity.csv
+  universe: Options_Mispricing
+  timeframe: 15m
+  position_size: 2500
+
+risk:
+  max_contracts: 5
+  max_option_spread_pct: 2.5
+  max_daily_loss_pct: 1.25
+  max_open_positions: 4

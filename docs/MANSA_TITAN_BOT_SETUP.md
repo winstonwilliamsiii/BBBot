@@ -31,6 +31,9 @@ This creates:
 Primary module: `scripts/mansa_titan_bot.py`  
 Compatibility entrypoint: `#MANSA_FUND TITAN_BOT.py`
 
+Dedicated Vega runtime entrypoint:
+- `scripts/vega_bot.py`
+
 ## 3.1) Switch Titan/Vega without code edits
 
 Shared config file:
@@ -55,6 +58,7 @@ How switching works:
 - Set `active_bot` in YAML to `Titan_Bot` or `Vega_Bot`, then run the bot normally.
 - Optional override from environment: `ACTIVE_BOT=Titan_Bot` (or `Vega_Bot`).
 - Optional custom file path: `BOT_CONFIG_PATH=path/to/your.yml`.
+- Vega_Bot uses the display fund label `Mansa_Retail` and strategy label `Vega Mansa Retail MTF-ML` in current dashboard surfaces.
 
 Example:
 
@@ -64,8 +68,24 @@ bots:
 	Titan_Bot:
 		strategy_label: Tech_Fundamentals_Mag7
 	Vega_Bot:
-		strategy_label: Retail_Fundamentals
+		strategy_label: Vega Mansa Retail MTF-ML
 ```
+
+## 3.2) Vega 9:30 IBKR automation
+
+Register the task expected by Admin Control Center:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action Create
+```
+
+This creates the weekday `Bentley-Vega-IBKR-930` task and runs:
+
+- `run_vega_ibkr_930.ps1`
+- `start_bot_mode.ps1 -Bot Vega -Mode ON -Broker IBKR`
+- `scripts/vega_bot.py`
+
+Use `-Action List`, `-Action Test`, or `-Action Delete` for task management.
 
 Runtime override examples:
 

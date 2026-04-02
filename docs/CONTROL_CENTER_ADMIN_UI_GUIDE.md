@@ -195,7 +195,7 @@ Links to existing `sites/Mansa_Bentley_Platform/service_dashboard.html` in sideb
 ### Bot Integrations
 Uses bot modules from `/bentley-bot/bots/` folder:
 - `titan.py` (Titan | Mansa Tech | CNN with Deep Learning)
-- `vega.py` (Vega | Mansa Retail | Breakout Strategy)
+- `vega.py` (Vega_Bot | Mansa_Retail | Vega Mansa Retail MTF-ML)
 - `draco.py` (Draco | Mansa Money Bag | Sentiment Analyzer)
 - `altair.py` (Altair | Mansa AI | News Trading)
 - `procryon.py` (Procryon | Crypto Fund | Crypto Arbitrage)

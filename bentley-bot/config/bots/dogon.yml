@@ -1,0 +1,28 @@
+bot:
+  id: 9
+  name: Dogon
+  runtime_name: Dogon_Bot
+  fund: Mansa ETF
+  strategy: Portfolio Optimizer
+  module: bentley-bot/bots/dogon.py
+
+execution:
+  primary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Dogon_Portfolio_Optimizer
+  screener_file: dogon_etf_fundamentals.csv
+  universe: Core_ETF_Basket
+  timeframe: 1D
+  position_size: 2500
+
+risk:
+  min_volume: 1000000
+  max_pe: 35
+  min_roe: 10
+  max_debt_to_equity: 0.9
+  max_daily_loss_pct: 1.5
+  max_open_positions: 8

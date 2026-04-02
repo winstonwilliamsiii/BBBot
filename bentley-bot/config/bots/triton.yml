@@ -1,0 +1,26 @@
+bot:
+  id: 7
+  name: Triton
+  runtime_name: Triton_Bot
+  fund: Mansa Transportation
+  strategy: Pending
+  module: bentley-bot/bots/triton.py
+
+execution:
+  primary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Triton_Transportation_Watchlist
+  screener_file: triton_transport_watchlist.csv
+  universe: Transportation_Watchlist
+  timeframe: 1D
+  position_size: 1000
+
+risk:
+  min_volume: 500000
+  max_daily_loss_pct: 1.0
+  max_open_positions: 3
+  pending_review: true

@@ -165,7 +165,9 @@ services:
 
   # MLflow Tracking Server
   mlflow:
-    image: python:3.11-slim
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mlflow
     container_name: bentley-mlflow
     depends_on:
       - mysql
@@ -174,24 +176,14 @@ services:
     environment:
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
     volumes:
-      - ../data/mlflow:/mlflow/artifacts
-    command: >
-      bash -c "pip install mlflow==2.8.1 gunicorn && 
-               mkdir -p /mlflow && 
-               mlflow server 
-               --backend-store-uri sqlite:////mlflow/mlflow.db
-               --default-artifact-root /mlflow/artifacts 
-               --host 0.0.0.0 
-               --port 5000 
-               --serve-artifacts
-               --gunicorn-opts '--bind 0.0.0.0:5000 --workers 1 --timeout 180'"
+      - ../data/mlflow:/mlflow
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000 || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 20s
 
   # Your existing Bentley Budget Bot (Streamlit app)
   bentley-budget-bot:

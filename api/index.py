@@ -173,7 +173,7 @@ def _send_discord_alert(normalized: dict):
     symbol = normalized.get("symbol") or "UNKNOWN"
     side = normalized.get("side") or "signal"
     timeframe = normalized.get("timeframe") or "n/a"
-    strategy = normalized.get("strategy") or "Vega Mansa Retail"
+    strategy = normalized.get("strategy") or "Vega Mansa Retail MTF-ML"
     price = normalized.get("price")
 
     content = (

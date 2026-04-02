@@ -10,6 +10,7 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
@@ -55,6 +56,11 @@ except ImportError:
         "Dogon": "Mansa_ETF",
         "Orion": "Mansa_Minerals",
     }
+
+try:
+    from config.broker_mode_config import get_config as get_broker_mode_config
+except ImportError:
+    get_broker_mode_config = None
 
 try:
     from scripts.mansa_titan_bot import TitanBot, TitanConfig
@@ -691,6 +697,35 @@ def _build_quick_start_command(bot_name: str, mode: str) -> str:
     )
 
 
+def _get_bot_trading_mode(bot_name: str) -> str:
+    if get_broker_mode_config is None:
+        return "paper"
+
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if not broker_name:
+            return "paper"
+        return config.get_broker_mode(broker_name)
+    except Exception:
+        return "paper"
+
+
+def _set_bot_launch_preferences(
+    bot_name: str,
+    trading_mode: Literal["paper", "live"],
+    active: bool,
+) -> None:
+    if get_broker_mode_config is None:
+        return
+
+    config = get_broker_mode_config()
+    broker_name = config.get_bot_broker(bot_name)
+    if broker_name:
+        config.set_broker_mode(broker_name, trading_mode)
+    config.set_bot_active(bot_name, active)
+
+
 def _build_quick_start_rows() -> pd.DataFrame:
     launch_bots = ["Titan", "Vega", "Rigel", "Dogon", "Orion"]
     rows = []
@@ -705,7 +740,7 @@ def _build_quick_start_rows() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _execute_bot_mode(bot_name: str, mode: str) -> dict:
+def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
     repo_root = Path(__file__).resolve().parents[1]
     launcher = repo_root / "start_bot_mode.ps1"
 
@@ -726,6 +761,8 @@ def _execute_bot_mode(bot_name: str, mode: str) -> dict:
         bot_name,
         "-Mode",
         mode.upper(),
+        "-TradingMode",
+        trading_mode,
     ]
 
     try:
@@ -811,32 +848,45 @@ def _render_quick_launch_buttons() -> None:
     )
 
     for bot_name in launch_bots:
-        c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
+        current_mode = _get_bot_trading_mode(bot_name)
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 1.4, 1, 1, 1, 1])
         with c1:
             st.markdown(f"**{bot_name}**")
         with c2:
+            selected_mode = st.selectbox(
+                "Mode",
+                options=["paper", "live"],
+                index=0 if current_mode == "paper" else 1,
+                key=f"trading_mode_{bot_name}",
+                label_visibility="collapsed",
+            )
+        with c3:
             if st.button("ON Cmd", key=f"quick_on_{bot_name}"):
                 st.session_state["selected_bot_launch_command"] = (
                     _build_quick_start_command(bot_name, "on")
+                    + f" -TradingMode {selected_mode}"
                 )
-        with c3:
+        with c4:
             if st.button("OFF Cmd", key=f"quick_off_{bot_name}"):
                 st.session_state["selected_bot_launch_command"] = (
                     _build_quick_start_command(bot_name, "off")
+                    + f" -TradingMode {selected_mode}"
                 )
-        with c4:
+        with c5:
             if st.button("Run ON", key=f"exec_on_{bot_name}"):
+                _set_bot_launch_preferences(bot_name, selected_mode, True)
                 with st.spinner(f"Running {bot_name} ON..."):
-                    execution = _execute_bot_mode(bot_name, "on")
+                    execution = _execute_bot_mode(bot_name, "on", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 if execution["ok"]:
                     st.success(f"{bot_name} ON command completed.")
                 else:
                     st.error(f"{bot_name} ON command failed.")
-        with c5:
+        with c6:
             if st.button("Run OFF", key=f"exec_off_{bot_name}"):
+                _set_bot_launch_preferences(bot_name, selected_mode, False)
                 with st.spinner(f"Running {bot_name} OFF..."):
-                    execution = _execute_bot_mode(bot_name, "off")
+                    execution = _execute_bot_mode(bot_name, "off", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 if execution["ok"]:
                     st.success(f"{bot_name} OFF command completed.")

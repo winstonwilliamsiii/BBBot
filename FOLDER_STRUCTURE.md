@@ -9,7 +9,7 @@ This structure consolidates all control center code into a clean, modular organi
 ├── bots/                              # Trading Bot Modules (13 bots)
 │   ├── __init__.py
 │   ├── titan.py                       # Titan | Mansa Tech | CNN with Deep Learning
-│   ├── vega.py                        # Vega | Mansa Retail | Breakout Strategy
+│   ├── vega.py                        # Vega_Bot | Mansa_Retail | Vega Mansa Retail MTF-ML
 │   ├── draco.py                       # Draco | Mansa Money Bag | Sentiment Analyzer
 │   ├── altair.py                      # Altair | Mansa AI | News Trading
 │   ├── procryon.py                    # Procryon | Crypto Fund | Crypto Arbitrage

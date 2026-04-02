@@ -1,0 +1,40 @@
+bot:
+  id: 2
+  name: Vega_Bot
+  fund: Mansa_Retail
+  strategy: Vega Mansa Retail MTF-ML
+  module: bentley-bot/bots/vega.py
+
+execution:
+  primary_client: ibkr_client
+  mode: paper
+  enabled: false
+
+bot:
+  id: 2
+  name: Vega
+  runtime_name: Vega_Bot
+  fund: Mansa Retail
+  strategy: Breakout Strategy
+  module: bentley-bot/bots/vega.py
+
+execution:
+  primary_client: ibkr_client
+  secondary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Vega Mansa Retail MTF-ML
+  screener_file: vega_retail_breakout.csv
+  universe: Retail_Breakouts
+  timeframe: 15m
+  position_size: 1500
+
+risk:
+  min_volume: 1000000
+  breakout_buffer_pct: 1.0
+  max_gap_pct: 8.0
+  max_daily_loss_pct: 1.5
+  max_open_positions: 4

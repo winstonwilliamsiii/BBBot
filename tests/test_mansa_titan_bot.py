@@ -26,6 +26,7 @@ def _build_config() -> TitanConfig:
         airbyte_connection_id=None,
         liquidity_buffer_threshold=0.20,
         prediction_threshold=0.50,
+        order_timeout_seconds=15.0,
         dry_run=True,
         enable_trading=False,
         strategy_name="Mansa Tech - Titan Bot",
@@ -132,6 +133,73 @@ bots:
         assert config.active_bot_name == "Titan_Bot"
         assert config.strategy_name == "Tech_Fundamentals_Mag7"
         assert config.position_size == 5000.0
+
+
+def test_titan_config_loads_single_bot_profile_yaml(tmp_path, monkeypatch):
+        config_file = tmp_path / "titan.yml"
+        config_file.write_text(
+                """
+bot:
+    name: Titan
+    fund: Mansa Tech
+    strategy: CNN with Deep Learning
+strategy:
+    label: Titan_Profile_Label
+    screener_file: titan_profile.csv
+    universe: Mag7+Tech
+    position_size: 777
+risk:
+    max_pe: 22
+execution:
+    primary_client: alpaca_client
+""".strip(),
+                encoding="utf-8",
+        )
+
+        monkeypatch.setenv("BOT_CONFIG_PATH", str(config_file))
+        monkeypatch.setenv("ACTIVE_BOT", "Titan")
+        monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
+
+        config = TitanConfig.from_env()
+
+        assert config.active_bot_name == "Titan_Bot"
+        assert config.strategy_name == "Titan_Profile_Label"
+        assert config.screener_file == "titan_profile.csv"
+        assert config.universe == "Mag7+Tech"
+        assert config.position_size == 777.0
+        assert config.risk_rules["max_pe"] == 22
+
+
+def test_titan_config_loads_single_bot_profile_from_directory(tmp_path, monkeypatch):
+        profile_dir = tmp_path / "bots"
+        profile_dir.mkdir()
+        (profile_dir / "vega.yml").write_text(
+                """
+bot:
+    name: Vega_Bot
+    fund: Mansa_Retail
+    strategy: Vega Mansa Retail MTF-ML
+strategy:
+    screener_file: vega_profile.csv
+    universe: Retail_Fundamentals
+    position_size: 222
+risk:
+    min_volume: 1200000
+""".strip(),
+                encoding="utf-8",
+        )
+
+        monkeypatch.setenv("BOT_CONFIG_PATH", str(profile_dir))
+        monkeypatch.setenv("ACTIVE_BOT", "Vega")
+        monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
+
+        config = TitanConfig.from_env()
+
+        assert config.active_bot_name == "Vega_Bot"
+        assert config.strategy_name == "Vega Mansa Retail MTF-ML"
+        assert config.screener_file == "vega_profile.csv"
+        assert config.position_size == 222.0
+        assert config.risk_rules["min_volume"] == 1200000
 
 
 def test_titan_guard_blocks_on_low_buffer(monkeypatch):
@@ -243,17 +311,16 @@ def test_execute_trade_uses_config_position_size_when_qty_missing(monkeypatch):
     class FakeOrder:
         id = "order-123"
 
-    class FakeApi:
-        def submit_order(self, **kwargs):
-            captured.update(kwargs)
-            return FakeOrder()
-
-    bot.api = FakeApi()
-
     monkeypatch.setattr(bot, "titan_predict", lambda _features: (1, 0.9))
     monkeypatch.setattr(bot, "titan_guard", lambda buffer_threshold=None: True)
     monkeypatch.setattr(bot, "log_trade", lambda *args, **kwargs: None)
     monkeypatch.setattr(bot, "_notify_discord", lambda _msg: None)
+    bot.api = object()
+    monkeypatch.setattr(
+        bot,
+        "_submit_alpaca_order",
+        lambda **kwargs: captured.update(kwargs) or FakeOrder(),
+    )
 
     config.dry_run = False
     config.enable_trading = True
@@ -326,6 +393,38 @@ bots:
     assert candidates[0]["symbol"] == "AAPL"
     assert candidates[0]["fundamentals"]["pe"] == 22.0
     assert candidates[0]["fundamentals"]["volume"] == 1200000.0
+
+
+def test_load_bot_trade_candidates_from_single_bot_profile(tmp_path):
+        csv_file = tmp_path / "titan_profile.csv"
+        csv_file.write_text(
+                "Ticker,volume,pe\nNVDA,5000000,21\n",
+                encoding="utf-8",
+        )
+
+        profile_dir = tmp_path / "profiles"
+        profile_dir.mkdir()
+        (profile_dir / "titan.yml").write_text(
+                f"""
+bot:
+    name: Titan
+    fund: Mansa Tech
+    strategy: CNN with Deep Learning
+strategy:
+    screener_file: {csv_file.name}
+    universe: Mag7+Tech
+    position_size: 1000
+risk:
+    max_pe: 25
+""".strip(),
+                encoding="utf-8",
+        )
+
+        candidates = load_bot_trade_candidates("Titan", config_path=profile_dir)
+
+        assert len(candidates) == 1
+        assert candidates[0]["symbol"] == "NVDA"
+        assert candidates[0]["fundamentals"]["pe"] == 21.0
 
 
 def test_execute_from_screener_passes_fundamentals(monkeypatch):

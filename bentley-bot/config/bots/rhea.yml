@@ -1,0 +1,25 @@
+bot:
+  id: 12
+  name: Rhea
+  runtime_name: Rhea_Bot
+  fund: Mansa ADI
+  strategy: Intra-Day / Swing
+  module: bentley-bot/bots/rhea.py
+
+execution:
+  primary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Rhea_Intraday_Swing
+  screener_file: rhea_adi_swing.csv
+  universe: ADI_Swing_Basket
+  timeframe: 30m
+  position_size: 1800
+
+risk:
+  max_holding_days: 5
+  max_daily_loss_pct: 1.25
+  max_open_positions: 5

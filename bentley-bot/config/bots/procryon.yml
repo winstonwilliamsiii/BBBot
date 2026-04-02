@@ -1,0 +1,26 @@
+bot:
+  id: 5
+  name: Procryon
+  runtime_name: Procryon_Bot
+  fund: Crypto Fund
+  strategy: Crypto Arbitrage
+  module: bentley-bot/bots/procryon.py
+
+execution:
+  primary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Procryon_Crypto_Arbitrage
+  screener_file: procryon_crypto_signals.csv
+  universe: Crypto_Leaders
+  timeframe: 5m
+  position_size: 1200
+
+risk:
+  max_spread_bps: 45
+  max_slippage_bps: 20
+  max_daily_loss_pct: 1.0
+  max_open_positions: 3

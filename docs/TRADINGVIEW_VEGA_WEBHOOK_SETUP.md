@@ -1,17 +1,18 @@
-# TradingView → Vega Bot Webhook Setup
+# TradingView -> Vega_Bot Webhook Setup
 
-This setup enables TradingView screener/strategy alerts to trigger Vega Bot automation via Vercel.
+This setup enables TradingView screener and strategy alerts to trigger Vega_Bot
+automation for the Mansa_Retail fund via Vercel.
 
 ## Flow
 
-`TradingView Alert` → `Webhook URL` → `Bentley API /api/vega/tradingview-alert` → `VEGA_BOT_WEBHOOK_URL` (optional) + `Discord` (optional)
+`TradingView Alert` -> `Webhook URL` -> `Bentley API /api/vega/tradingview-alert` -> `VEGA_BOT_WEBHOOK_URL` (optional) + `Discord` (optional)
 
 ## 1) Configure Vercel Environment Variables
 
 Set these in your Vercel project:
 
 - `TRADINGVIEW_WEBHOOK_SECRET` = strong shared secret used by TradingView payload/query
-- `VEGA_BOT_WEBHOOK_URL` = Vega Mansa Retail execution endpoint (optional but recommended for automation)
+- `VEGA_BOT_WEBHOOK_URL` = Vega_Bot execution endpoint for Mansa_Retail (optional but recommended for automation)
 - `DISCORD_WEBHOOK` = Discord webhook URL (optional)
 - `API_GATEWAY_KEY` = existing API key (fallback auth if no TradingView secret is set)
 - `VEGA_PAPER_ONLY` = `true` (default, blocks live mode) or `false`
@@ -87,7 +88,37 @@ Use valid JSON in TradingView alert message.
 }
 ```
 
-## 4) Endpoint Behavior
+## 4) Optional Windows 9:30 IBKR Scheduler
+
+The repository now includes a scheduled task setup that matches the Admin
+Control Center check for `Bentley-Vega-IBKR-930`.
+
+Create the task:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action Create
+```
+
+List the task:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action List
+```
+
+Test the task:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_ibkr_task.ps1 -Action Test
+```
+
+Execution path:
+
+- `setup_vega_ibkr_task.ps1` registers the scheduled task.
+- `run_vega_ibkr_930.ps1` performs the 9:30 launch sequence.
+- `start_bot_mode.ps1 -Bot Vega -Mode ON -Broker IBKR` checks IBKR connectivity.
+- `scripts/vega_bot.py` runs the dedicated Vega_Bot fundamentals runtime.
+
+## 5) Endpoint Behavior
 
 `POST /api/vega/tradingview-alert`
 
@@ -99,7 +130,7 @@ Use valid JSON in TradingView alert message.
 - Sends Discord alert when payload includes `"send_discord": true`
 - Returns JSON status (`received`, `execution_mode`, `forward`, `discord`)
 
-## 5) Quick Test (PowerShell)
+## 6) Quick Test (PowerShell)
 
 ```powershell
 $body = @{
@@ -127,3 +158,4 @@ Invoke-RestMethod -Method Post `
 - If `VEGA_LIVE_MODE_KEY` is set, live requests must include `live_key` (payload, query, or `x-live-key` header).
 - For TradingView reliability, keep payload compact and always send valid JSON.
 - Start with `send_discord: true` during testing, then disable for high-frequency production alerts unless needed.
+- For the 9:30 task, TWS or IB Gateway must be running with API socket access enabled on the configured port.

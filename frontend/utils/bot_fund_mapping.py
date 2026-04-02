@@ -9,12 +9,13 @@ BOT_CATALOG: List[Dict[str, str]] = [
     {
         "bot": "Titan",
         "fund": "Mansa Tech",
-        "strategy": "ML Ensemble - CNN with Deep Learning approaches for further accuracy",
+        "strategy": "CNN with Deep Learning",
     },
     {
         "bot": "Vega",
-        "fund": "Mansa Retail",
-        "strategy": "Multi-timeframe Strategy",
+        "display_bot": "Vega_Bot",
+        "fund": "Mansa_Retail",
+        "strategy": "Vega Mansa Retail MTF-ML",
     },
     {
         "bot": "Draco",
@@ -39,42 +40,37 @@ BOT_CATALOG: List[Dict[str, str]] = [
     {
         "bot": "Triton",
         "fund": "Mansa Transportation",
-        "strategy": "Portfolio Optimizer",
+        "strategy": "Pending",
     },
     {
         "bot": "Dione",
-        "fund": "Mansa Diversify Dominance",
-        "strategy": "Technical Indicator Bot",
+        "fund": "Mansa Options",
+        "strategy": "Put Call Parity",
     },
     {
         "bot": "Dogon",
         "fund": "Mansa ETF",
-        "strategy": "USD/COP Short",
-    },
-    {
-        "bot": "Cephei",
-        "fund": "Mansa Shorts",
-        "strategy": "Mean Reversion",
+        "strategy": "Portfolio Optimizer",
     },
     {
         "bot": "Rigel",
         "fund": "Mansa FOREX",
-        "strategy": "GoldRSI Strategy",
+        "strategy": "Mean Reversion",
     },
     {
         "bot": "Orion",
         "fund": "Mansa Minerals",
-        "strategy": "Options Strategy",
+        "strategy": "GoldRSI Strategy",
     },
     {
         "bot": "Rhea",
-        "fund": "Mansa Real Estate",
-        "strategy": "Pairs Trading",
+        "fund": "Mansa ADI",
+        "strategy": "Intra-Day / Swing",
     },
     {
         "bot": "Jupicita",
         "fund": "Mansa_Smalls",
-        "strategy": "Small-cap alpha forecasting with liquidity-aware execution",
+        "strategy": "Pairs Trading",
     },
 ]
 
@@ -91,4 +87,10 @@ def get_bot_fund_rows() -> List[Dict[str, str]]:
 
 def get_bot_catalog_rows() -> List[Dict[str, str]]:
     """Return full bot catalog rows in display order."""
-    return [dict(row) for row in BOT_CATALOG]
+    rows: List[Dict[str, str]] = []
+    for row in BOT_CATALOG:
+        display_row = dict(row)
+        if row.get("display_bot"):
+            display_row["bot"] = row["display_bot"]
+        rows.append(display_row)
+    return rows

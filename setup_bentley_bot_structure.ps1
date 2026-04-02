@@ -14,7 +14,7 @@ New-Item -ItemType File -Path "bentley-bot/bots/__init__.py" -Force | Out-Null
 
 $botNames = @(
     @{id=1; file="titan"; name="Titan"; fund="Mansa Tech"; strategy="CNN with Deep Learning"; broker="alpaca_client"},
-    @{id=2; file="vega"; name="Vega"; fund="Mansa Retail"; strategy="Breakout Strategy"; broker="ibkr_client"},
+    @{id=2; file="vega"; name="Vega_Bot"; fund="Mansa_Retail"; strategy="Vega Mansa Retail MTF-ML"; broker="ibkr_client"},
     @{id=3; file="draco"; name="Draco"; fund="Mansa Money Bag"; strategy="Sentiment Analyzer"; broker="alpaca_client"},
     @{id=4; file="altair"; name="Altair"; fund="Mansa AI"; strategy="News Trading"; broker="alpaca_client"},
     @{id=5; file="procryon"; name="Procryon"; fund="Crypto Fund"; strategy="Crypto Arbitrage"; broker="alpaca_client"},

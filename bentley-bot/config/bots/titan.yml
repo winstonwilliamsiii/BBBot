@@ -1,0 +1,29 @@
+bot:
+  id: 1
+  name: Titan
+  runtime_name: Titan_Bot
+  fund: Mansa Tech
+  strategy: CNN with Deep Learning
+  module: bentley-bot/bots/titan.py
+
+execution:
+  primary_client: alpaca_client
+  secondary_client: ibkr_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Titan_CNN_Deep_Learning
+  screener_file: titan_tech_fundamentals.csv
+  universe: Mag7+Tech
+  timeframe: 1D
+  position_size: 5000
+
+risk:
+  min_volume: 5000000
+  max_pe: 40
+  min_roe: 15
+  max_debt_to_equity: 0.8
+  max_daily_loss_pct: 2.0
+  max_open_positions: 5

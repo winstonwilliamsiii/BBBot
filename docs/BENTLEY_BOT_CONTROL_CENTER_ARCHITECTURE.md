@@ -559,7 +559,7 @@ Data:
 /bentley-bot/                          # NEW: Organized control center code
 ├── bots/                              # All 13 AI/ML trading bots
 │   ├── titan.py                       # Titan | Mansa Tech | CNN with Deep Learning
-│   ├── vega.py                        # Vega | Mansa Retail | Breakout Strategy
+│   ├── vega.py                        # Vega_Bot | Mansa_Retail | Vega Mansa Retail MTF-ML
 │   ├── draco.py                       # Draco | Mansa Money Bag | Sentiment Analyzer
 │   ├── altair.py                      # Altair | Mansa AI | News Trading
 │   ├── procryon.py                    # Procryon | Crypto Fund | Crypto Arbitrage

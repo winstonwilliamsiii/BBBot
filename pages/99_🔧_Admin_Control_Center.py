@@ -15,6 +15,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
+from typing import Literal
 import json
 import subprocess
 import sys
@@ -49,9 +50,13 @@ except Exception:
             {
                 "bot": "Titan",
                 "fund": "Mansa Tech",
-                "strategy": "ML Ensemble - CNN with Deep Learning approaches for further accuracy",
+                "strategy": "CNN with Deep Learning",
             },
-            {"bot": "Vega", "fund": "Mansa Retail", "strategy": "Multi-timeframe Strategy"},
+            {
+                "bot": "Vega_Bot",
+                "fund": "Mansa_Retail",
+                "strategy": "Vega Mansa Retail MTF-ML",
+            },
             {"bot": "Draco", "fund": "Mansa Money Bag", "strategy": "Sentiment Analyzer"},
             {"bot": "Altair", "fund": "Mansa AI", "strategy": "News Trading"},
             {"bot": "Procryon", "fund": "Crypto Fund", "strategy": "Crypto Arbitrage"},
@@ -59,24 +64,28 @@ except Exception:
             {
                 "bot": "Triton",
                 "fund": "Mansa Transportation",
-                "strategy": "Portfolio Optimizer",
+                "strategy": "Pending",
             },
             {
                 "bot": "Dione",
-                "fund": "Mansa Diversify Dominance",
-                "strategy": "Technical Indicator Bot",
+                "fund": "Mansa Options",
+                "strategy": "Put Call Parity",
             },
-            {"bot": "Dogon", "fund": "Mansa ETF", "strategy": "USD/COP Short"},
-            {"bot": "Cephei", "fund": "Mansa Shorts", "strategy": "Mean Reversion"},
-            {"bot": "Rigel", "fund": "Mansa FOREX", "strategy": "GoldRSI Strategy"},
-            {"bot": "Orion", "fund": "Mansa Minerals", "strategy": "Options Strategy"},
-            {"bot": "Rhea", "fund": "Mansa Real Estate", "strategy": "Pairs Trading"},
+            {"bot": "Dogon", "fund": "Mansa ETF", "strategy": "Portfolio Optimizer"},
+            {"bot": "Rigel", "fund": "Mansa FOREX", "strategy": "Mean Reversion"},
+            {"bot": "Orion", "fund": "Mansa Minerals", "strategy": "GoldRSI Strategy"},
+            {"bot": "Rhea", "fund": "Mansa ADI", "strategy": "Intra-Day / Swing"},
             {
                 "bot": "Jupicita",
                 "fund": "Mansa_Smalls",
-                "strategy": "Small-cap alpha forecasting with liquidity-aware execution",
+                "strategy": "Pairs Trading",
             },
         ]
+
+try:
+    from config.broker_mode_config import get_config as get_broker_mode_config
+except Exception:
+    get_broker_mode_config = None
 
 # Configuration
 DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
@@ -720,7 +729,32 @@ def get_last_bot_mode_event() -> dict | None:
     return None
 
 
-def run_bot_mode(bot_name: str, mode: str) -> dict:
+def get_bot_launch_mode(bot_name: str, fallback_broker: str) -> str:
+    if get_broker_mode_config is None:
+        return "paper"
+
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name) or fallback_broker.lower()
+        return config.get_broker_mode(broker_name)
+    except Exception:
+        return "paper"
+
+
+def persist_bot_launch_mode(
+    bot_name: str,
+    trading_mode: Literal["paper", "live"],
+    fallback_broker: str,
+) -> None:
+    if get_broker_mode_config is None:
+        return
+
+    config = get_broker_mode_config()
+    broker_name = config.get_bot_broker(bot_name) or fallback_broker.lower()
+    config.set_broker_mode(broker_name, trading_mode)
+
+
+def run_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
     """Run start_bot_mode.ps1 and return execution result."""
     repo_root = Path(__file__).resolve().parents[1]
     launcher = repo_root / "start_bot_mode.ps1"
@@ -744,6 +778,8 @@ def run_bot_mode(bot_name: str, mode: str) -> dict:
         mode,
         "-Broker",
         "IBKR",
+        "-TradingMode",
+        trading_mode,
     ]
 
     try:
@@ -891,6 +927,13 @@ def main():
         st.subheader("Vega IBKR 9:30 Automation")
         schedule = get_vega_ibkr_schedule_status()
         last_event = get_last_bot_mode_event()
+        vega_launch_mode = st.radio(
+            "Vega trading mode",
+            options=["paper", "live"],
+            horizontal=True,
+            key="vega_trading_mode",
+            index=0 if get_bot_launch_mode("Vega", "ibkr") == "paper" else 1,
+        )
 
         col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
@@ -903,11 +946,14 @@ def main():
             event_status = (last_event or {}).get("status", "n/a")
             st.metric("Last Vega Status", str(event_status))
 
+        st.caption(f"Selected Vega mode: {vega_launch_mode.upper()}")
+
         btn_on, btn_off = st.columns(2)
         with btn_on:
             if st.button("Vega ON", type="primary", use_container_width=True):
+                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr")
                 with st.spinner("Running Vega ON..."):
-                    execution = run_bot_mode("Vega", "ON")
+                    execution = run_bot_mode("Vega", "ON", vega_launch_mode)
                 st.session_state["vega_mode_output"] = execution["output"]
                 if execution["ok"]:
                     st.success("Vega ON completed.")
@@ -916,8 +962,9 @@ def main():
                 st.rerun()
         with btn_off:
             if st.button("Vega OFF", use_container_width=True):
+                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr")
                 with st.spinner("Running Vega OFF..."):
-                    execution = run_bot_mode("Vega", "OFF")
+                    execution = run_bot_mode("Vega", "OFF", vega_launch_mode)
                 st.session_state["vega_mode_output"] = execution["output"]
                 if execution["ok"]:
                     st.success("Vega OFF completed.")

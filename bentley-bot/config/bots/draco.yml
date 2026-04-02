@@ -1,0 +1,26 @@
+bot:
+  id: 3
+  name: Draco
+  runtime_name: Draco_Bot
+  fund: Mansa Money Bag
+  strategy: Sentiment Analyzer
+  module: bentley-bot/bots/draco.py
+
+execution:
+  primary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Draco_Sentiment_Analyzer
+  screener_file: draco_sentiment_signals.csv
+  universe: Sentiment_Leaders
+  timeframe: 1H
+  position_size: 2000
+
+risk:
+  min_sentiment_score: 0.65
+  max_position_size: 2000
+  max_daily_loss_pct: 1.5
+  max_open_positions: 5

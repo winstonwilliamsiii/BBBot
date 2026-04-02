@@ -1,0 +1,27 @@
+bot:
+  id: 11
+  name: Orion
+  runtime_name: Orion_Bot
+  fund: Mansa Minerals
+  strategy: GoldRSI Strategy
+  module: bentley-bot/bots/orion.py
+
+execution:
+  primary_client: mt5_client
+  venue: ftmo
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Orion_Gold_RSI
+  screener_file: orion_minerals_fundamentals.csv
+  universe: Minerals_Commodities
+  timeframe: H1
+  position_size: 2200
+
+risk:
+  rsi_oversold: 30
+  rsi_overbought: 70
+  max_daily_loss_pct: 1.5
+  max_open_positions: 3

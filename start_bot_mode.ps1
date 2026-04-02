@@ -12,7 +12,10 @@ param(
     [string]$Mode,
 
     [ValidateSet("AUTO", "IBKR", "ALPACA", "MT5", "BINANCE", "COINBASE")]
-    [string]$Broker = "AUTO"
+    [string]$Broker = "AUTO",
+
+    [ValidateSet("AUTO", "paper", "live")]
+    [string]$TradingMode = "AUTO"
 )
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -28,6 +31,44 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
 
+function Get-ConfigTradingMode {
+    param(
+        [string]$BrokerName
+    )
+
+    $configPath = Join-Path $repoRoot "config\broker_modes.json"
+    if (-not (Test-Path $configPath)) {
+        return "paper"
+    }
+
+    try {
+        $config = Get-Content $configPath -Raw | ConvertFrom-Json
+        $brokerKey = $BrokerName.ToLower()
+
+        if ($config.broker_modes -and $config.broker_modes.$brokerKey) {
+            return [string]$config.broker_modes.$brokerKey
+        }
+
+        if ($config.global_mode) {
+            return [string]$config.global_mode
+        }
+    } catch {
+        return "paper"
+    }
+
+    return "paper"
+}
+
+function Set-ModeEnvironment {
+    param(
+        [string]$BrokerName,
+        [string]$ModeName
+    )
+
+    $envName = "{0}_MODE" -f $BrokerName.ToUpper()
+    Set-Item -Path ("Env:{0}" -f $envName) -Value $ModeName
+}
+
 $resolvedBroker = $Broker.ToUpper()
 if ($resolvedBroker -eq "AUTO") {
     if ($Bot -eq "Vega") {
@@ -37,6 +78,16 @@ if ($resolvedBroker -eq "AUTO") {
     }
 }
 
+$resolvedTradingMode = $TradingMode.ToLower()
+if ($resolvedTradingMode -eq "auto") {
+    $resolvedTradingMode = Get-ConfigTradingMode -BrokerName $resolvedBroker
+}
+if ($resolvedTradingMode -notin @("paper", "live")) {
+    $resolvedTradingMode = "paper"
+}
+
+Set-ModeEnvironment -BrokerName $resolvedBroker -ModeName $resolvedTradingMode
+
 $modeLower = $Mode.ToLower()
 $status = "placeholder"
 $note = "ON/OFF launcher contract is active for this bot. Runtime executor is not implemented yet."
@@ -45,7 +96,13 @@ $ibkrProbeOutput = ""
 
 if ($Bot -eq "Vega" -and $resolvedBroker -eq "IBKR" -and $Mode -eq "ON") {
     if (-not $env:IBKR_HOST) { $env:IBKR_HOST = "127.0.0.1" }
-    if (-not $env:IBKR_PORT) { $env:IBKR_PORT = "7496" }
+    if (-not $env:IBKR_PORT) {
+        if ($resolvedTradingMode -eq "paper") {
+            $env:IBKR_PORT = "7497"
+        } else {
+            $env:IBKR_PORT = "7496"
+        }
+    }
     if (-not $env:IBKR_CLIENT_ID) { $env:IBKR_CLIENT_ID = "1" }
 
     $probe = & $pythonExe -c "from bbbot1_pipeline.broker_api import IBKRClient; c=IBKRClient(); ok=c.connect(); print('IBKR_SOCKET_CONNECT_OK='+str(ok))" 2>&1
@@ -68,6 +125,7 @@ $event = [ordered]@{
     bot = $Bot
     mode = $modeLower
     broker = $resolvedBroker
+    trading_mode = $resolvedTradingMode
     status = $status
     note = $note
     ibkr_connect_ok = $ibkrConnectOk
@@ -104,7 +162,7 @@ if (-not $webhookUrl) {
 
 if ($webhookUrl) {
     try {
-        $message = "Bot $Bot $Mode | Broker: $resolvedBroker | Status: $status"
+        $message = "Bot $Bot $Mode | Broker: $resolvedBroker | Trading Mode: $resolvedTradingMode | Status: $status"
         $body = @{ content = $message } | ConvertTo-Json -Depth 4
         $response = Invoke-WebRequest -Method Post -Uri $webhookUrl -ContentType "application/json" -Body $body -UseBasicParsing
         $event["discord_sent"] = $true

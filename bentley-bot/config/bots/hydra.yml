@@ -1,0 +1,26 @@
+bot:
+  id: 6
+  name: Hydra
+  runtime_name: Hydra_Bot
+  fund: Mansa Health
+  strategy: Momentum Strategy
+  module: bentley-bot/bots/hydra.py
+
+execution:
+  primary_client: alpaca_client
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Hydra_Health_Momentum
+  screener_file: hydra_health_momentum.csv
+  universe: Healthcare_Momentum
+  timeframe: 1D
+  position_size: 2200
+
+risk:
+  min_volume: 750000
+  max_drawdown_pct: 6.0
+  max_daily_loss_pct: 1.5
+  max_open_positions: 5

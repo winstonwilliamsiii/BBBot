@@ -11,11 +11,13 @@ Project-aligned trading bot module with:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
@@ -24,8 +26,16 @@ from dotenv import load_dotenv
 
 try:
     from scripts.load_screener_csv import load_bot_trade_candidates
+    from scripts.load_screener_csv import (
+        DEFAULT_CONFIG_PATH,
+        load_bot_config as load_runtime_bot_config,
+    )
 except ModuleNotFoundError:
     from load_screener_csv import load_bot_trade_candidates
+    from load_screener_csv import (
+        DEFAULT_CONFIG_PATH,
+        load_bot_config as load_runtime_bot_config,
+    )
 
 try:
     import yaml
@@ -73,50 +83,29 @@ def _load_active_bot_profile(
     config_path: Optional[str],
     requested_bot: Optional[str],
 ) -> Dict[str, Any]:
-    profile = _default_bot_profile()
+    active_name = requested_bot or ""
+    if not active_name and config_path and os.path.isdir(config_path):
+        active_name = "Titan"
+
+    default_profile_name = active_name or "Titan_Bot"
+    if default_profile_name and not default_profile_name.endswith("_Bot"):
+        default_profile_name = f"{default_profile_name}_Bot"
+
+    profile = _default_bot_profile(default_profile_name)
 
     if not config_path:
         return profile
 
-    if yaml is None:
-        logger.warning("PyYAML not installed; using default bot profile")
-        return profile
-
-    path = Path(config_path)
-    if not path.exists():
-        logger.info("Bot config file not found at %s; using defaults", path)
-        return profile
-
     try:
-        with path.open("r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh) or {}
-    except (OSError, ValueError, TypeError) as exc:
-        logger.warning("Failed reading bot config %s: %s", path, exc)
-        return profile
-
-    if not isinstance(data, dict):
-        return profile
-
-    bots = data.get("bots", {})
-    if not isinstance(bots, dict) or not bots:
-        return profile
-
-    active_bot = requested_bot or data.get("active_bot") or "Titan_Bot"
-    if active_bot not in bots:
-        logger.warning(
-            "Active bot '%s' not found in config; falling back to default profile",
-            active_bot,
-        )
-        return profile
-
-    bot_profile = bots.get(active_bot) or {}
-    if not isinstance(bot_profile, dict):
+        bot_profile = load_runtime_bot_config(active_name, config_path=config_path)
+    except (OSError, ValueError, TypeError, FileNotFoundError) as exc:
+        logger.warning("Failed reading bot config %s: %s", config_path, exc)
         return profile
 
     merged = {
         **profile,
         **bot_profile,
-        "bot_name": active_bot,
+        "bot_name": str(bot_profile.get("bot_name") or active_name),
     }
 
     if "risk_rules" not in merged or not isinstance(merged["risk_rules"], dict):
@@ -169,6 +158,7 @@ class TitanConfig:
     airbyte_connection_id: Optional[str]
     liquidity_buffer_threshold: float
     prediction_threshold: float
+    order_timeout_seconds: float
     dry_run: bool
     enable_trading: bool
     strategy_name: str
@@ -183,12 +173,12 @@ class TitanConfig:
 
     @classmethod
     def from_env(cls) -> "TitanConfig":
+        requested_bot = os.getenv("ACTIVE_BOT") or os.getenv("BOT_NAME")
         load_dotenv(override=False)
         bot_config_path = os.getenv(
             "BOT_CONFIG_PATH",
-            "config/fundamentals_bots.yml",
+            str(DEFAULT_CONFIG_PATH),
         )
-        requested_bot = os.getenv("ACTIVE_BOT") or os.getenv("BOT_NAME")
         bot_profile = _load_active_bot_profile(bot_config_path, requested_bot)
 
         return cls(
@@ -238,6 +228,10 @@ class TitanConfig:
                 os.getenv("TITAN_PREDICTION_THRESHOLD"),
                 0.50,
             ),
+            order_timeout_seconds=_as_float(
+                os.getenv("TITAN_ORDER_TIMEOUT_SECONDS"),
+                15.0,
+            ),
             dry_run=_as_bool(os.getenv("TITAN_DRY_RUN", "true"), True),
             enable_trading=_as_bool(
                 os.getenv("TITAN_ENABLE_TRADING", "false"),
@@ -245,15 +239,20 @@ class TitanConfig:
             ),
             strategy_name=os.getenv(
                 "TITAN_STRATEGY_NAME",
-                str(bot_profile.get("strategy_label", "Mansa Tech - Titan Bot")),
+                str(
+                    bot_profile.get(
+                        "strategy_label",
+                        bot_profile.get("strategy_name", "Mansa Tech - Titan Bot"),
+                    )
+                ),
             ),
             active_bot_name=str(bot_profile.get("bot_name", "Titan_Bot")),
             screener_file=str(
-                bot_profile.get("screener_file", "titan_tech_fundamentals.csv")
+                bot_profile.get("screener_file") or "titan_tech_fundamentals.csv"
             ),
-            universe=str(bot_profile.get("universe", "Mag7+Tech")),
+            universe=str(bot_profile.get("universe") or "Mag7+Tech"),
             position_size=_as_float(
-                str(bot_profile.get("position_size", "5000")),
+                str(bot_profile.get("position_size") or "5000"),
                 5000.0,
             ),
             risk_rules=(
@@ -289,6 +288,103 @@ class TitanBot:
     def __init__(self, config: Optional[TitanConfig] = None):
         self.config = config or TitanConfig.from_env()
         self.api = self._init_alpaca_client()
+
+    def _alpaca_headers(self) -> Dict[str, str]:
+        return {
+            "APCA-API-KEY-ID": self.config.alpaca_api_key or "",
+            "APCA-API-SECRET-KEY": self.config.alpaca_secret_key or "",
+            "Content-Type": "application/json",
+        }
+
+    def _extract_order_id(self, order: Any) -> Optional[str]:
+        if isinstance(order, dict):
+            order_id = order.get("id")
+            return str(order_id) if order_id else None
+
+        order_id = getattr(order, "id", None)
+        return str(order_id) if order_id else None
+
+    def _submit_alpaca_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: str,
+    ) -> Dict[str, Any]:
+        if not self.config.alpaca_api_key or not self.config.alpaca_secret_key:
+            raise RuntimeError("Alpaca credentials missing")
+
+        endpoint = f"{self.config.alpaca_base_url.rstrip('/')}/v2/orders"
+        payload = {
+            "symbol": symbol,
+            "qty": qty,
+            "side": side,
+            "type": "market",
+            "time_in_force": "day",
+        }
+
+        logger.info(
+            "Submitting Alpaca order for %s %s qty=%s with timeout=%ss",
+            side,
+            symbol,
+            qty,
+            self.config.order_timeout_seconds,
+        )
+
+        env = os.environ.copy()
+        env["TITAN_SUBMIT_ENDPOINT"] = endpoint
+        env["TITAN_SUBMIT_PAYLOAD"] = json.dumps(payload)
+        env["TITAN_SUBMIT_HEADERS"] = json.dumps(self._alpaca_headers())
+        env["TITAN_ORDER_TIMEOUT_SECONDS"] = str(
+            self.config.order_timeout_seconds
+        )
+
+        submit_script = (
+            "import json, os, requests;"
+            "endpoint=os.environ['TITAN_SUBMIT_ENDPOINT'];"
+            "payload=json.loads(os.environ['TITAN_SUBMIT_PAYLOAD']);"
+            "headers=json.loads(os.environ['TITAN_SUBMIT_HEADERS']);"
+            "timeout=float(os.environ['TITAN_ORDER_TIMEOUT_SECONDS']);"
+            "resp=requests.post(endpoint, headers=headers, json=payload, timeout=timeout);"
+            "resp.raise_for_status();"
+            "print(json.dumps(resp.json()))"
+        )
+
+        try:
+            completed = subprocess.run(
+                [sys.executable, "-c", submit_script],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=self.config.order_timeout_seconds + 3.0,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise requests.Timeout(
+                f"Timed out submitting Alpaca order after {self.config.order_timeout_seconds}s"
+            ) from exc
+
+        if completed.returncode != 0:
+            stderr = (completed.stderr or completed.stdout or "").strip()
+            raise requests.RequestException(
+                stderr or "Unknown Alpaca order submission failure"
+            )
+
+        return json.loads(completed.stdout.strip())
+
+    def _mlflow_tracking_is_reachable(self) -> bool:
+        if mlflow is None:
+            return False
+
+        health_url = f"{self.config.mlflow_tracking_uri.rstrip('/')}/health"
+        try:
+            response = requests.get(health_url, timeout=2)
+            return 200 <= response.status_code < 300
+        except requests.RequestException:
+            logger.info(
+                "Skipping MLflow model load because tracking URI is unavailable: %s",
+                health_url,
+            )
+            return False
 
     def _init_alpaca_client(self):
         if tradeapi is None:
@@ -591,7 +687,7 @@ class TitanBot:
         return enriched
 
     def load_model(self):
-        if mlflow is None:
+        if mlflow is None or not self._mlflow_tracking_is_reachable():
             return None
         try:
             mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
@@ -759,13 +855,38 @@ class TitanBot:
             )
             return None
 
-        order = self.api.submit_order(
-            symbol=symbol,
-            qty=effective_qty,
-            side=side,
-            type="market",
-            time_in_force="day",
-        )
+        try:
+            order = self._submit_alpaca_order(
+                symbol=symbol,
+                qty=effective_qty,
+                side=side,
+            )
+        except requests.RequestException as exc:
+            logger.error("Alpaca order submission failed for %s: %s", symbol, exc)
+            self.log_trade(
+                symbol,
+                side,
+                effective_qty,
+                "MARKET",
+                "error",
+                prediction_label=prediction,
+                prediction_probability=probability,
+                notes=f"Alpaca submit failed: {exc}",
+            )
+            return None
+        except RuntimeError as exc:
+            logger.error("Alpaca order submission blocked for %s: %s", symbol, exc)
+            self.log_trade(
+                symbol,
+                side,
+                effective_qty,
+                "MARKET",
+                "error",
+                prediction_label=prediction,
+                prediction_probability=probability,
+                notes=str(exc),
+            )
+            return None
 
         self.log_trade(
             symbol,
@@ -773,7 +894,7 @@ class TitanBot:
             effective_qty,
             "MARKET",
             "submitted",
-            order_id=getattr(order, "id", None),
+            order_id=self._extract_order_id(order),
             prediction_label=prediction,
             prediction_probability=probability,
         )

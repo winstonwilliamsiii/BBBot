@@ -1,4 +1,8 @@
-from frontend.utils.bot_fund_mapping import BOT_FUND_ALLOCATIONS, get_bot_fund_rows
+from frontend.utils.bot_fund_mapping import (
+    BOT_FUND_ALLOCATIONS,
+    get_bot_catalog_rows,
+    get_bot_fund_rows,
+)
 from scripts import stars_orchestration
 
 
@@ -14,6 +18,13 @@ def test_get_bot_fund_rows_count():
     assert len(rows) >= 4
     bot_names = {row["bot"] for row in rows}
     assert {"Titan", "Rigel", "Dogon", "Orion"}.issubset(bot_names)
+
+
+def test_vega_catalog_row_uses_updated_display_values():
+    rows = get_bot_catalog_rows()
+    vega_row = next(row for row in rows if row["bot"] == "Vega_Bot")
+    assert vega_row["fund"] == "Mansa_Retail"
+    assert vega_row["strategy"] == "Vega Mansa Retail MTF-ML"
 
 
 def test_run_fund_bot_rigel_ready_or_placeholder():

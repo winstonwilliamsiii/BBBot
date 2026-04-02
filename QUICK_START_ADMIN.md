@@ -14,10 +14,6 @@ Current focus for Jupicita is:
 - Simulated rebalancing guidance
 - Execution-aware deployment
 
-## Default Strategy Label
-
-Jupicita strategy is set as a proposed default and can be overridden once the exact production label is finalized.
-
 ## Immediate Priorities
 
 1. Forecasting layer

@@ -9,7 +9,7 @@ Mansa Capital Partners, LLC & Moor Capital Trust
 
 A **two-layer platform** that combines:
 1. **Client-Facing Portfolio Management** (what investors see)
-2. **Internal Control Center** (how you manage 13 AI bots, 5+ brokers, and 4+ prop firms)
+2. **Internal Control Center** (how you manage 13 AI bots and a unified brokerage execution layer)
 
 Think of it as: **"The Bloomberg Terminal meets AI-powered hedge fund operations"**
 
@@ -21,7 +21,7 @@ Think of it as: **"The Bloomberg Terminal meets AI-powered hedge fund operations
 - Portfolio dashboard with real-time valuations
 - Budget management with Plaid bank sync
 - Multi-broker trading interface
-- Crypto dashboard with Binance integration
+- Broker-connected trading dashboards
 - Investment analysis and stock screener
 - ML bot performance metrics
 
@@ -30,8 +30,8 @@ Think of it as: **"The Bloomberg Terminal meets AI-powered hedge fund operations
 ---
 
 ### Layer 2: Bentley Bot Control Center (In Development) 🔨
-- Multi-broker orchestration (Alpaca, Schwab, IBKR, Binance, Coinbase)
-- Prop firm execution via MT5/NinjaTrader (FTMO, Axi, Zenit)
+- Brokerage orchestration (Alpaca, IBKR, MT5)
+- Prop firm execution adapters (FTMO, Axi Select, Zenit)
 - 13 AI/ML trading bots with MLflow tracking
 - Risk engine (drawdown limits, FINRA compliance, prop rules)
 - VPS/GCP deployment automation
@@ -49,7 +49,7 @@ Think of it as: **"The Bloomberg Terminal meets AI-powered hedge fund operations
 - ✅ View portfolio across multiple accounts
 - ✅ Track budget and expenses
 - ✅ Analyze stocks with technical indicators
-- ✅ Trade crypto on Binance
+- ✅ Place connected trades through supported brokerage flows
 - ✅ Monitor ML bot performance
 - ✅ Place orders via Alpaca
 - ✅ Track positions and P&L
@@ -81,7 +81,7 @@ Think of it as: **"The Bloomberg Terminal meets AI-powered hedge fund operations
 ### Trading Infrastructure
 - **MT5** - Prop firm execution (FTMO, Axi)
 - **Alpaca API** - Equities trading
-- **Binance SDK** - Crypto trading
+- **IBKR TWS API** - Multi-asset brokerage integration
 - **yfinance** - Market data
 
 ### Data & ML
@@ -134,12 +134,10 @@ start open_dashboard.ps1
 | Broker | Asset Class | Status | API Type |
 |--------|------------|--------|----------|
 | **Alpaca** | Equities | ✅ Live | REST + WebSocket |
-| **Binance** | Crypto | ✅ Live | REST |
+| **IBKR** | Multi-asset | 🔨 In Progress | TWS API |
 | **MT5 (FTMO)** | Forex/CFDs | ✅ Ready | Python API |
 | **MT5 (Axi)** | Forex/CFDs | ✅ Ready | Python API |
-| **Schwab** | Equities | 🟡 OAuth Pending | REST |
-| **IBKR** | Multi-asset | 🔨 In Progress | TWS API |
-| **Coinbase** | Crypto | 🔨 Planned | Pro API |
+| **MT5 (Zenit)** | Futures/CFDs | 🟡 Bridge Design | External bridge |
 
 ---
 
@@ -207,29 +205,31 @@ start open_dashboard.ps1
 ```
 /bentley-bot/              # 🆕 Organized control center code
 ├── bots/                  # 13 AI/ML trading bots
-│   ├── bot1.py           # GoldRSI Strategy
-│   ├── bot2.py           # USD/COP Short
-│   ├── bot3.py           # Portfolio Optimizer
-│   ├── bot4.py           # Sentiment Analyzer
-│   ├── bot5.py           # Technical Indicator Bot
-│   ├── bot6.py           # Multi-timeframe Strategy
-│   ├── bot7.py           # Crypto Arbitrage
-│   ├── bot8.py           # Mean Reversion
-│   ├── bot9.py           # Momentum Strategy
-│   ├── bot10.py          # Options Strategy
-│   ├── bot11.py          # Pairs Trading
-│   ├── bot12.py          # News Trading
-│   └── bot13.py          # ML Ensemble
-├── brokers/               # Broker API clients
-│   ├── alpaca.py
-│   ├── schwab.py
-│   ├── ibkr.py
-│   ├── binance.py
-│   └── coinbase.py
-├── prop_firms/            # Prop firm connectors
-│   ├── ftmo_mt5.py
-│   ├── axi_mt5.py
-│   └── zenit_ninja.py
+│   ├── titan.py          # Titan | Mansa Tech | CNN with Deep Learning
+│   ├── vega.py           # Vega | Mansa Retail | Breakout Strategy
+│   ├── draco.py          # Draco | Mansa Money Bag | Sentiment Analyzer
+│   ├── altair.py         # Altair | Mansa AI | News Trading
+│   ├── procryon.py       # Procryon | Crypto Fund | Crypto Arbitrage
+│   ├── hydra.py          # Hydra | Mansa Health | Momentum Strategy
+│   ├── triton.py         # Triton | Mansa Transportation | Pending
+│   ├── dione.py          # Dione | Mansa Options | Put Call Parity
+│   ├── dogon.py          # Dogon | Mansa ETF | Portfolio Optimizer
+│   ├── rigel.py          # Rigel | Mansa FOREX | Mean Reversion
+│   ├── orion.py          # Orion | Mansa Minerals | GoldRSI Strategy
+│   ├── rhea.py           # Rhea | Mansa ADI | Intra-Day / Swing
+│   └── jupicita.py       # Jupicita | Mansa_Smalls | Pairs Trading
+├── brokers/               # Brokerage and prop-firm execution clients
+│   ├── alpaca_client.py
+│   ├── ibkr_client.py
+│   ├── mt5_client.py
+│   ├── prop_firm_ftmo.py
+│   ├── prop_firm_axi.py
+│   └── prop_firm_zenit.py
+├── config/                # Bot runtime profiles
+│   └── bots/
+│       ├── titan.yml
+│       ├── ...
+│       └── jupicita.yml
 ├── mlflow/                # ML pipelines
 │   ├── train.py
 │   ├── backtest.py
@@ -274,7 +274,7 @@ BentleyBudgetBot/
 ### For Investors (Client Layer)
 - "Show me my portfolio performance"
 - "What's my budget vs actual spending?"
-- "Execute a trade on Binance"
+- "Execute a trade through Alpaca or MT5"
 - "How are the trading bots performing?"
 
 ### For Admins (Control Center)

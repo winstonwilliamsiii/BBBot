@@ -91,6 +91,28 @@ def init_airflow_db():
         print(f"❌ Database initialization failed: {e}")
         print("💡 Try: python mysql_setup.py to set up the database")
 
+
+def start_webserver():
+    """Start the Airflow webserver with Windows-safe settings."""
+    try:
+        from airflow.cli.commands.webserver_command import webserver
+
+        print("🌐 Starting Airflow webserver on http://localhost:8080")
+        webserver(["-p", "8080"])
+    except Exception as e:
+        print(f"❌ Webserver start failed: {e}")
+
+
+def start_scheduler():
+    """Start the Airflow scheduler with Windows-safe settings."""
+    try:
+        from airflow.cli.commands.scheduler_command import scheduler
+
+        print("⏱️ Starting Airflow scheduler")
+        scheduler([])
+    except Exception as e:
+        print(f"❌ Scheduler start failed: {e}")
+
 def list_airflow_config():
     """List Airflow configuration safely."""
     try:
@@ -113,8 +135,12 @@ if __name__ == "__main__":
             list_airflow_config()
         elif command == "test":
             test_mysql_connection()
+        elif command == "webserver":
+            start_webserver()
+        elif command == "scheduler":
+            start_scheduler()
         else:
-            print("Available commands: init, config, test")
+            print("Available commands: init, config, test, webserver, scheduler")
     else:
         print("Airflow Windows compatibility wrapper loaded.")
-        print("Usage: python airflow_windows.py [init|config]")
+        print("Usage: python airflow_windows.py [init|config|test|webserver|scheduler]")

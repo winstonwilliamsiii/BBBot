@@ -745,6 +745,7 @@ def persist_bot_launch_mode(
     bot_name: str,
     trading_mode: Literal["paper", "live"],
     fallback_broker: str,
+    active: bool | None = None,
 ) -> None:
     if get_broker_mode_config is None:
         return
@@ -752,6 +753,8 @@ def persist_bot_launch_mode(
     config = get_broker_mode_config()
     broker_name = config.get_bot_broker(bot_name) or fallback_broker.lower()
     config.set_broker_mode(broker_name, trading_mode)
+    if active is not None:
+        config.set_bot_active(bot_name, active)
 
 
 def run_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
@@ -951,7 +954,7 @@ def main():
         btn_on, btn_off = st.columns(2)
         with btn_on:
             if st.button("Vega ON", type="primary", use_container_width=True):
-                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr")
+                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", True)
                 with st.spinner("Running Vega ON..."):
                     execution = run_bot_mode("Vega", "ON", vega_launch_mode)
                 st.session_state["vega_mode_output"] = execution["output"]
@@ -962,7 +965,7 @@ def main():
                 st.rerun()
         with btn_off:
             if st.button("Vega OFF", use_container_width=True):
-                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr")
+                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", False)
                 with st.spinner("Running Vega OFF..."):
                     execution = run_bot_mode("Vega", "OFF", vega_launch_mode)
                 st.session_state["vega_mode_output"] = execution["output"]

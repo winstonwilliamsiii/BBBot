@@ -2,13 +2,22 @@
 require('dotenv').config();
 const axios = require('axios');
 const cron = require('node-cron');
+const fs = require('fs');
 const mysql = require('mysql2/promise');
+const path = require('path');
+const yaml = require('js-yaml');
 
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
 const TIINGO_API_KEY = process.env.TIINGO_API_KEY || process.env.TIINGO_TOKEN;
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.ALPHAVANTAGE_API_KEY;
 const RUN_ONCE = process.argv.includes('--run-once');
 const DEFAULT_MANSA_TECH_SYMBOLS = ['IONQ', 'QBTS', 'SOUN', 'RGTI', 'AMZN', 'NVDA'];
+const ALERT_BOT = process.env.ALERT_BOT || process.env.BOT_NAME || 'Titan_Bot';
+const ENFORCE_BOT_UNIVERSE = !['0', 'false', 'no', 'off'].includes(
+  String(process.env.ENFORCE_BOT_UNIVERSE || 'true').trim().toLowerCase()
+);
+const BOT_CONFIG_DIR = path.resolve(__dirname, '..', 'bentley-bot', 'config', 'bots');
+const BOT_DATA_DIR = path.resolve(__dirname, '..', 'bentley-bot', 'config');
 const argShardIndex = process.argv.find(a => a.startsWith('--shard-index='));
 const SHARD_INDEX_OVERRIDE = argShardIndex ? Number(argShardIndex.split('=')[1]) : null;
 const SHARD_COUNT = Math.max(1, Number.parseInt(process.env.PORTFOLIO_SHARD_COUNT || '4', 10) || 4);
@@ -20,6 +29,146 @@ const MAX_SYMBOLS_PER_RUN = Number.parseInt(
 let tiingoAccessChecked = false;
 let tiingoAccessAvailable = false;
 let alphaVantageRateLimited = false;
+const botUniverseCache = new Map();
+
+function normalizeTradingViewSymbol(value) {
+  const token = String(value || '').trim().toUpperCase();
+  if (!token) {
+    return null;
+  }
+
+  if (!token.includes(':')) {
+    return token;
+  }
+
+  const [exchange, symbol] = token.split(':', 2);
+  if (!symbol) {
+    return null;
+  }
+
+  if (exchange === 'TSX') {
+    return `${symbol}.TO`;
+  }
+
+  if (exchange === 'TSXV') {
+    return `${symbol}.V`;
+  }
+
+  return symbol;
+}
+
+function getBotSlug(botName) {
+  const normalized = String(botName || '').trim().toLowerCase();
+  if (normalized.endsWith('_bot')) {
+    return normalized.slice(0, -4).replace(/\s+/g, '_');
+  }
+  return normalized.replace(/\s+/g, '_');
+}
+
+function loadBotUniverseContext(botName = ALERT_BOT) {
+  const cacheKey = `${botName}`;
+  if (botUniverseCache.has(cacheKey)) {
+    return botUniverseCache.get(cacheKey);
+  }
+
+  try {
+    const profilePath = path.join(BOT_CONFIG_DIR, `${getBotSlug(botName)}.yml`);
+    const yamlText = fs.readFileSync(profilePath, 'utf8');
+    const profile = yaml.load(yamlText) || {};
+    const botMeta = typeof profile.bot === 'object' && profile.bot ? profile.bot : {};
+    const strategyMeta = typeof profile.strategy === 'object' && profile.strategy ? profile.strategy : {};
+    const runtimeName = String(botMeta.runtime_name || botMeta.name || botName || 'Unknown');
+    const screenerFile = String(strategyMeta.screener_file || '').trim();
+    const universe = String(strategyMeta.universe || '').trim();
+    const screenerPath = path.join(BOT_DATA_DIR, screenerFile);
+
+    let allowedSymbols = new Set();
+    if (screenerFile && fs.existsSync(screenerPath)) {
+      const csvText = fs.readFileSync(screenerPath, 'utf8').trim();
+      const lines = csvText ? csvText.split(/\r?\n/) : [];
+      if (lines.length > 0) {
+        const headers = lines[0].split(',').map(h => h.trim());
+        const symbolIndex = headers.findIndex(h => ['Ticker', 'Symbol', 'ticker', 'symbol'].includes(h));
+        if (symbolIndex >= 0) {
+          allowedSymbols = new Set(
+            lines
+              .slice(1)
+              .map(line => line.split(',')[symbolIndex])
+              .map(normalizeTradingViewSymbol)
+              .filter(Boolean)
+          );
+        }
+      }
+    }
+
+    const context = {
+      loaded: true,
+      botName: runtimeName,
+      requestedBot: botName,
+      universe,
+      screenerFile,
+      screenerPath,
+      allowedSymbols
+    };
+    botUniverseCache.set(cacheKey, context);
+    return context;
+  } catch (err) {
+    const context = {
+      loaded: false,
+      botName,
+      requestedBot: botName,
+      universe: '',
+      screenerFile: '',
+      screenerPath: '',
+      allowedSymbols: new Set(),
+      reason: err.message
+    };
+    botUniverseCache.set(cacheKey, context);
+    return context;
+  }
+}
+
+function filterSymbolsByBotUniverse(symbols, universeContext, sourceLabel) {
+  if (!ENFORCE_BOT_UNIVERSE) {
+    return Array.isArray(symbols) ? symbols : [];
+  }
+
+  if (!Array.isArray(symbols) || symbols.length === 0) {
+    return [];
+  }
+
+  const filtered = symbols
+    .map(normalizeTradingViewSymbol)
+    .filter(symbol => symbol && universeContext.allowedSymbols.has(symbol));
+  const unique = [...new Set(filtered)];
+
+  console.log(
+    `✓ Universe filter (${sourceLabel}) kept ${unique.length}/${symbols.length} ` +
+    `symbols for ${universeContext.botName || ALERT_BOT}`
+  );
+  return unique;
+}
+
+function filterQuotesByBotUniverse(quotes, universeContext, sourceLabel) {
+  if (!ENFORCE_BOT_UNIVERSE) {
+    return Array.isArray(quotes) ? quotes : [];
+  }
+
+  if (!Array.isArray(quotes) || quotes.length === 0) {
+    return [];
+  }
+
+  const filtered = quotes.filter((quote) => {
+    const normalized = normalizeTradingViewSymbol(quote?.symbol);
+    return normalized && universeContext.allowedSymbols.has(normalized);
+  });
+
+  console.log(
+    `✓ Universe filter (${sourceLabel}) kept ${filtered.length}/${quotes.length} ` +
+    `quotes for ${universeContext.botName || ALERT_BOT}`
+  );
+  return filtered;
+}
 
 // ---------- MySQL Connection (Railway Cloud or Local) ----------
 let dbPool;
@@ -57,32 +206,6 @@ function parseSymbols(raw) {
   if (!raw || typeof raw !== 'string') {
     return [];
   }
-
-  const normalizeTradingViewSymbol = (value) => {
-    const token = String(value || '').trim().toUpperCase();
-    if (!token) {
-      return null;
-    }
-
-    if (!token.includes(':')) {
-      return token;
-    }
-
-    const [exchange, symbol] = token.split(':', 2);
-    if (!symbol) {
-      return null;
-    }
-
-    if (exchange === 'TSX') {
-      return `${symbol}.TO`;
-    }
-
-    if (exchange === 'TSXV') {
-      return `${symbol}.V`;
-    }
-
-    return symbol;
-  };
 
   return [...new Set(
     raw
@@ -448,13 +571,42 @@ async function postToDiscord(content, embeds = []) {
 // ---------- Compose and send combined alert ----------
 async function runCombinedAlert() {
   try {
+    const universeContext = loadBotUniverseContext(ALERT_BOT);
+    if (ENFORCE_BOT_UNIVERSE && (!universeContext.loaded || universeContext.allowedSymbols.size === 0)) {
+      console.warn(
+        `Universe enforcement blocked alerts for ${ALERT_BOT}: ` +
+        `${universeContext.reason || 'configured universe is empty'}`
+      );
+      return;
+    }
+
     const portfolioAll = await resolvePortfolioSymbols();
-    const portfolio = selectPortfolioSymbolsForRun(portfolioAll);
-    const [gainers, losers, portfolioMoves] = await Promise.all([
+    const universePortfolio = filterSymbolsByBotUniverse(
+      portfolioAll,
+      universeContext,
+      'portfolio source'
+    );
+    const portfolio = selectPortfolioSymbolsForRun(universePortfolio);
+    const [gainersRaw, losersRaw, portfolioMovesRaw] = await Promise.all([
       fetchTopGainers(5),
       fetchTopLosers(5),
       portfolioAlerts(portfolio, 5)
     ]);
+    const gainers = filterQuotesByBotUniverse(
+      gainersRaw,
+      universeContext,
+      'top gainers'
+    );
+    const losers = filterQuotesByBotUniverse(
+      losersRaw,
+      universeContext,
+      'top losers'
+    );
+    const portfolioMoves = filterQuotesByBotUniverse(
+      portfolioMovesRaw,
+      universeContext,
+      'portfolio moves'
+    );
 
     const fmt = q => {
       const symbol = q?.symbol || 'N/A';
@@ -466,10 +618,11 @@ async function runCombinedAlert() {
       return `${symbol} ${change}% | ${currency} ${price}`;
     };
 
-    const content = 'Daily Market & Portfolio Alerts';
+    const universeLabel = universeContext.universe || 'Configured Universe';
+    const content = `${universeContext.botName || ALERT_BOT} | ${universeLabel} Alerts`;
     const embeds = [
       {
-        title: 'Top Gainers',
+        title: `Top Gainers | ${universeLabel}`,
         description:
           gainers.length
             ? gainers.map(fmt).join('\n')
@@ -477,7 +630,7 @@ async function runCombinedAlert() {
         color: 3066993 // green
       },
       {
-        title: 'Top Losers',
+        title: `Top Losers | ${universeLabel}`,
         description:
           losers.length
             ? losers.map(fmt).join('\n')
@@ -485,7 +638,7 @@ async function runCombinedAlert() {
         color: 15158332 // red
       },
       {
-        title: 'Portfolio Moves ≥ 5%',
+        title: `Portfolio Moves ≥ 5% | ${universeLabel}`,
         description:
           portfolioMoves.length
             ? portfolioMoves.map(fmt).join('\n')
@@ -554,6 +707,7 @@ if (require.main === module) {
   } else {
     console.log('🚀 Starting TradingView Alerts Service...');
     console.log('📅 Scheduled for: 7:00 AM, 9:40 AM, 11:30 AM, 3:00 PM ET (weekdays)');
+    console.log(`🧭 Alert bot universe: ${ALERT_BOT} | enforce=${ENFORCE_BOT_UNIVERSE}`);
     startDaemonSchedule();
     runCombinedAlert();
   }

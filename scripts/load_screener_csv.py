@@ -8,8 +8,9 @@ from typing import Any, Dict, Iterable, List, Optional
 import yaml
 
 
-SCAFFOLD_PROFILE_DIR = Path("bentley-bot/config/bots")
-LEGACY_CONFIG_PATH = Path("config/fundamentals_bots.yml")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCAFFOLD_PROFILE_DIR = REPO_ROOT / "bentley-bot" / "config" / "bots"
+LEGACY_CONFIG_PATH = REPO_ROOT / "config" / "fundamentals_bots.yml"
 DEFAULT_CONFIG_PATH = SCAFFOLD_PROFILE_DIR
 TICKER_COLUMNS = ("Ticker", "Symbol", "ticker", "symbol")
 
@@ -42,6 +43,13 @@ def _bot_slug(bot_name: str) -> str:
     if lowered.endswith("_bot"):
         lowered = lowered[:-4]
     return lowered.replace(" ", "_")
+
+
+def _resolve_path(path_value: Path | str) -> Path:
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return REPO_ROOT / path
 
 
 def _read_yaml_file(config_file: Path) -> Dict[str, Any]:
@@ -96,6 +104,9 @@ def _normalize_single_bot_profile(bot_name: str, data: Dict[str, Any]) -> Dict[s
         data.get("execution") if isinstance(data.get("execution"), dict) else {}
     )
     risk_meta = data.get("risk") if isinstance(data.get("risk"), dict) else {}
+    notification_meta = (
+        data.get("notification") if isinstance(data.get("notification"), dict) else {}
+    )
 
     display_name = str(bot_meta.get("name") or _normalize_bot_name(bot_name) or "Titan")
     runtime_name = str(bot_meta.get("runtime_name") or display_name)
@@ -121,6 +132,7 @@ def _normalize_single_bot_profile(bot_name: str, data: Dict[str, Any]) -> Dict[s
         "position_size": position_size,
         "risk_rules": dict(risk_meta),
         "execution": dict(execution_meta),
+        "notification": dict(notification_meta),
     }
 
 
@@ -142,7 +154,7 @@ def _resolve_single_profile_path(bot_name: str, config_path: Path) -> Path:
 
 
 def load_bot_config(bot_name: str, config_path: Path | str = DEFAULT_CONFIG_PATH) -> Dict:
-    config_file = Path(config_path)
+    config_file = _resolve_path(config_path)
 
     if config_file == DEFAULT_CONFIG_PATH and not config_file.exists():
         config_file = LEGACY_CONFIG_PATH
@@ -169,12 +181,15 @@ def _candidate_screener_paths(screener_file: str, config_file: Path) -> Iterable
     yield config_file.parent / screener_file
     yield config_file.parent.parent / screener_file
     yield config_file.parent.parent / "data" / screener_file
+    yield REPO_ROOT / screener_file
+    yield REPO_ROOT / "config" / screener_file
+    yield REPO_ROOT / "bentley-bot" / "config" / screener_file
 
 
 def resolve_screener_path(
     bot_config: Dict, config_path: Path | str = DEFAULT_CONFIG_PATH
 ) -> Path:
-    config_file = Path(config_path)
+    config_file = _resolve_path(config_path)
     screener_file = str(bot_config.get("screener_file", "")).strip()
     if not screener_file:
         raise ValueError("Bot config is missing 'screener_file'")
@@ -193,7 +208,7 @@ def resolve_screener_path(
 
 
 def load_screener_csv(csv_path: Path | str) -> List[str]:
-    csv_file = Path(csv_path)
+    csv_file = _resolve_path(csv_path)
     if not csv_file.exists():
         raise FileNotFoundError(f"CSV not found: {csv_file}")
 
@@ -217,7 +232,7 @@ def load_screener_csv(csv_path: Path | str) -> List[str]:
 
 
 def load_screener_rows(csv_path: Path | str) -> List[Dict[str, str]]:
-    csv_file = Path(csv_path)
+    csv_file = _resolve_path(csv_path)
     if not csv_file.exists():
         raise FileNotFoundError(f"CSV not found: {csv_file}")
 

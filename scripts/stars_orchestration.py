@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 import requests
 
 from scripts.mansa_titan_bot import TitanBot, TitanConfig
+from scripts.load_screener_csv import load_bot_trade_candidates
 from scripts.orion_bot import run_cycle as run_orion_cycle
 from scripts.train_orion_ffnn import run_training as run_orion_training
 
@@ -35,6 +36,126 @@ SCRIPT_MAP = {
     "Dogon": "scripts/dogon_bot.py",
     "Orion": "scripts/orion_bot.py",
 }
+
+
+def _record_orchestration_event(
+    bot: TitanBot,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    bot.log_orchestration_run(
+        bot_name=str(payload.get("bot") or "Titan"),
+        task_name=str(payload.get("task") or "execution"),
+        fund_name=payload.get("fund"),
+        status=str(payload.get("status") or "unknown"),
+        decision_reason=payload.get("decision_reason"),
+        candidates_considered=payload.get("candidates_considered"),
+        candidates_executed=payload.get("candidates_executed"),
+        traded_symbols=payload.get("traded_symbols") or [],
+        detail=str(payload.get("detail") or ""),
+    )
+    return payload
+
+
+def _run_titan_cycle(max_trades: int = 1) -> Dict[str, Any]:
+    config = TitanConfig.from_env()
+    bot = TitanBot(config)
+    fund_name = BOT_FUND_ALLOCATIONS.get("Titan", "Mansa Tech")
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    try:
+        bot.ensure_database_tables()
+    except (RuntimeError, OSError, ValueError):
+        logger.warning("Titan DB setup skipped during execution run")
+
+    try:
+        candidates = load_bot_trade_candidates(bot.config.active_bot_name)
+        candidates = bot._rank_candidates(candidates)
+    except Exception as exc:
+        payload = {
+            "timestamp": timestamp,
+            "bot": "Titan",
+            "fund": fund_name,
+            "task": "execution",
+            "status": "error",
+            "detail": f"Candidate load failed: {exc}",
+            "decision_reason": "candidate-load-failed",
+            "candidates_considered": 0,
+            "candidates_executed": 0,
+            "traded_symbols": [],
+        }
+        _record_orchestration_event(bot, payload)
+        _persist_snapshot("titan_orchestration_latest.json", payload)
+        return payload
+
+    selected_candidates = candidates[:max_trades] if max_trades > 0 else candidates
+    selected_symbols = [
+        str(candidate.get("symbol", "")).strip().upper()
+        for candidate in selected_candidates
+        if str(candidate.get("symbol", "")).strip()
+    ]
+    if not selected_symbols:
+        payload = {
+            "timestamp": timestamp,
+            "bot": "Titan",
+            "fund": fund_name,
+            "task": "execution",
+            "status": "no_candidates",
+            "detail": "Titan screener returned no trade candidates",
+            "decision_reason": "no-candidates",
+            "candidates_considered": len(candidates),
+            "candidates_executed": 0,
+            "traded_symbols": [],
+        }
+        _record_orchestration_event(bot, payload)
+        _persist_snapshot("titan_orchestration_latest.json", payload)
+        return payload
+
+    run_started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    results = bot.execute_from_screener(max_trades=max_trades)
+    recent_trades = bot.get_recent_trade_activity(
+        since=run_started_at,
+        symbols=selected_symbols,
+        limit=max(25, len(selected_symbols) * 10),
+    )
+
+    latest_status = "completed"
+    detail = "Titan cycle completed without a new trade log row"
+    candidates_executed = 0
+    traded_symbols = list(selected_symbols)
+    if not recent_trades.empty:
+        latest_row = recent_trades.iloc[0]
+        latest_status = str(latest_row.get("status") or "completed")
+        detail = str(latest_row.get("notes") or latest_status)
+        candidates_executed = int((recent_trades["status"] == "submitted").sum())
+        traded_symbols = [
+            str(symbol).strip().upper()
+            for symbol in recent_trades["symbol"].astype(str).tolist()
+            if str(symbol).strip()
+        ]
+    elif results:
+        if bot.config.dry_run or not bot.config.enable_trading:
+            latest_status = "simulated"
+            detail = "Titan cycle ran in dry-run mode"
+        else:
+            latest_status = "completed"
+            detail = "Titan cycle ran but did not create a new trade log row"
+
+    payload = {
+        "timestamp": timestamp,
+        "bot": "Titan",
+        "fund": fund_name,
+        "task": "execution",
+        "status": latest_status,
+        "detail": detail,
+        "decision_reason": "scheduled-cycle",
+        "candidates_considered": len(candidates),
+        "candidates_executed": candidates_executed,
+        "traded_symbols": traded_symbols,
+        "results": results,
+    }
+    _record_orchestration_event(bot, payload)
+    _persist_snapshot("titan_orchestration_latest.json", payload)
+    return payload
 
 
 def _persist_snapshot(file_name: str, payload: Dict[str, Any]) -> None:
@@ -114,15 +235,38 @@ def evaluate_titan_gate(
         logger.warning("Titan DB setup skipped during gate evaluation")
 
     allowed = bot.titan_guard(buffer_threshold=buffer_threshold)
-    if allowed:
-        return {"status": "approved", "reason": "liquidity-ok"}
-    return {"status": "blocked", "reason": "liquidity-buffer-breached"}
+    decision = {
+        "status": "approved" if allowed else "blocked",
+        "reason": "liquidity-ok" if allowed else "liquidity-buffer-breached",
+    }
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "bot": "Titan",
+        "fund": BOT_FUND_ALLOCATIONS.get("Titan", "Mansa Tech"),
+        "task": "gate",
+        "status": decision["status"],
+        "decision_reason": decision["reason"],
+        "detail": (
+            "Titan liquidity gate approved orchestration"
+            if allowed
+            else "Titan liquidity gate blocked orchestration"
+        ),
+        "candidates_considered": 0,
+        "candidates_executed": 0,
+        "traded_symbols": [],
+    }
+    _record_orchestration_event(bot, payload)
+    _persist_snapshot("titan_gate_latest.json", payload)
+    return decision
 
 
 def run_fund_bot(bot_name: str) -> Dict[str, Any]:
     """Execute or stage bot run. Returns dashboard-friendly status payload."""
     fund_name = BOT_FUND_ALLOCATIONS.get(bot_name, "Unmapped")
     script_path = SCRIPT_MAP.get(bot_name, "")
+
+    if bot_name == "Titan":
+        return _run_titan_cycle()
 
     if bot_name == "Orion":
         result = run_orion_cycle(days=180, log_mlflow=True)

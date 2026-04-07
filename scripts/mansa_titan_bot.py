@@ -154,6 +154,7 @@ class TitanConfig:
     mysql_database: str
     titan_trades_table: str
     titan_service_table: str
+    titan_orchestration_table: str
     mlflow_tracking_uri: str
     titan_model_uri: str
     airflow_base_url: str
@@ -170,6 +171,7 @@ class TitanConfig:
     universe: str = "Mag7+Tech"
     position_size: float = 5000.0
     risk_rules: Dict[str, Any] = field(default_factory=dict)
+    notification: Dict[str, Any] = field(default_factory=dict)
     selection_mode: str = "technical"
     manual_symbols: List[str] = field(default_factory=list)
     technical_lookback_days: int = 120
@@ -205,6 +207,10 @@ class TitanConfig:
             titan_service_table=os.getenv(
                 "TITAN_SERVICE_HEALTH_TABLE",
                 "titan_service_health",
+            ),
+            titan_orchestration_table=os.getenv(
+                "TITAN_ORCHESTRATION_TABLE",
+                "titan_orchestration_runs",
             ),
             mlflow_tracking_uri=os.getenv(
                 "MLFLOW_TRACKING_URI",
@@ -265,6 +271,11 @@ class TitanConfig:
             risk_rules=(
                 bot_profile.get("risk_rules", {})
                 if isinstance(bot_profile.get("risk_rules", {}), dict)
+                else {}
+            ),
+            notification=(
+                bot_profile.get("notification", {})
+                if isinstance(bot_profile.get("notification", {}), dict)
                 else {}
             ),
             selection_mode=str(
@@ -679,6 +690,27 @@ raise SystemExit(1)
                     detail TEXT,
                     INDEX idx_service_time (timestamp),
                     INDEX idx_service_name (service_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {self.config.titan_orchestration_table} (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    timestamp DATETIME NOT NULL,
+                    bot_name VARCHAR(40) NOT NULL,
+                    task_name VARCHAR(40) NOT NULL,
+                    fund_name VARCHAR(80),
+                    status VARCHAR(30) NOT NULL,
+                    decision_reason VARCHAR(120),
+                    candidates_considered INT,
+                    candidates_executed INT,
+                    traded_symbols TEXT,
+                    detail TEXT,
+                    INDEX idx_orchestration_time (timestamp),
+                    INDEX idx_orchestration_bot (bot_name),
+                    INDEX idx_orchestration_task (task_name),
+                    INDEX idx_orchestration_status (status)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )
@@ -1375,7 +1407,72 @@ raise SystemExit(1)
         finally:
             conn.close()
 
-    def get_recent_trades(self, limit: int = 100) -> pd.DataFrame:
+    def log_orchestration_run(
+        self,
+        bot_name: str,
+        task_name: str,
+        status: str,
+        detail: str,
+        fund_name: Optional[str] = None,
+        decision_reason: Optional[str] = None,
+        candidates_considered: Optional[int] = None,
+        candidates_executed: Optional[int] = None,
+        traded_symbols: Optional[Sequence[str]] = None,
+    ) -> None:
+        if mysql is None:
+            raise RuntimeError("mysql-connector-python is not installed")
+
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning(
+                "Could not connect for Titan orchestration logging: %s",
+                exc,
+            )
+            return
+
+        symbols_text = ", ".join(
+            symbol
+            for symbol in [
+                str(symbol).strip().upper() for symbol in (traded_symbols or [])
+            ]
+            if symbol
+        )
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                INSERT INTO {self.config.titan_orchestration_table}
+                (timestamp, bot_name, task_name, fund_name, status,
+                 decision_reason, candidates_considered, candidates_executed,
+                 traded_symbols, detail)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    datetime.now(timezone.utc).replace(tzinfo=None),
+                    bot_name,
+                    task_name,
+                    fund_name,
+                    status,
+                    decision_reason,
+                    candidates_considered,
+                    candidates_executed,
+                    symbols_text,
+                    detail,
+                ),
+            )
+            conn.commit()
+        except Exception as exc:
+            logger.warning("Could not write orchestration row: %s", exc)
+        finally:
+            conn.close()
+
+    def get_recent_trade_activity(
+        self,
+        limit: int = 100,
+        since: Optional[datetime] = None,
+        symbols: Optional[Sequence[str]] = None,
+    ) -> pd.DataFrame:
         if mysql is None:
             return pd.DataFrame()
 
@@ -1386,12 +1483,32 @@ raise SystemExit(1)
             return pd.DataFrame()
         try:
             query = (
-                "SELECT timestamp, symbol, side, qty, status, "
-                "prediction_probability "
-                f"FROM {self.config.titan_trades_table} "
-                f"ORDER BY timestamp DESC LIMIT %s"
+                "SELECT timestamp, symbol, side, qty, status, order_id, "
+                "prediction_probability, notes "
+                f"FROM {self.config.titan_trades_table}"
             )
-            df = pd.read_sql(query, conn, params=(limit,))
+            clauses: List[str] = []
+            params: List[Any] = []
+            if since is not None:
+                clauses.append("timestamp >= %s")
+                params.append(since)
+
+            if symbols:
+                normalized_symbols = [
+                    str(symbol).strip().upper() for symbol in symbols if symbol
+                ]
+                if normalized_symbols:
+                    placeholders = ", ".join(["%s"] * len(normalized_symbols))
+                    clauses.append(f"symbol IN ({placeholders})")
+                    params.extend(normalized_symbols)
+
+            if clauses:
+                query = f"{query} WHERE {' AND '.join(clauses)}"
+
+            query = f"{query} ORDER BY timestamp DESC LIMIT %s"
+            params.append(limit)
+
+            df = pd.read_sql(query, conn, params=tuple(params))
             if not df.empty:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
             return df
@@ -1401,8 +1518,42 @@ raise SystemExit(1)
         finally:
             conn.close()
 
+    def get_recent_trades(self, limit: int = 100) -> pd.DataFrame:
+        return self.get_recent_trade_activity(limit=limit)
+
+    def get_recent_orchestration_runs(self, limit: int = 50) -> pd.DataFrame:
+        if mysql is None:
+            return pd.DataFrame()
+
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning(
+                "Could not connect for Titan orchestration read: %s",
+                exc,
+            )
+            return pd.DataFrame()
+        try:
+            query = (
+                "SELECT timestamp, bot_name, task_name, fund_name, status, "
+                "decision_reason, candidates_considered, candidates_executed, "
+                "traded_symbols, detail "
+                f"FROM {self.config.titan_orchestration_table} "
+                "ORDER BY timestamp DESC LIMIT %s"
+            )
+            df = pd.read_sql(query, conn, params=(limit,))
+            if not df.empty:
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
+            return df
+        except Exception as exc:
+            logger.warning("Could not read Titan orchestration runs: %s", exc)
+            return pd.DataFrame()
+        finally:
+            conn.close()
+
     def dashboard_snapshot(self) -> Dict[str, Any]:
         trades_df = self.get_recent_trades(limit=250)
+        orchestration_df = self.get_recent_orchestration_runs(limit=100)
         health_rows = self.collect_service_health()
 
         if trades_df.empty:
@@ -1413,6 +1564,7 @@ raise SystemExit(1)
                 "blocked_trades": 0,
                 "avg_prediction_probability": 0.0,
                 "health": health_rows,
+                "orchestration_df": orchestration_df,
                 "trades_df": trades_df,
             }
 
@@ -1434,6 +1586,7 @@ raise SystemExit(1)
                 .mean()
             ),
             "health": health_rows,
+            "orchestration_df": orchestration_df,
             "trades_df": trades_df,
         }
 

@@ -19,6 +19,7 @@ def _build_config() -> TitanConfig:
         mysql_database="mansa_bot",
         titan_trades_table="titan_trades",
         titan_service_table="titan_service_health",
+        titan_orchestration_table="titan_orchestration_runs",
         mlflow_tracking_uri="http://localhost:5000",
         titan_model_uri="models:/TitanRiskModel/Production",
         airflow_base_url="http://localhost:8080",
@@ -55,9 +56,9 @@ def test_titan_config_defaults(monkeypatch):
 
 
 def test_titan_config_loads_active_bot_profile_from_yaml(tmp_path, monkeypatch):
-        config_file = tmp_path / "fundamentals_bots.yml"
-        config_file.write_text(
-                """
+    config_file = tmp_path / "fundamentals_bots.yml"
+    config_file.write_text(
+        """
 active_bot: Vega_Bot
 bots:
     Titan_Bot:
@@ -82,28 +83,28 @@ bots:
             max_debt_to_equity: 0.5
             min_dividend_yield: 2
 """.strip(),
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        monkeypatch.setenv("BOT_CONFIG_PATH", str(config_file))
-        monkeypatch.delenv("ACTIVE_BOT", raising=False)
-        monkeypatch.delenv("BOT_NAME", raising=False)
-        monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
+    monkeypatch.setenv("BOT_CONFIG_PATH", str(config_file))
+    monkeypatch.delenv("ACTIVE_BOT", raising=False)
+    monkeypatch.delenv("BOT_NAME", raising=False)
+    monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
 
-        config = TitanConfig.from_env()
+    config = TitanConfig.from_env()
 
-        assert config.active_bot_name == "Vega_Bot"
-        assert config.strategy_name == "Retail_Fundamentals"
-        assert config.screener_file == "vega_fundamentals.csv"
-        assert config.universe == "Retail_Fundamentals"
-        assert config.position_size == 1000.0
-        assert config.risk_rules["max_pe"] == 25
+    assert config.active_bot_name == "Vega_Bot"
+    assert config.strategy_name == "Retail_Fundamentals"
+    assert config.screener_file == "vega_fundamentals.csv"
+    assert config.universe == "Retail_Fundamentals"
+    assert config.position_size == 1000.0
+    assert config.risk_rules["max_pe"] == 25
 
 
 def test_titan_config_switches_bot_with_active_bot_env(tmp_path, monkeypatch):
-        config_file = tmp_path / "fundamentals_bots.yml"
-        config_file.write_text(
-                """
+    config_file = tmp_path / "fundamentals_bots.yml"
+    config_file.write_text(
+        """
 active_bot: Vega_Bot
 bots:
     Titan_Bot:
@@ -121,24 +122,24 @@ bots:
         risk_rules:
             min_volume: 1000000
 """.strip(),
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        monkeypatch.setenv("BOT_CONFIG_PATH", str(config_file))
-        monkeypatch.setenv("ACTIVE_BOT", "Titan_Bot")
-        monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
+    monkeypatch.setenv("BOT_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("ACTIVE_BOT", "Titan_Bot")
+    monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
 
-        config = TitanConfig.from_env()
+    config = TitanConfig.from_env()
 
-        assert config.active_bot_name == "Titan_Bot"
-        assert config.strategy_name == "Tech_Fundamentals_Mag7"
-        assert config.position_size == 5000.0
+    assert config.active_bot_name == "Titan_Bot"
+    assert config.strategy_name == "Tech_Fundamentals_Mag7"
+    assert config.position_size == 5000.0
 
 
 def test_titan_config_loads_single_bot_profile_yaml(tmp_path, monkeypatch):
-        config_file = tmp_path / "titan.yml"
-        config_file.write_text(
-                """
+    config_file = tmp_path / "titan.yml"
+    config_file.write_text(
+        """
 bot:
     name: Titan
     fund: Mansa Tech
@@ -152,54 +153,73 @@ risk:
     max_pe: 22
 execution:
     primary_client: alpaca_client
+notification:
+    discord:
+        required_indicators:
+            - FVFI
+            - ROVL
 """.strip(),
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        monkeypatch.setenv("BOT_CONFIG_PATH", str(config_file))
-        monkeypatch.setenv("ACTIVE_BOT", "Titan")
-        monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
+    monkeypatch.setenv("BOT_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("ACTIVE_BOT", "Titan")
+    monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
 
-        config = TitanConfig.from_env()
+    config = TitanConfig.from_env()
 
-        assert config.active_bot_name == "Titan_Bot"
-        assert config.strategy_name == "Titan_Profile_Label"
-        assert config.screener_file == "titan_profile.csv"
-        assert config.universe == "Mag7+Tech"
-        assert config.position_size == 777.0
-        assert config.risk_rules["max_pe"] == 22
+    assert config.active_bot_name == "Titan_Bot"
+    assert config.strategy_name == "Titan_Profile_Label"
+    assert config.screener_file == "titan_profile.csv"
+    assert config.universe == "Mag7+Tech"
+    assert config.position_size == 777.0
+    assert config.risk_rules["max_pe"] == 22
+    assert config.notification["discord"]["required_indicators"] == [
+        "FVFI",
+        "ROVL",
+    ]
 
 
 def test_titan_config_loads_single_bot_profile_from_directory(tmp_path, monkeypatch):
-        profile_dir = tmp_path / "bots"
-        profile_dir.mkdir()
-        (profile_dir / "vega.yml").write_text(
-                """
+    profile_dir = tmp_path / "bots"
+    profile_dir.mkdir()
+    (profile_dir / "vega.yml").write_text(
+        """
 bot:
-    name: Vega_Bot
-    fund: Mansa_Retail
-    strategy: Vega Mansa Retail MTF-ML
+    name: Vega
+    runtime_name: Vega_Bot
+    fund: Mansa Retail
+    strategy: Breakout Strategy
 strategy:
     screener_file: vega_profile.csv
-    universe: Retail_Fundamentals
+    universe: Retail_Breakouts
     position_size: 222
 risk:
     min_volume: 1200000
+notification:
+    discord:
+        required_indicators:
+            - FVFI
+            - ROVL
 """.strip(),
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        monkeypatch.setenv("BOT_CONFIG_PATH", str(profile_dir))
-        monkeypatch.setenv("ACTIVE_BOT", "Vega")
-        monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
+    monkeypatch.setenv("BOT_CONFIG_PATH", str(profile_dir))
+    monkeypatch.setenv("ACTIVE_BOT", "Vega")
+    monkeypatch.delenv("TITAN_STRATEGY_NAME", raising=False)
 
-        config = TitanConfig.from_env()
+    config = TitanConfig.from_env()
 
-        assert config.active_bot_name == "Vega_Bot"
-        assert config.strategy_name == "Vega Mansa Retail MTF-ML"
-        assert config.screener_file == "vega_profile.csv"
-        assert config.position_size == 222.0
-        assert config.risk_rules["min_volume"] == 1200000
+    assert config.active_bot_name == "Vega_Bot"
+    assert config.strategy_name == "Breakout Strategy"
+    assert config.screener_file == "vega_profile.csv"
+    assert config.position_size == 222.0
+    assert config.risk_rules["min_volume"] == 1200000
+    assert config.notification["discord"]["required_indicators"] == [
+        "FVFI",
+        "ROVL",
+    ]
 
 
 def test_titan_guard_blocks_on_low_buffer(monkeypatch):
@@ -281,6 +301,23 @@ def test_dashboard_snapshot_counts(monkeypatch):
     monkeypatch.setattr(bot, "get_recent_trades", lambda limit=100: trades_df)
     monkeypatch.setattr(
         bot,
+        "get_recent_orchestration_runs",
+        lambda limit=50: pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2026-01-01T09:00:00"]),
+                "bot_name": ["Titan"],
+                "task_name": ["execution"],
+                "status": ["submitted"],
+                "decision_reason": ["scheduled-cycle"],
+                "candidates_considered": [1],
+                "candidates_executed": [1],
+                "traded_symbols": ["NVDA"],
+                "detail": ["submitted"],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        bot,
         "collect_service_health",
         lambda: [
             {
@@ -299,6 +336,44 @@ def test_dashboard_snapshot_counts(monkeypatch):
     assert snapshot["simulated_trades"] == 1
     assert snapshot["blocked_trades"] == 1
     assert snapshot["avg_prediction_probability"] > 0
+    assert not snapshot["orchestration_df"].empty
+
+
+def test_log_orchestration_run_executes_insert(monkeypatch):
+    bot = TitanBot(_build_config())
+
+    executed_queries = []
+
+    class FakeCursor:
+        def execute(self, query, params=None):
+            executed_queries.append((query, params))
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            return None
+
+        def close(self):
+            return None
+
+    fake_mysql = SimpleNamespace(
+        connector=SimpleNamespace(connect=lambda **kwargs: FakeConnection())
+    )
+
+    monkeypatch.setattr("scripts.mansa_titan_bot.mysql", fake_mysql)
+
+    bot.log_orchestration_run(
+        bot_name="Titan",
+        task_name="execution",
+        status="submitted",
+        detail="submitted",
+        traded_symbols=["NVDA"],
+    )
+
+    assert executed_queries
+    assert "INSERT INTO titan_orchestration_runs" in executed_queries[0][0]
 
 
 def test_execute_trade_uses_config_position_size_when_qty_missing(monkeypatch):

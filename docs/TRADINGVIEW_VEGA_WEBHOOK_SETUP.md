@@ -5,7 +5,7 @@ automation for the Mansa_Retail fund via Vercel.
 
 ## Flow
 
-`TradingView Alert` -> `Webhook URL` -> `Bentley API /api/vega/tradingview-alert` -> `VEGA_BOT_WEBHOOK_URL` (optional) + `Discord` (optional)
+`TradingView Alert` -> `Webhook URL` -> `Bentley API /api/tradingview-alert` -> bot universe guard -> `VEGA_BOT_WEBHOOK_URL` (Vega only, optional) + `Discord` (optional)
 
 ## 1) Configure Vercel Environment Variables
 
@@ -23,6 +23,10 @@ Set these in your Vercel project:
 
 Use this webhook URL in TradingView alerts:
 
+`https://<your-vercel-domain>/api/tradingview-alert?secret=<TRADINGVIEW_WEBHOOK_SECRET>`
+
+Legacy Vega-only alias remains available:
+
 `https://<your-vercel-domain>/api/vega/tradingview-alert?secret=<TRADINGVIEW_WEBHOOK_SECRET>`
 
 You can also pass secret inside JSON as `"secret"` or `"passphrase"`.
@@ -31,13 +35,15 @@ You can also pass secret inside JSON as `"secret"` or `"passphrase"`.
 
 Use valid JSON in TradingView alert message.
 
-### Base MTF ML signal payload
+### Base breakout signal payload
 
 ```json
 {
   "secret": "YOUR_TRADINGVIEW_WEBHOOK_SECRET",
-  "strategy": "Vega Mansa Retail MTF-ML",
-  "alert_name": "MTF ML Entry",
+  "bot": "Vega_Bot",
+  "fund": "Mansa Retail",
+  "strategy": "Breakout Strategy",
+  "alert_name": "Retail Breakout Entry",
   "ticker": "{{ticker}}",
   "exchange": "{{exchange}}",
   "interval": "{{interval}}",
@@ -45,12 +51,8 @@ Use valid JSON in TradingView alert message.
   "price": "{{close}}",
   "action": "BUY",
   "mode": "paper",
-  "ml_score": 0.84,
-  "mtf": {
-    "higher_tf": "240",
-    "signal_tf": "60",
-    "trigger_tf": "15"
-  },
+  "FVFI": 1.42,
+  "ROVL": 2.18,
   "risk": {
     "stop_loss_pct": 1.2,
     "take_profit_pct": 2.8,
@@ -64,11 +66,15 @@ Use valid JSON in TradingView alert message.
 ```json
 {
   "secret": "YOUR_TRADINGVIEW_WEBHOOK_SECRET",
-  "strategy": "Vega Mansa Retail MTF-ML",
+  "bot": "Vega_Bot",
+  "fund": "Mansa Retail",
+  "strategy": "Breakout Strategy",
   "ticker": "{{ticker}}",
   "interval": "{{interval}}",
   "price": "{{close}}",
   "action": "BUY",
+  "FVFI": 1.42,
+  "ROVL": 2.18,
   "mode": "live",
   "live_key": "YOUR_VEGA_LIVE_MODE_KEY"
 }
@@ -79,11 +85,15 @@ Use valid JSON in TradingView alert message.
 ```json
 {
   "secret": "YOUR_TRADINGVIEW_WEBHOOK_SECRET",
-  "strategy": "Vega Mansa Retail MTF-ML",
+  "bot": "Vega_Bot",
+  "fund": "Mansa Retail",
+  "strategy": "Breakout Strategy",
   "ticker": "{{ticker}}",
   "interval": "{{interval}}",
   "price": "{{close}}",
   "action": "SELL",
+  "FVFI": 1.42,
+  "ROVL": 2.18,
   "send_discord": true
 }
 ```
@@ -120,13 +130,15 @@ Execution path:
 
 ## 5) Endpoint Behavior
 
-`POST /api/vega/tradingview-alert`
+`POST /api/tradingview-alert`
 
 - Validates `TRADINGVIEW_WEBHOOK_SECRET` (query/body) if configured
+- Validates the incoming symbol against the bot's configured screener universe before forwarding or Discord delivery
 - Enforces execution mode gate (`paper` default; `live` only when allowed)
 - Parses JSON payload from TradingView
-- Normalizes key fields (`symbol`, `side`, `timeframe`, `strategy`, `price`)
+- Normalizes key fields (`bot`, `fund`, `symbol`, `side`, `timeframe`, `strategy`, `price`, `FVFI`, `ROVL`)
 - Forwards normalized payload to `VEGA_BOT_WEBHOOK_URL` when set
+- Requires `FVFI` and `ROVL` when payload includes `"send_discord": true`
 - Sends Discord alert when payload includes `"send_discord": true`
 - Returns JSON status (`received`, `execution_mode`, `forward`, `discord`)
 
@@ -135,16 +147,20 @@ Execution path:
 ```powershell
 $body = @{
   secret = "YOUR_TRADINGVIEW_WEBHOOK_SECRET"
-  strategy = "Vega Mansa Retail MTF-ML"
+  bot = "Vega_Bot"
+  fund = "Mansa Retail"
+  strategy = "Breakout Strategy"
   ticker = "SPY"
   interval = "15"
   action = "BUY"
   price = "612.40"
+  FVFI = 1.42
+  ROVL = 2.18
   send_discord = $true
 } | ConvertTo-Json
 
 Invoke-RestMethod -Method Post `
-  -Uri "https://<your-vercel-domain>/api/vega/tradingview-alert" `
+  -Uri "https://<your-vercel-domain>/api/tradingview-alert" `
   -ContentType "application/json" `
   -Body $body
 ```
@@ -152,10 +168,13 @@ Invoke-RestMethod -Method Post `
 ## Notes
 
 - If `TRADINGVIEW_WEBHOOK_SECRET` is not set, endpoint falls back to `x-api-key` validation when `API_GATEWAY_KEY` exists.
+- The route enforces bot-universe membership using the screener CSV configured under `bentley-bot/config/bots/<bot>.yml`.
+- If the configured screener CSV is empty, the route fails closed and rejects the alert.
 - If `VEGA_PAPER_ONLY=true`, all `"mode": "live"` requests are rejected.
 - When a live request is rejected (paper-only mode or invalid live key), a tiny Discord alert is sent (if `DISCORD_WEBHOOK` is configured).
 - Repeated blocked-live alerts are rate-limited by `VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS` per symbol/timeframe.
 - If `VEGA_LIVE_MODE_KEY` is set, live requests must include `live_key` (payload, query, or `x-live-key` header).
 - For TradingView reliability, keep payload compact and always send valid JSON.
+- `FVFI` and `ROVL` are required for Discord-delivered signal notifications.
 - Start with `send_discord: true` during testing, then disable for high-frequency production alerts unless needed.
 - For the 9:30 task, TWS or IB Gateway must be running with API socket access enabled on the configured port.

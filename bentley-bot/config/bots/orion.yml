@@ -25,3 +25,9 @@ risk:
   rsi_overbought: 70
   max_daily_loss_pct: 1.5
   max_open_positions: 3
+
+notification:
+  discord:
+    required_indicators:
+      - FVFI
+      - ROVL

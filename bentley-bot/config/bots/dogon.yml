@@ -26,3 +26,9 @@ risk:
   max_debt_to_equity: 0.9
   max_daily_loss_pct: 1.5
   max_open_positions: 8
+
+notification:
+  discord:
+    required_indicators:
+      - FVFI
+      - ROVL

@@ -24,3 +24,9 @@ risk:
   max_daily_loss_pct: 1.0
   max_open_positions: 3
   pending_review: true
+
+notification:
+  discord:
+    required_indicators:
+      - FVFI
+      - ROVL

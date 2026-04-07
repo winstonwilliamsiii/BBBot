@@ -23,3 +23,9 @@ risk:
   max_holding_days: 5
   max_daily_loss_pct: 1.25
   max_open_positions: 5
+
+notification:
+  discord:
+    required_indicators:
+      - FVFI
+      - ROVL

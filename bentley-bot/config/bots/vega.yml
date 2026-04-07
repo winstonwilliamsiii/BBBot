@@ -1,17 +1,5 @@
 bot:
   id: 2
-  name: Vega_Bot
-  fund: Mansa_Retail
-  strategy: Vega Mansa Retail MTF-ML
-  module: bentley-bot/bots/vega.py
-
-execution:
-  primary_client: ibkr_client
-  mode: paper
-  enabled: false
-
-bot:
-  id: 2
   name: Vega
   runtime_name: Vega_Bot
   fund: Mansa Retail
@@ -38,3 +26,9 @@ risk:
   max_gap_pct: 8.0
   max_daily_loss_pct: 1.5
   max_open_positions: 4
+
+notification:
+  discord:
+    required_indicators:
+      - FVFI
+      - ROVL

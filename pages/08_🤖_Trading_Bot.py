@@ -1508,6 +1508,28 @@ with tab5:
             else:
                 st.dataframe(health_df, use_container_width=True)
 
+            st.markdown("**Recent Orchestration Runs**")
+            orchestration_df = snapshot.get("orchestration_df", pd.DataFrame())
+            if orchestration_df.empty:
+                st.info("No orchestration runs logged yet.")
+            else:
+                st.dataframe(
+                    orchestration_df[
+                        [
+                            "timestamp",
+                            "bot_name",
+                            "task_name",
+                            "status",
+                            "decision_reason",
+                            "candidates_considered",
+                            "candidates_executed",
+                            "traded_symbols",
+                            "detail",
+                        ]
+                    ],
+                    use_container_width=True,
+                )
+
             st.markdown("**Recent Mansa Star Bot Trades**")
             trades_df_titan = snapshot.get("trades_df", pd.DataFrame())
             if trades_df_titan.empty:

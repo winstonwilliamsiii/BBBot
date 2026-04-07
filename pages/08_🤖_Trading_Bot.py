@@ -88,6 +88,10 @@ except Exception as e:
     DB_AVAILABLE = False
     # Show helpful setup message instead of raw error
     st.warning("💾 **Database Connection Not Available**")
+    st.caption(
+        "Titan launch controls can still run from the launcher even when "
+        "trade-history tables are unavailable."
+    )
     with st.expander("🔧 Setup Instructions"):
         st.markdown(f"""
         **MySQL Connection Failed**
@@ -284,24 +288,75 @@ except ImportError:
 st.markdown("---")
 
 # Bot status check
-def get_bot_status():
-    """Check if trading bot DAG is running"""
+
+
+def _latest_bot_mode_event() -> dict | None:
+    repo_root = Path(__file__).resolve().parents[1]
+    latest_path = repo_root / "logs" / "last_bot_mode_event.json"
+    if not latest_path.exists():
+        return None
+
     try:
-        # Check Airflow DAG status (simplified)
-        query = """
-            SELECT status, strategy, timestamp
-            FROM bot_status
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """
-        status_df = pd.read_sql(query, engine)
-        
-        if not status_df.empty:
-            return status_df.iloc[0].to_dict()
+        with latest_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+            if isinstance(payload, dict):
+                return payload
+    except Exception:
+        return None
+
+    return None
+
+
+def get_bot_status(bot_name: str = "Titan"):
+    """Resolve launcher-first status without relying on bot_status."""
+    strategy = "Mansa Tech - Titan Bot"
+    trading_mode = _get_bot_trading_mode(bot_name)
+    latest_event = _latest_bot_mode_event()
+
+    if (
+        latest_event
+        and str(latest_event.get("bot", "")).lower() == bot_name.lower()
+    ):
+        last_mode = str(latest_event.get("mode", "")).lower()
+        launcher_status = str(latest_event.get("status", "unknown")).lower()
+        if (
+            last_mode == "on"
+            and launcher_status in {"ready", "placeholder", "warning"}
+        ):
+            status = "active"
+        elif last_mode == "off":
+            status = "inactive"
         else:
-            return {'status': 'unknown', 'strategy': 'N/A', 'timestamp': None}
-    except:
-        return {'status': 'unknown', 'strategy': 'N/A', 'timestamp': None}
+            status = launcher_status or "unknown"
+
+        return {
+            "status": status,
+            "strategy": strategy,
+            "timestamp": latest_event.get("timestamp"),
+            "note": latest_event.get("note", ""),
+            "trading_mode": latest_event.get("trading_mode", trading_mode),
+        }
+
+    active_flag = None
+    if get_broker_mode_config is not None:
+        try:
+            config = get_broker_mode_config()
+            active_flag = config.get_bot_active(bot_name)
+        except Exception:
+            active_flag = None
+
+    if active_flag is None:
+        status = "unknown"
+    else:
+        status = "active" if active_flag else "inactive"
+
+    return {
+        "status": status,
+        "strategy": strategy,
+        "timestamp": None,
+        "note": "Launcher event not available yet",
+        "trading_mode": trading_mode,
+    }
 
 
 # Load data functions
@@ -953,24 +1008,50 @@ st.sidebar.header("🎛️ Bot Controls")
 
 # Bot status
 bot_status = get_bot_status()
-status_color = "🟢" if bot_status['status'] == 'active' else "🔴"
+status_color = "🟢" if bot_status['status'] == 'active' else "🟡" if bot_status['status'] == 'unknown' else "🔴"
 st.sidebar.markdown(f"**Status:** {status_color} {bot_status['status'].upper()}")
 st.sidebar.markdown(f"**Strategy:** {bot_status.get('strategy', 'N/A').replace('_', ' ').title()}")
+st.sidebar.caption(
+    f"Trading Mode: {str(bot_status.get('trading_mode', 'paper')).upper()}"
+)
+if bot_status.get("note"):
+    st.sidebar.caption(str(bot_status["note"]))
 
 # Manual controls
 st.sidebar.markdown("---")
-st.sidebar.subheader("Manual Controls")
+st.sidebar.subheader("Titan Controls")
+
+titan_sidebar_mode = st.sidebar.selectbox(
+    "Titan Trading Mode",
+    options=["paper", "live"],
+    index=0 if str(bot_status.get("trading_mode", "paper")) == "paper" else 1,
+    key="sidebar_titan_trading_mode",
+)
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
-    if st.button("▶️ Start Bot", use_container_width=True):
-        st.sidebar.success("Bot start triggered!")
-        # TODO: Trigger Airflow DAG
+    if st.button("▶️ Titan ON", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, True)
+        with st.spinner("Running Titan ON..."):
+            execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        if execution["ok"]:
+            st.sidebar.success("Titan ON command completed.")
+        else:
+            st.sidebar.error("Titan ON command failed.")
+        st.rerun()
 
 with col2:
-    if st.button("⏸️ Stop Bot", use_container_width=True):
-        st.sidebar.warning("Bot stopped!")
-        # TODO: Stop Airflow DAG
+    if st.button("⏸️ Titan OFF", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, False)
+        with st.spinner("Running Titan OFF..."):
+            execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        if execution["ok"]:
+            st.sidebar.success("Titan OFF command completed.")
+        else:
+            st.sidebar.error("Titan OFF command failed.")
+        st.rerun()
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):

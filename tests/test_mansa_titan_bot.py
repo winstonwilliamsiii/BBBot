@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
+import pytest
 
 from scripts.mansa_titan_bot import TitanBot, TitanConfig
 from scripts.load_screener_csv import load_bot_trade_candidates
@@ -25,12 +27,17 @@ def _build_config() -> TitanConfig:
         airflow_base_url="http://localhost:8080",
         airbyte_base_url="http://localhost:8001",
         airbyte_connection_id=None,
+        sentiment_table="sentiment_msgs",
         liquidity_buffer_threshold=0.20,
+        liquidity_buffer_positive_delta=0.05,
+        liquidity_buffer_negative_delta=0.10,
+        sentiment_trade_bias_threshold=0.20,
         prediction_threshold=0.50,
         order_timeout_seconds=15.0,
         dry_run=True,
         enable_trading=False,
         strategy_name="Mansa Tech - Titan Bot",
+        sequence_window=20,
     )
 
 
@@ -386,8 +393,19 @@ def test_execute_trade_uses_config_position_size_when_qty_missing(monkeypatch):
     class FakeOrder:
         id = "order-123"
 
+    monkeypatch.setattr(bot, "_fetch_sentiment_score", lambda _symbol: 0.3)
+    monkeypatch.setattr(bot, "_current_liquidity_ratio", lambda: 0.4)
+    monkeypatch.setattr(
+        bot,
+        "_build_prediction_features",
+        lambda *args, **kwargs: [0.1, 0.2],
+    )
     monkeypatch.setattr(bot, "titan_predict", lambda _features: (1, 0.9))
-    monkeypatch.setattr(bot, "titan_guard", lambda buffer_threshold=None: True)
+    monkeypatch.setattr(
+        bot,
+        "titan_guard",
+        lambda *args, **kwargs: True,
+    )
     monkeypatch.setattr(bot, "log_trade", lambda *args, **kwargs: None)
     monkeypatch.setattr(bot, "_notify_discord", lambda _msg: None)
     bot.api = object()
@@ -418,9 +436,24 @@ def test_execute_trade_blocks_on_configured_risk_rules(monkeypatch):
 
     log_calls = []
 
+    monkeypatch.setattr(bot, "_fetch_sentiment_score", lambda _symbol: 0.0)
+    monkeypatch.setattr(bot, "_current_liquidity_ratio", lambda: 0.4)
+    monkeypatch.setattr(
+        bot,
+        "_build_prediction_features",
+        lambda *args, **kwargs: [0.2],
+    )
     monkeypatch.setattr(bot, "titan_predict", lambda _features: (1, 0.9))
-    monkeypatch.setattr(bot, "titan_guard", lambda buffer_threshold=None: True)
-    monkeypatch.setattr(bot, "log_trade", lambda *args, **kwargs: log_calls.append((args, kwargs)))
+    monkeypatch.setattr(
+        bot,
+        "titan_guard",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        bot,
+        "log_trade",
+        lambda *args, **kwargs: log_calls.append((args, kwargs)),
+    )
 
     result = bot.execute_trade(
         symbol="AAPL",
@@ -435,6 +468,112 @@ def test_execute_trade_blocks_on_configured_risk_rules(monkeypatch):
     args, kwargs = log_calls[0]
     assert args[4] == "blocked"
     assert "Risk rule blocked trade" in kwargs["notes"]
+
+
+def test_titan_predict_reads_pyfunc_dataframe(monkeypatch):
+    bot = TitanBot(_build_config())
+
+    class FakeModel:
+        def predict(self, payload):
+            assert isinstance(payload, pd.DataFrame)
+            return pd.DataFrame(
+                {
+                    "prediction": [1],
+                    "probability": [0.87],
+                }
+            )
+
+    monkeypatch.setattr(bot, "load_model", lambda: FakeModel())
+
+    prediction, probability = bot.titan_predict({"rsi_14_t_minus_0": 55.0})
+
+    assert prediction == 1
+    assert probability == 0.87
+
+
+def test_build_prediction_features_uses_neutral_fallback(monkeypatch):
+    bot = TitanBot(_build_config())
+
+    monkeypatch.setattr(bot, "_fetch_sentiment_score", lambda _symbol: 0.25)
+    monkeypatch.setattr(bot, "_current_liquidity_ratio", lambda: 0.40)
+    monkeypatch.setattr(
+        bot,
+        "_fetch_close_history",
+        lambda _symbol: pd.Series(dtype="float64"),
+    )
+
+    payload = bot._build_prediction_features("NVDA", [])
+
+    assert isinstance(payload, dict)
+    assert payload["sentiment_score_t_minus_0"] == 0.25
+    assert payload["liquidity_ratio_t_minus_0"] == 0.40
+
+
+def test_coerce_prediction_output_handles_numpy_array():
+    bot = TitanBot(_build_config())
+
+    prediction, probability = bot._coerce_prediction_output(np.array([0.63]))
+
+    assert prediction == 1
+    assert probability == 0.63
+
+
+def test_effective_liquidity_threshold_adjusts_with_sentiment():
+    bot = TitanBot(_build_config())
+
+    assert bot._effective_liquidity_threshold(
+        sentiment_score=-0.6,
+    ) == pytest.approx(0.30)
+    assert bot._effective_liquidity_threshold(
+        sentiment_score=0.6,
+    ) == pytest.approx(0.15)
+
+
+def test_execute_from_screener_continues_after_blocked_candidate(monkeypatch):
+    config = _build_config()
+    config.dry_run = False
+    config.enable_trading = True
+    bot = TitanBot(config)
+
+    monkeypatch.setattr(
+        "scripts.mansa_titan_bot.load_bot_trade_candidates",
+        lambda _bot_name: [
+            {"symbol": "AAPL", "fundamentals": {}, "raw": {}},
+            {"symbol": "NVDA", "fundamentals": {}, "raw": {}},
+            {"symbol": "MSFT", "fundamentals": {}, "raw": {}},
+        ],
+    )
+
+    bot._rank_candidates = lambda candidates: candidates
+
+    statuses = {
+        "AAPL": {"status": "blocked", "notes": "ml gate"},
+        "NVDA": {"status": "submitted", "notes": "submitted"},
+        "MSFT": {"status": "submitted", "notes": "submitted"},
+    }
+
+    class FakeOrder:
+        id = "order-1"
+
+    def fake_execute_trade(symbol, side, qty, features, fundamentals=None):
+        bot._last_trade_outcome = {
+            "symbol": symbol,
+            **statuses[symbol],
+            "probability": 0.9,
+            "sentiment_score": 0.25,
+            "effective_buffer_threshold": 0.15,
+        }
+        if statuses[symbol]["status"] == "submitted":
+            return FakeOrder()
+        return None
+
+    monkeypatch.setattr(bot, "execute_trade", fake_execute_trade)
+
+    results = bot.execute_from_screener(side="buy", max_trades=1)
+
+    assert [row["symbol"] for row in results] == ["AAPL", "NVDA"]
+    assert results[0]["status"] == "blocked"
+    assert results[1]["status"] == "submitted"
 
 
 def test_load_bot_trade_candidates_extracts_fundamentals(tmp_path):
@@ -471,16 +610,16 @@ bots:
 
 
 def test_load_bot_trade_candidates_from_single_bot_profile(tmp_path):
-        csv_file = tmp_path / "titan_profile.csv"
-        csv_file.write_text(
-                "Ticker,volume,pe\nNVDA,5000000,21\n",
-                encoding="utf-8",
-        )
+    csv_file = tmp_path / "titan_profile.csv"
+    csv_file.write_text(
+        "Ticker,volume,pe\nNVDA,5000000,21\n",
+        encoding="utf-8",
+    )
 
-        profile_dir = tmp_path / "profiles"
-        profile_dir.mkdir()
-        (profile_dir / "titan.yml").write_text(
-                f"""
+    profile_dir = tmp_path / "profiles"
+    profile_dir.mkdir()
+    (profile_dir / "titan.yml").write_text(
+        f"""
 bot:
     name: Titan
     fund: Mansa Tech
@@ -492,14 +631,17 @@ strategy:
 risk:
     max_pe: 25
 """.strip(),
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        candidates = load_bot_trade_candidates("Titan", config_path=profile_dir)
+    candidates = load_bot_trade_candidates(
+        "Titan",
+        config_path=profile_dir,
+    )
 
-        assert len(candidates) == 1
-        assert candidates[0]["symbol"] == "NVDA"
-        assert candidates[0]["fundamentals"]["pe"] == 21.0
+    assert len(candidates) == 1
+    assert candidates[0]["symbol"] == "NVDA"
+    assert candidates[0]["fundamentals"]["pe"] == 21.0
 
 
 def test_execute_from_screener_passes_fundamentals(monkeypatch):
@@ -582,6 +724,11 @@ def test_execute_from_screener_technical_mode_without_api_keeps_csv_order(monkey
 
     def fake_execute_trade(symbol, side, qty, features, fundamentals=None):
         seen.append(symbol)
+        bot._last_trade_outcome = {
+            "symbol": symbol,
+            "status": "simulated",
+            "notes": "dry-run",
+        }
         return None
 
     monkeypatch.setattr(bot, "execute_trade", fake_execute_trade)

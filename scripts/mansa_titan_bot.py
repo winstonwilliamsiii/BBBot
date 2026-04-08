@@ -20,9 +20,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 
 try:
     from scripts.load_screener_csv import load_bot_trade_candidates
@@ -44,10 +50,12 @@ except ImportError:
 
 try:
     import mlflow
+    import mlflow.pyfunc as mlflow_pyfunc
     import mlflow.sklearn as mlflow_sklearn
     from mlflow.exceptions import MlflowException
 except ImportError:
     mlflow = None
+    mlflow_pyfunc = None
     mlflow_sklearn = None
     MlflowException = RuntimeError
 
@@ -55,6 +63,21 @@ try:
     import mysql.connector
 except ImportError:
     mysql = None
+
+try:
+    from scripts.titan_cnn_model import (
+        BASE_FEATURE_COLUMNS,
+        DEFAULT_SEQUENCE_WINDOW,
+        build_latest_sequence_features,
+        build_neutral_feature_row,
+    )
+except ModuleNotFoundError:
+    from titan_cnn_model import (
+        BASE_FEATURE_COLUMNS,
+        DEFAULT_SEQUENCE_WINDOW,
+        build_latest_sequence_features,
+        build_neutral_feature_row,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -160,7 +183,11 @@ class TitanConfig:
     airflow_base_url: str
     airbyte_base_url: str
     airbyte_connection_id: Optional[str]
+    sentiment_table: str
     liquidity_buffer_threshold: float
+    liquidity_buffer_positive_delta: float
+    liquidity_buffer_negative_delta: float
+    sentiment_trade_bias_threshold: float
     prediction_threshold: float
     order_timeout_seconds: float
     dry_run: bool
@@ -175,6 +202,7 @@ class TitanConfig:
     selection_mode: str = "technical"
     manual_symbols: List[str] = field(default_factory=list)
     technical_lookback_days: int = 120
+    sequence_window: int = DEFAULT_SEQUENCE_WINDOW
 
     @classmethod
     def from_env(cls) -> "TitanConfig":
@@ -229,8 +257,24 @@ class TitanConfig:
                 "http://localhost:8001",
             ),
             airbyte_connection_id=os.getenv("AIRBYTE_CONNECTION_ID"),
+            sentiment_table=os.getenv(
+                "TITAN_SENTIMENT_TABLE",
+                "sentiment_msgs",
+            ),
             liquidity_buffer_threshold=_as_float(
                 os.getenv("TITAN_LIQUIDITY_BUFFER"),
+                0.20,
+            ),
+            liquidity_buffer_positive_delta=_as_float(
+                os.getenv("TITAN_POSITIVE_SENTIMENT_BUFFER_DELTA"),
+                0.05,
+            ),
+            liquidity_buffer_negative_delta=_as_float(
+                os.getenv("TITAN_NEGATIVE_SENTIMENT_BUFFER_DELTA"),
+                0.10,
+            ),
+            sentiment_trade_bias_threshold=_as_float(
+                os.getenv("TITAN_SENTIMENT_BIAS_THRESHOLD"),
                 0.20,
             ),
             prediction_threshold=_as_float(
@@ -290,6 +334,13 @@ class TitanConfig:
                 30,
                 _as_int(os.getenv("TITAN_TECH_LOOKBACK_DAYS"), 120),
             ),
+            sequence_window=max(
+                10,
+                _as_int(
+                    os.getenv("TITAN_SEQUENCE_WINDOW"),
+                    DEFAULT_SEQUENCE_WINDOW,
+                ),
+            ),
         )
 
     def mysql_config(self) -> Dict[str, Any]:
@@ -306,6 +357,7 @@ class TitanBot:
     def __init__(self, config: Optional[TitanConfig] = None):
         self.config = config or TitanConfig.from_env()
         self.api = self._init_alpaca_client()
+        self._last_trade_outcome: Optional[Dict[str, Any]] = None
 
     def _account_snapshot_cache_path(self) -> str:
         return os.path.join(
@@ -750,11 +802,37 @@ raise SystemExit(1)
                 "equity": 0.0,
             }
 
-    def titan_guard(self, buffer_threshold: Optional[float] = None) -> bool:
-        if buffer_threshold is None:
-            threshold = self.config.liquidity_buffer_threshold
-        else:
-            threshold = buffer_threshold
+    def _effective_liquidity_threshold(
+        self,
+        buffer_threshold: Optional[float] = None,
+        sentiment_score: Optional[float] = None,
+    ) -> float:
+        threshold = (
+            self.config.liquidity_buffer_threshold
+            if buffer_threshold is None
+            else buffer_threshold
+        )
+
+        if sentiment_score is None:
+            return threshold
+
+        bias = self.config.sentiment_trade_bias_threshold
+        if sentiment_score <= -abs(bias):
+            threshold += self.config.liquidity_buffer_negative_delta
+        elif sentiment_score >= abs(bias):
+            threshold -= self.config.liquidity_buffer_positive_delta
+
+        return min(max(threshold, 0.05), 0.95)
+
+    def titan_guard(
+        self,
+        buffer_threshold: Optional[float] = None,
+        sentiment_score: Optional[float] = None,
+    ) -> bool:
+        threshold = self._effective_liquidity_threshold(
+            buffer_threshold=buffer_threshold,
+            sentiment_score=sentiment_score,
+        )
         snapshot = self.get_account_snapshot()
         equity = snapshot.get("equity", 0.0)
         cash = snapshot.get("cash", 0.0)
@@ -916,6 +994,149 @@ raise SystemExit(1)
 
         return score
 
+    def _fetch_close_history(self, symbol: str) -> pd.Series:
+        if self.api is None:
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        try:
+            bars = self.api.get_bars(
+                symbol,
+                "1Day",
+                limit=max(
+                    self.config.technical_lookback_days,
+                    self.config.sequence_window + 30,
+                ),
+                adjustment="raw",
+            ).df
+        except Exception as exc:
+            logger.warning("Failed loading bars for %s: %s", symbol, exc)
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        if bars is None or bars.empty or "close" not in bars.columns:
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        if isinstance(bars.index, pd.MultiIndex):
+            try:
+                bars = bars.xs(symbol, level=0)
+            except (KeyError, TypeError, ValueError):
+                return self._fetch_close_history_from_yfinance(symbol)
+
+        return pd.to_numeric(bars["close"], errors="coerce").dropna()
+
+    def _fetch_close_history_from_yfinance(self, symbol: str) -> pd.Series:
+        if yf is None:
+            return pd.Series(dtype="float64")
+
+        lookback = max(
+            self.config.technical_lookback_days,
+            self.config.sequence_window + 30,
+        )
+        try:
+            data = yf.download(
+                symbol,
+                period=f"{lookback}d",
+                progress=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed yfinance fallback for %s: %s",
+                symbol,
+                exc,
+            )
+            return pd.Series(dtype="float64")
+
+        if data is None or data.empty or "Close" not in data:
+            return pd.Series(dtype="float64")
+
+        close = data["Close"]
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        return pd.to_numeric(close, errors="coerce").dropna()
+
+    def _current_liquidity_ratio(self) -> float:
+        snapshot = self.get_account_snapshot()
+        equity = float(snapshot.get("equity", 0.0) or 0.0)
+        cash = float(snapshot.get("cash", 0.0) or 0.0)
+        if equity <= 0:
+            return 1.0
+        return max(0.0, cash / equity)
+
+    def _fetch_sentiment_score(self, symbol: str) -> float:
+        if mysql is None:
+            return 0.0
+
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning("Sentiment DB connection failed: %s", exc)
+            return 0.0
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT AVG(sentiment_score)
+                FROM {self.config.sentiment_table}
+                WHERE UPPER(ticker) = %s
+                """,
+                (symbol.upper(),),
+            )
+            row = cursor.fetchone()
+        except Exception as exc:
+            logger.warning(
+                "Sentiment lookup failed for %s from %s: %s",
+                symbol,
+                self.config.sentiment_table,
+                exc,
+            )
+            return 0.0
+        finally:
+            conn.close()
+
+        if not row or row[0] is None:
+            return 0.0
+        try:
+            return float(row[0])
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _build_prediction_features(
+        self,
+        symbol: str,
+        features: Sequence[float],
+        sentiment_score: Optional[float] = None,
+        liquidity_ratio: Optional[float] = None,
+    ) -> Sequence[float] | Dict[str, float]:
+        if features:
+            return features
+
+        resolved_sentiment = (
+            self._fetch_sentiment_score(symbol)
+            if sentiment_score is None
+            else float(sentiment_score)
+        )
+        resolved_liquidity = (
+            self._current_liquidity_ratio()
+            if liquidity_ratio is None
+            else float(liquidity_ratio)
+        )
+        close_history = self._fetch_close_history(symbol)
+        if close_history.empty:
+            return build_neutral_feature_row(
+                sentiment_score=resolved_sentiment,
+                liquidity_ratio=resolved_liquidity,
+                window_size=self.config.sequence_window,
+                feature_columns=BASE_FEATURE_COLUMNS,
+            )
+
+        return build_latest_sequence_features(
+            close_series=close_history,
+            sentiment_score=resolved_sentiment,
+            liquidity_ratio=resolved_liquidity,
+            window_size=self.config.sequence_window,
+            feature_columns=BASE_FEATURE_COLUMNS,
+        )
+
     def _rank_candidates(
         self,
         candidates: List[Dict[str, Any]],
@@ -968,16 +1189,22 @@ raise SystemExit(1)
         )
         return enriched
 
+    def rank_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        return self._rank_candidates(candidates)
+
     def load_model(self):
         if (
             mlflow is None
-            or mlflow_sklearn is None
+            or mlflow_pyfunc is None
             or not self._mlflow_tracking_is_reachable()
         ):
             return None
         try:
             mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
-            return mlflow_sklearn.load_model(self.config.titan_model_uri)
+            return mlflow_pyfunc.load_model(self.config.titan_model_uri)
         except (
             AttributeError,
             OSError,
@@ -990,31 +1217,78 @@ raise SystemExit(1)
 
     def _prepare_model_features(
         self,
-        model: Any,
-        features: Sequence[float],
-    ) -> List[float]:
-        vector = [float(value) for value in features] if features else []
-        expected = getattr(model, "n_features_in_", None)
+        features: Sequence[float] | Dict[str, float],
+    ) -> pd.DataFrame:
+        if isinstance(features, dict):
+            return pd.DataFrame([features])
 
-        if expected is None:
-            return vector or [0.0]
+        vector = [float(value) for value in features] if features else [0.0]
+        return pd.DataFrame([vector])
 
-        if len(vector) < int(expected):
-            vector.extend([0.0] * (int(expected) - len(vector)))
-        elif len(vector) > int(expected):
-            vector = vector[: int(expected)]
+    def _coerce_prediction_output(
+        self,
+        output: Any,
+    ) -> Tuple[int, float]:
+        if isinstance(output, pd.DataFrame) and not output.empty:
+            row = output.iloc[0]
+            probability = float(row.get("probability", row.get("score", 0.5)))
+            prediction = int(
+                row.get(
+                    "prediction",
+                    probability >= self.config.prediction_threshold,
+                )
+            )
+            return prediction, probability
 
-        return vector or [0.0] * int(expected)
+        if isinstance(output, pd.Series) and not output.empty:
+            probability = float(output.get("probability", output.iloc[0]))
+            prediction = int(
+                output.get(
+                    "prediction",
+                    probability >= self.config.prediction_threshold,
+                )
+            )
+            return prediction, probability
 
-    def titan_predict(self, features: Sequence[float]) -> Tuple[int, float]:
+        if isinstance(output, np.ndarray):
+            if output.ndim == 0:
+                probability = float(output)
+                prediction = int(
+                    probability >= self.config.prediction_threshold
+                )
+                return prediction, probability
+            if output.ndim >= 1 and output.size:
+                first = output.reshape(-1)[0]
+                probability = float(first)
+                prediction = int(
+                    probability >= self.config.prediction_threshold
+                )
+                return prediction, probability
+
+        if isinstance(output, (list, tuple)) and output:
+            first = output[0]
+            if isinstance(first, (list, tuple)) and first:
+                probability = float(first[-1])
+            else:
+                probability = float(first)
+            prediction = int(probability >= self.config.prediction_threshold)
+            return prediction, probability
+
+        raise ValueError("Unsupported prediction payload returned by model")
+
+    def titan_predict(
+        self,
+        features: Sequence[float] | Dict[str, float],
+    ) -> Tuple[int, float]:
         model = self.load_model()
         if model is None:
             return 1, 0.5
 
-        prepared = self._prepare_model_features(model, features)
+        prepared = self._prepare_model_features(features)
 
         try:
-            prediction = int(model.predict([prepared])[0])
+            output = model.predict(prepared)
+            prediction, probability = self._coerce_prediction_output(output)
         except (AttributeError, IndexError, TypeError, ValueError) as exc:
             logger.warning(
                 "Prediction inference failed, using fallback: %s",
@@ -1022,15 +1296,10 @@ raise SystemExit(1)
             )
             return 1, 0.5
 
-        probability = 0.5
-        try:
-            probability = float(model.predict_proba([prepared])[0][1])
-        except (AttributeError, IndexError, TypeError, ValueError):
-            probability = 0.5
-
         try:
             if mlflow is not None:
                 mlflow.log_metric("titan_prediction_probability", probability)
+                mlflow.log_metric("titan_prediction_label", float(prediction))
         except (RuntimeError, TypeError, ValueError):
             pass
 
@@ -1088,7 +1357,18 @@ raise SystemExit(1)
         fundamentals: Optional[Dict[str, Any]] = None,
     ):
         effective_qty = self._effective_order_qty(qty)
-        prediction, probability = self.titan_predict(features)
+        sentiment_score = self._fetch_sentiment_score(symbol)
+        liquidity_ratio = self._current_liquidity_ratio()
+        effective_buffer = self._effective_liquidity_threshold(
+            sentiment_score=sentiment_score,
+        )
+        prediction_features = self._build_prediction_features(
+            symbol,
+            features,
+            sentiment_score=sentiment_score,
+            liquidity_ratio=liquidity_ratio,
+        )
+        prediction, probability = self.titan_predict(prediction_features)
         mlflow_run_started = self._start_mlflow_trade_run(
             symbol=symbol,
             side=side,
@@ -1098,13 +1378,24 @@ raise SystemExit(1)
             prediction == 1
             and probability >= self.config.prediction_threshold
         )
-        passes_risk_gate = self.titan_guard()
+        passes_risk_gate = self.titan_guard(sentiment_score=sentiment_score)
         passes_fundamental_risk_rules, failed_risk_rule = (
             self._passes_configured_risk_rules(fundamentals)
         )
+        self._last_trade_outcome = {
+            "symbol": symbol,
+            "status": "pending",
+            "prediction": prediction,
+            "probability": probability,
+            "sentiment_score": sentiment_score,
+            "liquidity_ratio": liquidity_ratio,
+            "effective_buffer_threshold": effective_buffer,
+            "notes": None,
+        }
 
         try:
             if not passes_ml_gate:
+                notes = "ML gate rejected trade"
                 self.log_trade(
                     symbol,
                     side,
@@ -1113,7 +1404,10 @@ raise SystemExit(1)
                     "blocked",
                     prediction_label=prediction,
                     prediction_probability=probability,
-                    notes="ML gate rejected trade",
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "blocked", "notes": notes}
                 )
                 self._log_mlflow_trade_result(
                     prediction,
@@ -1123,6 +1417,11 @@ raise SystemExit(1)
                 return None
 
             if not passes_risk_gate:
+                notes = (
+                    "Liquidity guard blocked trade: "
+                    f"sentiment={sentiment_score:.2f}, "
+                    f"threshold={effective_buffer:.2f}"
+                )
                 self.log_trade(
                     symbol,
                     side,
@@ -1131,7 +1430,10 @@ raise SystemExit(1)
                     "blocked",
                     prediction_label=prediction,
                     prediction_probability=probability,
-                    notes="Liquidity guard blocked trade",
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "blocked", "notes": notes}
                 )
                 self._log_mlflow_trade_result(
                     prediction,
@@ -1141,6 +1443,10 @@ raise SystemExit(1)
                 return None
 
             if not passes_fundamental_risk_rules:
+                notes = (
+                    "Risk rule blocked trade: "
+                    f"{failed_risk_rule}"
+                )
                 self.log_trade(
                     symbol,
                     side,
@@ -1149,10 +1455,10 @@ raise SystemExit(1)
                     "blocked",
                     prediction_label=prediction,
                     prediction_probability=probability,
-                    notes=(
-                        "Risk rule blocked trade: "
-                        f"{failed_risk_rule}"
-                    ),
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "blocked", "notes": notes}
                 )
                 self._log_mlflow_trade_result(
                     prediction,
@@ -1166,6 +1472,11 @@ raise SystemExit(1)
                 or not self.config.enable_trading
                 or self.api is None
             ):
+                notes = (
+                    "Dry-run mode; "
+                    f"sentiment={sentiment_score:.2f}, "
+                    f"threshold={effective_buffer:.2f}"
+                )
                 self.log_trade(
                     symbol,
                     side,
@@ -1174,7 +1485,10 @@ raise SystemExit(1)
                     "simulated",
                     prediction_label=prediction,
                     prediction_probability=probability,
-                    notes="Dry-run mode",
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "simulated", "notes": notes}
                 )
                 self._log_mlflow_trade_result(
                     prediction,
@@ -1205,6 +1519,12 @@ raise SystemExit(1)
                     prediction_probability=probability,
                     notes=f"Alpaca submit failed: {exc}",
                 )
+                self._last_trade_outcome.update(
+                    {
+                        "status": "error",
+                        "notes": f"Alpaca submit failed: {exc}",
+                    }
+                )
                 self._log_mlflow_trade_result(
                     prediction,
                     probability,
@@ -1227,6 +1547,9 @@ raise SystemExit(1)
                     prediction_probability=probability,
                     notes=str(exc),
                 )
+                self._last_trade_outcome.update(
+                    {"status": "error", "notes": str(exc)}
+                )
                 self._log_mlflow_trade_result(
                     prediction,
                     probability,
@@ -1244,6 +1567,9 @@ raise SystemExit(1)
                 order_id=order_id,
                 prediction_label=prediction,
                 prediction_probability=probability,
+            )
+            self._last_trade_outcome.update(
+                {"status": "submitted", "notes": "submitted"}
             )
             self._log_mlflow_trade_result(
                 prediction,
@@ -1266,10 +1592,10 @@ raise SystemExit(1)
     ) -> List[Dict[str, Any]]:
         candidates = load_bot_trade_candidates(self.config.active_bot_name)
         candidates = self._rank_candidates(candidates)
-        if max_trades is not None and max_trades > 0:
-            candidates = candidates[:max_trades]
 
         results: List[Dict[str, Any]] = []
+        completed_trades = 0
+        target_trades = max_trades if max_trades and max_trades > 0 else None
         for candidate in candidates:
             symbol = str(candidate.get("symbol", "")).strip().upper()
             if not symbol:
@@ -1292,10 +1618,19 @@ raise SystemExit(1)
                 features=features,
                 fundamentals=fundamentals,
             )
+            outcome = dict(self._last_trade_outcome or {})
+            status = str(outcome.get("status") or "completed")
             results.append(
                 {
                     "symbol": symbol,
                     "executed": order is not None,
+                    "status": status,
+                    "notes": outcome.get("notes"),
+                    "prediction_probability": outcome.get("probability"),
+                    "sentiment_score": outcome.get("sentiment_score"),
+                    "effective_buffer_threshold": outcome.get(
+                        "effective_buffer_threshold"
+                    ),
                     "fundamentals": fundamentals,
                     "technical_score": candidate.get("technical_score"),
                     "technical_metrics": candidate.get(
@@ -1308,6 +1643,17 @@ raise SystemExit(1)
                     ),
                 }
             )
+
+            successful_statuses = {"submitted"}
+            if self.config.dry_run or not self.config.enable_trading:
+                successful_statuses.add("simulated")
+            if status in successful_statuses:
+                completed_trades += 1
+                if (
+                    target_trades is not None
+                    and completed_trades >= target_trades
+                ):
+                    break
 
         return results
 

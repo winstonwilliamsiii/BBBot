@@ -63,6 +63,8 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: root
       MYSQL_DATABASE: mansa_bot
+      TITAN_ENABLE_TRADING: ${TITAN_ENABLE_TRADING:-true}
+      TITAN_DRY_RUN: ${TITAN_DRY_RUN:-false}
       ALPACA_BASE_URL: ${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       MLFLOW_TRACKING_URI: http://mlflow:5000
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
@@ -117,6 +119,8 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: root
       MYSQL_DATABASE: mansa_bot
+      TITAN_ENABLE_TRADING: ${TITAN_ENABLE_TRADING:-true}
+      TITAN_DRY_RUN: ${TITAN_DRY_RUN:-false}
       ALPACA_BASE_URL: ${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}
       AIRBYTE_API_URL: ${AIRBYTE_API_URL:-https://api.airbyte.com/v1}
@@ -161,6 +165,8 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: root
       MYSQL_DATABASE: mansa_bot
+      TITAN_ENABLE_TRADING: ${TITAN_ENABLE_TRADING:-true}
+      TITAN_DRY_RUN: ${TITAN_DRY_RUN:-false}
       ALPACA_BASE_URL: ${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       MLFLOW_TRACKING_URI: http://mlflow:5000
       TIINGO_API_KEY: ${TIINGO_API_KEY:-}

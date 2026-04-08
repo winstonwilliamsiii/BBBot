@@ -69,7 +69,11 @@ def _run_titan_cycle(max_trades: int = 1) -> Dict[str, Any]:
 
     try:
         candidates = load_bot_trade_candidates(bot.config.active_bot_name)
-        candidates = bot._rank_candidates(candidates)
+        rank_candidates = getattr(bot, "rank_candidates", None)
+        if callable(rank_candidates):
+            candidates = rank_candidates(candidates)
+        else:
+            candidates = bot._rank_candidates(candidates)
     except Exception as exc:
         payload = {
             "timestamp": timestamp,
@@ -87,7 +91,7 @@ def _run_titan_cycle(max_trades: int = 1) -> Dict[str, Any]:
         _persist_snapshot("titan_orchestration_latest.json", payload)
         return payload
 
-    selected_candidates = candidates[:max_trades] if max_trades > 0 else candidates
+    selected_candidates = candidates
     selected_symbols = [
         str(candidate.get("symbol", "")).strip().upper()
         for candidate in selected_candidates
@@ -126,7 +130,9 @@ def _run_titan_cycle(max_trades: int = 1) -> Dict[str, Any]:
         latest_row = recent_trades.iloc[0]
         latest_status = str(latest_row.get("status") or "completed")
         detail = str(latest_row.get("notes") or latest_status)
-        candidates_executed = int((recent_trades["status"] == "submitted").sum())
+        candidates_executed = int(
+            (recent_trades["status"] == "submitted").sum()
+        )
         traded_symbols = [
             str(symbol).strip().upper()
             for symbol in recent_trades["symbol"].astype(str).tolist()
@@ -216,6 +222,7 @@ def train_orion_for_refresh(
     if notify_discord:
         payload["discord"] = _notify_noomo(
             "Noomo | Orion FFNN training completed "
+            f"| symbol={result.get('training_symbol', 'n/a')} "
             f"| run_id={result.get('run_id', 'n/a')} "
             f"| accuracy={float(result.get('accuracy', 0.0)):.4f}"
         )
@@ -275,9 +282,11 @@ def run_fund_bot(bot_name: str) -> Dict[str, Any]:
             **result,
         }
         payload["discord"] = _notify_noomo(
-            "Noomo | Orion Gold RSI cycle completed "
+            "Noomo | Orion minerals RSI cycle completed "
+            f"| symbol={result.get('selected_symbol', 'n/a')} "
+            f"| exec={result.get('execution', {}).get('status', 'n/a')} "
             f"| signal={result.get('signal', 'n/a')} "
-            f"| rsi={float(result.get('rsi_14', 0.0)):.2f}"
+            f"| rsi={float(result.get('rsi_value', 0.0)):.2f}"
         )
         _persist_snapshot("orion_cycle_latest.json", payload)
         return payload

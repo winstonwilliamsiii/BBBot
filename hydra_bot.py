@@ -360,6 +360,7 @@ class HydraBot:
             "score": score,
             "average_return": average_return,
             "lookback": effective_lookback,
+            "latest_price": prices[-1],
             "signal": score > 0,
         }
 
@@ -532,6 +533,7 @@ class HydraBot:
             "fundamental": fundamental,
             "technical": technical,
             "sentiment": sentiment,
+            "latest_price": momentum.get("latest_price"),
             "composite_score": composite_score,
             "buy_threshold": self.config.buy_threshold,
             "action": action,
@@ -657,6 +659,7 @@ class HydraBot:
             "ticker": normalized_ticker,
             "action": normalized_action,
             "qty": float(qty),
+            "price": self.last_analysis.get("latest_price"),
             "dry_run": effective_dry_run,
         }
 

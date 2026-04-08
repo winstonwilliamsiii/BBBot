@@ -1,23 +1,65 @@
+from __future__ import annotations
+
 import os
 from functools import lru_cache
-from typing import Literal, Optional, Any, List
-from datetime import datetime, timezone
+from typing import Literal, Optional, Any
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 import requests
 
+from backend.api.admin.liquidity_manager import LiquidityManager
+from backend.api.hydra_persistence import (
+    persist_hydra_analysis,
+    persist_hydra_trade_decision,
+)
+
+try:
+    import pymysql
+except ImportError:
+    pymysql = None
+
+try:
+    from procryon_bot import ProcryonBot
+
+    PROCRYON_IMPORT_ERROR = None
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    ProcryonBot = None
+    PROCRYON_IMPORT_ERROR = str(exc)
+
+try:
+    from hydra_bot import HydraBot
+
+    HYDRA_IMPORT_ERROR = None
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    HydraBot = None
+    HYDRA_IMPORT_ERROR = str(exc)
+
+try:
+    from triton_bot import TritonBot
+
+    TRITON_IMPORT_ERROR = None
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    TritonBot = None
+    TRITON_IMPORT_ERROR = str(exc)
+
+from draco_bot import app as draco_app
 from frontend.components.ibkr_gateway_client import (
     GatewayConfig,
     IBKRGatewayClient,
 )
-from scripts.wsj_sentiment import WsjSentimentService
+from scripts.webhook_ws import router as sentiment_router
 
 app = FastAPI(
     title="Bentley Budget Bot API",
-    version="0.1.0",
-    description="Minimal FastAPI service for Bentley Budget Bot.",
+    version="0.2.0",
+    description=(
+        "Unified FastAPI service for Bentley Budget Bot, including the "
+        "control center, bot APIs, and platform health probes."
+    ),
 )
+
+API_VERSION = "0.2.0"
 
 
 class IBKROrderRequest(BaseModel):
@@ -45,28 +87,232 @@ class IBKRResolveForexRequest(BaseModel):
     exchange: str = "IDEALPRO"
 
 
-class WSJWebhookPayload(BaseModel):
-    headline: str = Field(min_length=1)
-    tickers: Optional[List[str]] = None
-    article_id: Optional[str] = None
-    article_url: Optional[str] = None
-    author: Optional[str] = None
-    published_at: Optional[str] = None
+class ProcryonEvaluateRequest(BaseModel):
+    spread_vector: list[float] = Field(min_length=3, max_length=3)
+    execution_features: list[float] = Field(min_length=5, max_length=5)
 
 
-@lru_cache(maxsize=1)
-def get_wsj_sentiment_service() -> WsjSentimentService:
-    return WsjSentimentService()
+class ProcryonConfigureRequest(BaseModel):
+    settings: dict[str, Any] = Field(default_factory=dict)
 
 
-def _parse_published_at(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
+class HydraAnalyzeRequest(BaseModel):
+    ticker: str = Field(min_length=1)
+    news_headlines: list[str] = Field(default_factory=list)
+
+
+class HydraConfigureRequest(BaseModel):
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+
+class TritonAnalyzeRequest(BaseModel):
+    ticker: str = Field(min_length=1)
+    news_headlines: list[str] = Field(default_factory=list)
+
+
+class TritonTradeRequest(BaseModel):
+    broker: Literal["alpaca", "ibkr"]
+    ticker: str = Field(min_length=1)
+    action: Literal["BUY", "SELL"]
+    qty: float = Field(gt=0)
+    dry_run: bool = True
+
+
+class TritonConfigureRequest(BaseModel):
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+
+class LiquiditySettingsRequest(BaseModel):
+    liquidity_buffer_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    profit_benchmark_pct: Optional[float] = Field(default=None, ge=0)
+    auto_rebalance: Optional[bool] = None
+
+
+class ProfitBenchmarkRequest(BaseModel):
+    position_profit_pct: float
+
+
+def _is_truthy(value: Any) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _float_env(name: str, default: float) -> float:
     try:
-        normalized = value.replace("Z", "+00:00")
-        return datetime.fromisoformat(normalized)
-    except ValueError:
-        return datetime.now(timezone.utc)
+        return float(str(os.getenv(name, default)).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(str(os.getenv(name, default)).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _service_status(status: str, detail: str, **extra: Any) -> dict[str, Any]:
+    payload = {"status": status, "detail": detail}
+    payload.update(extra)
+    return payload
+
+
+def _http_probe(
+    urls: list[str],
+    *,
+    timeout: float = 2.0,
+    expected_statuses: tuple[int, ...] = (200,),
+) -> dict[str, Any]:
+    errors: list[str] = []
+
+    for url in urls:
+        try:
+            response = requests.get(url, timeout=timeout)
+            if response.status_code in expected_statuses:
+                return _service_status(
+                    "healthy",
+                    f"HTTP {response.status_code}",
+                    url=url,
+                    status_code=response.status_code,
+                )
+
+            errors.append(f"{url} -> HTTP {response.status_code}")
+        except requests.RequestException as exc:
+            errors.append(f"{url} -> {exc}")
+
+    detail = errors[-1] if errors else "No probe URLs configured"
+    return _service_status("unhealthy", detail, probes=urls)
+
+
+def _mysql_provider(host: str) -> str:
+    normalized_host = host.strip().lower()
+    if "rlwy" in normalized_host or "railway" in normalized_host:
+        return "railway"
+    return "local"
+
+
+def _mysql_health() -> dict[str, Any]:
+    host = os.getenv("MYSQL_HOST", "127.0.0.1").strip()
+    port = _int_env("MYSQL_PORT", 3307)
+    user = os.getenv("MYSQL_USER", "root")
+    database = os.getenv("MYSQL_DATABASE", "mansa_bot")
+    provider = _mysql_provider(host)
+
+    if pymysql is None:
+        return _service_status(
+            "unavailable",
+            "pymysql is not installed in this environment",
+            host=host,
+            port=port,
+            database=database,
+            provider=provider,
+        )
+
+    try:
+        connection = pymysql.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=os.getenv("MYSQL_PASSWORD", "root"),
+            database=database,
+            connect_timeout=2,
+            read_timeout=2,
+            write_timeout=2,
+        )
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT VERSION()")
+            version = cursor.fetchone()
+        connection.close()
+        return _service_status(
+            "healthy",
+            "MySQL connection succeeded",
+            host=host,
+            port=port,
+            database=database,
+            provider=provider,
+            version=version[0] if version else None,
+        )
+    except pymysql.MySQLError as exc:
+        return _service_status(
+            "unhealthy",
+            str(exc),
+            host=host,
+            port=port,
+            database=database,
+            provider=provider,
+        )
+
+
+def _mlflow_health() -> dict[str, Any]:
+    tracking_uri = os.getenv(
+        "MLFLOW_TRACKING_URI",
+        "http://localhost:5000",
+    ).strip()
+    return _http_probe(
+        [
+            f"{tracking_uri.rstrip('/')}/health",
+            f"{tracking_uri.rstrip('/')}/version",
+            tracking_uri,
+        ]
+    ) | {"tracking_uri": tracking_uri}
+
+
+def _appwrite_health() -> dict[str, Any]:
+    endpoint = os.getenv("APPWRITE_ENDPOINT", "").strip()
+    project_id = os.getenv("APPWRITE_PROJECT_ID", "").strip()
+    if not endpoint:
+        return _service_status(
+            "not_configured",
+            "APPWRITE_ENDPOINT is not configured",
+            project_id=project_id or None,
+        )
+
+    return _http_probe(
+        [
+            f"{endpoint.rstrip('/')}/health/version",
+            f"{endpoint.rstrip('/')}/health",
+        ]
+    ) | {
+        "endpoint": endpoint,
+        "project_id": project_id or None,
+    }
+
+
+def _bentley_ui_health() -> dict[str, Any]:
+    base_url = os.getenv(
+        "BENTLEY_UI_URL",
+        os.getenv("STREAMLIT_PUBLIC_URL", "http://localhost:8501"),
+    ).strip()
+    return _http_probe([f"{base_url.rstrip('/')}/_stcore/health"]) | {
+        "base_url": base_url,
+    }
+
+
+def _build_platform_health() -> dict[str, Any]:
+    services = {
+        "fastapi": _service_status(
+            "healthy",
+            "FastAPI application is running",
+            docs_url="/docs",
+            openapi_url="/openapi.json",
+        ),
+        "mysql": _mysql_health(),
+        "mlflow": _mlflow_health(),
+        "appwrite": _appwrite_health(),
+        "bentley_ui": _bentley_ui_health(),
+    }
+
+    statuses = [service["status"] for service in services.values()]
+    if any(status == "unhealthy" for status in statuses):
+        summary = "degraded"
+    elif any(status == "unavailable" for status in statuses):
+        summary = "partial"
+    else:
+        summary = "healthy"
+
+    return {
+        "status": summary,
+        "services": services,
+    }
 
 
 @lru_cache(maxsize=1)
@@ -79,6 +325,42 @@ def get_ibkr_client() -> IBKRGatewayClient:
         account_id=os.getenv("IBKR_ACCOUNT_ID", "U14774118"),
     )
     return IBKRGatewayClient(config)
+
+
+@lru_cache(maxsize=1)
+def get_procryon_bot() -> Any:
+    if ProcryonBot is None:
+        raise RuntimeError(PROCRYON_IMPORT_ERROR or "Procryon unavailable")
+    bot = ProcryonBot()
+    bot.bootstrap_demo_models()
+    return bot
+
+
+@lru_cache(maxsize=1)
+def get_hydra_bot() -> Any:
+    if HydraBot is None:
+        raise RuntimeError(HYDRA_IMPORT_ERROR or "Hydra unavailable")
+    bot = HydraBot()
+    bot.bootstrap_demo_state()
+    return bot
+
+
+@lru_cache(maxsize=1)
+def get_triton_bot() -> Any:
+    if TritonBot is None:
+        raise RuntimeError(TRITON_IMPORT_ERROR or "Triton unavailable")
+    bot = TritonBot()
+    bot.bootstrap_demo_state()
+    return bot
+
+
+@lru_cache(maxsize=1)
+def get_liquidity_manager() -> LiquidityManager:
+    return LiquidityManager(
+        liquidity_buffer_pct=_float_env("LIQUIDITY_BUFFER_PCT", 25.0),
+        profit_benchmark_pct=_float_env("PROFIT_BENCHMARK_PCT", 15.0),
+        auto_rebalance=_is_truthy(os.getenv("AUTO_REBALANCE", "true")),
+    )
 
 
 def _probe_ibkr_auth_endpoint(url: str, timeout: int = 3) -> dict:
@@ -104,7 +386,7 @@ def _probe_ibkr_auth_endpoint(url: str, timeout: int = 3) -> dict:
 
         try:
             body = resp.json()
-        except Exception:
+        except ValueError:
             result["error"] = "non_json_response"
             return result
 
@@ -120,65 +402,410 @@ def _probe_ibkr_auth_endpoint(url: str, timeout: int = 3) -> dict:
 
         return result
 
-    except Exception as exc:
+    except requests.RequestException as exc:
         result["error"] = str(exc)
         return result
 
 
 @app.get("/")
 async def root():
-    return {"message": "Bentley Budget Bot!"}
+    return {
+        "message": "Bentley Budget Bot API",
+        "service": "fastapi",
+        "version": API_VERSION,
+        "docs": "/docs",
+        "health": "/health",
+        "platform_health": "/platform/health",
+        "platform_architecture": "/platform/architecture",
+    }
+
+
+@app.get("/version")
+async def version():
+    return {
+        "service": "Bentley Budget Bot API",
+        "version": API_VERSION,
+    }
+
+
+@app.get("/health")
+@app.get("/api/health")
+async def health():
+    platform = _build_platform_health()
+    return {
+        "status": "healthy",
+        "service": "Bentley Budget Bot API",
+        "version": API_VERSION,
+        "platform_status": platform["status"],
+        "services": platform["services"],
+    }
 
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok"}
+    return await health()
 
 
-@app.post("/wsj-webhook")
-async def wsj_webhook(payload: WSJWebhookPayload):
-    service = get_wsj_sentiment_service()
+@app.get("/status")
+@app.get("/api/status")
+async def status():
+    platform = _build_platform_health()
+    return {
+        "status": platform["status"],
+        "service": "Bentley Budget Bot API",
+        "version": API_VERSION,
+        "services": platform["services"],
+    }
 
-    try:
-        analysis = service.analyze_headline(payload.headline)
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    tickers = service.infer_tickers(payload.headline, payload.tickers)
-    stored_rows = service.store_sentiment_message(
-        tickers=tickers,
-        headline=payload.headline,
-        analysis=analysis,
-        article_id=payload.article_id,
-        article_url=payload.article_url,
-        published_at=_parse_published_at(payload.published_at),
-        author=payload.author,
+@app.get("/status/migration")
+async def migration_status():
+    return {
+        "status": "not_configured",
+        "detail": (
+            "Database migration status is not exposed by the FastAPI service. "
+            "Use the migration workflows or scripts for schema operations."
+        ),
+    }
+
+
+@app.get("/platform/architecture")
+async def platform_architecture():
+    mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1").strip()
+    mysql_port = _int_env("MYSQL_PORT", 3307)
+    mysql_database = os.getenv("MYSQL_DATABASE", "mansa_bot")
+    mlflow_tracking_uri = os.getenv(
+        "MLFLOW_TRACKING_URI",
+        "http://localhost:5000",
     )
-    service.log_to_mlflow(analysis, tickers)
-
-    discord_webhook = os.getenv("DISCORD_WEBHOOK_URL")
-    if discord_webhook:
-        message = (
-            f"WSJ Headline: {payload.headline}\n"
-            f"Tickers: {', '.join(tickers) if tickers else 'unmapped'}\n"
-            f"Sentiment: {analysis['sentiment_label']} "
-            f"({analysis['sentiment_score']:.2f})"
-        )
-        try:
-            requests.post(
-                discord_webhook,
-                json={"content": message},
-                timeout=8,
-            )
-        except requests.RequestException:
-            pass
+    bentley_ui_url = os.getenv(
+        "BENTLEY_UI_URL",
+        os.getenv("STREAMLIT_PUBLIC_URL", "http://localhost:8501"),
+    ).strip()
+    appwrite_endpoint = os.getenv("APPWRITE_ENDPOINT", "").strip()
 
     return {
-        "status": "processed",
-        "tickers": tickers,
-        "stored_rows": stored_rows,
-        "analysis": analysis,
+        "frontend": {
+            "bentley_ui": bentley_ui_url,
+            "streamlit_entrypoint": "streamlit_app.py",
+            "admin_page": "pages/99_🔧_Admin_Control_Center.py",
+        },
+        "backend": {
+            "fastapi_entrypoint": "Main.py",
+            "control_center_default_url": "http://localhost:5001",
+            "vercel_handler": "api/index.py",
+        },
+        "data": {
+            "mysql": {
+                "host": mysql_host,
+                "port": mysql_port,
+                "database": mysql_database,
+                "provider": _mysql_provider(mysql_host),
+            },
+            "mlflow_tracking_uri": mlflow_tracking_uri,
+            "appwrite_endpoint": appwrite_endpoint or None,
+        },
+        "docker": {
+            "app": "docker/docker-compose.yml",
+            "consolidated": "docker/docker-compose-consolidated.yml",
+            "mlflow": "docker/docker-compose-mlflow.yml",
+            "airflow": "docker/docker-compose-airflow.yml",
+        },
     }
+
+
+@app.get("/platform/health")
+@app.get("/api/admin/platform/health")
+async def platform_health():
+    return _build_platform_health()
+
+
+@app.get("/admin/liquidity")
+@app.get("/api/admin/liquidity")
+async def liquidity_metrics(
+    total_value: float = Query(default=100000, gt=0),
+    current_cash: float = Query(default=26500, ge=0),
+    positions_value: float = Query(default=73500, ge=0),
+):
+    manager = get_liquidity_manager()
+    metrics = manager.calculate_liquidity_metrics(
+        total_value,
+        current_cash,
+        positions_value,
+    )
+    recommendation = manager.get_rebalance_recommendation(metrics)
+    max_position = manager.calculate_max_position_size(metrics)
+    return {
+        "status": "success",
+        "metrics": metrics,
+        "recommendation": recommendation,
+        "max_position_size": max_position,
+        "settings": {
+            "liquidity_buffer_pct": manager.liquidity_buffer_pct,
+            "profit_benchmark_pct": manager.profit_benchmark_pct,
+            "auto_rebalance": manager.auto_rebalance,
+        },
+    }
+
+
+@app.post("/admin/liquidity")
+@app.post("/api/admin/liquidity")
+async def update_liquidity_settings(payload: LiquiditySettingsRequest):
+    manager = get_liquidity_manager()
+
+    if payload.liquidity_buffer_pct is not None:
+        manager.liquidity_buffer_pct = payload.liquidity_buffer_pct
+    if payload.profit_benchmark_pct is not None:
+        manager.profit_benchmark_pct = payload.profit_benchmark_pct
+    if payload.auto_rebalance is not None:
+        manager.auto_rebalance = payload.auto_rebalance
+
+    return {
+        "status": "success",
+        "message": "Liquidity settings updated",
+        "settings": {
+            "liquidity_buffer_pct": manager.liquidity_buffer_pct,
+            "profit_benchmark_pct": manager.profit_benchmark_pct,
+            "auto_rebalance": manager.auto_rebalance,
+        },
+    }
+
+
+@app.post("/admin/liquidity/check-profit")
+@app.post("/api/admin/liquidity/check-profit")
+async def check_profit_benchmark(payload: ProfitBenchmarkRequest):
+    manager = get_liquidity_manager()
+    should_release, message = manager.check_profit_benchmark(
+        payload.position_profit_pct
+    )
+    return {
+        "status": "success",
+        "should_release": should_release,
+        "message": message,
+        "current_profit": payload.position_profit_pct,
+        "benchmark": manager.profit_benchmark_pct,
+    }
+
+
+@app.get("/procryon/health")
+async def procryon_health():
+    if ProcryonBot is None:
+        raise HTTPException(status_code=503, detail=PROCRYON_IMPORT_ERROR)
+    return get_procryon_bot().health_snapshot(
+        attempt_broker_login=False,
+        probe_fastapi=False,
+    )
+
+
+@app.get("/procryon/status")
+async def procryon_status():
+    if ProcryonBot is None:
+        raise HTTPException(status_code=503, detail=PROCRYON_IMPORT_ERROR)
+    return get_procryon_bot().status()
+
+
+@app.post("/procryon/bootstrap")
+async def procryon_bootstrap():
+    if ProcryonBot is None:
+        raise HTTPException(status_code=503, detail=PROCRYON_IMPORT_ERROR)
+    bot = get_procryon_bot()
+    return {
+        "status": "bootstrapped",
+        "metrics": bot.bootstrap_demo_models(),
+    }
+
+
+@app.post("/procryon/evaluate")
+async def procryon_evaluate(payload: ProcryonEvaluateRequest):
+    if ProcryonBot is None:
+        raise HTTPException(status_code=503, detail=PROCRYON_IMPORT_ERROR)
+    bot = get_procryon_bot()
+    try:
+        return bot.evaluate_opportunity(
+            payload.spread_vector,
+            payload.execution_features,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/procryon/configure")
+async def procryon_configure(payload: ProcryonConfigureRequest):
+    if ProcryonBot is None:
+        raise HTTPException(status_code=503, detail=PROCRYON_IMPORT_ERROR)
+    return get_procryon_bot().configure(payload.settings)
+
+
+@app.get("/hydra/health")
+async def hydra_health():
+    if HydraBot is None:
+        raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
+    return get_hydra_bot().health_snapshot()
+
+
+@app.get("/hydra/status")
+async def hydra_status():
+    if HydraBot is None:
+        raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
+    return get_hydra_bot().status()
+
+
+@app.post("/hydra/bootstrap")
+async def hydra_bootstrap():
+    if HydraBot is None:
+        raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
+    bot = get_hydra_bot()
+    return {
+        "status": "bootstrapped",
+        "analysis": bot.bootstrap_demo_state(),
+    }
+
+
+@app.post("/hydra/analyze")
+async def hydra_analyze(payload: HydraAnalyzeRequest):
+    if HydraBot is None:
+        raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
+    try:
+        analysis = get_hydra_bot().analyze_ticker(
+            payload.ticker,
+            headlines=payload.news_headlines,
+        )
+        analysis["persistence"] = persist_hydra_analysis(
+            analysis,
+            airflow_dag_id=get_hydra_bot().config.airflow_dag_id,
+        )
+        return analysis
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/hydra/trade")
+async def hydra_trade(payload: dict[str, Any]):
+    if HydraBot is None:
+        raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
+    try:
+        bot = get_hydra_bot()
+        trade = bot.execute_trade(
+            str(payload.get("broker", "")),
+            str(payload.get("ticker", "")),
+            str(payload.get("action", "")),
+            qty=float(payload.get("qty", 0)),
+            dry_run=bool(payload.get("dry_run", True)),
+        )
+        last_analysis = (
+            bot.last_analysis
+            if isinstance(bot.last_analysis, dict)
+            else None
+        )
+        analysis_id = None
+        if last_analysis:
+            persistence = persist_hydra_analysis(
+                last_analysis,
+                airflow_dag_id=bot.config.airflow_dag_id,
+            )
+            analysis_id = persistence.get("analysis_id")
+            trade["analysis_persistence"] = persistence
+        trade["persistence"] = persist_hydra_trade_decision(
+            trade,
+            analysis=last_analysis,
+            analysis_id=analysis_id,
+        )
+        return trade
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/hydra/configure")
+async def hydra_configure(payload: HydraConfigureRequest):
+    if HydraBot is None:
+        raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
+    return get_hydra_bot().configure(payload.settings)
+
+
+@app.get("/hydra/airbyte-config")
+async def hydra_airbyte_config():
+    if HydraBot is None:
+        raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
+    return get_hydra_bot().airbyte_source_config()
+
+
+@app.get("/triton/health")
+async def triton_health():
+    if TritonBot is None:
+        raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+    return get_triton_bot().health_snapshot()
+
+
+@app.get("/triton/status")
+async def triton_status():
+    if TritonBot is None:
+        raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+    return get_triton_bot().status()
+
+
+@app.post("/triton/bootstrap")
+async def triton_bootstrap():
+    if TritonBot is None:
+        raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+    bot = get_triton_bot()
+    return {
+        "status": "bootstrapped",
+        "analysis": bot.bootstrap_demo_state(),
+    }
+
+
+@app.post("/triton/analyze")
+async def triton_analyze(payload: TritonAnalyzeRequest):
+    if TritonBot is None:
+        raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+    try:
+        return get_triton_bot().analyze_ticker(
+            payload.ticker,
+            headlines=payload.news_headlines,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/triton/forecast")
+async def triton_forecast(payload: TritonAnalyzeRequest):
+    if TritonBot is None:
+        raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+    bot = get_triton_bot()
+    try:
+        history = bot._fetch_price_history(str(payload.ticker).strip().upper())
+        return bot.arima_forecast(history)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/triton/trade")
+async def triton_trade(payload: TritonTradeRequest):
+    if TritonBot is None:
+        raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+    try:
+        return get_triton_bot().execute_trade(
+            payload.broker,
+            payload.ticker,
+            payload.action,
+            qty=payload.qty,
+            dry_run=payload.dry_run,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/triton/configure")
+async def triton_configure(payload: TritonConfigureRequest):
+    if TritonBot is None:
+        raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+    return get_triton_bot().configure(payload.settings)
+
+
+app.include_router(sentiment_router)
+app.mount("/draco", draco_app)
 
 
 @app.get("/ibkr/health")
@@ -199,9 +826,13 @@ async def ibkr_ping():
     """
     Diagnose CPAPI reachability across likely local URLs.
 
-    This is intentionally verbose so same-day setup issues can be resolved fast.
+    This is intentionally verbose so same-day setup issues can be
+    resolved fast.
     """
-    configured = os.getenv("IBKR_GATEWAY_URL", "https://localhost:5000").strip()
+    configured = os.getenv(
+        "IBKR_GATEWAY_URL",
+        "https://localhost:5000",
+    ).strip()
 
     candidates = []
     for url in [
@@ -222,13 +853,16 @@ async def ibkr_ping():
     guidance = []
     if not valid:
         guidance.append(
-            "No valid IBKR CPAPI endpoint detected. Current localhost:5000 often maps to Docker in this workspace."
+            "No valid IBKR CPAPI endpoint detected. Current "
+            "localhost:5000 often maps to Docker in this workspace."
         )
         guidance.append(
-            "Set IBKR_GATEWAY_URL to the actual Client Portal API URL, then restart API."
+            "Set IBKR_GATEWAY_URL to the actual Client Portal API URL, "
+            "then restart API."
         )
         guidance.append(
-            "Expected auth endpoint: <IBKR_GATEWAY_URL>/v1/api/iserver/auth/status returning JSON with authenticated field."
+            "Expected auth endpoint: <IBKR_GATEWAY_URL>/v1/api/iserver/"
+            "auth/status returning JSON with authenticated field."
         )
 
     return {
@@ -243,10 +877,16 @@ async def ibkr_ping():
 async def ibkr_accounts():
     client = get_ibkr_client()
     if not client.start_gateway():
-        raise HTTPException(status_code=503, detail="IBKR gateway unreachable")
+        raise HTTPException(
+            status_code=503,
+            detail="IBKR gateway unreachable",
+        )
     accounts = client.get_accounts()
     if not accounts:
-        raise HTTPException(status_code=502, detail="No IBKR accounts returned")
+        raise HTTPException(
+            status_code=502,
+            detail="No IBKR accounts returned",
+        )
     return {"accounts": accounts}
 
 
@@ -254,8 +894,14 @@ async def ibkr_accounts():
 async def ibkr_forex_resolve(payload: IBKRResolveForexRequest):
     client = get_ibkr_client()
     if not client.start_gateway():
-        raise HTTPException(status_code=503, detail="IBKR gateway unreachable")
-    conid = client.resolve_forex_conid(payload.symbol, exchange=payload.exchange)
+        raise HTTPException(
+            status_code=503,
+            detail="IBKR gateway unreachable",
+        )
+    conid = client.resolve_forex_conid(
+        payload.symbol,
+        exchange=payload.exchange,
+    )
     if conid is None:
         raise HTTPException(
             status_code=404,
@@ -275,7 +921,10 @@ async def ibkr_forex_resolve(payload: IBKRResolveForexRequest):
 async def ibkr_order(payload: IBKROrderRequest):
     client = get_ibkr_client()
     if not client.start_gateway():
-        raise HTTPException(status_code=503, detail="IBKR gateway unreachable")
+        raise HTTPException(
+            status_code=503,
+            detail="IBKR gateway unreachable",
+        )
 
     result: Any = client.place_order(
         conid=payload.conid,
@@ -299,7 +948,10 @@ async def ibkr_order(payload: IBKROrderRequest):
 async def ibkr_forex_order(payload: IBKRForexOrderRequest):
     client = get_ibkr_client()
     if not client.start_gateway():
-        raise HTTPException(status_code=503, detail="IBKR gateway unreachable")
+        raise HTTPException(
+            status_code=503,
+            detail="IBKR gateway unreachable",
+        )
 
     result: Any = client.place_forex_order(
         symbol=payload.symbol,
@@ -324,15 +976,24 @@ async def ibkr_forex_order(payload: IBKRForexOrderRequest):
 async def ibkr_positions(account_id: Optional[str] = Query(default=None)):
     client = get_ibkr_client()
     if not client.start_gateway():
-        raise HTTPException(status_code=503, detail="IBKR gateway unreachable")
+        raise HTTPException(
+            status_code=503,
+            detail="IBKR gateway unreachable",
+        )
 
     acct = account_id or client.config.account_id
     if not acct:
-        raise HTTPException(status_code=400, detail="IBKR account_id is required")
+        raise HTTPException(
+            status_code=400,
+            detail="IBKR account_id is required",
+        )
 
     result = client.api_request(f"/portfolio/{acct}/positions/0")
     if result is None:
-        raise HTTPException(status_code=502, detail="IBKR positions request failed")
+        raise HTTPException(
+            status_code=502,
+            detail="IBKR positions request failed",
+        )
 
     return {
         "account_id": acct,

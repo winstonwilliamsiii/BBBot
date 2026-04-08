@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
-from typing import Literal, Optional, Any
+from typing import Literal, Optional, Any, List
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -10,6 +11,7 @@ from frontend.components.ibkr_gateway_client import (
     GatewayConfig,
     IBKRGatewayClient,
 )
+from scripts.wsj_sentiment import WsjSentimentService
 
 app = FastAPI(
     title="Bentley Budget Bot API",
@@ -41,6 +43,30 @@ class IBKRForexOrderRequest(BaseModel):
 class IBKRResolveForexRequest(BaseModel):
     symbol: str
     exchange: str = "IDEALPRO"
+
+
+class WSJWebhookPayload(BaseModel):
+    headline: str = Field(min_length=1)
+    tickers: Optional[List[str]] = None
+    article_id: Optional[str] = None
+    article_url: Optional[str] = None
+    author: Optional[str] = None
+    published_at: Optional[str] = None
+
+
+@lru_cache(maxsize=1)
+def get_wsj_sentiment_service() -> WsjSentimentService:
+    return WsjSentimentService()
+
+
+def _parse_published_at(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return datetime.now(timezone.utc)
 
 
 @lru_cache(maxsize=1)
@@ -107,6 +133,52 @@ async def root():
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
+
+
+@app.post("/wsj-webhook")
+async def wsj_webhook(payload: WSJWebhookPayload):
+    service = get_wsj_sentiment_service()
+
+    try:
+        analysis = service.analyze_headline(payload.headline)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    tickers = service.infer_tickers(payload.headline, payload.tickers)
+    stored_rows = service.store_sentiment_message(
+        tickers=tickers,
+        headline=payload.headline,
+        analysis=analysis,
+        article_id=payload.article_id,
+        article_url=payload.article_url,
+        published_at=_parse_published_at(payload.published_at),
+        author=payload.author,
+    )
+    service.log_to_mlflow(analysis, tickers)
+
+    discord_webhook = os.getenv("DISCORD_WEBHOOK_URL")
+    if discord_webhook:
+        message = (
+            f"WSJ Headline: {payload.headline}\n"
+            f"Tickers: {', '.join(tickers) if tickers else 'unmapped'}\n"
+            f"Sentiment: {analysis['sentiment_label']} "
+            f"({analysis['sentiment_score']:.2f})"
+        )
+        try:
+            requests.post(
+                discord_webhook,
+                json={"content": message},
+                timeout=8,
+            )
+        except requests.RequestException:
+            pass
+
+    return {
+        "status": "processed",
+        "tickers": tickers,
+        "stored_rows": stored_rows,
+        "analysis": analysis,
+    }
 
 
 @app.get("/ibkr/health")

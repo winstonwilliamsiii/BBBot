@@ -65,10 +65,10 @@ The Bentley Bot Control Center is a comprehensive Streamlit-based admin interfac
 
 ### Step 1: Prerequisites
 
-Ensure Flask API is running:
+Ensure the FastAPI control center is running:
 ```bash
-# Terminal 1: Start Flask API
-python backend/api/app.py
+# Terminal 1: Start FastAPI control center
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
 ```
 
 ### Step 2: Access the Control Center
@@ -310,9 +310,9 @@ If Flask API is not running, the UI gracefully falls back to sample data (lines 
 - Check for Python syntax errors in terminal output
 
 ### API connection errors
-- Ensure Flask API is running: `python backend/api/app.py`
-- Check FLASK_API_URL is correct (default: http://localhost:5001)
-- Verify CORS is enabled in Flask app
+- Ensure the FastAPI control center is running: `powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1`
+- Check `CONTROL_CENTER_API_URL` is correct (default: `http://localhost:5001`)
+- Verify the backend is healthy at `http://localhost:5001/health`
 
 ### Authentication loop
 - Clear browser cookies/cache

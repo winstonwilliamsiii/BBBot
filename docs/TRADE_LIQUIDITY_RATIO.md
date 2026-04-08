@@ -355,8 +355,8 @@ mlflow.log_metric("buffer_deviation", metrics['buffer_deviation'])
 ### Issue: API returns errors
 
 **Solution**:
-- Ensure Flask API is running: `python backend/api/app.py`
-- Check CORS settings in `app.py`
+- Ensure the FastAPI control center is running: `powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1`
+- Check the backend health endpoint: `http://localhost:5001/health`
 - Verify portfolio values are positive numbers
 
 ## 📞 Support

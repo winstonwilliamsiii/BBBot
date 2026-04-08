@@ -1,34 +1,30 @@
-"""
-Bot 7: Triton
+"""Triton bot compatibility wrapper for the shared runtime module."""
 
-Fund: Mansa Transportation
-Strategy: Pending
-"""
+from triton_bot import TritonBot
+
+
+_BOT = TritonBot()
+
 
 def start():
     """Start the bot."""
-    print("Starting Triton (Mansa Transportation)")
-    pass
+    return _BOT.bootstrap_demo_state()
+
 
 def stop():
     """Stop the bot."""
-    print("Stopping Triton (Mansa Transportation)")
-    pass
+    return {"status": "stopped", "name": "Triton"}
+
 
 def get_status():
     """Get bot status."""
-    return {
-        "id": 7,
-        "name": "Triton",
-        "fund": "Mansa Transportation",
-        "strategy": "Pending",
-        "status": "idle"
-    }
+    return _BOT.status()
+
 
 def configure(config):
     """Configure bot parameters."""
-    print(f"Configuring Triton with: {config}")
-    pass
+    return _BOT.configure(config)
+
 
 if __name__ == "__main__":
-    print("Triton | Mansa Transportation | Pending - Ready")
+    print(_BOT.bootstrap_demo_state())

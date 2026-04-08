@@ -1,0 +1,14 @@
+{
+  "tickers": [
+    "XLV",
+    "UNH",
+    "ELV",
+    "CI",
+    "CVS",
+    "HCA",
+    "ISRG",
+    "LLY",
+    "ABBV"
+  ],
+  "user_agent": "Mozilla/5.0 (compatible; HydraBot/1.0)"
+}

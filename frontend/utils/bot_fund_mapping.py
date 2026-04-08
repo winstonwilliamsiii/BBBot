@@ -40,7 +40,7 @@ BOT_CATALOG: List[Dict[str, str]] = [
     {
         "bot": "Triton",
         "fund": "Mansa Transportation",
-        "strategy": "Pending",
+        "strategy": "ARIMA and LSTM Swing Trading",
     },
     {
         "bot": "Dione",

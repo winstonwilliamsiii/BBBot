@@ -36,7 +36,10 @@ def connect():
         host = request.args.get('host')
         
         if not mt5.initialize():
-            return jsonify({'success': False, 'error': 'MT5 initialization failed'}), 500
+            return jsonify({
+                'success': False,
+                'error': f'MT5 initialization failed: {mt5.last_error()}'
+            }), 500
         
         authorized = mt5.login(login=int(user), password=password, server=host)
         

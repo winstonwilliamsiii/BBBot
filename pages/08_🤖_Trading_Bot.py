@@ -16,6 +16,7 @@ from plotly.subplots import make_subplots
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 from frontend.components.multi_broker_dashboard import render_multi_broker_dashboard
 from frontend.utils.broker_trade_sync import sync_connected_brokers
+from frontend.utils.api import get_api_client
 
 # Page config must be the first Streamlit command in this script.
 st.set_page_config(
@@ -356,6 +357,15 @@ def get_bot_status(bot_name: str = "Titan"):
         "timestamp": None,
         "note": "Launcher event not available yet",
         "trading_mode": trading_mode,
+    }
+
+
+@st.cache_data(ttl=30)
+def fetch_hydra_api_snapshot() -> dict:
+    client = get_api_client()
+    return {
+        "status": client.get_hydra_status(),
+        "health": client.get_hydra_health(),
     }
 
 
@@ -782,7 +792,15 @@ def _set_bot_launch_preferences(
 
 
 def _build_quick_start_rows() -> pd.DataFrame:
-    launch_bots = ["Titan", "Vega", "Rigel", "Dogon", "Orion"]
+    launch_bots = [
+        "Titan",
+        "Vega",
+        "Rigel",
+        "Dogon",
+        "Orion",
+        "Hydra",
+        "Triton",
+    ]
     rows = []
     for bot_name in launch_bots:
         rows.append(
@@ -893,7 +911,15 @@ def _vega_automation_status() -> dict:
 
 
 def _render_quick_launch_buttons() -> None:
-    launch_bots = ["Titan", "Vega", "Rigel", "Dogon", "Orion"]
+    launch_bots = [
+        "Titan",
+        "Vega",
+        "Rigel",
+        "Dogon",
+        "Orion",
+        "Hydra",
+        "Triton",
+    ]
 
     st.markdown("**Quick Launch Commands (ON/OFF)**")
     st.dataframe(
@@ -978,6 +1004,34 @@ def _render_quick_launch_buttons() -> None:
         st.caption("Latest launcher event")
         st.json(latest_event)
 
+    hydra_api = fetch_hydra_api_snapshot()
+    hydra_status = hydra_api.get("status") or {}
+    hydra_health = hydra_api.get("health") or {}
+
+    st.markdown("**Hydra API Snapshot**")
+    h1, h2, h3 = st.columns(3)
+    with h1:
+        st.metric(
+            "Hydra Action",
+            str(hydra_status.get("last_analysis", {}).get("action", "N/A")),
+        )
+    with h2:
+        st.metric(
+            "Execution Enabled",
+            "YES" if hydra_status.get("execution_enabled") else "NO",
+        )
+    with h3:
+        st.metric(
+            "Hydra API",
+            str(
+                hydra_health.get("fastapi", {}).get("reachable", False)
+            ).upper(),
+        )
+
+    if hydra_health:
+        with st.expander("Hydra Health Details", expanded=False):
+            st.json(hydra_health)
+
 
 @st.cache_data(ttl=30)
 def load_titan_snapshot() -> dict:
@@ -1052,6 +1106,68 @@ with col2:
         else:
             st.sidebar.error("Titan OFF command failed.")
         st.rerun()
+
+hydra_sidebar_status = get_bot_status("Hydra")
+hydra_snapshot = fetch_hydra_api_snapshot()
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Hydra Controls")
+
+hydra_sidebar_mode = st.sidebar.selectbox(
+    "Hydra Trading Mode",
+    options=["paper", "live"],
+    index=(
+        0
+        if str(hydra_sidebar_status.get("trading_mode", "paper"))
+        == "paper"
+        else 1
+    ),
+    key="sidebar_hydra_trading_mode",
+)
+
+hcol1, hcol2 = st.sidebar.columns(2)
+with hcol1:
+    if st.button("▶️ Hydra ON", use_container_width=True):
+        _set_bot_launch_preferences("Hydra", hydra_sidebar_mode, True)
+        with st.spinner("Running Hydra ON..."):
+            execution = _execute_bot_mode("Hydra", "on", hydra_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        if execution["ok"]:
+            st.sidebar.success("Hydra ON command completed.")
+        else:
+            st.sidebar.error("Hydra ON command failed.")
+        st.rerun()
+
+with hcol2:
+    if st.button("⏸️ Hydra OFF", use_container_width=True):
+        _set_bot_launch_preferences("Hydra", hydra_sidebar_mode, False)
+        with st.spinner("Running Hydra OFF..."):
+            execution = _execute_bot_mode("Hydra", "off", hydra_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        if execution["ok"]:
+            st.sidebar.success("Hydra OFF command completed.")
+        else:
+            st.sidebar.error("Hydra OFF command failed.")
+        st.rerun()
+
+st.sidebar.caption(
+    "Hydra API reachable: "
+    + str(
+        (hydra_snapshot.get("health") or {})
+        .get("fastapi", {})
+        .get("reachable", False)
+    ).upper()
+)
+if hydra_snapshot.get("status"):
+    st.sidebar.caption(
+        "Hydra last action: "
+        + str(
+            hydra_snapshot["status"].get("last_analysis", {}).get(
+                "action",
+                "N/A",
+            )
+        )
+    )
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):

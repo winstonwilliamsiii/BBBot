@@ -3,27 +3,50 @@ bot:
   name: Triton
   runtime_name: Triton_Bot
   fund: Mansa Transportation
-  strategy: Pending
+  strategy: ARIMA and LSTM Swing Trading
   module: bentley-bot/bots/triton.py
+  objective: Forecast transportation leaders and ETFs for swing entries using ARIMA-backed trend confirmation with FastAPI and MLflow support.
 
 execution:
-  primary_client: alpaca_client
+  primary_client: alpaca
   mode: paper
   enabled: false
   order_type: market
+  fallback_client: ibkr
 
 strategy:
-  label: Triton_Transportation_Watchlist
+  label: Triton_Transportation_Forecast
   screener_file: triton_transport_watchlist.csv
   universe: Transportation_Watchlist
   timeframe: 1D
   position_size: 1000
+  proxy_symbol: IYT
+  transport_universe:
+    - IYT
+    - UNP
+    - CSX
+    - NSC
+    - UPS
+    - FDX
+    - DAL
+    - UBER
+
+services:
+  fastapi:
+    route_prefix: /triton
+    health_endpoint: /triton/health
+    analyze_endpoint: /triton/analyze
+    forecast_endpoint: /triton/forecast
+  mlflow:
+    experiment: Triton_Mansa_Transportation
+    tracking_uri_env: MLFLOW_TRACKING_URI
 
 risk:
   min_volume: 500000
   max_daily_loss_pct: 1.0
   max_open_positions: 3
-  pending_review: true
+  buy_threshold: 0.18
+  sell_threshold: -0.18
 
 notification:
   discord:

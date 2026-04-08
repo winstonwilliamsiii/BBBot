@@ -699,6 +699,27 @@ def api_request(endpoint, method="GET", data=None, show_notice=False):
         return None
 
 
+BOT_DEFAULT_BROKERS = {
+    "Titan": "ALPACA",
+    "Vega": "IBKR",
+    "Rigel": "ALPACA",
+    "Dogon": "ALPACA",
+    "Orion": "ALPACA",
+    "Hydra": "ALPACA",
+}
+
+
+def get_bot_default_broker(bot_name: str) -> str:
+    return BOT_DEFAULT_BROKERS.get(str(bot_name or "").strip(), "AUTO")
+
+
+def get_hydra_control_snapshot() -> dict:
+    return {
+        "status": api_request("/hydra/status", show_notice=False) or {},
+        "health": api_request("/hydra/health", show_notice=False) or {},
+    }
+
+
 def get_status_badge(status):
     """Return colored status badge."""
     if status in ["running", "healthy", "active"]:
@@ -1284,7 +1305,12 @@ def persist_bot_launch_mode(
         config.set_bot_active(bot_name, active)
 
 
-def run_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
+def run_bot_mode(
+    bot_name: str,
+    mode: str,
+    trading_mode: str = "paper",
+    broker: str | None = None,
+) -> dict:
     """Run start_bot_mode.ps1 and return execution result."""
     repo_root = Path(__file__).resolve().parents[1]
     launcher = repo_root / "start_bot_mode.ps1"
@@ -1307,7 +1333,7 @@ def run_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
         "-Mode",
         mode,
         "-Broker",
-        "IBKR",
+        broker or get_bot_default_broker(bot_name),
         "-TradingMode",
         trading_mode,
     ]
@@ -1373,18 +1399,38 @@ def main():
     # TAB 1: Overview Dashboard
     with tab1:
         st.markdown('<div class="section-header"><h2>System Overview</h2></div>', unsafe_allow_html=True)
+        platform_health = api_request("/platform/health", show_notice=False) or {}
+        platform_architecture = api_request(
+            "/platform/architecture",
+            show_notice=False,
+        ) or {}
+        overview_services = platform_health.get("services", {})
+        healthy_services = sum(
+            1
+            for service in overview_services.values()
+            if service.get("status") == "healthy"
+        )
+        catalog_rows = get_bot_catalog_rows()
         
         # Health metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Active Bots", "3 / 13", "+1")
+            st.metric("Configured Bots", str(len(catalog_rows)))
         with col2:
-            st.metric("Broker Connections", "2 / 5", "")
+            st.metric("Healthy Services", str(healthy_services))
         with col3:
-            st.metric("Daily P&L", "$1,245.67", "+$345.21")
+            mysql_provider = (
+                platform_architecture.get("data", {})
+                .get("mysql", {})
+                .get("provider", "unknown")
+            )
+            st.metric("MySQL Provider", str(mysql_provider).upper())
         with col4:
-            st.metric("API Health", "98.5%", "-1.2%")
+            st.metric(
+                "API Health",
+                str(platform_health.get("status", "unknown")).upper(),
+            )
         
         st.markdown("---")
         
@@ -1421,11 +1467,15 @@ def main():
         
         with col2:
             st.subheader("Recent Activity")
-            st.text("15:23 - Bot 3 deployed to production")
-            st.text("14:45 - Alpaca session refreshed")
-            st.text("13:12 - FTMO trade executed (EURUSD)")
-            st.text("11:30 - Risk limit updated (max drawdown)")
-            st.text("09:15 - Daily reconciliation completed")
+            st.text("FastAPI is the unified backend entrypoint")
+            st.text("Railway/local MySQL is resolved via environment-aware secrets")
+            st.text("MLflow and Appwrite are exposed through platform health probes")
+            st.text("Docker hosts Airflow, Airbyte, and optional MLflow services")
+            st.text("Streamlit pages are Bentley UI clients over the control-center API")
+
+        if platform_architecture:
+            with st.expander("Platform Architecture Snapshot", expanded=False):
+                st.json(platform_architecture)
 
     # TAB 2: Service Dashboard
     with tab2:
@@ -1487,7 +1537,12 @@ def main():
             if st.button("Vega ON", type="primary", use_container_width=True):
                 persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", True)
                 with st.spinner("Running Vega ON..."):
-                    execution = run_bot_mode("Vega", "ON", vega_launch_mode)
+                    execution = run_bot_mode(
+                        "Vega",
+                        "ON",
+                        vega_launch_mode,
+                        broker="IBKR",
+                    )
                 st.session_state["vega_mode_output"] = execution["output"]
                 if execution["ok"]:
                     st.success("Vega ON completed.")
@@ -1498,7 +1553,12 @@ def main():
             if st.button("Vega OFF", use_container_width=True):
                 persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", False)
                 with st.spinner("Running Vega OFF..."):
-                    execution = run_bot_mode("Vega", "OFF", vega_launch_mode)
+                    execution = run_bot_mode(
+                        "Vega",
+                        "OFF",
+                        vega_launch_mode,
+                        broker="IBKR",
+                    )
                 st.session_state["vega_mode_output"] = execution["output"]
                 if execution["ok"]:
                     st.success("Vega OFF completed.")
@@ -1524,6 +1584,106 @@ def main():
         if vega_output:
             with st.expander("Last Vega Command Output", expanded=False):
                 st.code(vega_output, language="text")
+
+        st.markdown("---")
+        st.subheader("Hydra Operations")
+        hydra_snapshot = get_hydra_control_snapshot()
+        hydra_status = hydra_snapshot.get("status") or {}
+        hydra_health = hydra_snapshot.get("health") or {}
+        hydra_launch_mode = st.radio(
+            "Hydra trading mode",
+            options=["paper", "live"],
+            horizontal=True,
+            key="hydra_trading_mode",
+            index=(
+                0 if get_bot_launch_mode("Hydra", "alpaca") == "paper" else 1
+            ),
+        )
+
+        h1, h2, h3, h4 = st.columns(4)
+        with h1:
+            st.metric(
+                "Hydra Execution",
+                "ON" if hydra_status.get("execution_enabled") else "OFF",
+            )
+        with h2:
+            st.metric(
+                "Latest Hydra Action",
+                str(hydra_status.get("last_analysis", {}).get("action", "N/A")),
+            )
+        with h3:
+            st.metric(
+                "Hydra FastAPI",
+                str(
+                    hydra_health.get("fastapi", {}).get("reachable", False)
+                ).upper(),
+            )
+        with h4:
+            st.metric(
+                "Hydra Airbyte",
+                str(
+                    hydra_health.get("airbyte", {}).get("reachable", False)
+                ).upper(),
+            )
+
+        hydra_btn1, hydra_btn2, hydra_btn3 = st.columns(3)
+        with hydra_btn1:
+            if st.button("Hydra ON", type="primary", use_container_width=True):
+                persist_bot_launch_mode("Hydra", hydra_launch_mode, "alpaca", True)
+                with st.spinner("Running Hydra ON..."):
+                    execution = run_bot_mode(
+                        "Hydra",
+                        "ON",
+                        hydra_launch_mode,
+                        broker="ALPACA",
+                    )
+                st.session_state["hydra_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Hydra ON completed.")
+                else:
+                    st.error("Hydra ON failed.")
+                st.rerun()
+        with hydra_btn2:
+            if st.button("Hydra OFF", use_container_width=True):
+                persist_bot_launch_mode("Hydra", hydra_launch_mode, "alpaca", False)
+                with st.spinner("Running Hydra OFF..."):
+                    execution = run_bot_mode(
+                        "Hydra",
+                        "OFF",
+                        hydra_launch_mode,
+                        broker="ALPACA",
+                    )
+                st.session_state["hydra_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Hydra OFF completed.")
+                else:
+                    st.error("Hydra OFF failed.")
+                st.rerun()
+        with hydra_btn3:
+            if st.button("Bootstrap Hydra", use_container_width=True):
+                result = api_request(
+                    "/hydra/bootstrap",
+                    method="POST",
+                    show_notice=True,
+                )
+                if result:
+                    st.success("Hydra bootstrap completed.")
+                    st.session_state["hydra_bootstrap_result"] = result
+                else:
+                    st.error("Hydra bootstrap failed.")
+
+        hydra_bootstrap_result = st.session_state.get("hydra_bootstrap_result")
+        if hydra_bootstrap_result:
+            with st.expander("Hydra Bootstrap Result", expanded=False):
+                st.json(hydra_bootstrap_result)
+
+        hydra_output = st.session_state.get("hydra_mode_output")
+        if hydra_output:
+            with st.expander("Last Hydra Command Output", expanded=False):
+                st.code(hydra_output, language="text")
+
+        with st.expander("Hydra Health Details", expanded=False):
+            st.json(hydra_snapshot)
 
         st.markdown("---")
         

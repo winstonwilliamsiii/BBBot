@@ -203,6 +203,33 @@ class APIClient:
         """Get Hydra's Airbyte source configuration payload."""
         return self._request("GET", "/hydra/airbyte-config")
 
+    def get_triton_status(self) -> Optional[Dict[str, Any]]:
+        """Get Triton bot status."""
+        return self._request("GET", "/triton/status")
+
+    def get_triton_health(self) -> Optional[Dict[str, Any]]:
+        """Get Triton dependency and broker health."""
+        return self._request("GET", "/triton/health")
+
+    def bootstrap_triton(self) -> Optional[Dict[str, Any]]:
+        """Bootstrap Triton demo analysis state."""
+        return self._request("POST", "/triton/bootstrap")
+
+    def analyze_triton(
+        self,
+        ticker: str,
+        news_headlines: Optional[list[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Analyze a transportation ticker using Triton's forecast stack."""
+        return self._request(
+            "POST",
+            "/triton/analyze",
+            json={
+                "ticker": ticker,
+                "news_headlines": news_headlines or [],
+            },
+        )
+
 
 def get_api_client() -> APIClient:
     """Factory function for API client (singleton pattern)"""

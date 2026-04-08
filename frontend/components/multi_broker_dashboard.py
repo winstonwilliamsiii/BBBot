@@ -296,9 +296,12 @@ def connect_mt5(
             st.success("✅ MT5 Connected!")
             st.rerun()
         else:
+            detail = getattr(connector, "last_connect_error", "").strip()
             st.error(
-                "❌ MT5 connection failed - Check if MT5 REST server is running"
+                "❌ MT5 connection failed"
             )
+            if detail:
+                st.info(f"Failure detail: {detail}")
             st.info("💡 Run: START_MT5_SERVER.bat to start the MT5 API server")
     except Exception as e:
         st.error("❌ MT5 API server is not responding")
@@ -463,6 +466,7 @@ def connect_axi():
             or get_secret("AXI_MT5_SERVER", section="axi", default=None)
             or get_secret("AXI_MT5_HOST", default=None)
             or get_secret("AXI_MT5_SERVER", default=None)
+            or get_secret("MT5_SERVER", default=None)
             or get_secret("MT5_HOST", default="")
         )
         port = int(
@@ -472,7 +476,10 @@ def connect_axi():
         )
 
         if not host:
-            st.error("❌ AXI MT5 server not configured. Set AXI_MT5_SERVER or AXI_MT5_HOST in .env")
+            st.error(
+                "❌ AXI MT5 server not configured. Set AXI_MT5_SERVER or "
+                "AXI_MT5_HOST in .env, or reuse MT5_SERVER/MT5_HOST."
+            )
             st.info("Examples — AXI demo: mt5-demo07.axi.com | AXI live: Axi-US51-Live")
             return
 
@@ -837,6 +844,8 @@ def render_axi_section():
                         or get_secret("AXI_MT5_SERVER", section="axi", default=None)
                         or get_secret("AXI_MT5_HOST", default=None)
                         or get_secret("AXI_MT5_SERVER", default=None)
+                        or get_secret("MT5_SERVER", default=None)
+                        or get_secret("MT5_HOST", default=None)
                         or "mt5-demo07.axi.com"
                     ),
                     key="axi_host_input",
@@ -909,7 +918,9 @@ def render_axi_section():
                 "AXI_MT5_PASSWORD=your_axi_password\n"
                 "AXI_MT5_SERVER=Axi-US51-Live  # or AXI_MT5_HOST=mt5-demo07.axi.com\n"
                 "AXI_MT5_PORT=443\n"
-                "AXI_MT5_API_URL=http://localhost:8002  # shared MT5 bridge",
+                "AXI_MT5_API_URL=http://localhost:8002  # shared MT5 bridge\n\n"
+                "# Optional shared fallback for both FTMO and AXI\n"
+                "MT5_SERVER=Axi-US51-Live",
                 language="bash",
             )
         return

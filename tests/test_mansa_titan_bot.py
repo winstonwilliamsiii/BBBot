@@ -41,6 +41,50 @@ def _build_config() -> TitanConfig:
     )
 
 
+class _FakeMlflowRunLogger:
+    def __init__(self):
+        self.current_run = None
+        self.tags = {}
+        self.params = {}
+        self.metrics = {}
+        self.logged_dict = None
+        self.logged_dict_path = None
+        self.started_run_name = None
+
+    def set_tracking_uri(self, _uri):
+        return None
+
+    def active_run(self):
+        return self.current_run
+
+    def start_run(self, run_name=None):
+        self.started_run_name = run_name
+        self.current_run = object()
+        return self.current_run
+
+    def set_tags(self, tags):
+        self.tags.update(tags)
+
+    def set_tag(self, key, value):
+        self.tags[key] = value
+
+    def log_params(self, params):
+        self.params.update(params)
+
+    def log_param(self, key, value):
+        self.params[key] = value
+
+    def log_metric(self, key, value):
+        self.metrics[key] = value
+
+    def log_dict(self, payload, path):
+        self.logged_dict = payload
+        self.logged_dict_path = path
+
+    def end_run(self):
+        self.current_run = None
+
+
 def test_titan_config_defaults(monkeypatch):
     for key in [
         "MYSQL_HOST",
@@ -255,6 +299,87 @@ def test_collect_service_health_returns_three_rows(monkeypatch):
         "airflow",
         "airbyte",
     }
+
+
+def test_extract_mlflow_feature_metrics_includes_titan_context():
+    bot = TitanBot(_build_config())
+
+    metrics = bot._extract_mlflow_feature_metrics(
+        prediction_features={
+            "rsi_14_t_minus_1": 42.0,
+            "rsi_14_t_minus_0": 55.0,
+            "bb_bandwidth_t_minus_0": 0.18,
+            "bb_percent_b_t_minus_0": 0.61,
+            "sentiment_score_t_minus_0": 0.22,
+            "liquidity_ratio_t_minus_0": 0.35,
+        },
+        sentiment_score=0.22,
+        liquidity_ratio=0.35,
+        effective_buffer=0.27,
+    )
+
+    assert metrics["titan_rsi_cycle_current"] == 55.0
+    assert metrics["titan_volatility_bandwidth"] == 0.18
+    assert metrics["titan_bollinger_percent_b"] == 0.61
+    assert metrics["titan_liquidity_buffer_adjustment"] == pytest.approx(0.07)
+    assert metrics["titan_rsi_cycle_span"] == pytest.approx(13.0)
+
+
+def test_start_mlflow_trade_run_logs_schema_and_artifact(monkeypatch):
+    bot = TitanBot(_build_config())
+    fake_mlflow = _FakeMlflowRunLogger()
+
+    monkeypatch.setattr("scripts.mansa_titan_bot.mlflow", fake_mlflow)
+    monkeypatch.setattr(bot, "_mlflow_tracking_is_reachable", lambda: True)
+
+    started = bot._start_mlflow_trade_run(
+        symbol="NVDA",
+        side="buy",
+        qty=3.0,
+        prediction_features={
+            "rsi_14_t_minus_0": 58.0,
+            "bb_bandwidth_t_minus_0": 0.14,
+            "bb_percent_b_t_minus_0": 0.73,
+        },
+        sentiment_score=0.18,
+        liquidity_ratio=0.41,
+        effective_buffer=0.24,
+    )
+
+    assert started is True
+    assert fake_mlflow.started_run_name == "Titan_Bot-NVDA-buy"
+    assert fake_mlflow.tags["benchmark_peers"] == "Orion,Rigel,Dogon"
+    assert fake_mlflow.params["model_registry_uri"] == "models:/TitanRiskModel/Production"
+    assert fake_mlflow.params["feature_schema_version"] == "titan_cnn_sequence_v2"
+    assert fake_mlflow.metrics["titan_rsi_cycle_current"] == 58.0
+    assert fake_mlflow.logged_dict_path == "titan_decision_context.json"
+    assert fake_mlflow.logged_dict["symbol"] == "NVDA"
+
+
+def test_log_mlflow_trade_result_logs_confidence_and_outcome(monkeypatch):
+    bot = TitanBot(_build_config())
+    fake_mlflow = _FakeMlflowRunLogger()
+    fake_mlflow.current_run = object()
+
+    monkeypatch.setattr("scripts.mansa_titan_bot.mlflow", fake_mlflow)
+
+    bot._log_mlflow_trade_result(
+        prediction=1,
+        probability=0.84,
+        status="submitted",
+        order_id="oid-123",
+        ml_gate_passed=True,
+        liquidity_gate_passed=True,
+        effective_buffer=0.23,
+        liquidity_ratio=0.44,
+    )
+
+    assert fake_mlflow.metrics["titan_prediction_confidence"] == pytest.approx(0.84)
+    assert fake_mlflow.metrics["titan_trade_approved"] == 1.0
+    assert fake_mlflow.metrics["titan_trade_blocked"] == 0.0
+    assert fake_mlflow.metrics["titan_ml_gate_passed"] == 1.0
+    assert fake_mlflow.tags["trade_status"] == "submitted"
+    assert fake_mlflow.tags["alpaca_order_id"] == "oid-123"
 
 
 def test_log_trade_executes_insert(monkeypatch):
@@ -496,17 +621,53 @@ def test_build_prediction_features_uses_neutral_fallback(monkeypatch):
 
     monkeypatch.setattr(bot, "_fetch_sentiment_score", lambda _symbol: 0.25)
     monkeypatch.setattr(bot, "_current_liquidity_ratio", lambda: 0.40)
-    monkeypatch.setattr(
-        bot,
-        "_fetch_close_history",
-        lambda _symbol: pd.Series(dtype="float64"),
-    )
+    def fake_fetch_close_history(_symbol):
+        bot._last_market_data_source["NVDA"] = "cache"
+        return pd.Series(dtype="float64")
+
+    monkeypatch.setattr(bot, "_fetch_close_history", fake_fetch_close_history)
 
     payload = bot._build_prediction_features("NVDA", [])
 
     assert isinstance(payload, dict)
     assert payload["sentiment_score_t_minus_0"] == 0.25
     assert payload["liquidity_ratio_t_minus_0"] == 0.40
+    assert bot._last_prediction_feature_metadata["NVDA"] == {
+        "market_data_source": "cache",
+        "feature_source": "neutral",
+        "close_history_points": 0,
+        "feature_timeseries_points": 0,
+    }
+
+
+def test_build_prediction_features_records_sequence_metadata(monkeypatch):
+    bot = TitanBot(_build_config())
+    close_history = pd.Series(np.linspace(100.0, 140.0, 80))
+
+    monkeypatch.setattr(bot, "_fetch_sentiment_score", lambda _symbol: 0.10)
+    monkeypatch.setattr(bot, "_current_liquidity_ratio", lambda: 0.35)
+
+    def fake_fetch_close_history(_symbol):
+        bot._last_market_data_source["NVDA"] = "cache"
+        return close_history
+
+    monkeypatch.setattr(bot, "_fetch_close_history", fake_fetch_close_history)
+
+    payload = bot._build_prediction_features("NVDA", [])
+
+    assert isinstance(payload, dict)
+    assert bot._last_prediction_feature_metadata["NVDA"][
+        "market_data_source"
+    ] == "cache"
+    assert bot._last_prediction_feature_metadata["NVDA"][
+        "feature_source"
+    ] == "sequence"
+    assert bot._last_prediction_feature_metadata["NVDA"][
+        "close_history_points"
+    ] == 80
+    assert bot._last_prediction_feature_metadata["NVDA"][
+        "feature_timeseries_points"
+    ] >= bot.config.sequence_window
 
 
 def test_coerce_prediction_output_handles_numpy_array():

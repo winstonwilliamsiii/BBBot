@@ -19,6 +19,22 @@ strategy:
   timeframe: 1D
   position_size: 2200
 
+services:
+  fastapi:
+    route_prefix: /hydra
+    health_endpoint: /hydra/health
+    analyze_endpoint: /hydra/analyze
+  airflow:
+    dag_id: hydra_mansa_health
+    schedule: 30 8 * * 1-5
+  airbyte:
+    source: stocktwits
+    source_config: airbyte/sources/stocktwits/hydra_mansa_config.json
+    connection_id_env: HYDRA_AIRBYTE_CONNECTION_ID
+  mlflow:
+    experiment: Hydra_Mansa_Health
+    tracking_uri_env: MLFLOW_TRACKING_URI
+
 risk:
   min_volume: 750000
   max_drawdown_pct: 6.0

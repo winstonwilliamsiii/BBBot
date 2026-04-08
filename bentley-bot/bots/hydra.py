@@ -1,34 +1,33 @@
-"""
-Bot 6: Hydra
+"""Hydra bot compatibility wrapper for the control center package."""
 
-Fund: Mansa Health
-Strategy: Momentum Strategy
-"""
+from hydra_bot import HydraBot
+
+
+_BOT = HydraBot()
+
 
 def start():
     """Start the bot."""
     print("Starting Hydra (Mansa Health)")
-    pass
+    return _BOT.bootstrap_demo_state()
+
 
 def stop():
     """Stop the bot."""
     print("Stopping Hydra (Mansa Health)")
-    pass
+    return {"status": "stopped", "name": "Hydra"}
+
 
 def get_status():
     """Get bot status."""
-    return {
-        "id": 6,
-        "name": "Hydra",
-        "fund": "Mansa Health",
-        "strategy": "Momentum Strategy",
-        "status": "idle"
-    }
+    return _BOT.status()
+
 
 def configure(config):
     """Configure bot parameters."""
     print(f"Configuring Hydra with: {config}")
-    pass
+    return _BOT.configure(config)
+
 
 if __name__ == "__main__":
-    print("Hydra | Mansa Health | Momentum Strategy - Ready")
+    print(_BOT.bootstrap_demo_state())

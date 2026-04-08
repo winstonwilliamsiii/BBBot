@@ -2,22 +2,33 @@ bot:
   id: 5
   name: Procryon
   runtime_name: Procryon_Bot
-  fund: Crypto Fund
-  strategy: Crypto Arbitrage
+  fund: Prop Trading Fund
+  strategy: MT5 Spread Arbitrage
   module: bentley-bot/bots/procryon.py
+  objective: Cluster spreads with KNN and optimize MT5 execution with an FNN for FTMO and AXI.
 
 execution:
-  primary_client: alpaca_client
+  primary_client: mt5
   mode: paper
   enabled: false
   order_type: market
+  trading_platform: MT5
+  prop_firms:
+    - FTMO
+    - AXI
 
 strategy:
-  label: Procryon_Crypto_Arbitrage
+  label: Procryon_MT5_Arbitrage
   screener_file: procryon_crypto_signals.csv
-  universe: Crypto_Leaders
+  universe: MT5_FX_CFD_Crypto_CFD
   timeframe: 5m
   position_size: 1200
+  execution_features:
+    - latency_ms
+    - liquidity_depth
+    - fee_bps
+    - slippage_bps
+    - venue_confidence
 
 risk:
   max_spread_bps: 45

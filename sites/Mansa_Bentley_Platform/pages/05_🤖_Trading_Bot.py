@@ -6,7 +6,11 @@ Monitor automated trading bot performance with Mean Reversion & Random Forest st
 import streamlit as st
 import pandas as pd
 import numpy as np
+import subprocess
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Literal
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -30,6 +34,11 @@ except ImportError:
         'accent': '#FF8C00',
         'text': '#E6EEF8'
     }
+
+try:
+    from config.broker_mode_config import get_config as get_broker_mode_config
+except ImportError:
+    get_broker_mode_config = None
 
 # Database connection
 try:
@@ -57,6 +66,10 @@ try:
 except Exception as e:
     DB_AVAILABLE = False
     st.error(f"Database connection failed: {e}")
+    st.caption(
+        "Titan launcher controls can still run without the legacy "
+        "bot_status table."
+    )
 
 # Apply custom styling
 if STYLING_AVAILABLE:
@@ -172,8 +185,172 @@ st.title("🤖 ML Trading Bot Dashboard")
 st.markdown("**Automated Trading with Mean Reversion & Random Forest Strategies**")
 
 # Bot status check
-def get_bot_status():
-    """Check if trading bot DAG is running"""
+def _get_bot_trading_mode(bot_name: str) -> str:
+    if get_broker_mode_config is None:
+        return "paper"
+
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if not broker_name:
+            return "paper"
+        return config.get_broker_mode(broker_name)
+    except Exception:
+        return "paper"
+
+
+def _set_bot_launch_preferences(
+    bot_name: str,
+    trading_mode: Literal["paper", "live"],
+    active: bool,
+) -> None:
+    if get_broker_mode_config is None:
+        return
+
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if broker_name:
+            config.set_broker_mode(broker_name, trading_mode)
+        config.set_bot_active(bot_name, active)
+    except Exception:
+        return
+
+
+def _execute_bot_mode(
+    bot_name: str,
+    mode: str,
+    trading_mode: str = "paper",
+) -> dict:
+    repo_root = Path(__file__).resolve().parents[2]
+    launcher = repo_root / "start_bot_mode.ps1"
+
+    if not launcher.exists():
+        return {"ok": False, "output": f"Launcher not found: {launcher}"}
+
+    cmd = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(launcher),
+        "-Bot",
+        bot_name,
+        "-Mode",
+        mode.upper(),
+        "-TradingMode",
+        trading_mode,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        merged = "\n".join(
+            part for part in [result.stdout.strip(), result.stderr.strip()] if part
+        )
+        return {"ok": result.returncode == 0, "output": merged or "No output"}
+    except Exception as exc:
+        return {"ok": False, "output": str(exc)}
+
+
+def _latest_bot_mode_event() -> dict | None:
+    repo_root = Path(__file__).resolve().parents[2]
+    latest_path = repo_root / "logs" / "last_bot_mode_event.json"
+    if not latest_path.exists():
+        return None
+
+    try:
+        with latest_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+            if isinstance(payload, dict):
+                return payload
+    except Exception:
+        return None
+
+    return None
+
+
+def get_bot_status(bot_name: str = "Titan"):
+    """Resolve launcher-first status without relying on bot_status."""
+    strategy = "Mansa Tech - Titan Bot"
+    trading_mode = _get_bot_trading_mode(bot_name)
+    latest_event = _latest_bot_mode_event()
+
+    if (
+        latest_event
+        and str(latest_event.get("bot", "")).lower() == bot_name.lower()
+    ):
+        last_mode = str(latest_event.get("mode", "")).lower()
+        launcher_status = str(latest_event.get("status", "unknown")).lower()
+        if (
+            last_mode == "on"
+            and launcher_status in {"ready", "placeholder", "warning"}
+        ):
+            status = "active"
+        elif last_mode == "off":
+            status = "inactive"
+        else:
+            status = launcher_status or "unknown"
+
+        return {
+            "status": status,
+            "strategy": strategy,
+            "timestamp": latest_event.get("timestamp"),
+            "note": latest_event.get("note", ""),
+            "trading_mode": latest_event.get("trading_mode", trading_mode),
+        }
+
+    active_flag = None
+    if get_broker_mode_config is not None:
+        try:
+            config = get_broker_mode_config()
+            active_flag = config.get_bot_active(bot_name)
+        except Exception:
+            active_flag = None
+
+    if active_flag is None:
+        status = "unknown"
+    else:
+        status = "active" if active_flag else "inactive"
+
+    return {
+        "status": status,
+        "strategy": strategy,
+        "timestamp": None,
+        "note": "Launcher event not available yet",
+        "trading_mode": trading_mode,
+    }
+
+
+def _build_quick_start_command(bot_name: str, mode: str) -> str:
+    return (
+        "powershell -ExecutionPolicy Bypass -File "
+        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
+    )
+
+
+def _render_sidebar_launch_output() -> None:
+    selected_output = st.session_state.get("selected_bot_launch_output")
+    if selected_output:
+        with st.expander("Last Command Output", expanded=False):
+            st.code(selected_output, language="text")
+
+
+def _render_sidebar_launch_command() -> None:
+    selected_cmd = st.session_state.get("selected_bot_launch_command")
+    if selected_cmd:
+        st.code(selected_cmd, language="powershell")
+
+
+def _legacy_db_bot_status():
+    """Deprecated legacy DB status lookup retained only for reference."""
     try:
         # Check Airflow DAG status (simplified)
         query = """
@@ -255,24 +432,61 @@ st.sidebar.header("🎛️ Bot Controls")
 
 # Bot status
 bot_status = get_bot_status()
-status_color = "🟢" if bot_status['status'] == 'active' else "🔴"
+status_color = "🟢" if bot_status['status'] == 'active' else "🟡" if bot_status['status'] == 'unknown' else "🔴"
 st.sidebar.markdown(f"**Status:** {status_color} {bot_status['status'].upper()}")
 st.sidebar.markdown(f"**Strategy:** {bot_status.get('strategy', 'N/A').replace('_', ' ').title()}")
+st.sidebar.caption(
+    f"Trading Mode: {str(bot_status.get('trading_mode', 'paper')).upper()}"
+)
+if bot_status.get("note"):
+    st.sidebar.caption(str(bot_status["note"]))
 
 # Manual controls
 st.sidebar.markdown("---")
-st.sidebar.subheader("Manual Controls")
+st.sidebar.subheader("Titan Controls")
+
+titan_sidebar_mode = st.sidebar.selectbox(
+    "Titan Trading Mode",
+    options=["paper", "live"],
+    index=0 if str(bot_status.get("trading_mode", "paper")) == "paper" else 1,
+    key="sidebar_titan_trading_mode",
+)
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
-    if st.button("▶️ Start Bot", use_container_width=True):
-        st.sidebar.success("Bot start triggered!")
-        # TODO: Trigger Airflow DAG
+    if st.button("▶️ Titan ON", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, True)
+        with st.spinner("Running Titan ON..."):
+            execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        st.session_state["selected_bot_launch_command"] = (
+            _build_quick_start_command("Titan", "on")
+            + f" -TradingMode {titan_sidebar_mode}"
+        )
+        if execution["ok"]:
+            st.sidebar.success("Titan ON command completed.")
+        else:
+            st.sidebar.error("Titan ON command failed.")
+        st.rerun()
 
 with col2:
-    if st.button("⏸️ Stop Bot", use_container_width=True):
-        st.sidebar.warning("Bot stopped!")
-        # TODO: Stop Airflow DAG
+    if st.button("⏸️ Titan OFF", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, False)
+        with st.spinner("Running Titan OFF..."):
+            execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        st.session_state["selected_bot_launch_command"] = (
+            _build_quick_start_command("Titan", "off")
+            + f" -TradingMode {titan_sidebar_mode}"
+        )
+        if execution["ok"]:
+            st.sidebar.success("Titan OFF command completed.")
+        else:
+            st.sidebar.error("Titan OFF command failed.")
+        st.rerun()
+
+_render_sidebar_launch_command()
+_render_sidebar_launch_output()
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):

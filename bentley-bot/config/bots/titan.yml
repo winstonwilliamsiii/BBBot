@@ -22,7 +22,7 @@ strategy:
 
 risk:
   min_volume: 5000000
-  max_pe: 40
+  max_pe: 60
   min_roe: 15
   max_debt_to_equity: 0.8
   max_daily_loss_pct: 2.0

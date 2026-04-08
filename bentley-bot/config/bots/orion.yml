@@ -10,19 +10,44 @@ execution:
   primary_client: mt5_client
   venue: ftmo
   mode: paper
-  enabled: false
+  enabled: true
   order_type: market
+  volume_lots: 0.01
+  close_on_reverse: true
+  stop_loss_pct: 0.015
+  take_profit_pct: 0.03
+  symbol_map:
+    GDX: XAUUSD
+    GDXJ: XAUUSD
+    GLD: XAUUSD
+    NEM: XAUUSD
+    FCX: COPPER
+    SCCO: COPPER
 
 strategy:
-  label: Orion_Gold_RSI
+  label: Orion_Minerals_RSI_Scanner
   screener_file: orion_minerals_fundamentals.csv
   universe: Minerals_Commodities
   timeframe: H1
   position_size: 2200
+  primary_symbol: GDX
+  training_symbol: GDX
+  scan_top_n: 4
+  scan_symbols:
+    - GDX
+    - GDXJ
+    - GLD
+    - NEM
+    - FCX
+    - SCCO
+    - TECK
+    - AA
+    - RIO
 
 risk:
-  rsi_oversold: 30
-  rsi_overbought: 70
+  rsi_period: 14
+  rsi_oversold: 35
+  rsi_overbought: 65
   max_daily_loss_pct: 1.5
   max_open_positions: 3
 

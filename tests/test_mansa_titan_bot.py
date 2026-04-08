@@ -642,7 +642,10 @@ def test_build_prediction_features_uses_neutral_fallback(monkeypatch):
 
 def test_build_prediction_features_records_sequence_metadata(monkeypatch):
     bot = TitanBot(_build_config())
-    close_history = pd.Series(np.linspace(100.0, 140.0, 80))
+    close_history = pd.Series(
+        120.0 + np.sin(np.linspace(0.0, 10.0, 80)) * 8.0,
+        index=pd.date_range("2025-01-01", periods=80),
+    )
 
     monkeypatch.setattr(bot, "_fetch_sentiment_score", lambda _symbol: 0.10)
     monkeypatch.setattr(bot, "_current_liquidity_ratio", lambda: 0.35)

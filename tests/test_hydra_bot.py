@@ -13,7 +13,7 @@ class _FakeTicker:
 
 class _FakeYFinance:
     @staticmethod
-    def download(*args, **kwargs):
+    def download(*_args, **_kwargs):
         prices = [
             100,
             101,
@@ -289,6 +289,27 @@ def test_hydra_fastapi_routes(monkeypatch):
 
     monkeypatch.setattr(Main, "get_hydra_bot", lambda: bot)
     monkeypatch.setattr(Main, "HydraBot", HydraBot)
+    monkeypatch.setattr(
+        Main,
+        "persist_hydra_analysis",
+        lambda analysis, airflow_dag_id=None: {
+            "persisted": True,
+            "detail": "mocked",
+            "analysis_id": 101,
+            "signal_id": 202,
+        },
+    )
+    monkeypatch.setattr(
+        Main,
+        "persist_hydra_trade_decision",
+        lambda trade_result, analysis=None, analysis_id=None: {
+            "persisted": True,
+            "detail": "mocked",
+            "analysis_id": analysis_id,
+            "trade_id": 303,
+            "signal_id": 404,
+        },
+    )
 
     client = TestClient(Main.app)
 
@@ -307,3 +328,18 @@ def test_hydra_fastapi_routes(monkeypatch):
     )
     assert analyze_response.status_code == 200
     assert "composite_score" in analyze_response.json()
+    assert analyze_response.json()["persistence"]["persisted"] is True
+
+    trade_response = client.post(
+        "/hydra/trade",
+        json={
+            "broker": "alpaca",
+            "ticker": "UNH",
+            "action": "BUY",
+            "qty": 5,
+            "dry_run": True,
+        },
+    )
+    assert trade_response.status_code == 200
+    assert trade_response.json()["persistence"]["persisted"] is True
+    assert trade_response.json()["analysis_persistence"]["analysis_id"] == 101

@@ -33,6 +33,12 @@ locust>=2.15.1  # Load testing
 watchdog>=3.0.0  # File watching for auto-reload
 
 # Dogon ETF ML training
+mlflow==3.11.1
+numpy==2.4.4
+pyarrow==23.0.1
+scipy==1.17.1
 xgboost>=2.0.0
 tensorflow>=2.15.0
 keras-tcn>=3.5.6
+transformers>=4.46.0
+torch>=2.5.0

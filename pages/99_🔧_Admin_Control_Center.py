@@ -91,6 +91,87 @@ except Exception:
 DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
 DEFAULT_MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
 DEFAULT_MLFLOW_URL = get_mlflow_server_url()
+MLFLOW_BENCHMARK_BOTS = ["Titan", "Orion", "Rigel", "Dogon"]
+TITAN_MLFLOW_SCHEMA_ROWS = [
+    {
+        "Category": "Experiment Tracking",
+        "Field": "params.feature_schema_version",
+        "Kind": "param",
+        "Purpose": "Version the Titan CNN/ensemble feature contract.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_rsi_cycle_current",
+        "Kind": "metric",
+        "Purpose": "Latest RSI value used to ground timing discipline.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_rsi_cycle_span",
+        "Kind": "metric",
+        "Purpose": "Oscillation width across the recent RSI cycle window.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_volatility_bandwidth",
+        "Kind": "metric",
+        "Purpose": "Current Bollinger bandwidth used for volatility gating.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_sentiment_score",
+        "Kind": "metric",
+        "Purpose": "Sentiment overlay from WSJ/Airbyte-style feeds.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_liquidity_ratio",
+        "Kind": "metric",
+        "Purpose": "Cash-to-equity guardrail before execution.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_effective_liquidity_buffer",
+        "Kind": "metric",
+        "Purpose": "Final liquidity threshold after sentiment adjustment.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_liquidity_buffer_adjustment",
+        "Kind": "metric",
+        "Purpose": "How much sentiment tightened or loosened the buffer.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_prediction_probability",
+        "Kind": "metric",
+        "Purpose": "Trade-success probability produced by the ensemble.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_prediction_confidence",
+        "Kind": "metric",
+        "Purpose": "Confidence score for forensic review and ranking.",
+    },
+    {
+        "Category": "Guard Outcome",
+        "Field": "tags.trade_status",
+        "Kind": "tag",
+        "Purpose": "Approved, simulated, blocked, or error decision outcome.",
+    },
+    {
+        "Category": "Model Registry",
+        "Field": "params.model_registry_uri",
+        "Kind": "param",
+        "Purpose": "Registry alias used for Titan model promotion.",
+    },
+    {
+        "Category": "Artifacts",
+        "Field": "titan_decision_context.json",
+        "Kind": "artifact",
+        "Purpose": "Feature snapshot and decision context for replay.",
+    },
+]
 
 
 def probe_mlflow_server(base_url: str):
@@ -129,6 +210,218 @@ def probe_mlflow_server(base_url: str):
             continue
 
     return False, host_reachable, "No MLflow endpoints were detected at this URL."
+
+
+def _first_present(row, candidates):
+    for candidate in candidates:
+        if candidate in row and pd.notna(row[candidate]):
+            return row[candidate]
+    return None
+
+
+def _infer_bot_name_from_run(row) -> str:
+    values = [
+        _first_present(
+            row,
+            [
+                "tags.bot",
+                "params.active_bot",
+                "params.bot_name",
+                "params.bot",
+                "experiment_name",
+            ],
+        )
+    ]
+
+    normalized_values = [str(value).strip().lower() for value in values if value]
+    for value in normalized_values:
+        if "titan" in value:
+            return "Titan"
+        if "orion" in value:
+            return "Orion"
+        if "rigel" in value:
+            return "Rigel"
+        if "dogon" in value:
+            return "Dogon"
+    return "Other"
+
+
+def _extract_trade_status(row) -> str:
+    status = _first_present(row, ["tags.trade_status", "status"])
+    if status is None:
+        return "unknown"
+    return str(status)
+
+
+def _extract_prediction_confidence(row) -> float | None:
+    confidence = _first_present(row, ["metrics.titan_prediction_confidence"])
+    if confidence is not None:
+        return float(confidence)
+
+    probability = _first_present(row, ["metrics.titan_prediction_probability"])
+    label = _first_present(row, ["metrics.titan_prediction_label"])
+    if probability is None:
+        return None
+
+    probability = float(probability)
+    if label is None:
+        return max(probability, 1.0 - probability)
+    return probability if float(label) >= 0.5 else (1.0 - probability)
+
+
+def build_mlflow_benchmark_frame(runs_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    if runs_df.empty:
+        return pd.DataFrame()
+
+    working = runs_df.copy()
+    working["benchmark_bot"] = working.apply(_infer_bot_name_from_run, axis=1)
+    working["trade_status_value"] = working.apply(_extract_trade_status, axis=1)
+    working["prediction_confidence"] = working.apply(
+        _extract_prediction_confidence,
+        axis=1,
+    )
+
+    for bot_name in MLFLOW_BENCHMARK_BOTS:
+        bot_runs = working[working["benchmark_bot"] == bot_name].copy()
+        if bot_runs.empty:
+            rows.append(
+                {
+                    "Bot": bot_name,
+                    "Discipline": (
+                        "ML-driven discipline"
+                        if bot_name == "Titan"
+                        else "Raw strategy"
+                    ),
+                    "Runs": 0,
+                    "Avg Probability": None,
+                    "Avg Confidence": None,
+                    "Blocked Rate": None,
+                    "Latest Status": "no-mlflow-runs",
+                    "Last Updated": "N/A",
+                }
+            )
+            continue
+
+        probability = pd.to_numeric(
+            bot_runs.get("metrics.titan_prediction_probability"),
+            errors="coerce",
+        )
+        confidence = pd.to_numeric(
+            bot_runs.get("prediction_confidence"),
+            errors="coerce",
+        )
+        statuses = bot_runs["trade_status_value"].astype(str).str.lower()
+        blocked_rate = statuses.str.startswith("blocked").mean()
+        last_updated = "N/A"
+        if "start_time" in bot_runs.columns:
+            timestamp = pd.to_datetime(bot_runs["start_time"], errors="coerce").max()
+            if pd.notna(timestamp):
+                last_updated = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+        rows.append(
+            {
+                "Bot": bot_name,
+                "Discipline": (
+                    "ML-driven discipline"
+                    if bot_name == "Titan"
+                    else "Raw strategy"
+                ),
+                "Runs": int(len(bot_runs)),
+                "Avg Probability": (
+                    round(float(probability.dropna().mean()), 4)
+                    if probability is not None and not probability.dropna().empty
+                    else None
+                ),
+                "Avg Confidence": (
+                    round(float(confidence.dropna().mean()), 4)
+                    if not confidence.dropna().empty
+                    else None
+                ),
+                "Blocked Rate": (
+                    round(float(blocked_rate), 4)
+                    if len(statuses)
+                    else None
+                ),
+                "Latest Status": str(statuses.iloc[0]) if len(statuses) else "unknown",
+                "Last Updated": last_updated,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def build_titan_forensic_frame(runs_df: pd.DataFrame) -> pd.DataFrame:
+    if runs_df.empty:
+        return pd.DataFrame()
+
+    working = runs_df.copy()
+    working["benchmark_bot"] = working.apply(_infer_bot_name_from_run, axis=1)
+    titan_runs = working[working["benchmark_bot"] == "Titan"].copy()
+    if titan_runs.empty:
+        return pd.DataFrame()
+
+    titan_runs["status"] = titan_runs.apply(_extract_trade_status, axis=1)
+    titan_runs["confidence"] = titan_runs.apply(_extract_prediction_confidence, axis=1)
+
+    columns = {
+        "start_time": "Start Time",
+        "params.symbol": "Symbol",
+        "params.side": "Side",
+        "status": "Decision",
+        "metrics.titan_prediction_probability": "Probability",
+        "confidence": "Confidence",
+        "metrics.titan_rsi_cycle_current": "RSI",
+        "metrics.titan_sentiment_score": "Sentiment",
+        "metrics.titan_liquidity_ratio": "Liquidity Ratio",
+        "metrics.titan_effective_liquidity_buffer": "Liquidity Buffer",
+        "metrics.titan_liquidity_buffer_adjustment": "Buffer Delta",
+    }
+    available = {key: value for key, value in columns.items() if key in titan_runs.columns}
+    if not available:
+        return pd.DataFrame()
+
+    forensic = titan_runs[list(available.keys())].copy().rename(columns=available)
+    if "Start Time" in forensic.columns:
+        parsed = pd.to_datetime(forensic["Start Time"], errors="coerce")
+        forensic["Start Time"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
+    return forensic.head(12)
+
+
+def build_model_registry_frame(client) -> pd.DataFrame:
+    try:
+        models = list(client.search_registered_models(max_results=50))
+    except TypeError:
+        models = list(client.search_registered_models())
+    except Exception:
+        return pd.DataFrame()
+
+    rows = []
+    for model in models:
+        latest_versions = getattr(model, "latest_versions", None) or []
+        if latest_versions:
+            for version in latest_versions:
+                rows.append(
+                    {
+                        "Model": model.name,
+                        "Version": str(getattr(version, "version", "")),
+                        "Stage": str(getattr(version, "current_stage", "")),
+                        "Run ID": str(getattr(version, "run_id", "")),
+                        "Source": str(getattr(version, "source", "")),
+                    }
+                )
+        else:
+            rows.append(
+                {
+                    "Model": model.name,
+                    "Version": "",
+                    "Stage": "",
+                    "Run ID": "",
+                    "Source": "",
+                }
+            )
+
+    return pd.DataFrame(rows)
 
 
 def _append_unique_url(candidate_urls, base_url: str):
@@ -233,9 +526,15 @@ def show_control_center_api_notice_once(reason: str = "unavailable"):
         DEFAULT_CONTROL_CENTER_URL,
     )
     st.warning(
-        f"Control Center API is {reason} at {configured_url}. Showing fallback data where available."
+        (
+            f"Control Center API is {reason} at {configured_url}. "
+            "Showing fallback data where available."
+        )
     )
-    st.info("Start the API with: `python backend/api/app.py`")
+    st.info(
+        "Start the API with: `powershell -ExecutionPolicy Bypass "
+        "-File .\\start_control_center_api.ps1`"
+    )
     st.session_state.control_center_api_notice_shown = True
 
 # Page config
@@ -342,13 +641,14 @@ def check_admin_auth():
 
 # Helper Functions
 def api_request(endpoint, method="GET", data=None, show_notice=False):
-    """Make request to Flask API."""
+    """Make request to the Control Center FastAPI service."""
     try:
-        flask_api_url = resolve_control_center_api_url()
+        control_center_api_url = resolve_control_center_api_url()
         normalized = endpoint if str(endpoint).startswith("/") else f"/{endpoint}"
         endpoint_variants = [normalized]
 
-        # Local Flask app currently exposes `/admin/*`; some clients use `/api/admin/*`.
+        # The unified FastAPI app accepts both `/admin/*` and `/api/admin/*`
+        # so older UI paths continue to work.
         if normalized.startswith("/api/"):
             endpoint_variants.append(normalized[4:])
         elif normalized.startswith("/admin/"):
@@ -356,7 +656,7 @@ def api_request(endpoint, method="GET", data=None, show_notice=False):
 
         last_status = None
         for path in endpoint_variants:
-            url = f"{flask_api_url}{path}"
+            url = f"{control_center_api_url}{path}"
             if method == "GET":
                 response = requests.get(url, timeout=5)
             elif method == "POST":
@@ -668,13 +968,16 @@ def _admin_get_mt5_connector(prefix: str = "MT5"):
     host = (
         os.getenv(f"{prefix}_HOST")
         or os.getenv(f"{prefix}_SERVER")
+        or os.getenv("MT5_SERVER", "")
         or os.getenv("MT5_HOST", "")
     )
     port = int(os.getenv(f"{prefix}_PORT") or os.getenv("MT5_PORT", "443"))
 
     if not host or not user or not password:
         raise ValueError(
-            f"Missing {prefix} credentials. Set {prefix}_USER/{prefix}_PASSWORD/{prefix}_HOST"
+            "Missing "
+            f"{prefix} credentials. Set {prefix}_USER/{prefix}_PASSWORD/"
+            f"{prefix}_HOST or reuse MT5_SERVER/MT5_HOST"
         )
 
     if not connector.connect(user=user, password=password, host=host, port=port):
@@ -1677,13 +1980,21 @@ def main():
             exp_rows = []
             total_runs = 0
             finished_runs = 0
+            run_frames = []
 
             for exp in experiments[:25]:
-                runs = mlflow.search_runs(experiment_ids=[exp.experiment_id], max_results=200)
+                runs = mlflow.search_runs(
+                    experiment_ids=[exp.experiment_id],
+                    max_results=200,
+                )
                 run_count = len(runs)
                 total_runs += run_count
                 if not runs.empty and "status" in runs.columns:
                     finished_runs += len(runs[runs["status"] == "FINISHED"])
+                    annotated = runs.copy()
+                    annotated["experiment_name"] = exp.name
+                    annotated["experiment_id"] = exp.experiment_id
+                    run_frames.append(annotated)
 
                 last_updated = "N/A"
                 if not runs.empty and "start_time" in runs.columns:
@@ -1715,6 +2026,69 @@ def main():
                 st.dataframe(pd.DataFrame(exp_rows), use_container_width=True, hide_index=True)
             else:
                 st.info("No experiments found.")
+
+            all_runs_df = (
+                pd.concat(run_frames, ignore_index=True)
+                if run_frames
+                else pd.DataFrame()
+            )
+
+            st.markdown("---")
+            st.subheader("🧭 Titan MLflow Blueprint")
+            st.caption(
+                "Titan runs now carry feature-level discipline context, "
+                "registry lineage, and benchmark metadata for Orion, Rigel, and Dogon comparisons."
+            )
+            st.dataframe(
+                pd.DataFrame(TITAN_MLFLOW_SCHEMA_ROWS),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("---")
+            st.subheader("🗂️ Model Registry")
+            registry_df = build_model_registry_frame(client)
+            if not registry_df.empty:
+                st.dataframe(
+                    registry_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No registered models found in MLflow registry.")
+
+            st.markdown("---")
+            st.subheader("⚖️ Cross-Bot Benchmarking")
+            benchmark_df = build_mlflow_benchmark_frame(all_runs_df)
+            if not benchmark_df.empty:
+                st.dataframe(
+                    benchmark_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                missing_bots = benchmark_df[benchmark_df["Runs"] == 0]["Bot"].tolist()
+                if missing_bots:
+                    st.info(
+                        "MLflow has no benchmark runs yet for: "
+                        + ", ".join(missing_bots)
+                    )
+            else:
+                st.info("No MLflow run data available for Titan/Orion/Rigel/Dogon benchmarking.")
+
+            st.markdown("---")
+            st.subheader("🧪 Titan Forensic Runs")
+            titan_forensic_df = build_titan_forensic_frame(all_runs_df)
+            if not titan_forensic_df.empty:
+                st.dataframe(
+                    titan_forensic_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info(
+                    "No Titan run metrics with forensic feature snapshots were found yet. "
+                    "Run Titan once with the updated logging to populate this view."
+                )
 
         except Exception as e:
             error_text = str(e)

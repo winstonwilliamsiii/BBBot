@@ -20,7 +20,7 @@ import os
 import sys
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -28,6 +28,11 @@ import pandas as pd
 import numpy as np
 from alpaca_trade_api import REST, TimeFrame
 from dotenv import load_dotenv
+
+try:
+    from scripts.bot_mlflow_benchmark import log_bot_benchmark_run
+except ModuleNotFoundError:
+    from bot_mlflow_benchmark import log_bot_benchmark_run
 
 load_dotenv(override=True)
 
@@ -964,11 +969,11 @@ class RigelForexBot:
         
         if self.config.DRY_RUN:
             logger.info("DRY RUN - Trade not executed")
-            return
+            return "simulated"
         
         if not self.config.ENABLE_TRADING:
             logger.warning("Trading disabled in config")
-            return
+            return "disabled"
 
         if self.config.BROKER_PLATFORM == "mt5":
             if not self.mt5_connector:
@@ -994,12 +999,13 @@ class RigelForexBot:
                         "MT5 order placed: %s",
                         result.get("ticket", "unknown"),
                     )
+                    return "submitted"
                 else:
                     logger.error("Failed to execute MT5 trade: %s", result)
-                return
+                    return "error"
             except Exception as e:
                 logger.error(f"Failed to execute MT5 trade: {e}")
-                return
+                return "error"
         
         try:
             # Place bracket order with stop loss and take profit
@@ -1018,17 +1024,46 @@ class RigelForexBot:
             )
             
             logger.info(f"Order placed: {order.id}")
+            return "submitted"
             
         except Exception as e:
             logger.error(f"Failed to execute trade: {e}")
+            return "error"
     
     def run_cycle(self):
         """Run one trading cycle"""
+        cycle_timestamp = datetime.now(timezone.utc).isoformat()
+        cycle_result = {
+            "bot": "Rigel",
+            "fund": "Mansa_FOREX",
+            "timestamp": cycle_timestamp,
+            "signals_generated": 0.0,
+            "executed_signals": 0.0,
+            "avg_signal_confidence": 0.0,
+        }
         
         # Check trading session
         if not self.is_trading_session():
             logger.debug("Outside trading session")
-            return
+            cycle_result.update(
+                {
+                    "status": "skipped_outside_session",
+                    "detail": "Rigel cycle skipped outside configured trading hours.",
+                }
+            )
+            log_bot_benchmark_run(
+                bot_name="Rigel",
+                experiment_name="Rigel_Runtime_Benchmark",
+                run_name="Rigel-skipped-session",
+                payload=cycle_result,
+                strategy_label="FOREX raw strategy",
+                discipline_mode="raw_strategy",
+                extra_params={
+                    "broker_platform": self.config.BROKER_PLATFORM,
+                },
+                extra_tags={"trade_status": str(cycle_result["status"])},
+            )
+            return cycle_result
         
         # Get account info
         try:
@@ -1052,12 +1087,48 @@ class RigelForexBot:
                 positions = self.api.list_positions()
         except Exception as e:
             logger.error(f"Failed to get account info: {e}")
-            return
+            cycle_result.update(
+                {
+                    "status": "account_error",
+                    "detail": f"Failed to get account info: {e}",
+                }
+            )
+            log_bot_benchmark_run(
+                bot_name="Rigel",
+                experiment_name="Rigel_Runtime_Benchmark",
+                run_name="Rigel-account-error",
+                payload=cycle_result,
+                strategy_label="FOREX raw strategy",
+                discipline_mode="raw_strategy",
+                extra_params={
+                    "broker_platform": self.config.BROKER_PLATFORM,
+                },
+                extra_tags={"trade_status": str(cycle_result["status"])},
+            )
+            return cycle_result
         
         # Check daily loss limit
         if not self.risk_manager.check_daily_loss_limit(account):
             logger.error("Daily loss limit exceeded - stopping trading")
-            return
+            cycle_result.update(
+                {
+                    "status": "blocked_daily_loss_limit",
+                    "detail": "Daily loss limit exceeded.",
+                }
+            )
+            log_bot_benchmark_run(
+                bot_name="Rigel",
+                experiment_name="Rigel_Runtime_Benchmark",
+                run_name="Rigel-blocked-daily-loss",
+                payload=cycle_result,
+                strategy_label="FOREX raw strategy",
+                discipline_mode="raw_strategy",
+                extra_params={
+                    "broker_platform": self.config.BROKER_PLATFORM,
+                },
+                extra_tags={"trade_status": str(cycle_result["status"])},
+            )
+            return cycle_result
         
         # Get risk metrics
         risk_metrics = self.risk_manager.get_risk_metrics(account, positions)
@@ -1065,8 +1136,18 @@ class RigelForexBot:
         logger.info(f"Risk Metrics: {risk_metrics.position_count}/{risk_metrics.max_positions_allowed} positions "
                    f"| Liquidity: {risk_metrics.liquidity_ratio:.1%} "
                    f"| Available: ${risk_metrics.available_cash:,.2f}")
+        cycle_result.update(
+            {
+                "liquidity_ratio": float(risk_metrics.liquidity_ratio),
+                "available_cash": float(risk_metrics.available_cash),
+                "position_count": float(risk_metrics.position_count),
+                "max_positions_allowed": float(risk_metrics.max_positions_allowed),
+            }
+        )
         
         # Scan pairs for signals
+        generated_signals = []
+        executed_signals = []
         for pair in self.config.FOREX_PAIRS:
             
             # Rate limiting: min 1 minute between trades per pair
@@ -1091,11 +1172,80 @@ class RigelForexBot:
             
             if signal:
                 logger.info(f"Signal generated: {signal}")
-                self.execute_trade(signal, risk_metrics)
+                generated_signals.append(signal)
+                execution_status = self.execute_trade(signal, risk_metrics)
+                executed_signals.append(
+                    {
+                        "symbol": pair,
+                        "status": execution_status,
+                        "confidence": float(signal.confidence),
+                        "ml_prediction": (
+                            signal.ml_prediction.value
+                            if signal.ml_prediction
+                            else "neutral"
+                        ),
+                    }
+                )
                 self.last_trade_time[pair] = datetime.now()
             else:
                 logger.debug(f"{pair}: No signal (RSI: {indicators['rsi']:.1f}, "
                            f"Trend: {indicators['trend']})")
+
+        if generated_signals:
+            avg_confidence = float(
+                np.mean([signal.confidence for signal in generated_signals])
+            )
+            latest_status = str(executed_signals[-1]["status"] or "signal_generated")
+            cycle_result.update(
+                {
+                    "status": latest_status,
+                    "detail": (
+                        f"Generated {len(generated_signals)} Rigel signals this cycle."
+                    ),
+                    "signals_generated": float(len(generated_signals)),
+                    "executed_signals": float(
+                        len(
+                            [
+                                item for item in executed_signals
+                                if item["status"] in {"submitted", "simulated"}
+                            ]
+                        )
+                    ),
+                    "avg_signal_confidence": avg_confidence,
+                    "latest_symbol": str(generated_signals[-1].symbol),
+                    "latest_signal": str(generated_signals[-1].signal_type.value),
+                    "latest_rsi": float(generated_signals[-1].indicators.get("rsi", 0.0)),
+                    "latest_price": float(generated_signals[-1].price),
+                }
+            )
+            if generated_signals[-1].ml_prediction is not None:
+                cycle_result["latest_ml_prediction"] = str(
+                    generated_signals[-1].ml_prediction.value
+                )
+        else:
+            cycle_result.update(
+                {
+                    "status": "no_signal",
+                    "detail": "No Rigel signals generated this cycle.",
+                }
+            )
+
+        log_bot_benchmark_run(
+            bot_name="Rigel",
+            experiment_name="Rigel_Runtime_Benchmark",
+            run_name=f"Rigel-{cycle_result['status']}",
+            payload=cycle_result,
+            strategy_label="FOREX raw strategy",
+            discipline_mode="raw_strategy",
+            extra_params={
+                "broker_platform": self.config.BROKER_PLATFORM,
+                "trading_pairs": ",".join(self.config.FOREX_PAIRS),
+                "dry_run": self.config.DRY_RUN,
+                "enable_trading": self.config.ENABLE_TRADING,
+            },
+            extra_tags={"trade_status": str(cycle_result["status"])},
+        )
+        return cycle_result
     
     def run(self, interval_seconds: int = 300):
         """

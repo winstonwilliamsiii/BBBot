@@ -51,12 +51,10 @@ except ImportError:
 try:
     import mlflow
     import mlflow.pyfunc as mlflow_pyfunc
-    import mlflow.sklearn as mlflow_sklearn
     from mlflow.exceptions import MlflowException
 except ImportError:
     mlflow = None
     mlflow_pyfunc = None
-    mlflow_sklearn = None
     MlflowException = RuntimeError
 
 try:
@@ -68,6 +66,7 @@ try:
     from scripts.titan_cnn_model import (
         BASE_FEATURE_COLUMNS,
         DEFAULT_SEQUENCE_WINDOW,
+        build_feature_timeseries,
         build_latest_sequence_features,
         build_neutral_feature_row,
     )
@@ -75,12 +74,21 @@ except ModuleNotFoundError:
     from titan_cnn_model import (
         BASE_FEATURE_COLUMNS,
         DEFAULT_SEQUENCE_WINDOW,
+        build_feature_timeseries,
         build_latest_sequence_features,
         build_neutral_feature_row,
     )
 
 
 logger = logging.getLogger(__name__)
+
+TITAN_BENCHMARK_PEERS: tuple[str, ...] = (
+    "Orion",
+    "Rigel",
+    "Dogon",
+)
+
+TITAN_MLFLOW_FEATURE_SCHEMA_VERSION = "titan_cnn_sequence_v2"
 
 
 def _default_bot_profile(bot_name: str = "Titan_Bot") -> Dict[str, Any]:
@@ -358,12 +366,27 @@ class TitanBot:
         self.config = config or TitanConfig.from_env()
         self.api = self._init_alpaca_client()
         self._last_trade_outcome: Optional[Dict[str, Any]] = None
+        self._last_market_data_source: Dict[str, str] = {}
+        self._last_prediction_feature_metadata: Dict[str, Dict[str, Any]] = {}
 
     def _account_snapshot_cache_path(self) -> str:
         return os.path.join(
             os.getcwd(),
             "data",
             "titan_last_account_snapshot.json",
+        )
+
+    def _market_data_cache_dir(self) -> str:
+        return os.path.join(
+            os.getcwd(),
+            "data",
+            "titan_market_data_cache",
+        )
+
+    def _market_data_cache_path(self, symbol: str) -> str:
+        return os.path.join(
+            self._market_data_cache_dir(),
+            f"{symbol.strip().upper()}.csv",
         )
 
     def _read_cached_account_snapshot(self) -> Optional[Dict[str, float]]:
@@ -399,6 +422,61 @@ class TitanBot:
                 json.dump(snapshot, handle)
         except OSError:
             logger.warning("Failed writing Titan account snapshot cache")
+
+    def _read_cached_close_history(self, symbol: str) -> pd.Series:
+        path = self._market_data_cache_path(symbol)
+        if not os.path.exists(path):
+            return pd.Series(dtype="float64")
+
+        try:
+            frame = pd.read_csv(path)
+        except (OSError, ValueError, TypeError):
+            return pd.Series(dtype="float64")
+
+        if frame.empty or "close" not in frame.columns:
+            return pd.Series(dtype="float64")
+
+        return pd.to_numeric(frame["close"], errors="coerce").dropna()
+
+    def _write_cached_close_history(
+        self,
+        symbol: str,
+        close_history: pd.Series,
+    ) -> None:
+        if close_history.empty:
+            return
+
+        if len(close_history) < self._minimum_close_history_points():
+            return
+
+        cache_dir = self._market_data_cache_dir()
+        os.makedirs(cache_dir, exist_ok=True)
+        path = self._market_data_cache_path(symbol)
+        frame = pd.DataFrame(
+            {
+                "close": pd.to_numeric(
+                    close_history,
+                    errors="coerce",
+                ).dropna()
+            }
+        )
+        try:
+            frame.to_csv(path, index=False)
+        except OSError:
+            logger.warning(
+                "Failed writing Titan close history cache for %s",
+                symbol,
+            )
+
+    def _set_market_data_source(
+        self,
+        symbol: str,
+        source: str,
+    ) -> None:
+        self._last_market_data_source[symbol.strip().upper()] = source
+
+    def _minimum_close_history_points(self) -> int:
+        return max(35, self.config.sequence_window + 19)
 
     def _alpaca_headers(self) -> Dict[str, str]:
         return {
@@ -599,6 +677,10 @@ raise SystemExit(1)
         symbol: str,
         side: str,
         qty: float,
+        prediction_features: Sequence[float] | Dict[str, float],
+        sentiment_score: float,
+        liquidity_ratio: float,
+        effective_buffer: float,
     ) -> bool:
         if mlflow is None or not self._mlflow_tracking_is_reachable():
             return False
@@ -611,15 +693,22 @@ raise SystemExit(1)
                         f"{self.config.active_bot_name}-{symbol}-{side}"
                     )
                 )
-                mlflow.set_tags(
+                self._log_mlflow_tags(
                     {
                         "bot": self.config.active_bot_name,
                         "strategy": self.config.strategy_name,
                         "symbol": symbol,
                         "side": side,
+                        "discipline_mode": "ml_driven",
+                        "benchmark_peers": ",".join(
+                            TITAN_BENCHMARK_PEERS,
+                        ),
+                        "feature_schema_version": (
+                            TITAN_MLFLOW_FEATURE_SCHEMA_VERSION
+                        ),
                     }
                 )
-                mlflow.log_params(
+                self._log_mlflow_params(
                     {
                         "active_bot": self.config.active_bot_name,
                         "strategy_label": self.config.strategy_name,
@@ -628,7 +717,63 @@ raise SystemExit(1)
                         "qty": qty,
                         "dry_run": self.config.dry_run,
                         "enable_trading": self.config.enable_trading,
+                        "model_registry_uri": self.config.titan_model_uri,
+                        "ensemble_components": (
+                            "cnn_symmetry,xgboost_tabular,deep_ensemble"
+                        ),
+                        "benchmark_group": "Titan_vs_Orion_Rigel_Dogon",
+                        "sequence_window": self.config.sequence_window,
+                        "feature_schema_version": (
+                            TITAN_MLFLOW_FEATURE_SCHEMA_VERSION
+                        ),
                     }
+                )
+                feature_metrics = self._extract_mlflow_feature_metrics(
+                    prediction_features=prediction_features,
+                    sentiment_score=sentiment_score,
+                    liquidity_ratio=liquidity_ratio,
+                    effective_buffer=effective_buffer,
+                )
+                self._log_mlflow_metrics(feature_metrics)
+                feature_metadata = self._last_prediction_feature_metadata.get(
+                    symbol,
+                    {},
+                )
+                if feature_metadata:
+                    self._log_mlflow_tags(
+                        {
+                            "market_data_source": str(
+                                feature_metadata.get(
+                                    "market_data_source",
+                                    "unknown",
+                                )
+                            ),
+                            "feature_source": str(
+                                feature_metadata.get(
+                                    "feature_source",
+                                    "unknown",
+                                )
+                            ),
+                        }
+                    )
+                    self._log_mlflow_metrics(
+                        {
+                            "titan_close_history_points": float(
+                                feature_metadata.get("close_history_points", 0)
+                            ),
+                            "titan_feature_timeseries_points": float(
+                                feature_metadata.get(
+                                    "feature_timeseries_points",
+                                    0,
+                                )
+                            ),
+                        }
+                    )
+                self._log_mlflow_decision_artifact(
+                    symbol=symbol,
+                    side=side,
+                    prediction_features=prediction_features,
+                    feature_metrics=feature_metrics,
                 )
                 return True
         except (
@@ -647,22 +792,54 @@ raise SystemExit(1)
         probability: float,
         status: str,
         order_id: Optional[str] = None,
+        ml_gate_passed: Optional[bool] = None,
+        liquidity_gate_passed: Optional[bool] = None,
+        effective_buffer: Optional[float] = None,
+        liquidity_ratio: Optional[float] = None,
     ) -> None:
         if mlflow is None or mlflow.active_run() is None:
             return
 
         try:
-            mlflow.log_metric(
-                "titan_prediction_probability",
-                float(probability),
+            confidence = probability if prediction == 1 else (1.0 - probability)
+            self._log_mlflow_metrics(
+                {
+                    "titan_prediction_probability": float(probability),
+                    "titan_prediction_label": float(prediction),
+                    "titan_prediction_confidence": float(confidence),
+                    "titan_trade_approved": float(
+                        status in {"submitted", "simulated"},
+                    ),
+                    "titan_trade_blocked": float(status.startswith("blocked")),
+                }
             )
-            mlflow.log_metric(
-                "titan_prediction_label",
-                float(prediction),
-            )
-            mlflow.set_tag("trade_status", status)
+            if ml_gate_passed is not None:
+                self._log_mlflow_metrics(
+                    {"titan_ml_gate_passed": float(ml_gate_passed)}
+                )
+            if liquidity_gate_passed is not None:
+                self._log_mlflow_metrics(
+                    {
+                        "titan_liquidity_gate_passed": float(
+                            liquidity_gate_passed,
+                        )
+                    }
+                )
+            if effective_buffer is not None:
+                self._log_mlflow_metrics(
+                    {
+                        "titan_effective_liquidity_buffer": float(
+                            effective_buffer,
+                        )
+                    }
+                )
+            if liquidity_ratio is not None:
+                self._log_mlflow_metrics(
+                    {"titan_liquidity_ratio": float(liquidity_ratio)}
+                )
+            self._log_mlflow_tags({"trade_status": status})
             if order_id:
-                mlflow.set_tag("alpaca_order_id", order_id)
+                self._log_mlflow_tags({"alpaca_order_id": order_id})
         except (
             RuntimeError,
             TypeError,
@@ -684,6 +861,160 @@ raise SystemExit(1)
             MlflowException,
         ):
             pass
+
+    def _log_mlflow_tags(self, tags: Dict[str, Any]) -> None:
+        if mlflow is None or not tags:
+            return
+
+        try:
+            if hasattr(mlflow, "set_tags"):
+                mlflow.set_tags(tags)
+                return
+
+            for key, value in tags.items():
+                mlflow.set_tag(key, value)
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow tag logging failed: %s", exc)
+
+    def _log_mlflow_params(self, params: Dict[str, Any]) -> None:
+        if mlflow is None or not params:
+            return
+
+        try:
+            if hasattr(mlflow, "log_params"):
+                mlflow.log_params(params)
+                return
+
+            for key, value in params.items():
+                mlflow.log_param(key, value)
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow param logging failed: %s", exc)
+
+    def _log_mlflow_metrics(self, metrics: Dict[str, float]) -> None:
+        if mlflow is None or not metrics:
+            return
+
+        try:
+            for key, value in metrics.items():
+                mlflow.log_metric(key, float(value))
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow metric logging failed: %s", exc)
+
+    def _extract_mlflow_feature_metrics(
+        self,
+        prediction_features: Sequence[float] | Dict[str, float],
+        sentiment_score: float,
+        liquidity_ratio: float,
+        effective_buffer: float,
+    ) -> Dict[str, float]:
+        metrics: Dict[str, float] = {
+            "titan_sentiment_score": float(sentiment_score),
+            "titan_liquidity_ratio": float(liquidity_ratio),
+            "titan_effective_liquidity_buffer": float(effective_buffer),
+            "titan_liquidity_buffer_adjustment": float(
+                effective_buffer - self.config.liquidity_buffer_threshold,
+            ),
+        }
+
+        if isinstance(prediction_features, dict):
+            latest_mapping = {
+                "rsi_14_t_minus_0": "titan_rsi_cycle_current",
+                "bb_bandwidth_t_minus_0": "titan_volatility_bandwidth",
+                "bb_percent_b_t_minus_0": "titan_bollinger_percent_b",
+                "sentiment_score_t_minus_0": "titan_sentiment_score",
+                "liquidity_ratio_t_minus_0": "titan_liquidity_ratio",
+            }
+            for feature_key, metric_name in latest_mapping.items():
+                value = prediction_features.get(feature_key)
+                if value is not None:
+                    metrics[metric_name] = float(value)
+
+            rsi_cycle = [
+                float(value)
+                for key, value in prediction_features.items()
+                if key.startswith("rsi_14_t_minus_")
+            ]
+            if rsi_cycle:
+                metrics["titan_rsi_cycle_mean"] = float(np.mean(rsi_cycle))
+                metrics["titan_rsi_cycle_span"] = float(
+                    max(rsi_cycle) - min(rsi_cycle)
+                )
+
+            bandwidth_cycle = [
+                float(value)
+                for key, value in prediction_features.items()
+                if key.startswith("bb_bandwidth_t_minus_")
+            ]
+            if bandwidth_cycle:
+                metrics["titan_volatility_bandwidth_mean"] = float(
+                    np.mean(bandwidth_cycle)
+                )
+
+            metrics["titan_feature_vector_size"] = float(
+                len(prediction_features)
+            )
+        elif prediction_features:
+            metrics["titan_feature_vector_size"] = float(
+                len(prediction_features)
+            )
+
+        return metrics
+
+    def _log_mlflow_decision_artifact(
+        self,
+        symbol: str,
+        side: str,
+        prediction_features: Sequence[float] | Dict[str, float],
+        feature_metrics: Dict[str, float],
+    ) -> None:
+        if mlflow is None:
+            return
+
+        artifact_payload = {
+            "bot": self.config.active_bot_name,
+            "strategy": self.config.strategy_name,
+            "symbol": symbol,
+            "side": side,
+            "feature_schema_version": TITAN_MLFLOW_FEATURE_SCHEMA_VERSION,
+            "model_registry_uri": self.config.titan_model_uri,
+            "feature_metrics": feature_metrics,
+        }
+        if isinstance(prediction_features, dict):
+            artifact_payload["prediction_features"] = prediction_features
+
+        try:
+            if hasattr(mlflow, "log_dict"):
+                mlflow.log_dict(
+                    artifact_payload,
+                    "titan_decision_context.json",
+                )
+            elif hasattr(mlflow, "log_text"):
+                mlflow.log_text(
+                    json.dumps(artifact_payload, indent=2, default=str),
+                    "titan_decision_context.json",
+                )
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow artifact logging failed: %s", exc)
 
     def _init_alpaca_client(self):
         if tradeapi is None:
@@ -921,31 +1252,10 @@ raise SystemExit(1)
         value = rsi.iloc[-1]
         return None if pd.isna(value) else float(value)
 
-    def _fetch_technical_metrics(self, symbol: str) -> Dict[str, float]:
-        if self.api is None:
-            return {}
-
-        try:
-            bars = self.api.get_bars(
-                symbol,
-                "1Day",
-                limit=self.config.technical_lookback_days,
-                adjustment="raw",
-            ).df
-        except Exception as exc:
-            logger.warning("Failed loading bars for %s: %s", symbol, exc)
-            return {}
-
-        if bars is None or bars.empty or "close" not in bars.columns:
-            return {}
-
-        if isinstance(bars.index, pd.MultiIndex):
-            try:
-                bars = bars.xs(symbol, level=0)
-            except (KeyError, TypeError, ValueError):
-                return {}
-
-        close = pd.to_numeric(bars["close"], errors="coerce").dropna()
+    def _technical_metrics_from_close(
+        self,
+        close: pd.Series,
+    ) -> Dict[str, float]:
         if close.empty or len(close) < 35:
             return {}
 
@@ -966,6 +1276,42 @@ raise SystemExit(1)
             "macd_signal": signal,
             "macd_hist": macd - signal,
         }
+
+    def _fetch_technical_metrics(self, symbol: str) -> Dict[str, float]:
+        close = pd.Series(dtype="float64")
+
+        if self.api is not None:
+            try:
+                bars = self.api.get_bars(
+                    symbol,
+                    "1Day",
+                    limit=self.config.technical_lookback_days,
+                    adjustment="raw",
+                ).df
+            except Exception as exc:
+                logger.warning("Failed loading bars for %s: %s", symbol, exc)
+            else:
+                if (
+                    bars is not None
+                    and not bars.empty
+                    and "close" in bars.columns
+                ):
+                    if isinstance(bars.index, pd.MultiIndex):
+                        try:
+                            bars = bars.xs(symbol, level=0)
+                        except (KeyError, TypeError, ValueError):
+                            bars = pd.DataFrame()
+
+                    if not bars.empty:
+                        close = pd.to_numeric(
+                            bars["close"],
+                            errors="coerce",
+                        ).dropna()
+
+        if close.empty or len(close) < 35:
+            close = self._fetch_close_history(symbol)
+
+        return self._technical_metrics_from_close(close)
 
     def _score_technical_metrics(self, metrics: Dict[str, float]) -> float:
         if not metrics:
@@ -1021,10 +1367,21 @@ raise SystemExit(1)
             except (KeyError, TypeError, ValueError):
                 return self._fetch_close_history_from_yfinance(symbol)
 
-        return pd.to_numeric(bars["close"], errors="coerce").dropna()
+        close_history = pd.to_numeric(bars["close"], errors="coerce").dropna()
+        if len(close_history) < self._minimum_close_history_points():
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        self._set_market_data_source(symbol, "alpaca")
+        self._write_cached_close_history(symbol, close_history)
+        return close_history
 
     def _fetch_close_history_from_yfinance(self, symbol: str) -> pd.Series:
         if yf is None:
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
             return pd.Series(dtype="float64")
 
         lookback = max(
@@ -1043,15 +1400,36 @@ raise SystemExit(1)
                 symbol,
                 exc,
             )
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
             return pd.Series(dtype="float64")
 
         if data is None or data.empty or "Close" not in data:
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
             return pd.Series(dtype="float64")
 
         close = data["Close"]
         if isinstance(close, pd.DataFrame):
             close = close.iloc[:, 0]
-        return pd.to_numeric(close, errors="coerce").dropna()
+        close_history = pd.to_numeric(close, errors="coerce").dropna()
+        if len(close_history) < self._minimum_close_history_points():
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
+            return pd.Series(dtype="float64")
+
+        self._set_market_data_source(symbol, "yfinance")
+        self._write_cached_close_history(symbol, close_history)
+        return close_history
 
     def _current_liquidity_ratio(self) -> float:
         snapshot = self.get_account_snapshot()
@@ -1107,7 +1485,14 @@ raise SystemExit(1)
         sentiment_score: Optional[float] = None,
         liquidity_ratio: Optional[float] = None,
     ) -> Sequence[float] | Dict[str, float]:
+        symbol_key = symbol.strip().upper()
         if features:
+            self._last_prediction_feature_metadata[symbol_key] = {
+                "market_data_source": "provided",
+                "feature_source": "provided",
+                "close_history_points": 0,
+                "feature_timeseries_points": 0,
+            }
             return features
 
         resolved_sentiment = (
@@ -1122,12 +1507,42 @@ raise SystemExit(1)
         )
         close_history = self._fetch_close_history(symbol)
         if close_history.empty:
+            self._last_prediction_feature_metadata[symbol_key] = {
+                "market_data_source": self._last_market_data_source.get(
+                    symbol_key,
+                    "unavailable",
+                ),
+                "feature_source": "neutral",
+                "close_history_points": 0,
+                "feature_timeseries_points": 0,
+            }
             return build_neutral_feature_row(
                 sentiment_score=resolved_sentiment,
                 liquidity_ratio=resolved_liquidity,
                 window_size=self.config.sequence_window,
                 feature_columns=BASE_FEATURE_COLUMNS,
             )
+
+        feature_timeseries = build_feature_timeseries(
+            close_series=close_history,
+            sentiment_score=resolved_sentiment,
+            liquidity_ratio=resolved_liquidity,
+        )
+        feature_source = "sequence"
+        if feature_timeseries.empty:
+            feature_source = "neutral"
+        elif len(feature_timeseries) < self.config.sequence_window:
+            feature_source = "sequence_short_window"
+
+        self._last_prediction_feature_metadata[symbol_key] = {
+            "market_data_source": self._last_market_data_source.get(
+                symbol_key,
+                "unknown",
+            ),
+            "feature_source": feature_source,
+            "close_history_points": int(len(close_history)),
+            "feature_timeseries_points": int(len(feature_timeseries)),
+        }
 
         return build_latest_sequence_features(
             close_series=close_history,
@@ -1373,6 +1788,10 @@ raise SystemExit(1)
             symbol=symbol,
             side=side,
             qty=effective_qty,
+            prediction_features=prediction_features,
+            sentiment_score=sentiment_score,
+            liquidity_ratio=liquidity_ratio,
+            effective_buffer=effective_buffer,
         )
         passes_ml_gate = (
             prediction == 1
@@ -1390,6 +1809,24 @@ raise SystemExit(1)
             "sentiment_score": sentiment_score,
             "liquidity_ratio": liquidity_ratio,
             "effective_buffer_threshold": effective_buffer,
+            "market_data_source": self._last_prediction_feature_metadata.get(
+                symbol,
+                {},
+            ).get("market_data_source"),
+            "feature_source": self._last_prediction_feature_metadata.get(
+                symbol,
+                {},
+            ).get("feature_source"),
+            "close_history_points": self._last_prediction_feature_metadata.get(
+                symbol,
+                {},
+            ).get("close_history_points"),
+            "feature_timeseries_points": (
+                self._last_prediction_feature_metadata.get(
+                    symbol,
+                    {},
+                ).get("feature_timeseries_points")
+            ),
             "notes": None,
         }
 
@@ -1413,6 +1850,10 @@ raise SystemExit(1)
                     prediction,
                     probability,
                     "blocked_ml_gate",
+                    ml_gate_passed=False,
+                    liquidity_gate_passed=passes_risk_gate,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
                 )
                 return None
 
@@ -1439,6 +1880,10 @@ raise SystemExit(1)
                     prediction,
                     probability,
                     "blocked_liquidity",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=False,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
                 )
                 return None
 
@@ -1464,6 +1909,10 @@ raise SystemExit(1)
                     prediction,
                     probability,
                     f"blocked_{failed_risk_rule}",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
                 )
                 return None
 
@@ -1494,6 +1943,10 @@ raise SystemExit(1)
                     prediction,
                     probability,
                     "simulated",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
                 )
                 return None
 
@@ -1529,6 +1982,10 @@ raise SystemExit(1)
                     prediction,
                     probability,
                     "error_submit",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
                 )
                 return None
             except RuntimeError as exc:
@@ -1554,6 +2011,10 @@ raise SystemExit(1)
                     prediction,
                     probability,
                     "error_runtime",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
                 )
                 return None
 
@@ -1576,6 +2037,10 @@ raise SystemExit(1)
                 probability,
                 "submitted",
                 order_id=order_id,
+                ml_gate_passed=True,
+                liquidity_gate_passed=True,
+                effective_buffer=effective_buffer,
+                liquidity_ratio=liquidity_ratio,
             )
             self._notify_discord(
                 f"Titan executed {side} order for {effective_qty} {symbol}"
@@ -1630,6 +2095,14 @@ raise SystemExit(1)
                     "sentiment_score": outcome.get("sentiment_score"),
                     "effective_buffer_threshold": outcome.get(
                         "effective_buffer_threshold"
+                    ),
+                    "market_data_source": outcome.get("market_data_source"),
+                    "feature_source": outcome.get("feature_source"),
+                    "close_history_points": outcome.get(
+                        "close_history_points"
+                    ),
+                    "feature_timeseries_points": outcome.get(
+                        "feature_timeseries_points"
                     ),
                     "fundamentals": fundamentals,
                     "technical_score": candidate.get("technical_score"),

@@ -333,6 +333,20 @@ class RBACManager:
     }
     
     @staticmethod
+    def _build_demo_user(username: str, user_data: dict) -> User:
+        """Create a User instance from the in-memory demo user store."""
+        return User(
+            username=username,
+            role=user_data['role'],
+            kyc_completed=user_data.get('kyc_completed', False),
+            investment_agreement_signed=user_data.get('investment_agreement_signed', False),
+            kyc_date=user_data.get('kyc_date'),
+            agreement_date=user_data.get('agreement_date'),
+            email=user_data.get('email'),
+            agreement_type=user_data.get('agreement_type'),
+        )
+
+    @staticmethod
     def hash_password(password: str) -> str:
         """Hash password using SHA-256"""
         return hashlib.sha256(password.encode()).hexdigest()
@@ -349,16 +363,7 @@ class RBACManager:
         if password_hash != user_data['password_hash']:
             return None
         
-        return User(
-            username=username,
-            role=user_data['role'],
-            kyc_completed=user_data.get('kyc_completed', False),
-            investment_agreement_signed=user_data.get('investment_agreement_signed', False),
-            kyc_date=user_data.get('kyc_date'),
-            agreement_date=user_data.get('agreement_date'),
-            email=user_data.get('email'),
-            agreement_type=user_data.get('agreement_type'),
-        )
+        return RBACManager._build_demo_user(username, user_data)
     
     @staticmethod
     def init_session_state():
@@ -367,6 +372,19 @@ class RBACManager:
             st.session_state.authenticated = False
         if 'current_user' not in st.session_state:
             st.session_state.current_user = None
+
+        legacy_admin_authenticated = st.session_state.get('admin_authenticated', False)
+        legacy_admin_user = st.session_state.get('admin_user', 'admin')
+        if legacy_admin_authenticated and not st.session_state.get('authenticated', False):
+            user_data = RBACManager.DEMO_USERS.get(legacy_admin_user)
+            if legacy_admin_user == 'admin' and user_data is None:
+                user_data = RBACManager.DEMO_USERS.get('admin')
+            if user_data is not None:
+                st.session_state.authenticated = True
+                st.session_state.current_user = RBACManager._build_demo_user(
+                    legacy_admin_user,
+                    user_data,
+                )
 
         # Optional dev bypass for local development
         bypass = os.getenv('DEV_BYPASS_AUTH', '').lower() in ('1', 'true', 'yes', 'on')
@@ -386,6 +404,9 @@ class RBACManager:
         if user:
             st.session_state.authenticated = True
             st.session_state.current_user = user
+            if user.role == UserRole.ADMIN:
+                st.session_state.admin_authenticated = True
+                st.session_state.admin_user = user.username
             return True
         
         return False
@@ -395,6 +416,10 @@ class RBACManager:
         """Logout current user"""
         st.session_state.authenticated = False
         st.session_state.current_user = None
+        if 'admin_authenticated' in st.session_state:
+            st.session_state.admin_authenticated = False
+        if 'admin_user' in st.session_state:
+            st.session_state.admin_user = None
     
     @staticmethod
     def get_current_user() -> Optional[User]:

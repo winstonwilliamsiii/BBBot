@@ -158,7 +158,7 @@ _upsert_fundamentals(conn, ticker, rows)
 ### Option 2: Automated Script
 ```bash
 cd C:\Users\winst\BentleyBudgetBot
-python test_dcf_final_validation.py
+python tests/manual/test_dcf_final_validation.py
 # Output shows both dev and production results
 ```
 

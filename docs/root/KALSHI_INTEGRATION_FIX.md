@@ -110,8 +110,8 @@ The **Prediction Analytics** page at `pages/02_🔮_Prediction_Analytics.py` sho
 
 4. **Run Test Scripts** (optional):
    ```bash
-   python test_kalshi_portfolio.py
-   python test_kalshi_comprehensive.py
+   python tests/manual/test_kalshi_portfolio.py
+   python tests/manual/test_kalshi_comprehensive.py
    python display_portfolio.py
    ```
 
@@ -145,7 +145,7 @@ When working on feature branches, ensure:
 
 3. **Test Kalshi integration**:
    ```bash
-   python test_kalshi_comprehensive.py
+   python tests/manual/test_kalshi_comprehensive.py
    ```
 
 ---

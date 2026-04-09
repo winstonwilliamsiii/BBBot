@@ -246,7 +246,7 @@ Check if position profit has reached benchmark.
 Run the test script to see the system in action:
 
 ```bash
-python test_liquidity_ratio.py
+python tests/manual/test_liquidity_ratio.py
 ```
 
 This demonstrates:
@@ -363,7 +363,7 @@ mlflow.log_metric("buffer_deviation", metrics['buffer_deviation'])
 
 For questions or issues with the Trade Liquidity Ratio system:
 1. Check this documentation
-2. Run `test_liquidity_ratio.py` to verify functionality
+2. Run `tests/manual/test_liquidity_ratio.py` to verify functionality
 3. Review Admin Console Risk Management tab
 4. Check API endpoints with `curl http://localhost:5000/admin/liquidity`
 

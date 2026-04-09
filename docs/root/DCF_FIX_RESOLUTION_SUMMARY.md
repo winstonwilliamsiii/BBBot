@@ -201,7 +201,7 @@ Results:
 # 5. Verify valuation displays without "No fundamental data" error
 
 # To run validation script again:
-python test_dcf_final_validation.py
+python tests/manual/test_dcf_final_validation.py
 ```
 
 ### For Production Deployment (Railway, etc.)

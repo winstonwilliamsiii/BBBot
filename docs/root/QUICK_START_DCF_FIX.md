@@ -27,7 +27,7 @@
 ### To Run Validation Script
 ```bash
 cd c:\Users\winst\BentleyBudgetBot
-python test_dcf_final_validation.py
+python tests/manual/test_dcf_final_validation.py
 ```
 
 ## 📊 WHAT CHANGED

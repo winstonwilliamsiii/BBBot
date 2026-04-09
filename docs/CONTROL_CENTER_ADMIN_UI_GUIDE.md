@@ -331,7 +331,7 @@ If Flask API is not running, the UI gracefully falls back to sample data (lines 
 - [BENTLEY_BOT_CONTROL_CENTER_ARCHITECTURE.md](BENTLEY_BOT_CONTROL_CENTER_ARCHITECTURE.md) - Full architecture
 - [CONTROL_CENTER_QUICK_START.md](CONTROL_CENTER_QUICK_START.md) - Week-by-week implementation
 - [FLASK_STREAMLIT_UPDATE.md](FLASK_STREAMLIT_UPDATE.md) - Tech stack details
-- [FOLDER_STRUCTURE.md](../FOLDER_STRUCTURE.md) - Bentley Bot directory structure
+- [FOLDER_STRUCTURE.md](root/FOLDER_STRUCTURE.md) - Bentley Bot directory structure
 
 ---
 

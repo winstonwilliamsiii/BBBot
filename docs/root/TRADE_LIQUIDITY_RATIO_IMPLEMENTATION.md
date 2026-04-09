@@ -126,7 +126,7 @@ In the **Risk Management** tab, you'll see:
 
 ## 🧪 Test Results
 
-Run `python test_liquidity_ratio.py` to see:
+Run `python tests/manual/test_liquidity_ratio.py` to see:
 
 ✅ **Scenario 1**: Healthy liquidity (26.5% cash)
 - Status: HEALTHY ✅
@@ -191,7 +191,7 @@ Topics covered:
 
 ## 🚀 Next Steps
 
-1. **Test the system**: Run `python test_liquidity_ratio.py`
+1. **Test the system**: Run `python tests/manual/test_liquidity_ratio.py`
 2. **Configure your preferences**: Open Admin Console → Risk Management
 3. **Integrate with trading bots**: Use `LiquidityManager` class
 4. **Monitor daily**: Check dry powder before market open
@@ -216,7 +216,7 @@ cd backend/api && python app.py
 streamlit run pages/99_🔧_Admin_Control_Center.py
 
 # Run tests
-python test_liquidity_ratio.py
+python tests/manual/test_liquidity_ratio.py
 
 # API health check
 curl http://localhost:5000/health

@@ -103,11 +103,12 @@ Think of it as: **"The Bloomberg Terminal meets AI-powered hedge fund operations
 
 ### Option 1: Run Full Stack Locally
 ```bash
-# 1. Start all Docker services
-docker-compose up -d
+# 1. Start the local app container and shared services
+docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose-consolidated.yml up -d mysql mlflow
 
-# 2. Start Flask API (in one terminal)
-python backend/api/app.py
+# 2. Start the FastAPI control center (in one terminal)
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
 
 # 3. Start Streamlit app (in another terminal)
 streamlit run streamlit_app.py
@@ -118,9 +119,10 @@ start open_dashboard.ps1
 
 **Access:**
 - Streamlit: http://localhost:8501
-- Flask API: http://localhost:5000
+- FastAPI Control Center: http://localhost:5001
+- FastAPI Docs: http://localhost:5001/docs
 - Airflow: http://localhost:8080
-- MLflow: http://localhost:5000 (different endpoint)
+- MLflow: http://localhost:5000
 - Airbyte: http://localhost:8000
 
 ### Option 2: Use Cloud Deployment
@@ -211,7 +213,7 @@ start open_dashboard.ps1
 │   ├── altair.py         # Altair | Mansa AI | News Trading
 │   ├── procryon.py       # Procryon | Crypto Fund | Crypto Arbitrage
 │   ├── hydra.py          # Hydra | Mansa Health | Momentum Strategy
-│   ├── triton.py         # Triton | Mansa Transportation | Pending
+│   ├── triton.py         # Triton | Mansa Transportation | ARIMA and LSTM Swing Trading
 │   ├── dione.py          # Dione | Mansa Options | Put Call Parity
 │   ├── dogon.py          # Dogon | Mansa ETF | Portfolio Optimizer
 │   ├── rigel.py          # Rigel | Mansa FOREX | Mean Reversion

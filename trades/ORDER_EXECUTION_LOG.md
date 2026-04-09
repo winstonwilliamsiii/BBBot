@@ -226,7 +226,7 @@ python check_turb_position.py
 python place_turb_supx_orders.py
 
 # Test bracket order
-python test_alpaca_bracket_order.py
+python tests/manual/test_alpaca_bracket_order.py
 ```
 
 ### Cancel Orders

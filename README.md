@@ -12,7 +12,7 @@
 [![Appwrite](https://img.shields.io/badge/Appwrite-F02E65?style=for-the-badge&logo=appwrite&logoColor=white)](https://appwrite.io)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 
-[Live Demo](https://bbbot305.streamlit.app/) • [Documentation](#-documentation) • [API Reference](#-api-integrations) • [Setup Guide](#-quick-start) • [Titan Bot README](TITAN_README.md) • [Dogon Bot README](DOGON_README.md)
+[Live Demo](https://bbbot305.streamlit.app/) • [Documentation](#-documentation) • [API Reference](#-api-integrations) • [Setup Guide](#-quick-start) • [Titan Bot README](docs/root/TITAN_README.md) • [Dogon Bot README](docs/root/DOGON_README.md)
 
 </div>
 
@@ -45,7 +45,8 @@ Bentley Budget Bot is a comprehensive financial management platform that combine
 
 #### Backend
 - **Python 3.12+** - Core application logic
-- **FastAPI/Vercel Functions** - Serverless API endpoints
+- **FastAPI** - Primary local control-center and bot API (`Main.py`)
+- **Vercel Functions** - Stateless edge/serverless endpoints (`api/index.py`)
 - **MySQL 8.0** - Primary database (Railway + Local Port 3307)
 - **Appwrite** - Authentication, storage, and cloud functions
 
@@ -196,27 +197,77 @@ streamlit run streamlit_app.py
 
 #### 5b. Start Control Center API (Admin Dashboard Backend)
 ```bash
-# Windows PowerShell helper script
+# Windows PowerShell helper script for the unified FastAPI app
 powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
 
 # Health check
 curl http://localhost:5001/health
+
+# FastAPI docs
+# http://localhost:5001/docs
 ```
 
-#### 6. Run FastAPI (Optional API Service)
+#### 6. Run FastAPI Directly (Optional Alternate Startup)
 ```bash
 # Install local dependencies (includes FastAPI)
 pip install -r requirements-local.txt
 
-# Start FastAPI with auto-reload
-python -m uvicorn Main:app --host 0.0.0.0 --port 8000 --reload
+# Start the same FastAPI app with auto-reload
+python -m uvicorn Main:app --host 0.0.0.0 --port 5001 --reload
 
 # Or use npm script
 npm run api:dev
 
 # API Docs
-# http://localhost:8000/docs
+# http://localhost:5001/docs
 ```
+
+### 6b. Hydra Bot Quick Start
+
+Hydra is the Mansa Health momentum bot with FastAPI endpoints, Airbyte feed configuration, an Airflow DAG, and MLflow logging.
+
+```bash
+# Start the shared FastAPI control center app
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+
+# Bootstrap Hydra demo state
+curl http://localhost:5001/hydra/bootstrap
+
+# Analyze a healthcare ticker
+curl -X POST http://localhost:5001/hydra/analyze \
+   -H "Content-Type: application/json" \
+   -d '{"ticker":"UNH","news_headlines":["Analysts upgrade healthcare leaders"]}'
+```
+
+Reference: [docs/setup-guides/HYDRA_QUICK_START.md](docs/setup-guides/HYDRA_QUICK_START.md)
+
+Platform reference: [docs/setup-guides/CONTROL_CENTER_PLATFORM.md](docs/setup-guides/CONTROL_CENTER_PLATFORM.md)
+
+### 6c. Triton Bot Quick Start
+
+Triton is the Mansa Transportation swing bot. It runs through the shared FastAPI control center, uses the Bentley UI launch contract, can log signal runs to MLflow, and is wired for Alpaca or IBKR execution.
+
+```bash
+# Start the shared FastAPI control center app
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+
+# Bootstrap Triton demo state
+curl -X POST http://localhost:5001/triton/bootstrap
+
+# Run a transportation analysis
+curl -X POST http://localhost:5001/triton/analyze \
+   -H "Content-Type: application/json" \
+   -d '{"ticker":"IYT","news_headlines":["Freight demand rebounds across major rail and parcel names"]}'
+
+# Toggle Triton from the launcher contract
+powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Triton -Mode ON -Broker Alpaca -TradingMode paper
+```
+
+Triton architecture alignment:
+- FastAPI routes: `/triton/*` on `http://localhost:5001`
+- Bentley UI quick-launch: Streamlit quick-launch buttons now include Triton
+- MLflow: logs to `MLFLOW_TRACKING_URI` or `TRITON_MLFLOW_TRACKING_URI`
+- MySQL, Railway, Appwrite, Docker: inherited from the shared platform health and deployment stack already used by the control center
 
 ### 🤖 Dogon ETF ML Training (Biweekly)
 
@@ -246,14 +297,17 @@ Airflow schedule:
 ### Docker Setup (Optional)
 
 ```bash
-# Build and start all services
-docker-compose up -d
+# Start the Streamlit app container
+docker compose -f docker/docker-compose.yml up -d
+
+# Start MLflow and data services as needed
+docker compose -f docker/docker-compose-consolidated.yml up -d mysql mlflow
 
 # View logs
-docker-compose logs -f
+docker compose -f docker/docker-compose.yml logs -f
 
 # Stop services
-docker-compose down
+docker compose -f docker/docker-compose.yml down
 ```
 
 ---

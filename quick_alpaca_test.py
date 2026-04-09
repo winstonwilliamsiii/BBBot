@@ -88,7 +88,7 @@ def main():
     print(f"\n" + "=" * 70)
     print(f"✅ ALL CHECKS PASSED!")
     print(f"\nThe bracket order functionality is ready to use.")
-    print(f"Run 'python test_alpaca_bracket_order.py' to place a test order.")
+    print(f"Run 'python tests/manual/test_alpaca_bracket_order.py' to place a test order.")
     print("=" * 70)
     
     return True

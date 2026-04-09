@@ -218,6 +218,14 @@ def _resolve_execution_symbol(
     return mapped or None
 
 
+def _resolve_mt5_api_url(settings: OrionSettings) -> str:
+    venue_prefix = str(settings.execution_venue or "mt5").strip().upper()
+    venue_specific = os.getenv(f"{venue_prefix}_MT5_API_URL", "").strip()
+    if venue_specific:
+        return venue_specific
+    return os.getenv("MT5_API_URL", "http://localhost:8000")
+
+
 def _build_risk_prices(
     side: str,
     current_price: float,
@@ -295,9 +303,8 @@ def _execute_broker_order(
             ),
         }
 
-    connector = MT5Connector(
-        base_url=os.getenv("MT5_API_URL", "http://localhost:8000")
-    )
+    mt5_api_url = _resolve_mt5_api_url(settings)
+    connector = MT5Connector(base_url=mt5_api_url)
     user = os.getenv("MT5_USER", "")
     password = os.getenv("MT5_PASSWORD", "")
     host = os.getenv("MT5_HOST", "")
@@ -312,6 +319,7 @@ def _execute_broker_order(
             "detail": (
                 "MT5 credentials are incomplete in environment variables"
             ),
+            "mt5_api_url": mt5_api_url,
             "execution_symbol": execution_symbol,
         }
 
@@ -327,6 +335,7 @@ def _execute_broker_order(
             "mode": effective_mode,
             "status": "connection_failed",
             "detail": connector.last_connect_error or "MT5 connect failed",
+            "mt5_api_url": mt5_api_url,
             "execution_symbol": execution_symbol,
         }
 
@@ -351,6 +360,7 @@ def _execute_broker_order(
                         f"Existing {existing_side} position already open on "
                         f"{execution_symbol}"
                     ),
+                    "mt5_api_url": mt5_api_url,
                     "execution_symbol": execution_symbol,
                     "selected_symbol": selected_symbol,
                 }
@@ -365,6 +375,7 @@ def _execute_broker_order(
                         f"Opposite position exists on {execution_symbol} and "
                         "close_on_reverse is disabled"
                     ),
+                    "mt5_api_url": mt5_api_url,
                     "execution_symbol": execution_symbol,
                     "selected_symbol": selected_symbol,
                 }
@@ -380,6 +391,7 @@ def _execute_broker_order(
                         "Failed to close opposite position on "
                         f"{execution_symbol}"
                     ),
+                    "mt5_api_url": mt5_api_url,
                     "execution_symbol": execution_symbol,
                     "selected_symbol": selected_symbol,
                 }
@@ -419,6 +431,7 @@ def _execute_broker_order(
                     "MT5 order returned no result for "
                     f"{execution_symbol}"
                 ),
+                "mt5_api_url": mt5_api_url,
                 "execution_symbol": execution_symbol,
                 "selected_symbol": selected_symbol,
             }
@@ -432,6 +445,7 @@ def _execute_broker_order(
                 f"Orion {signal} order submitted for {execution_symbol} "
                 "via MT5"
             ),
+            "mt5_api_url": mt5_api_url,
             "selected_symbol": selected_symbol,
             "execution_symbol": execution_symbol,
             "volume_lots": settings.volume_lots,

@@ -49,6 +49,24 @@ except ImportError:
     def create_metric_card(title, value, delta=None):
         st.metric(title, value, delta)
 
+
+DEFAULT_LAUNCH_BOTS = [
+    "Titan",
+    "Vega",
+    "Rigel",
+    "Dogon",
+    "Orion",
+    "Draco",
+    "Altair",
+    "Procryon",
+    "Hydra",
+    "Triton",
+    "Dione",
+    "Cephei",
+    "Rhea",
+    "Jupicita",
+]
+
 try:
     from frontend.utils.bot_fund_mapping import BOT_FUND_ALLOCATIONS
 except ImportError:
@@ -58,10 +76,56 @@ except ImportError:
         "Orion": "Mansa_Minerals",
     }
 
+
+    def _read_latest_bot_snapshot(file_name: str) -> dict:
+        snapshot_path = Path(__file__).resolve().parents[1] / "airflow" / "config" / "logs" / file_name
+        if not snapshot_path.exists():
+            return {}
+        try:
+            with snapshot_path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+
+    def _render_orion_snapshot() -> None:
+        snapshot = _read_latest_bot_snapshot("orion_cycle_latest.json")
+        if not snapshot:
+            st.info("No Orion snapshot available yet.")
+            return
+
+        execution = snapshot.get("execution") if isinstance(snapshot.get("execution"), dict) else {}
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Selected Symbol", str(snapshot.get("selected_symbol", "n/a")))
+        col2.metric("Signal", str(snapshot.get("signal", "n/a")))
+        rsi_value = snapshot.get("rsi_value")
+        col3.metric("RSI", f"{float(rsi_value):.2f}" if rsi_value is not None else "n/a")
+        col4.metric("Execution", str(execution.get("status", "n/a")))
+
+        details = {
+            "primary_symbol": snapshot.get("primary_symbol"),
+            "execution_symbol": execution.get("execution_symbol"),
+            "mode": execution.get("mode"),
+            "mt5_api_url": execution.get("mt5_api_url"),
+            "detail": execution.get("detail") or snapshot.get("detail"),
+            "timestamp": snapshot.get("timestamp"),
+        }
+        st.json({k: v for k, v in details.items() if v not in (None, "")})
+
+        scan_results = snapshot.get("scan_results")
+        if isinstance(scan_results, list) and scan_results:
+            st.markdown("**Orion Scan Results**")
+            st.dataframe(pd.DataFrame(scan_results), use_container_width=True, hide_index=True)
+
 try:
-    from config.broker_mode_config import get_config as get_broker_mode_config
+    from config.broker_mode_config import (
+        BOT_BROKER_MAPPING,
+        get_config as get_broker_mode_config,
+    )
 except ImportError:
     get_broker_mode_config = None
+    BOT_BROKER_MAPPING = {}
 
 try:
     from scripts.mansa_titan_bot import TitanBot, TitanConfig
@@ -142,6 +206,36 @@ if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permissi
     st.error("🚫 ADMIN access required")
     show_login_form()
     st.stop()
+
+
+def _record_bot_action(bot_name: str, mode: str, trading_mode: str, execution: dict) -> None:
+    st.session_state["last_bot_action"] = {
+        "bot": bot_name,
+        "mode": mode.upper(),
+        "trading_mode": trading_mode,
+        "ok": bool(execution.get("ok")),
+        "output": execution.get("output", ""),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def _render_last_bot_action() -> None:
+    action = st.session_state.get("last_bot_action")
+    if not action:
+        return
+
+    message = (
+        f"{action['bot']} {action['mode']} in {str(action['trading_mode']).upper()} mode "
+        f"at {action['timestamp']}"
+    )
+    if action.get("ok"):
+        st.success(message)
+    else:
+        st.error(message)
+
+    if action.get("output"):
+        with st.expander("Latest Bot Control Output", expanded=False):
+            st.code(str(action["output"]), language="text")
 
 # Apply custom styling
 if STYLING_AVAILABLE:
@@ -275,6 +369,7 @@ st.markdown("""
 
 # Header
 st.title("🤖 ML Trading Bot Dashboard")
+_render_last_bot_action()
 
 # Bot Status Banner - Moved from Home Page
 try:
@@ -784,25 +879,67 @@ def _set_bot_launch_preferences(
     if get_broker_mode_config is None:
         return
 
-    config = get_broker_mode_config()
-    broker_name = config.get_bot_broker(bot_name)
-    if broker_name:
-        config.set_broker_mode(broker_name, trading_mode)
-    config.set_bot_active(bot_name, active)
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if broker_name:
+            config.set_broker_mode(broker_name, trading_mode)
+        config.set_bot_active(bot_name, active)
+    except Exception:
+        # The launcher script remains the source of truth for bots that are not
+        # fully represented in broker_modes.json yet.
+        return
+
+
+def _get_configured_launch_bots() -> list[str]:
+    configured = list(DEFAULT_LAUNCH_BOTS)
+
+    try:
+        configured.extend(list(BOT_BROKER_MAPPING.keys()))
+    except Exception:
+        pass
+
+    if get_broker_mode_config is not None:
+        try:
+            config = get_broker_mode_config()
+            configured.extend(list(config.get_all_bots_status().keys()))
+        except Exception:
+            pass
+
+    ordered = []
+    seen = set()
+    for bot_name in configured:
+        if bot_name not in seen:
+            seen.add(bot_name)
+            ordered.append(bot_name)
+    return ordered
+
+
+def _build_launch_status_rows() -> pd.DataFrame:
+    rows = []
+    latest_event = _latest_bot_mode_event() or {}
+    latest_bot_name = str(latest_event.get("bot", ""))
+    latest_timestamp = latest_event.get("timestamp", "")
+
+    for bot_name in _get_configured_launch_bots():
+        status = get_bot_status(bot_name)
+        rows.append(
+            {
+                "Bot": bot_name,
+                "Broker": str(BOT_BROKER_MAPPING.get(bot_name, "unknown")).upper(),
+                "Mode": str(status.get("trading_mode", "paper")).upper(),
+                "Status": str(status.get("status", "unknown")).upper(),
+                "Last Updated": latest_timestamp if latest_bot_name.lower() == bot_name.lower() else "",
+                "Note": str(status.get("note", "")),
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 def _build_quick_start_rows() -> pd.DataFrame:
-    launch_bots = [
-        "Titan",
-        "Vega",
-        "Rigel",
-        "Dogon",
-        "Orion",
-        "Hydra",
-        "Triton",
-    ]
     rows = []
-    for bot_name in launch_bots:
+    for bot_name in _get_configured_launch_bots():
         rows.append(
             {
                 "Bot": bot_name,
@@ -911,15 +1048,14 @@ def _vega_automation_status() -> dict:
 
 
 def _render_quick_launch_buttons() -> None:
-    launch_bots = [
-        "Titan",
-        "Vega",
-        "Rigel",
-        "Dogon",
-        "Orion",
-        "Hydra",
-        "Triton",
-    ]
+    launch_bots = _get_configured_launch_bots()
+
+    st.markdown("**Configured Bot Status**")
+    st.dataframe(
+        _build_launch_status_rows(),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     st.markdown("**Quick Launch Commands (ON/OFF)**")
     st.dataframe(
@@ -959,20 +1095,16 @@ def _render_quick_launch_buttons() -> None:
                 with st.spinner(f"Running {bot_name} ON..."):
                     execution = _execute_bot_mode(bot_name, "on", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success(f"{bot_name} ON command completed.")
-                else:
-                    st.error(f"{bot_name} ON command failed.")
+                _record_bot_action(bot_name, "on", selected_mode, execution)
+                st.rerun()
         with c6:
             if st.button("Run OFF", key=f"exec_off_{bot_name}"):
                 _set_bot_launch_preferences(bot_name, selected_mode, False)
                 with st.spinner(f"Running {bot_name} OFF..."):
                     execution = _execute_bot_mode(bot_name, "off", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success(f"{bot_name} OFF command completed.")
-                else:
-                    st.error(f"{bot_name} OFF command failed.")
+                _record_bot_action(bot_name, "off", selected_mode, execution)
+                st.rerun()
 
     selected_cmd = st.session_state.get("selected_bot_launch_command")
     if selected_cmd:
@@ -1089,10 +1221,7 @@ with col1:
         with st.spinner("Running Titan ON..."):
             execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
-        if execution["ok"]:
-            st.sidebar.success("Titan ON command completed.")
-        else:
-            st.sidebar.error("Titan ON command failed.")
+        _record_bot_action("Titan", "on", titan_sidebar_mode, execution)
         st.rerun()
 
 with col2:
@@ -1101,10 +1230,7 @@ with col2:
         with st.spinner("Running Titan OFF..."):
             execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
-        if execution["ok"]:
-            st.sidebar.success("Titan OFF command completed.")
-        else:
-            st.sidebar.error("Titan OFF command failed.")
+        _record_bot_action("Titan", "off", titan_sidebar_mode, execution)
         st.rerun()
 
 hydra_sidebar_status = get_bot_status("Hydra")
@@ -1132,10 +1258,7 @@ with hcol1:
         with st.spinner("Running Hydra ON..."):
             execution = _execute_bot_mode("Hydra", "on", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
-        if execution["ok"]:
-            st.sidebar.success("Hydra ON command completed.")
-        else:
-            st.sidebar.error("Hydra ON command failed.")
+        _record_bot_action("Hydra", "on", hydra_sidebar_mode, execution)
         st.rerun()
 
 with hcol2:
@@ -1144,10 +1267,7 @@ with hcol2:
         with st.spinner("Running Hydra OFF..."):
             execution = _execute_bot_mode("Hydra", "off", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
-        if execution["ok"]:
-            st.sidebar.success("Hydra OFF command completed.")
-        else:
-            st.sidebar.error("Hydra OFF command failed.")
+        _record_bot_action("Hydra", "off", hydra_sidebar_mode, execution)
         st.rerun()
 
 st.sidebar.caption(
@@ -1558,6 +1678,10 @@ with tab2:
 # TAB 3: Active Signals
 with tab3:
     st.subheader("Today's Trading Signals")
+
+    st.markdown("### Orion Execution Snapshot")
+    _render_orion_snapshot()
+    st.markdown("---")
     
     signals_df = load_active_signals()
     

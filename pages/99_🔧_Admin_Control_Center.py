@@ -87,6 +87,12 @@ try:
 except Exception:
     get_broker_mode_config = None
 
+try:
+    from frontend.utils.rbac import RBACManager, UserRole
+    RBAC_AVAILABLE = True
+except Exception:
+    RBAC_AVAILABLE = False
+
 # Configuration
 DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
 DEFAULT_MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
@@ -615,6 +621,14 @@ st.markdown("""
 # Authentication Check
 def check_admin_auth():
     """Verify admin authentication."""
+    if RBAC_AVAILABLE:
+        RBACManager.init_session_state()
+        current_user = RBACManager.get_current_user()
+        if current_user and current_user.role == UserRole.ADMIN:
+            st.session_state.admin_authenticated = True
+            st.session_state.admin_user = current_user.username
+            return True
+
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
     
@@ -628,8 +642,15 @@ def check_admin_auth():
             password = st.text_input("Password", type="password", key="admin_password")
             
             if st.button("Login", type="primary"):
-                # TODO: Replace with actual authentication
-                if username == "admin" and password == "admin":  # DEVELOPMENT ONLY
+                if RBAC_AVAILABLE and RBACManager.login(username, password):
+                    current_user = RBACManager.get_current_user()
+                    if current_user and current_user.role == UserRole.ADMIN:
+                        st.session_state.admin_authenticated = True
+                        st.session_state.admin_user = current_user.username
+                        st.rerun()
+                    RBACManager.logout()
+                    st.error("Admin role required")
+                elif username == "admin" and password == "admin":  # Legacy DEVELOPMENT ONLY
                     st.session_state.admin_authenticated = True
                     st.session_state.admin_user = username
                     st.rerun()

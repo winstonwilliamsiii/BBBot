@@ -203,6 +203,17 @@ except Exception as e:
 RBACManager.init_session_state()
 show_user_info()
 if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+    # Self-heal legacy admin sessions that lost RBAC object state during reruns.
+    if st.session_state.get("admin_authenticated", False):
+        try:
+            from frontend.utils.rbac import UserRole
+
+            current_user = RBACManager.get_current_user()
+            if current_user is not None and current_user.role == UserRole.ADMIN:
+                st.session_state.authenticated = True
+                st.rerun()
+        except Exception:
+            pass
     st.error("🚫 ADMIN access required")
     show_login_form()
     st.stop()

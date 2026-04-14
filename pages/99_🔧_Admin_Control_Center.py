@@ -727,6 +727,7 @@ BOT_DEFAULT_BROKERS = {
     "Dogon": "ALPACA",
     "Orion": "ALPACA",
     "Hydra": "ALPACA",
+    "Triton": "ALPACA",
 }
 
 
@@ -738,6 +739,13 @@ def get_hydra_control_snapshot() -> dict:
     return {
         "status": api_request("/hydra/status", show_notice=False) or {},
         "health": api_request("/hydra/health", show_notice=False) or {},
+    }
+
+
+def get_triton_control_snapshot() -> dict:
+    return {
+        "status": api_request("/triton/status", show_notice=False) or {},
+        "health": api_request("/triton/health", show_notice=False) or {},
     }
 
 
@@ -1705,6 +1713,172 @@ def main():
 
         with st.expander("Hydra Health Details", expanded=False):
             st.json(hydra_snapshot)
+
+        st.markdown("---")
+        st.subheader("Triton Operations")
+        triton_snapshot = get_triton_control_snapshot()
+        triton_status = triton_snapshot.get("status") or {}
+        triton_health = triton_snapshot.get("health") or {}
+        triton_launch_mode = st.radio(
+            "Triton trading mode",
+            options=["paper", "live"],
+            horizontal=True,
+            key="triton_trading_mode",
+            index=(
+                0 if get_bot_launch_mode("Triton", "alpaca") == "paper" else 1
+            ),
+        )
+
+        t1, t2, t3, t4 = st.columns(4)
+        with t1:
+            st.metric(
+                "Triton Execution",
+                "ON" if triton_status.get("execution_enabled") else "OFF",
+            )
+        with t2:
+            st.metric(
+                "Latest Triton Action",
+                str(triton_status.get("last_analysis", {}).get("action", "N/A")),
+            )
+        with t3:
+            st.metric(
+                "Triton FastAPI",
+                str(
+                    triton_health.get("fastapi", {}).get("reachable", False)
+                ).upper(),
+            )
+        with t4:
+            st.metric(
+                "Triton MLflow",
+                str(
+                    triton_health.get("mlflow", {}).get("reachable", False)
+                ).upper(),
+            )
+
+        triton_btn1, triton_btn2, triton_btn3 = st.columns(3)
+        with triton_btn1:
+            if st.button("Triton ON", type="primary", use_container_width=True):
+                persist_bot_launch_mode(
+                    "Triton",
+                    triton_launch_mode,
+                    "alpaca",
+                    True,
+                )
+                with st.spinner("Running Triton ON..."):
+                    execution = run_bot_mode(
+                        "Triton",
+                        "ON",
+                        triton_launch_mode,
+                        broker="ALPACA",
+                    )
+                st.session_state["triton_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Triton ON completed.")
+                else:
+                    st.error("Triton ON failed.")
+                st.rerun()
+
+        with triton_btn2:
+            if st.button("Triton OFF", use_container_width=True):
+                persist_bot_launch_mode(
+                    "Triton",
+                    triton_launch_mode,
+                    "alpaca",
+                    False,
+                )
+                with st.spinner("Running Triton OFF..."):
+                    execution = run_bot_mode(
+                        "Triton",
+                        "OFF",
+                        triton_launch_mode,
+                        broker="ALPACA",
+                    )
+                st.session_state["triton_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Triton OFF completed.")
+                else:
+                    st.error("Triton OFF failed.")
+                st.rerun()
+
+        with triton_btn3:
+            if st.button("Bootstrap Triton", use_container_width=True):
+                result = api_request(
+                    "/triton/bootstrap",
+                    method="POST",
+                    show_notice=True,
+                )
+                if result:
+                    st.success("Triton bootstrap completed.")
+                    st.session_state["triton_bootstrap_result"] = result
+                else:
+                    st.error("Triton bootstrap failed.")
+
+        triton_trade_col1, triton_trade_col2, triton_trade_col3, triton_trade_col4 = st.columns(
+            4
+        )
+        with triton_trade_col1:
+            triton_trade_ticker = st.text_input(
+                "Triton ticker",
+                value="IYT",
+                key="triton_trade_ticker",
+            ).strip().upper()
+        with triton_trade_col2:
+            triton_trade_action = st.selectbox(
+                "Triton action",
+                ["BUY", "SELL"],
+                key="triton_trade_action",
+            )
+        with triton_trade_col3:
+            triton_trade_qty = st.number_input(
+                "Triton quantity",
+                min_value=1.0,
+                value=5.0,
+                step=1.0,
+                key="triton_trade_qty",
+            )
+        with triton_trade_col4:
+            triton_trade_dry_run = st.toggle(
+                "Dry Run",
+                value=True,
+                key="triton_trade_dry_run",
+            )
+
+        if st.button("Execute Triton Trade", use_container_width=True):
+            trade_result = api_request(
+                "/triton/trade",
+                method="POST",
+                data={
+                    "broker": "alpaca",
+                    "ticker": triton_trade_ticker or "IYT",
+                    "action": triton_trade_action,
+                    "qty": float(triton_trade_qty),
+                    "dry_run": bool(triton_trade_dry_run),
+                },
+                show_notice=True,
+            )
+            if trade_result:
+                st.success("Triton trade request completed.")
+                st.session_state["triton_trade_result"] = trade_result
+            else:
+                st.error("Triton trade request failed.")
+
+        triton_bootstrap_result = st.session_state.get("triton_bootstrap_result")
+        if triton_bootstrap_result:
+            with st.expander("Triton Bootstrap Result", expanded=False):
+                st.json(triton_bootstrap_result)
+
+        triton_trade_result = st.session_state.get("triton_trade_result")
+        if triton_trade_result:
+            with st.expander("Last Triton Trade Result", expanded=False):
+                st.json(triton_trade_result)
+
+        triton_output = st.session_state.get("triton_mode_output")
+        if triton_output:
+            with st.expander("Last Triton Command Output", expanded=False):
+                st.code(triton_output, language="text")
+
+        with st.expander("Triton Health Details", expanded=False):
+            st.json(triton_snapshot)
 
         st.markdown("---")
         

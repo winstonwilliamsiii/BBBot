@@ -77,46 +77,46 @@ except ImportError:
     }
 
 
-    def _read_latest_bot_snapshot(file_name: str) -> dict:
-        snapshot_path = Path(__file__).resolve().parents[1] / "airflow" / "config" / "logs" / file_name
-        if not snapshot_path.exists():
-            return {}
-        try:
-            with snapshot_path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
+def _read_latest_bot_snapshot(file_name: str) -> dict:
+    snapshot_path = Path(__file__).resolve().parents[1] / "airflow" / "config" / "logs" / file_name
+    if not snapshot_path.exists():
+        return {}
+    try:
+        with snapshot_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
-    def _render_orion_snapshot() -> None:
-        snapshot = _read_latest_bot_snapshot("orion_cycle_latest.json")
-        if not snapshot:
-            st.info("No Orion snapshot available yet.")
-            return
+def _render_orion_snapshot() -> None:
+    snapshot = _read_latest_bot_snapshot("orion_cycle_latest.json")
+    if not snapshot:
+        st.info("No Orion snapshot available yet.")
+        return
 
-        execution = snapshot.get("execution") if isinstance(snapshot.get("execution"), dict) else {}
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Selected Symbol", str(snapshot.get("selected_symbol", "n/a")))
-        col2.metric("Signal", str(snapshot.get("signal", "n/a")))
-        rsi_value = snapshot.get("rsi_value")
-        col3.metric("RSI", f"{float(rsi_value):.2f}" if rsi_value is not None else "n/a")
-        col4.metric("Execution", str(execution.get("status", "n/a")))
+    execution = snapshot.get("execution") if isinstance(snapshot.get("execution"), dict) else {}
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Selected Symbol", str(snapshot.get("selected_symbol", "n/a")))
+    col2.metric("Signal", str(snapshot.get("signal", "n/a")))
+    rsi_value = snapshot.get("rsi_value")
+    col3.metric("RSI", f"{float(rsi_value):.2f}" if rsi_value is not None else "n/a")
+    col4.metric("Execution", str(execution.get("status", "n/a")))
 
-        details = {
-            "primary_symbol": snapshot.get("primary_symbol"),
-            "execution_symbol": execution.get("execution_symbol"),
-            "mode": execution.get("mode"),
-            "mt5_api_url": execution.get("mt5_api_url"),
-            "detail": execution.get("detail") or snapshot.get("detail"),
-            "timestamp": snapshot.get("timestamp"),
-        }
-        st.json({k: v for k, v in details.items() if v not in (None, "")})
+    details = {
+        "primary_symbol": snapshot.get("primary_symbol"),
+        "execution_symbol": execution.get("execution_symbol"),
+        "mode": execution.get("mode"),
+        "mt5_api_url": execution.get("mt5_api_url"),
+        "detail": execution.get("detail") or snapshot.get("detail"),
+        "timestamp": snapshot.get("timestamp"),
+    }
+    st.json({k: v for k, v in details.items() if v not in (None, "")})
 
-        scan_results = snapshot.get("scan_results")
-        if isinstance(scan_results, list) and scan_results:
-            st.markdown("**Orion Scan Results**")
-            st.dataframe(pd.DataFrame(scan_results), use_container_width=True, hide_index=True)
+    scan_results = snapshot.get("scan_results")
+    if isinstance(scan_results, list) and scan_results:
+        st.markdown("**Orion Scan Results**")
+        st.dataframe(pd.DataFrame(scan_results), use_container_width=True, hide_index=True)
 
 try:
     from config.broker_mode_config import (
@@ -461,6 +461,15 @@ def fetch_hydra_api_snapshot() -> dict:
     return {
         "status": client.get_hydra_status(),
         "health": client.get_hydra_health(),
+    }
+
+
+@st.cache_data(ttl=30)
+def fetch_triton_api_snapshot() -> dict:
+    client = get_api_client()
+    return {
+        "status": client.get_triton_status(),
+        "health": client.get_triton_health(),
     }
 
 
@@ -1164,6 +1173,69 @@ def _render_quick_launch_buttons() -> None:
         with st.expander("Hydra Health Details", expanded=False):
             st.json(hydra_health)
 
+    triton_api = fetch_triton_api_snapshot()
+    triton_status = triton_api.get("status") or {}
+    triton_health = triton_api.get("health") or {}
+
+    st.markdown("**Triton API Snapshot**")
+    t1, t2, t3 = st.columns(3)
+    with t1:
+        st.metric(
+            "Triton Action",
+            str(triton_status.get("last_analysis", {}).get("action", "N/A")),
+        )
+    with t2:
+        st.metric(
+            "Execution Enabled",
+            "YES" if triton_status.get("execution_enabled") else "NO",
+        )
+    with t3:
+        st.metric(
+            "Triton API",
+            str(
+                triton_health.get("fastapi", {}).get("reachable", False)
+            ).upper(),
+        )
+
+    api_client = get_api_client()
+    st.markdown("**Direct API Run Actions**")
+    a1, a2 = st.columns(2)
+    with a1:
+        if st.button("Run Hydra Bootstrap API", key="run_hydra_bootstrap_api"):
+            response = api_client.bootstrap_hydra()
+            st.session_state["selected_bot_api_output"] = {
+                "bot": "Hydra",
+                "action": "bootstrap",
+                "response": response,
+            }
+            if response is None:
+                st.error("Hydra bootstrap API call failed.")
+            else:
+                fetch_hydra_api_snapshot.clear()
+                st.success("Hydra bootstrap API completed.")
+    with a2:
+        if st.button("Run Triton Bootstrap API", key="run_triton_bootstrap_api"):
+            response = api_client.bootstrap_triton()
+            st.session_state["selected_bot_api_output"] = {
+                "bot": "Triton",
+                "action": "bootstrap",
+                "response": response,
+            }
+            if response is None:
+                st.error("Triton bootstrap API call failed.")
+            else:
+                fetch_triton_api_snapshot.clear()
+                st.success("Triton bootstrap API completed.")
+
+    selected_api_output = st.session_state.get("selected_bot_api_output")
+    if selected_api_output:
+        with st.expander("Last Direct API Output", expanded=False):
+            st.json(selected_api_output)
+
+    if triton_health:
+        with st.expander("Triton Health Details", expanded=False):
+            st.json(triton_health)
+
 
 @st.cache_data(ttl=30)
 def load_titan_snapshot() -> dict:
@@ -1821,6 +1893,33 @@ with tab5:
                 create_metric_card("Simulated", str(snapshot.get("simulated_trades", 0)))
             with c4:
                 create_metric_card("Blocked", str(snapshot.get("blocked_trades", 0)))
+
+            today = snapshot.get("today", {}) if isinstance(snapshot.get("today"), dict) else {}
+            latest_trade = snapshot.get("latest_trade", {}) if isinstance(snapshot.get("latest_trade"), dict) else {}
+            st.markdown("**Titan Today Diagnostics**")
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                create_metric_card("Today Total", str(today.get("total", 0)))
+            with d2:
+                create_metric_card("Today Submitted", str(today.get("submitted", 0)))
+            with d3:
+                create_metric_card("Today Blocked", str(today.get("blocked", 0)))
+            with d4:
+                create_metric_card(
+                    "Latest Probability",
+                    f"{float(latest_trade.get('prediction_probability', 0.0)):.4f}",
+                )
+
+            latest_status = str(latest_trade.get("status") or "unknown")
+            latest_notes = str(latest_trade.get("notes") or "")
+            if today.get("submitted", 0) == 0:
+                st.warning(
+                    "No Titan trade was submitted today. "
+                    f"Latest status: {latest_status}. "
+                    + (f"Reason: {latest_notes}" if latest_notes else "Check trade notes and guard metrics below.")
+                )
+            elif latest_notes:
+                st.info(f"Latest Titan note: {latest_notes}")
 
             st.markdown("**Service Health**")
             health_df = pd.DataFrame(snapshot.get("health", []))

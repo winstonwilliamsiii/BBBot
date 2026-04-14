@@ -642,7 +642,7 @@ async def procryon_configure(payload: ProcryonConfigureRequest):
 async def hydra_health():
     if HydraBot is None:
         raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
-    return get_hydra_bot().health_snapshot()
+    return get_hydra_bot().health_snapshot(probe_fastapi=False)
 
 
 @app.get("/hydra/status")

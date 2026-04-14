@@ -12,6 +12,11 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 
 try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+try:
     import mlflow
     from mlflow.tracking import MlflowClient
 
@@ -36,6 +41,10 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+
+if load_dotenv is not None:
+    load_dotenv()
 
 
 def _as_bool(value: Optional[str], default: bool) -> bool:
@@ -74,6 +83,28 @@ def _clean_env_text(value: Optional[str]) -> Optional[str]:
     return text or None
 
 
+def _is_local_mt5_url(value: Optional[str]) -> bool:
+    text = _clean_env_text(value)
+    if not text:
+        return False
+    lowered = text.lower()
+    return "localhost" in lowered or "127.0.0.1" in lowered
+
+
+def _choose_mt5_api_url(prefix: str, fallback: str) -> str:
+    broker_url = _clean_env_text(os.getenv(f"{prefix}_MT5_API_URL"))
+    shared_url = _clean_env_text(os.getenv("MT5_API_URL"))
+    axi_url = _clean_env_text(os.getenv("AXI_MT5_API_URL"))
+
+    if broker_url:
+        return broker_url
+
+    if prefix != "AXI" and _is_local_mt5_url(shared_url) and axi_url:
+        return axi_url
+
+    return shared_url or fallback
+
+
 @dataclass
 class ProcryonConfig:
     n_neighbors: int = 3
@@ -109,11 +140,12 @@ class ProcryonConfig:
             ),
             fastapi_base_url=(
                 _clean_env_text(os.getenv("PROCRYON_FASTAPI_URL"))
+                or _clean_env_text(os.getenv("CONTROL_CENTER_API_URL"))
                 or _clean_env_text(os.getenv("FASTAPI_BASE_URL"))
                 or "http://127.0.0.1:5001"
             ),
             mt5_api_url=(
-                _clean_env_text(os.getenv("MT5_API_URL"))
+                _choose_mt5_api_url("MT5", "http://localhost:8002")
                 or "http://localhost:8002"
             ),
             mlflow_experiment=_clean_env_text(os.getenv(
@@ -292,7 +324,8 @@ class ProcryonBot:
             self.config.spread_feature_count,
             "spread_vector",
         )
-        return int(self.knn.predict([spread])[0])
+        spread_matrix = np.array([spread], dtype=float)
+        return int(self.knn.predict(spread_matrix)[0])
 
     def execution_probability(self, features: list[float]) -> float:
         if self.fnn is None:
@@ -354,11 +387,7 @@ class ProcryonBot:
 
     def _resolve_mt5_credentials(self, broker_name: str) -> dict[str, Any]:
         prefix = broker_name.upper()
-        api_url = (
-            _clean_env_text(os.getenv(f"{prefix}_MT5_API_URL"))
-            or _clean_env_text(os.getenv("MT5_API_URL"))
-            or self.config.mt5_api_url
-        )
+        api_url = _choose_mt5_api_url(prefix, self.config.mt5_api_url)
         user = (
             _clean_env_text(os.getenv(f"{prefix}_MT5_USER"))
             or _clean_env_text(os.getenv("MT5_USER"))
@@ -432,6 +461,8 @@ class ProcryonBot:
                 "reason": "mlflow support is not installed",
             }
 
+        assert mlflow is not None
+        assert MlflowClient is not None
         tracking_uri = get_mlflow_tracking_uri()
         try:
             mlflow.set_tracking_uri(tracking_uri)
@@ -451,7 +482,12 @@ class ProcryonBot:
                 "tracking_uri": tracking_uri,
                 "experiment_count": len(experiments),
             }
-        except Exception as exc:  # noqa: BLE001
+        except (
+            OSError,
+            requests.RequestException,
+            RuntimeError,
+            ValueError,
+        ) as exc:
             return {
                 "reachable": False,
                 "tracking_uri": tracking_uri,
@@ -540,6 +576,7 @@ class ProcryonBot:
         if not MLFLOW_AVAILABLE or get_mlflow_tracking_uri is None:
             return {"logged": False, "reason": "mlflow unavailable"}
 
+        assert mlflow is not None
         tracking_uri = get_mlflow_tracking_uri()
         try:
             mlflow.set_tracking_uri(tracking_uri)
@@ -561,7 +598,7 @@ class ProcryonBot:
                 for key, value in metrics.items():
                     mlflow.log_metric(key, float(value))
             return {"logged": True, "tracking_uri": tracking_uri}
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("Procryon MLflow logging failed: %s", exc)
             return {
                 "logged": False,

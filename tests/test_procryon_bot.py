@@ -4,6 +4,23 @@ from procryon_bot import ProcryonBot, ProcryonConfig
 import Main
 
 
+def test_procryon_config_from_env_prefers_control_center_and_remote_mt5(
+    monkeypatch,
+):
+    monkeypatch.setenv("CONTROL_CENTER_API_URL", "http://127.0.0.1:5001")
+    monkeypatch.setenv("MT5_API_URL", "http://localhost:8002")
+    monkeypatch.setenv(
+        "AXI_MT5_API_URL",
+        "https://example-mt5-bridge.invalid",
+    )
+
+    config = ProcryonConfig.from_env()
+    ftmo_credentials = ProcryonBot(config)._resolve_mt5_credentials("ftmo")
+
+    assert config.fastapi_base_url == "http://127.0.0.1:5001"
+    assert ftmo_credentials["api_url"] == "https://example-mt5-bridge.invalid"
+
+
 def test_procryon_bootstrap_and_evaluate():
     bot = ProcryonBot(ProcryonConfig())
     metrics = bot.bootstrap_demo_models()

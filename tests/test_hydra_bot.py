@@ -317,6 +317,10 @@ def test_hydra_fastapi_routes(monkeypatch):
     assert status_response.status_code == 200
     assert status_response.json()["name"] == "Hydra"
 
+    health_response = client.get("/hydra/health")
+    assert health_response.status_code == 200
+    assert health_response.json()["fastapi"]["reachable"] is True
+
     analyze_response = client.post(
         "/hydra/analyze",
         json={
@@ -343,3 +347,90 @@ def test_hydra_fastapi_routes(monkeypatch):
     assert trade_response.status_code == 200
     assert trade_response.json()["persistence"]["persisted"] is True
     assert trade_response.json()["analysis_persistence"]["analysis_id"] == 101
+
+
+def test_hydra_analysis_degrades_when_fundamentals_fail(monkeypatch):
+    class _FailingTickerYFinance(_FakeYFinance):
+        @staticmethod
+        def Ticker(_ticker):
+            raise RuntimeError("fundamentals unavailable")
+
+    monkeypatch.setattr(hydra_bot, "yf", _FailingTickerYFinance)
+    monkeypatch.setattr(hydra_bot, "TextBlob", _FakeTextBlob)
+
+    bot = HydraBot(
+        HydraConfig(
+            alpaca_api_key=None,
+            alpaca_secret_key=None,
+            alpaca_base_url="https://paper-api.alpaca.markets",
+            ibkr_host="127.0.0.1",
+            ibkr_port=7497,
+            ibkr_client_id=6,
+            fastapi_base_url="http://127.0.0.1:8000",
+            airbyte_api_base="http://localhost:8001/api/v1",
+            airflow_dag_id="hydra_mansa_health",
+            mlflow_tracking_uri="http://localhost:5000",
+            mlflow_experiment="Hydra_Mansa_Health",
+            enable_trading=False,
+            enable_mlflow_logging=False,
+            momentum_lookback=20,
+            technical_short_window=50,
+            technical_long_window=200,
+            buy_threshold=0.15,
+            default_history_period="1y",
+            default_history_interval="1d",
+            default_universe=("XLV", "UNH"),
+        )
+    )
+
+    analysis = bot.analyze_ticker(
+        "UNH",
+        headlines=["Strong healthcare growth drives analyst upgrade"],
+    )
+
+    assert analysis["fundamental"]["score"] == 0.0
+    assert analysis["ticker"] == "UNH"
+
+
+def test_hydra_analysis_uses_fallback_prices_when_history_unavailable(monkeypatch):
+    class _HistoryFailingYFinance(_FakeYFinance):
+        @staticmethod
+        def download(*_args, **_kwargs):
+            raise RuntimeError("price history unavailable")
+
+    monkeypatch.setattr(hydra_bot, "yf", _HistoryFailingYFinance)
+    monkeypatch.setattr(hydra_bot, "TextBlob", _FakeTextBlob)
+
+    bot = HydraBot(
+        HydraConfig(
+            alpaca_api_key=None,
+            alpaca_secret_key=None,
+            alpaca_base_url="https://paper-api.alpaca.markets",
+            ibkr_host="127.0.0.1",
+            ibkr_port=7497,
+            ibkr_client_id=6,
+            fastapi_base_url="http://127.0.0.1:8000",
+            airbyte_api_base="http://localhost:8001/api/v1",
+            airflow_dag_id="hydra_mansa_health",
+            mlflow_tracking_uri="http://localhost:5000",
+            mlflow_experiment="Hydra_Mansa_Health",
+            enable_trading=False,
+            enable_mlflow_logging=False,
+            momentum_lookback=20,
+            technical_short_window=50,
+            technical_long_window=200,
+            buy_threshold=0.15,
+            default_history_period="1y",
+            default_history_interval="1d",
+            default_universe=("XLV", "UNH"),
+        )
+    )
+
+    analysis = bot.analyze_ticker(
+        "UNH",
+        headlines=["Strong healthcare growth drives analyst upgrade"],
+    )
+
+    assert analysis["ticker"] == "UNH"
+    assert analysis["latest_price"] > 0
+    assert analysis["momentum"]["lookback"] >= 2

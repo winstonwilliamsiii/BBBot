@@ -391,6 +391,20 @@ class RBACManager:
                 st.session_state.current_user = None
                 st.session_state.current_user_data = None
 
+        # Secondary repair path: if auth flag is true but user payload is gone,
+        # recover from legacy admin markers instead of forcing a logout.
+        if (
+            st.session_state.get('authenticated', False)
+            and st.session_state.get('current_user') is None
+            and st.session_state.get('current_user_data') is None
+            and st.session_state.get('admin_authenticated', False)
+        ):
+            user_data = RBACManager.DEMO_USERS.get('admin')
+            if user_data is not None:
+                restored = RBACManager._build_demo_user('admin', user_data)
+                st.session_state.current_user = restored
+                st.session_state.current_user_data = restored.to_dict()
+
         legacy_admin_authenticated = st.session_state.get('admin_authenticated', False)
         legacy_admin_user = st.session_state.get('admin_user', 'admin')
         if legacy_admin_authenticated and not st.session_state.get('authenticated', False):
@@ -416,6 +430,7 @@ class RBACManager:
             if user:
                 st.session_state.authenticated = True
                 st.session_state.current_user = user
+                st.session_state.current_user_data = user.to_dict()
     
     @staticmethod
     def login(username: str, password: str) -> bool:
@@ -465,7 +480,14 @@ class RBACManager:
     @staticmethod
     def is_authenticated() -> bool:
         """Check if user is authenticated"""
-        return st.session_state.get('authenticated', False)
+        user = RBACManager.get_current_user()
+        if user is not None:
+            return True
+
+        if st.session_state.get('admin_authenticated', False):
+            return True
+
+        return bool(st.session_state.get('authenticated', False))
     
     @staticmethod
     def has_permission(permission: Permission) -> bool:

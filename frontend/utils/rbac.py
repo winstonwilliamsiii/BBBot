@@ -372,6 +372,24 @@ class RBACManager:
             st.session_state.authenticated = False
         if 'current_user' not in st.session_state:
             st.session_state.current_user = None
+        if 'current_user_data' not in st.session_state:
+            st.session_state.current_user_data = None
+
+        # Rebuild the user object from serialized data when session reruns lose
+        # the in-memory User instance.
+        if (
+            st.session_state.get('authenticated', False)
+            and st.session_state.get('current_user') is None
+            and isinstance(st.session_state.get('current_user_data'), dict)
+        ):
+            try:
+                st.session_state.current_user = User.from_dict(
+                    st.session_state.current_user_data
+                )
+            except Exception:
+                st.session_state.authenticated = False
+                st.session_state.current_user = None
+                st.session_state.current_user_data = None
 
         legacy_admin_authenticated = st.session_state.get('admin_authenticated', False)
         legacy_admin_user = st.session_state.get('admin_user', 'admin')
@@ -384,6 +402,9 @@ class RBACManager:
                 st.session_state.current_user = RBACManager._build_demo_user(
                     legacy_admin_user,
                     user_data,
+                )
+                st.session_state.current_user_data = (
+                    st.session_state.current_user.to_dict()
                 )
 
         # Optional dev bypass for local development
@@ -404,6 +425,7 @@ class RBACManager:
         if user:
             st.session_state.authenticated = True
             st.session_state.current_user = user
+            st.session_state.current_user_data = user.to_dict()
             if user.role == UserRole.ADMIN:
                 st.session_state.admin_authenticated = True
                 st.session_state.admin_user = user.username
@@ -416,6 +438,7 @@ class RBACManager:
         """Logout current user"""
         st.session_state.authenticated = False
         st.session_state.current_user = None
+        st.session_state.current_user_data = None
         if 'admin_authenticated' in st.session_state:
             st.session_state.admin_authenticated = False
         if 'admin_user' in st.session_state:
@@ -424,7 +447,20 @@ class RBACManager:
     @staticmethod
     def get_current_user() -> Optional[User]:
         """Get currently logged in user"""
-        return st.session_state.get('current_user')
+        user = st.session_state.get('current_user')
+        if user is not None:
+            return user
+
+        user_data = st.session_state.get('current_user_data')
+        if isinstance(user_data, dict):
+            try:
+                restored = User.from_dict(user_data)
+                st.session_state.current_user = restored
+                return restored
+            except Exception:
+                return None
+
+        return None
     
     @staticmethod
     def is_authenticated() -> bool:

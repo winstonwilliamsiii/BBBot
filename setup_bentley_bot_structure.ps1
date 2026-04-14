@@ -283,7 +283,7 @@ Write-Host "  • 3 utility modules (risk, config, secrets)" -ForegroundColor Wh
 
 Write-Host "`n📁 Directory: $(Get-Location)\bentley-bot\" -ForegroundColor Yellow
 Write-Host "`n📖 Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Review FOLDER_STRUCTURE.md for detailed documentation" -ForegroundColor White
+Write-Host "  1. Review docs\root\FOLDER_STRUCTURE.md for detailed documentation" -ForegroundColor White
 Write-Host "  2. Fill in bot YAML profiles in bentley-bot/config/bots/" -ForegroundColor White
 Write-Host "  3. Start implementing bot logic in bentley-bot/bots/" -ForegroundColor White
 Write-Host "  4. Configure broker clients with API credentials" -ForegroundColor White

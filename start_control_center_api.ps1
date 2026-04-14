@@ -1,9 +1,11 @@
 param(
-    [string]$PythonPath = "C:/Users/winst/BentleyBudgetBot/.venv/Scripts/python.exe"
+    [string]$PythonPath = "C:/Users/winst/BentleyBudgetBot/.venv/Scripts/python.exe",
+    [string]$ApiHost = "0.0.0.0",
+    [int]$Port = 5001
 )
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$apiEntry = Join-Path $repoRoot "backend/api/app.py"
+$apiEntry = Join-Path $repoRoot "Main.py"
 
 if (-not (Test-Path $apiEntry)) {
     Write-Error "Control Center API entrypoint not found: $apiEntry"
@@ -16,5 +18,5 @@ if (-not (Test-Path $PythonPath)) {
     exit 1
 }
 
-Write-Host "Starting Control Center API on http://localhost:5001 ..." -ForegroundColor Cyan
-& $PythonPath $apiEntry
+Write-Host "Starting Bentley FastAPI Control Center on http://localhost:$Port ..." -ForegroundColor Cyan
+& $PythonPath -m uvicorn Main:app --host $ApiHost --port $Port

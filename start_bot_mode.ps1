@@ -69,6 +69,61 @@ function Set-ModeEnvironment {
     Set-Item -Path ("Env:{0}" -f $envName) -Value $ModeName
 }
 
+function Set-JsonProperty {
+    param(
+        [object]$Container,
+        [string]$PropertyName,
+        [object]$Value
+    )
+
+    if ($null -eq $Container) {
+        return
+    }
+
+    if ($Container.PSObject.Properties.Name -contains $PropertyName) {
+        $Container.$PropertyName = $Value
+    } else {
+        $Container | Add-Member -NotePropertyName $PropertyName -NotePropertyValue $Value
+    }
+}
+
+function Update-BrokerModeConfig {
+    param(
+        [string]$BotName,
+        [string]$BrokerName,
+        [string]$TradingModeName,
+        [bool]$IsActive
+    )
+
+    $configPath = Join-Path $repoRoot "config\broker_modes.json"
+    if (-not (Test-Path $configPath)) {
+        return
+    }
+
+    try {
+        $config = Get-Content $configPath -Raw | ConvertFrom-Json
+    } catch {
+        return
+    }
+
+    if (-not $config.active_bots) {
+        $config | Add-Member -NotePropertyName "active_bots" -NotePropertyValue ([pscustomobject]@{})
+    }
+    if (-not $config.bot_broker_mapping) {
+        $config | Add-Member -NotePropertyName "bot_broker_mapping" -NotePropertyValue ([pscustomobject]@{})
+    }
+    if (-not $config.broker_modes) {
+        $config | Add-Member -NotePropertyName "broker_modes" -NotePropertyValue ([pscustomobject]@{})
+    }
+
+    $brokerKey = $BrokerName.ToLower()
+    Set-JsonProperty -Container $config.active_bots -PropertyName $BotName -Value $IsActive
+    Set-JsonProperty -Container $config.bot_broker_mapping -PropertyName $BotName -Value $brokerKey
+    Set-JsonProperty -Container $config.broker_modes -PropertyName $brokerKey -Value $TradingModeName
+
+    $config | ConvertTo-Json -Depth 8 | Set-Content -Path $configPath -Encoding UTF8
+}
+
 $resolvedBroker = $Broker.ToUpper()
 if ($resolvedBroker -eq "AUTO") {
     if ($Bot -eq "Vega") {
@@ -87,12 +142,19 @@ if ($resolvedTradingMode -notin @("paper", "live")) {
 }
 
 Set-ModeEnvironment -BrokerName $resolvedBroker -ModeName $resolvedTradingMode
+Update-BrokerModeConfig -BotName $Bot -BrokerName $resolvedBroker -TradingModeName $resolvedTradingMode -IsActive ($Mode -eq "ON")
 
 $modeLower = $Mode.ToLower()
-$status = "placeholder"
-$note = "ON/OFF launcher contract is active for this bot. Runtime executor is not implemented yet."
+$status = if ($Mode -eq "ON") { "ready" } else { "inactive" }
+$note = if ($Mode -eq "ON") {
+    "Bot launch state persisted to config/broker_modes.json."
+} else {
+    "Bot marked inactive in config/broker_modes.json."
+}
 $ibkrConnectOk = $null
 $ibkrProbeOutput = ""
+$tritonBootstrapOk = $null
+$tritonProbeOutput = ""
 
 if ($Bot -eq "Vega" -and $resolvedBroker -eq "IBKR" -and $Mode -eq "ON") {
     if (-not $env:IBKR_HOST) { $env:IBKR_HOST = "127.0.0.1" }
@@ -119,8 +181,23 @@ if ($Bot -eq "Vega" -and $resolvedBroker -eq "IBKR" -and $Mode -eq "ON") {
     }
 }
 
+if ($Bot -eq "Triton" -and $Mode -eq "ON") {
+    $probe = & $pythonExe -c "from triton_bot import TritonBot; bot=TritonBot(); result=bot.bootstrap_demo_state(); print('TRITON_BOOTSTRAP_OK=True'); print('TRITON_ACTION=' + str(result.get('action', 'unknown'))); print('TRITON_SCORE=' + str(result.get('composite_score', 'unknown')))" 2>&1
+    $tritonProbeOutput = ($probe | Out-String).Trim()
+
+    if ($tritonProbeOutput -match "TRITON_BOOTSTRAP_OK=True") {
+        $tritonBootstrapOk = $true
+        $status = "ready"
+        $note = "Triton launcher ON confirmed with local bootstrap analysis."
+    } else {
+        $tritonBootstrapOk = $false
+        $status = "warning"
+        $note = "Triton launcher ON attempted but local bootstrap analysis did not confirm success."
+    }
+}
+
 $timestamp = (Get-Date).ToUniversalTime().ToString("o")
-$event = [ordered]@{
+$botEvent = [ordered]@{
     timestamp = $timestamp
     bot = $Bot
     mode = $modeLower
@@ -129,13 +206,18 @@ $event = [ordered]@{
     status = $status
     note = $note
     ibkr_connect_ok = $ibkrConnectOk
+    triton_bootstrap_ok = $tritonBootstrapOk
 }
 
 if ($ibkrProbeOutput) {
-    $event["ibkr_probe_output"] = $ibkrProbeOutput
+    $botEvent["ibkr_probe_output"] = $ibkrProbeOutput
 }
 
-$eventJson = $event | ConvertTo-Json -Compress -Depth 6
+if ($tritonProbeOutput) {
+    $botEvent["triton_probe_output"] = $tritonProbeOutput
+}
+
+$eventJson = $botEvent | ConvertTo-Json -Compress -Depth 6
 $eventsPath = Join-Path $logDir "bot_mode_events.jsonl"
 Add-Content -Path $eventsPath -Value $eventJson
 
@@ -165,26 +247,26 @@ if ($webhookUrl) {
         $message = "Bot $Bot $Mode | Broker: $resolvedBroker | Trading Mode: $resolvedTradingMode | Status: $status"
         $body = @{ content = $message } | ConvertTo-Json -Depth 4
         $response = Invoke-WebRequest -Method Post -Uri $webhookUrl -ContentType "application/json" -Body $body -UseBasicParsing
-        $event["discord_sent"] = $true
-        $event["discord_status_code"] = [int]$response.StatusCode
+        $botEvent["discord_sent"] = $true
+        $botEvent["discord_status_code"] = [int]$response.StatusCode
     } catch {
-        $event["discord_sent"] = $false
-        $event["discord_error"] = $_.Exception.Message
+        $botEvent["discord_sent"] = $false
+        $botEvent["discord_error"] = $_.Exception.Message
         if ($_.Exception.Response) {
             try {
-                $event["discord_status_code"] = [int]$_.Exception.Response.StatusCode.value__
+                $botEvent["discord_status_code"] = [int]$_.Exception.Response.StatusCode.value__
             } catch {
-                $event["discord_status_code"] = -1
+                $botEvent["discord_status_code"] = -1
             }
         }
     }
 } else {
-    $event["discord_sent"] = $false
-    $event["discord_error"] = "No DISCORD webhook environment variable set"
+    $botEvent["discord_sent"] = $false
+    $botEvent["discord_error"] = "No DISCORD webhook environment variable set"
 }
 
 # Persist final event snapshot (with discord metadata) for dashboard convenience.
 $latestPath = Join-Path $logDir "last_bot_mode_event.json"
-$event | ConvertTo-Json -Depth 8 | Set-Content -Path $latestPath -Encoding UTF8
+$botEvent | ConvertTo-Json -Depth 8 | Set-Content -Path $latestPath -Encoding UTF8
 
-Write-Host (($event | ConvertTo-Json -Depth 8))
+Write-Host (($botEvent | ConvertTo-Json -Depth 8))

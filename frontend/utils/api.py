@@ -230,6 +230,27 @@ class APIClient:
             },
         )
 
+    def trade_triton(
+        self,
+        broker: str,
+        ticker: str,
+        action: str,
+        qty: float,
+        dry_run: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Submit or simulate a Triton trade decision."""
+        return self._request(
+            "POST",
+            "/triton/trade",
+            json={
+                "broker": broker,
+                "ticker": ticker,
+                "action": action,
+                "qty": qty,
+                "dry_run": dry_run,
+            },
+        )
+
 
 def get_api_client() -> APIClient:
     """Factory function for API client (singleton pattern)"""

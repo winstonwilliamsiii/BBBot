@@ -22,6 +22,18 @@ import time
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_error_text(value: str) -> str:
+    sanitized = value
+    for token in ("password=", "user="):
+        if token in sanitized:
+            prefix, _, remainder = sanitized.partition(token)
+            remainder = remainder.split("&", 1)[-1] if "&" in remainder else ""
+            sanitized = prefix + token.rstrip("=") + "=<redacted>"
+            if remainder:
+                sanitized += "&" + remainder
+    return sanitized
+
+
 @dataclass
 class MT5Account:
     """MT5 Account credentials and connection info"""
@@ -148,19 +160,19 @@ class MT5Connector:
                 'port': port,
             }
             
-            logger.info(f"Connecting to MT5 account {user} on {host}:{port}")
-            # Legacy API uses GET /Connect query params; new bridge uses POST /connect JSON.
+            logger.info(f"Connecting to MT5 on {host}:{port}")
+            # Prefer the JSON login endpoint so credentials stay out of URLs.
             response = self._request_with_fallback(
-                'GET',
-                ['/Connect'],
-                params=params,
+                'POST',
+                ['/connect'],
+                json=params,
                 timeout=10,
             )
             if response.status_code == 404:
                 response = self._request_with_fallback(
-                    'POST',
-                    ['/connect'],
-                    json=params,
+                    'GET',
+                    ['/Connect'],
+                    params=params,
                     timeout=10,
                 )
             response.raise_for_status()
@@ -170,7 +182,7 @@ class MT5Connector:
             if result.get('success') or result.get('connected'):
                 self.connected = True
                 self.account = MT5Account(user=user, password=password, host=host, port=port)
-                logger.info(f"Successfully connected to MT5 account {user}")
+                logger.info("Successfully connected to MT5")
                 return True
             else:
                 self.last_connect_error = str(result.get('error', 'Unknown error'))
@@ -185,16 +197,19 @@ class MT5Connector:
             except Exception:
                 detail = (e.response.text[:300] if e.response is not None else "")
 
-            self.last_connect_error = detail or str(e)
-            logger.error(f"Connection error: {e}; detail: {self.last_connect_error}")
+            self.last_connect_error = _sanitize_error_text(detail or "HTTP error from MT5 bridge")
+            status_code = e.response.status_code if e.response is not None else "unknown"
+            logger.error(
+                f"Connection error from MT5 bridge (status {status_code}): {self.last_connect_error}"
+            )
             return False
         except requests.exceptions.RequestException as e:
-            self.last_connect_error = str(e)
-            logger.error(f"Connection error: {e}")
+            self.last_connect_error = f"Network error reaching MT5 bridge: {type(e).__name__}"
+            logger.error(self.last_connect_error)
             return False
         except Exception as e:
-            self.last_connect_error = str(e)
-            logger.error(f"Unexpected error during connection: {e}")
+            self.last_connect_error = f"Unexpected MT5 connection error: {type(e).__name__}"
+            logger.error(self.last_connect_error)
             return False
     
     def disconnect(self) -> bool:

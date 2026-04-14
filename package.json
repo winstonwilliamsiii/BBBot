@@ -7,8 +7,8 @@
   "scripts": {
     "format": "prettier --write .",
     "build": "echo 'No build step required for static/Streamlit deployment'",
-    "api:dev": "python -m uvicorn Main:app --host 0.0.0.0 --port 5001 --reload",
-    "api:dev:ibkr": "python -m uvicorn Main:app --host 127.0.0.1 --port 8011 --reload"
+    "api:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./start_control_center_api.ps1 -ApiHost 0.0.0.0 -Port 5001",
+    "api:dev:ibkr": "powershell -NoProfile -ExecutionPolicy Bypass -File ./start_control_center_api.ps1 -ApiHost 127.0.0.1 -Port 8011"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",

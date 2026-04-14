@@ -226,6 +226,31 @@ def _resolve_mt5_api_url(settings: OrionSettings) -> str:
     return os.getenv("MT5_API_URL", "http://localhost:8000")
 
 
+def _resolve_mt5_credentials(
+    settings: OrionSettings,
+) -> tuple[str, str, str, int]:
+    venue_prefix = str(settings.execution_venue or "mt5").strip().upper()
+    user = os.getenv(f"{venue_prefix}_MT5_USER", "").strip() or os.getenv(
+        "MT5_USER", ""
+    ).strip()
+    password = os.getenv(
+        f"{venue_prefix}_MT5_PASSWORD", ""
+    ).strip() or os.getenv("MT5_PASSWORD", "").strip()
+    host = os.getenv(f"{venue_prefix}_MT5_HOST", "").strip() or os.getenv(
+        f"{venue_prefix}_MT5_SERVER", ""
+    ).strip() or os.getenv("MT5_HOST", "").strip() or os.getenv(
+        "MT5_SERVER", ""
+    ).strip()
+    port_raw = os.getenv(f"{venue_prefix}_MT5_PORT", "").strip() or os.getenv(
+        "MT5_PORT", "443"
+    ).strip()
+    try:
+        port = int(port_raw)
+    except ValueError:
+        port = 443
+    return user, password, host, port
+
+
 def _build_risk_prices(
     side: str,
     current_price: float,
@@ -305,10 +330,7 @@ def _execute_broker_order(
 
     mt5_api_url = _resolve_mt5_api_url(settings)
     connector = MT5Connector(base_url=mt5_api_url)
-    user = os.getenv("MT5_USER", "")
-    password = os.getenv("MT5_PASSWORD", "")
-    host = os.getenv("MT5_HOST", "")
-    port = int(os.getenv("MT5_PORT", "443"))
+    user, password, host, port = _resolve_mt5_credentials(settings)
 
     if not user or not password or not host:
         return {
@@ -317,10 +339,11 @@ def _execute_broker_order(
             "mode": effective_mode,
             "status": "missing_credentials",
             "detail": (
-                "MT5 credentials are incomplete in environment variables"
+                "MT5 credentials are incomplete for the configured venue"
             ),
             "mt5_api_url": mt5_api_url,
             "execution_symbol": execution_symbol,
+            "execution_venue": settings.execution_venue,
         }
 
     if not connector.connect(

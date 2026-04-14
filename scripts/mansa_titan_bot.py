@@ -230,7 +230,8 @@ class TitanConfig:
                 "https://paper-api.alpaca.markets",
             ),
             discord_webhook_url=(
-                os.getenv("DISCORD_WEBHOOK_URL")
+                os.getenv("DISCORD_BOT_TALK_WEBHOOK")
+                or os.getenv("DISCORD_WEBHOOK_URL")
                 or os.getenv("DISCORD_WEBHOOK")
                 or os.getenv("DISCORD_WEBHOOK_PROD")
             ),
@@ -1644,9 +1645,17 @@ raise SystemExit(1)
         self,
         output: Any,
     ) -> Tuple[int, float]:
+        def _sanitize_probability(value: Any) -> float:
+            probability = float(value)
+            if np.isnan(probability):
+                raise ValueError("Prediction probability is NaN")
+            return float(np.clip(probability, 0.0, 1.0))
+
         if isinstance(output, pd.DataFrame) and not output.empty:
             row = output.iloc[0]
-            probability = float(row.get("probability", row.get("score", 0.5)))
+            probability = _sanitize_probability(
+                row.get("probability", row.get("score", 0.5))
+            )
             prediction = int(
                 row.get(
                     "prediction",
@@ -1656,7 +1665,9 @@ raise SystemExit(1)
             return prediction, probability
 
         if isinstance(output, pd.Series) and not output.empty:
-            probability = float(output.get("probability", output.iloc[0]))
+            probability = _sanitize_probability(
+                output.get("probability", output.iloc[0])
+            )
             prediction = int(
                 output.get(
                     "prediction",
@@ -1666,15 +1677,22 @@ raise SystemExit(1)
             return prediction, probability
 
         if isinstance(output, np.ndarray):
+            if output.ndim >= 2 and output.shape[-1] >= 2:
+                # For binary class probabilities, use the positive-class column.
+                probability = _sanitize_probability(output[0, -1])
+                prediction = int(
+                    probability >= self.config.prediction_threshold
+                )
+                return prediction, probability
             if output.ndim == 0:
-                probability = float(output)
+                probability = _sanitize_probability(output)
                 prediction = int(
                     probability >= self.config.prediction_threshold
                 )
                 return prediction, probability
             if output.ndim >= 1 and output.size:
                 first = output.reshape(-1)[0]
-                probability = float(first)
+                probability = _sanitize_probability(first)
                 prediction = int(
                     probability >= self.config.prediction_threshold
                 )
@@ -1683,9 +1701,9 @@ raise SystemExit(1)
         if isinstance(output, (list, tuple)) and output:
             first = output[0]
             if isinstance(first, (list, tuple)) and first:
-                probability = float(first[-1])
+                probability = _sanitize_probability(first[-1])
             else:
-                probability = float(first)
+                probability = _sanitize_probability(first)
             prediction = int(probability >= self.config.prediction_threshold)
             return prediction, probability
 
@@ -2382,31 +2400,58 @@ raise SystemExit(1)
                 "submitted_trades": 0,
                 "blocked_trades": 0,
                 "avg_prediction_probability": 0.0,
+                "latest_trade": {},
+                "today": {
+                    "total": 0,
+                    "submitted": 0,
+                    "blocked": 0,
+                    "simulated": 0,
+                },
                 "health": health_rows,
                 "orchestration_df": orchestration_df,
                 "trades_df": trades_df,
             }
 
+        trades_local = trades_df.copy()
+        trades_local["prediction_probability"] = pd.to_numeric(
+            trades_local["prediction_probability"],
+            errors="coerce",
+        ).fillna(0.0)
+        latest_row = trades_local.iloc[0].to_dict() if not trades_local.empty else {}
+
+        today_mask = trades_local["timestamp"].dt.date == pd.Timestamp.utcnow().date()
+        today_df = trades_local[today_mask]
+
         return {
-            "total_trades": int(len(trades_df)),
+            "total_trades": int(len(trades_local)),
             "simulated_trades": int(
-                (trades_df["status"] == "simulated").sum()
+                (trades_local["status"] == "simulated").sum()
             ),
             "submitted_trades": int(
-                (trades_df["status"] == "submitted").sum()
+                (trades_local["status"] == "submitted").sum()
             ),
-            "blocked_trades": int((trades_df["status"] == "blocked").sum()),
+            "blocked_trades": int((trades_local["status"] == "blocked").sum()),
             "avg_prediction_probability": float(
-                pd.to_numeric(
-                    trades_df["prediction_probability"],
-                    errors="coerce",
-                )
-                .fillna(0.0)
-                .mean()
+                trades_local["prediction_probability"].mean()
             ),
+            "latest_trade": {
+                "timestamp": str(latest_row.get("timestamp", "")),
+                "symbol": latest_row.get("symbol"),
+                "status": latest_row.get("status"),
+                "prediction_probability": float(
+                    latest_row.get("prediction_probability", 0.0) or 0.0
+                ),
+                "notes": latest_row.get("notes"),
+            },
+            "today": {
+                "total": int(len(today_df)),
+                "submitted": int((today_df["status"] == "submitted").sum()),
+                "blocked": int((today_df["status"] == "blocked").sum()),
+                "simulated": int((today_df["status"] == "simulated").sum()),
+            },
             "health": health_rows,
             "orchestration_df": orchestration_df,
-            "trades_df": trades_df,
+            "trades_df": trades_local,
         }
 
 

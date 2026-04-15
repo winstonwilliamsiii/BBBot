@@ -15,7 +15,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Tuple
 import json
 import subprocess
 import sys
@@ -216,6 +216,40 @@ def probe_mlflow_server(base_url: str):
             continue
 
     return False, host_reachable, "No MLflow endpoints were detected at this URL."
+
+
+def start_mlflow_server(backend_store_uri: str, port: int = 5000) -> Tuple[bool, str]:
+    """Launch MLflow server as a background process. Returns (success, message)."""
+    import shutil
+
+    python_exe = sys.executable
+    mlflow_cmd = shutil.which("mlflow")
+
+    if mlflow_cmd:
+        cmd = [
+            mlflow_cmd, "server",
+            "--backend-store-uri", backend_store_uri,
+            "--host", "0.0.0.0",
+            "--port", str(port),
+        ]
+    else:
+        cmd = [
+            python_exe, "-m", "mlflow", "server",
+            "--backend-store-uri", backend_store_uri,
+            "--host", "0.0.0.0",
+            "--port", str(port),
+        ]
+
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+        return True, f"MLflow server start command issued on port {port}. Allow a few seconds to start."
+    except Exception as exc:
+        return False, f"Failed to launch MLflow server: {exc}"
 
 
 def _first_present(row, candidates):
@@ -2336,18 +2370,35 @@ def main():
                         f"❌ Cannot connect to MLflow server at {configured_mlflow_url}"
                     )
                     backend_store_uri = get_mlflow_backend_store_uri()
-                    st.info(
-                        "Start MLflow: "
-                        f"`python -m mlflow server --backend-store-uri "
-                        f"\"{backend_store_uri}\" --host 0.0.0.0 --port 5000`"
+                    mlflow_start_cmd = (
+                        f'python -m mlflow server --backend-store-uri '
+                        f'"{backend_store_uri}" --host 0.0.0.0 --port 5000'
                     )
+                    st.code(mlflow_start_cmd, language="bash")
+                    if st.button("▶️ Start MLflow Server", type="primary", key="start_mlflow_btn"):
+                        ok, msg = start_mlflow_server(backend_store_uri)
+                        if ok:
+                            st.success(msg)
+                            st.session_state.pop("resolved_mlflow_server_url", None)
+                            st.session_state.pop("resolved_mlflow_server_note", None)
+                        else:
+                            st.error(msg)
 
         with col2:
             st.subheader("🔗 Quick Actions")
-            if st.button("🔄 Refresh MLflow Data", type="primary", use_container_width=True):
+            if st.button("🔄 Refresh MLflow Status", type="primary", use_container_width=True):
                 st.session_state.pop("resolved_mlflow_server_url", None)
                 st.session_state.pop("resolved_mlflow_server_note", None)
                 st.rerun()
+            if st.button("▶️ Start MLflow Server", use_container_width=True, key="start_mlflow_quick"):
+                backend_store_uri = get_mlflow_backend_store_uri()
+                ok, msg = start_mlflow_server(backend_store_uri)
+                if ok:
+                    st.success(msg)
+                    st.session_state.pop("resolved_mlflow_server_url", None)
+                    st.session_state.pop("resolved_mlflow_server_note", None)
+                else:
+                    st.error(msg)
             if st.button("🌐 Open MLflow UI", use_container_width=True):
                 st.markdown(f"[Open MLflow UI]({resolved_mlflow_url})")
 

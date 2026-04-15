@@ -246,14 +246,36 @@ def get_price_history(
     _require_package("pandas", pd)
 
     symbol = _sanitize_ticker(ticker)
-    history = yfinance_module.download(
-        symbol,
-        period=period or CONFIG.default_history_period,
-        interval=interval or CONFIG.default_history_interval,
+    requested_period = period or CONFIG.default_history_period
+    requested_interval = interval or CONFIG.default_history_interval
+
+    attempts: list[tuple[str, str]] = [
+        (requested_period, requested_interval),
+        ("2y", "1d"),
+        ("1y", "1d"),
+    ]
+
+    history = None
+    for candidate_period, candidate_interval in attempts:
+        history = yfinance_module.download(
+            symbol,
+            period=candidate_period,
+            interval=candidate_interval,
+            auto_adjust=False,
+            progress=False,
+            threads=False,
+        )
+        if history is not None and not history.empty:
+            return history
+
+    ticker_history = yfinance_module.Ticker(symbol).history(
+        period=requested_period,
+        interval=requested_interval,
         auto_adjust=False,
-        progress=False,
-        threads=False,
     )
+    if ticker_history is not None and not ticker_history.empty:
+        return ticker_history
+
     if history is None or history.empty:
         raise HTTPException(
             status_code=404,
@@ -368,29 +390,42 @@ def sentiment_analysis(news_headlines: list[str]) -> dict[str, Any]:
 
 
 def arima_forecast(history: Any, steps: int) -> dict[str, Any]:
-    arima_class = _require_package("statsmodels", ARIMA)
     close_series = _extract_close_series(history).dropna()
-    if len(close_series) < 30:
+    if len(close_series) == 0:
         raise HTTPException(
             status_code=422,
-            detail="ARIMA forecast requires at least 30 closing prices",
+            detail="No close prices to forecast",
         )
 
+    last_close = float(close_series.iloc[-1])
+
+    if ARIMA is None or len(close_series) < 30:
+        return {
+            "steps": steps,
+            "forecast": [last_close for _ in range(steps)],
+            "last_close": last_close,
+            "model": "naive_last_close",
+        }
+
     try:
-        model = arima_class(close_series, order=(5, 1, 0))
+        model = ARIMA(close_series, order=(5, 1, 0))
         fitted_model = model.fit()
         forecast = fitted_model.forecast(steps=steps)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"ARIMA forecast failed: {exc}",
-        ) from exc
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        logger.warning("ARIMA forecast failed; using naive fallback: %s", exc)
+        return {
+            "steps": steps,
+            "forecast": [last_close for _ in range(steps)],
+            "last_close": last_close,
+            "model": "naive_last_close",
+        }
 
     values = [float(value) for value in list(forecast)]
     return {
         "steps": steps,
         "forecast": values,
-        "last_close": float(close_series.iloc[-1]),
+        "last_close": last_close,
+        "model": "arima(5,1,0)",
     }
 
 

@@ -10,12 +10,14 @@ from typing import Any, Optional
 try:
     from sqlalchemy import create_engine, text
     from sqlalchemy.engine import Engine
+    from sqlalchemy.exc import SQLAlchemyError
 
     SQLALCHEMY_AVAILABLE = True
 except Exception:
     create_engine = None
     text = None
     Engine = Any
+    SQLAlchemyError = Exception
     SQLALCHEMY_AVAILABLE = False
 
 try:
@@ -49,34 +51,136 @@ class PersistenceResult:
 
 
 def _database_url() -> str:
-    if get_mysql_url is not None:
-        return get_mysql_url()
+    return _candidate_database_urls()[0]
 
-    host = os.getenv("MYSQL_HOST") or os.getenv("DB_HOST") or "127.0.0.1"
-    port = os.getenv("MYSQL_PORT") or os.getenv("DB_PORT") or "3307"
-    user = os.getenv("MYSQL_USER") or os.getenv("DB_USER") or "root"
-    password = (
-        os.getenv("MYSQL_PASSWORD")
-        or os.getenv("DB_PASSWORD")
-        or "root"
-    )
-    database = (
-        os.getenv("MYSQL_DATABASE")
-        or os.getenv("DB_NAME")
-        or "bentleybot"
-    )
+
+def _compose_database_url(
+    host: str,
+    port: str | int,
+    user: str,
+    password: str,
+    database: str,
+) -> str:
     return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+
+
+def _candidate_database_urls() -> list[str]:
+    candidates: list[str] = []
+
+    explicit_url = os.getenv("HYDRA_DATABASE_URL") or os.getenv(
+        "HYDRA_PERSISTENCE_DATABASE_URL"
+    )
+    if explicit_url:
+        candidates.append(explicit_url)
+
+    has_explicit_mysql_env = any(
+        os.getenv(name)
+        for name in (
+            "MYSQL_HOST",
+            "MYSQL_PORT",
+            "MYSQL_USER",
+            "MYSQL_PASSWORD",
+            "MYSQL_DATABASE",
+            "DB_HOST",
+            "DB_PORT",
+            "DB_USER",
+            "DB_PASSWORD",
+            "DB_NAME",
+        )
+    )
+    if has_explicit_mysql_env:
+        candidates.append(
+            _compose_database_url(
+                os.getenv("MYSQL_HOST") or os.getenv("DB_HOST") or "127.0.0.1",
+                os.getenv("MYSQL_PORT") or os.getenv("DB_PORT") or "3307",
+                os.getenv("MYSQL_USER") or os.getenv("DB_USER") or "root",
+                os.getenv("MYSQL_PASSWORD")
+                or os.getenv("DB_PASSWORD")
+                or "root",
+                os.getenv("MYSQL_DATABASE")
+                or os.getenv("DB_NAME")
+                or "mansa_bot",
+            )
+        )
+
+    # Local Docker-backed default for the FastAPI control center.
+    candidates.append(
+        _compose_database_url(
+            "127.0.0.1",
+            "3307",
+            "root",
+            "root",
+            "mansa_bot",
+        )
+    )
+
+    if get_mysql_url is not None:
+        try:
+            candidates.append(get_mysql_url())
+        except Exception:
+            pass
+
+    deduped: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
 
 
 def _get_engine() -> Engine:
     if not SQLALCHEMY_AVAILABLE or create_engine is None:
         raise RuntimeError("sqlalchemy is not installed")
-    return create_engine(_database_url(), pool_pre_ping=True)
+
+    last_error: Optional[Exception] = None
+    for database_url in _candidate_database_urls():
+        try:
+            engine = create_engine(database_url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return engine
+        except SQLAlchemyError as exc:
+            last_error = exc
+
+    raise RuntimeError(
+        "Unable to connect to any Hydra persistence database target"
+        + (f": {last_error}" if last_error else "")
+    )
 
 
 def ensure_hydra_tables(engine: Optional[Engine] = None) -> None:
     active_engine = engine or _get_engine()
     ddl = [
+        """
+        CREATE TABLE IF NOT EXISTS trading_signals (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(10) NOT NULL,
+            `signal` INT NOT NULL,
+            price FLOAT NOT NULL,
+            `timestamp` DATETIME NOT NULL,
+            strategy VARCHAR(50) NOT NULL,
+            INDEX idx_ticker (ticker),
+            INDEX idx_timestamp (timestamp),
+            INDEX idx_strategy (strategy)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS trades_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(10) NOT NULL,
+            `action` VARCHAR(10) NOT NULL,
+            shares INT NOT NULL,
+            price FLOAT NOT NULL,
+            `value` FLOAT NOT NULL,
+            `timestamp` DATETIME NOT NULL,
+            `status` VARCHAR(20) NOT NULL,
+            order_id VARCHAR(50),
+            strategy VARCHAR(50) NOT NULL,
+            INDEX idx_ticker (ticker),
+            INDEX idx_timestamp (timestamp),
+            INDEX idx_status (status),
+            INDEX idx_strategy (strategy)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """,
         """
         CREATE TABLE IF NOT EXISTS hydra_analysis_runs (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -212,9 +316,9 @@ def persist_hydra_analysis(
                     """
                     INSERT INTO trading_signals (
                         ticker,
-                        signal,
+                        `signal`,
                         price,
-                        timestamp,
+                        `timestamp`,
                         strategy
                     ) VALUES (
                         :ticker,
@@ -323,12 +427,12 @@ def persist_hydra_trade_decision(
                     """
                     INSERT INTO trades_history (
                         ticker,
-                        action,
+                        `action`,
                         shares,
                         price,
-                        value,
-                        timestamp,
-                        status,
+                        `value`,
+                        `timestamp`,
+                        `status`,
                         order_id,
                         strategy
                     ) VALUES (

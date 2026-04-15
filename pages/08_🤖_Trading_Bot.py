@@ -133,6 +133,25 @@ try:
 except Exception:
     TITAN_AVAILABLE = False
 
+
+RBACManager.init_session_state()
+show_user_info()
+if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
+    # Self-heal legacy admin sessions that lost RBAC object state during reruns.
+    if st.session_state.get("admin_authenticated", False):
+        try:
+            from frontend.utils.rbac import UserRole
+
+            current_user = RBACManager.get_current_user()
+            if current_user is not None and current_user.role == UserRole.ADMIN:
+                st.session_state.authenticated = True
+                st.rerun()
+        except Exception:
+            pass
+    st.error("🚫 ADMIN access required")
+    show_login_form()
+    st.stop()
+
 # Database connection
 try:
     from sqlalchemy import create_engine, text
@@ -200,23 +219,6 @@ except Exception as e:
         ```
         """)
     st.info("📊 The page will show limited functionality without database access.")
-RBACManager.init_session_state()
-show_user_info()
-if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
-    # Self-heal legacy admin sessions that lost RBAC object state during reruns.
-    if st.session_state.get("admin_authenticated", False):
-        try:
-            from frontend.utils.rbac import UserRole
-
-            current_user = RBACManager.get_current_user()
-            if current_user is not None and current_user.role == UserRole.ADMIN:
-                st.session_state.authenticated = True
-                st.rerun()
-        except Exception:
-            pass
-    st.error("🚫 ADMIN access required")
-    show_login_form()
-    st.stop()
 
 
 def _record_bot_action(bot_name: str, mode: str, trading_mode: str, execution: dict) -> None:
@@ -1116,7 +1118,6 @@ def _render_quick_launch_buttons() -> None:
                     execution = _execute_bot_mode(bot_name, "on", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 _record_bot_action(bot_name, "on", selected_mode, execution)
-                st.rerun()
         with c6:
             if st.button("Run OFF", key=f"exec_off_{bot_name}"):
                 _set_bot_launch_preferences(bot_name, selected_mode, False)
@@ -1124,7 +1125,6 @@ def _render_quick_launch_buttons() -> None:
                     execution = _execute_bot_mode(bot_name, "off", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 _record_bot_action(bot_name, "off", selected_mode, execution)
-                st.rerun()
 
     selected_cmd = st.session_state.get("selected_bot_launch_command")
     if selected_cmd:
@@ -1305,7 +1305,6 @@ with col1:
             execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "on", titan_sidebar_mode, execution)
-        st.rerun()
 
 with col2:
     if st.button("⏸️ Titan OFF", use_container_width=True):
@@ -1314,7 +1313,6 @@ with col2:
             execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "off", titan_sidebar_mode, execution)
-        st.rerun()
 
 hydra_sidebar_status = get_bot_status("Hydra")
 hydra_snapshot = fetch_hydra_api_snapshot()
@@ -1342,7 +1340,6 @@ with hcol1:
             execution = _execute_bot_mode("Hydra", "on", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "on", hydra_sidebar_mode, execution)
-        st.rerun()
 
 with hcol2:
     if st.button("⏸️ Hydra OFF", use_container_width=True):
@@ -1351,7 +1348,6 @@ with hcol2:
             execution = _execute_bot_mode("Hydra", "off", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "off", hydra_sidebar_mode, execution)
-        st.rerun()
 
 st.sidebar.caption(
     "Hydra API reachable: "

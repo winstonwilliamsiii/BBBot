@@ -99,7 +99,7 @@ def _candidate_database_urls() -> list[str]:
                 or "root",
                 os.getenv("MYSQL_DATABASE")
                 or os.getenv("DB_NAME")
-                or "mansa_bot",
+                or "mansa_quant",
             )
         )
 
@@ -110,7 +110,7 @@ def _candidate_database_urls() -> list[str]:
             "3307",
             "root",
             "root",
-            "mansa_bot",
+            "mansa_quant",
         )
     )
 

@@ -4,6 +4,8 @@ import os
 from functools import lru_cache
 from typing import Literal, Optional, Any
 
+import json
+
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 import requests
@@ -60,6 +62,20 @@ app = FastAPI(
 )
 
 API_VERSION = "0.2.0"
+
+_BROKER_MODES_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "broker_modes.json"
+)
+
+
+def _is_bot_active(bot_name: str) -> bool:
+    """Return True if *bot_name* is marked active in config/broker_modes.json."""
+    try:
+        with open(_BROKER_MODES_PATH, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return bool(data.get("active_bots", {}).get(bot_name, False))
+    except (OSError, json.JSONDecodeError, KeyError):
+        return False
 
 
 class IBKROrderRequest(BaseModel):
@@ -742,7 +758,9 @@ async def triton_health():
 async def triton_status():
     if TritonBot is None:
         raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
-    return get_triton_bot().status()
+    result = get_triton_bot().status()
+    result["execution_enabled"] = _is_bot_active("Triton")
+    return result
 
 
 @app.post("/triton/bootstrap")

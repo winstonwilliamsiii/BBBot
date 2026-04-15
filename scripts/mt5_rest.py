@@ -1,6 +1,6 @@
 """
-MT5 Bridge REST Server (Flask)
-=============================
+MT5 Bridge REST Server (FastAPI)
+================================
 
 Lightweight REST wrapper around MT5Bridge.
 
@@ -10,10 +10,10 @@ Endpoints:
 - POST /disconnect
 - GET  /account
 - GET  /positions
-- GET  /position/<symbol>
-- GET  /symbol/<symbol>
+- GET  /position/{symbol}
+- GET  /symbol/{symbol}
 - GET  /market-data?symbol=EURUSD&timeframe=H1&limit=100
-- GET  /price/<symbol>
+- GET  /price/{symbol}
 - POST /trade
 - POST /close
 - POST /modify
@@ -24,7 +24,12 @@ import os
 import threading
 import sys
 from pathlib import Path
-from flask import Flask, request, Response
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import Response
+from pydantic import BaseModel
+import uvicorn
 
 # Ensure project root is on sys.path
 project_root = Path(__file__).parent.parent
@@ -32,10 +37,37 @@ sys.path.insert(0, str(project_root))
 
 from pages.api.mt5_bridge import MT5Bridge, error_response
 
-app = Flask(__name__)
+app = FastAPI(title="MT5 Bridge REST API", version="1.0.0")
 
 _bridge_lock = threading.Lock()
 _bridge_instance = None
+
+
+class ConnectBody(BaseModel):
+    user: Optional[str] = None
+    password: Optional[str] = None
+    host: Optional[str] = None
+
+
+class TradeBody(BaseModel):
+    symbol: str
+    action: str
+    volume: float
+    price: float = 0.0
+    stop_loss: float = 0.0
+    take_profit: float = 0.0
+    comment: str = ""
+
+
+class CloseBody(BaseModel):
+    symbol: str
+    volume: float = 0.0
+
+
+class ModifyBody(BaseModel):
+    ticket: int
+    stop_loss: float = 0.0
+    take_profit: float = 0.0
 
 
 def _get_bridge() -> MT5Bridge:
@@ -47,7 +79,7 @@ def _get_bridge() -> MT5Bridge:
 
 
 def _json_response(payload: str, status: int = 200) -> Response:
-    return Response(payload, status=status, mimetype="application/json")
+    return Response(content=payload, status_code=status, media_type="application/json")
 
 
 def _bridge_call(func, *args, **kwargs) -> Response:
@@ -70,15 +102,9 @@ def health() -> Response:
 
 
 @app.post("/connect")
-def connect() -> Response:
-    body = request.get_json(silent=True) or {}
+def connect(body: ConnectBody) -> Response:
     bridge = _get_bridge()
-    return _bridge_call(
-        bridge.connect,
-        body.get("user"),
-        body.get("password"),
-        body.get("host"),
-    )
+    return _bridge_call(bridge.connect, body.user, body.password, body.host)
 
 
 @app.post("/disconnect")
@@ -99,86 +125,62 @@ def positions() -> Response:
     return _bridge_call(bridge.get_positions)
 
 
-@app.get("/position/<symbol>")
+@app.get("/position/{symbol}")
 def position(symbol: str) -> Response:
     bridge = _get_bridge()
     return _bridge_call(bridge.get_position, symbol)
 
 
-@app.get("/symbol/<symbol>")
+@app.get("/symbol/{symbol}")
 def symbol_info(symbol: str) -> Response:
     bridge = _get_bridge()
     return _bridge_call(bridge.get_symbol_info, symbol)
 
 
 @app.get("/market-data")
-def market_data() -> Response:
-    symbol = request.args.get("symbol")
-    timeframe = request.args.get("timeframe", "H1")
-    limit = int(request.args.get("limit", "100"))
-
-    if not symbol:
-        return _json_response(error_response("symbol is required"), status=400)
-
+def market_data(
+    symbol: str = Query(..., description="Trading symbol, e.g. EURUSD"),
+    timeframe: str = Query("H1", description="MT5 timeframe string"),
+    limit: int = Query(100, description="Number of bars to fetch"),
+) -> Response:
     bridge = _get_bridge()
     return _bridge_call(bridge.get_market_data, symbol, timeframe, limit)
 
 
-@app.get("/price/<symbol>")
+@app.get("/price/{symbol}")
 def price(symbol: str) -> Response:
     bridge = _get_bridge()
     return _bridge_call(bridge.get_current_price, symbol)
 
 
 @app.post("/trade")
-def trade() -> Response:
-    body = request.get_json(silent=True) or {}
-
-    required = ["symbol", "action", "volume"]
-    missing = [key for key in required if key not in body]
-    if missing:
-        return _json_response(error_response(f"missing fields: {', '.join(missing)}"), status=400)
-
+def trade(body: TradeBody) -> Response:
     bridge = _get_bridge()
     return _bridge_call(
         bridge.place_trade,
-        body.get("symbol"),
-        body.get("action"),
-        float(body.get("volume")),
-        float(body.get("price", 0.0)),
-        float(body.get("stop_loss", 0.0)),
-        float(body.get("take_profit", 0.0)),
-        body.get("comment", ""),
+        body.symbol,
+        body.action,
+        body.volume,
+        body.price,
+        body.stop_loss,
+        body.take_profit,
+        body.comment,
     )
 
 
 @app.post("/close")
-def close_position() -> Response:
-    body = request.get_json(silent=True) or {}
-    symbol = body.get("symbol")
-    if not symbol:
-        return _json_response(error_response("symbol is required"), status=400)
-
-    volume = float(body.get("volume", 0.0))
+def close_position(body: CloseBody) -> Response:
     bridge = _get_bridge()
-    return _bridge_call(bridge.close_position, symbol, volume)
+    return _bridge_call(bridge.close_position, body.symbol, body.volume)
 
 
 @app.post("/modify")
-def modify_order() -> Response:
-    body = request.get_json(silent=True) or {}
-    ticket = body.get("ticket")
-    if ticket is None:
-        return _json_response(error_response("ticket is required"), status=400)
-
-    stop_loss = float(body.get("stop_loss", 0.0))
-    take_profit = float(body.get("take_profit", 0.0))
-
+def modify_order(body: ModifyBody) -> Response:
     bridge = _get_bridge()
-    return _bridge_call(bridge.modify_order, int(ticket), stop_loss, take_profit)
+    return _bridge_call(bridge.modify_order, body.ticket, body.stop_loss, body.take_profit)
 
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8080"))
-    app.run(host=host, port=port)
+    uvicorn.run(app, host=host, port=port)

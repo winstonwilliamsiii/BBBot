@@ -553,7 +553,8 @@ class MT5Connector:
             
             result = response.json()
             status = str(result.get('status', '')).lower()
-            return status in {'healthy', 'ok'}
+            mt5_initialized = result.get('mt5_initialized', True)
+            return status in {'healthy', 'ok'} and mt5_initialized
             
         except Exception as e:
             logger.error(f"Health check failed: {e}")

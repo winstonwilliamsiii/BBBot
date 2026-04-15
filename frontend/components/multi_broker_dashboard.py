@@ -302,14 +302,14 @@ def connect_mt5(
             )
             if detail:
                 st.info(f"Failure detail: {detail}")
-            st.info("💡 Run: START_MT5_SERVER.bat to start the MT5 API server")
+            st.info("💡 Run: src\\START_MT5_SERVER.bat to start the MT5 API server")
     except Exception as e:
         st.error("❌ MT5 API server is not responding")
         st.info(f"Error details: {e}")
         st.warning(
             "🔧 **Quick Fix:**\n"
             "1. Make sure MT5 desktop is logged in\n"
-            "2. Run `START_MT5_SERVER.bat` to start the API bridge\n"
+            "2. Run `src\\START_MT5_SERVER.bat` to start the API bridge\n"
             "3. Try connecting again"
         )
 
@@ -909,7 +909,7 @@ def render_axi_section():
                         st.success("✅ MT5 API bridge is reachable")
                     else:
                         st.error("❌ MT5 API bridge not responding")
-                        st.info("Start the MT5 REST server: `START_MT5_SERVER.bat`")
+                        st.info("Start the MT5 REST server: `src\\START_MT5_SERVER.bat`")
 
             st.markdown("---")
             st.markdown("**Required `.env` settings:**")

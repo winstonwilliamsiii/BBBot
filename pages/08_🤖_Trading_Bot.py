@@ -136,21 +136,41 @@ except Exception:
 
 RBACManager.init_session_state()
 show_user_info()
-if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
-    # Self-heal legacy admin sessions that lost RBAC object state during reruns.
-    if st.session_state.get("admin_authenticated", False):
-        try:
-            from frontend.utils.rbac import UserRole
 
-            current_user = RBACManager.get_current_user()
-            if current_user is not None and current_user.role == UserRole.ADMIN:
-                st.session_state.authenticated = True
-                st.rerun()
-        except Exception:
-            pass
+# Pre-auth repair: restore admin User object inline — no st.rerun() needed.
+# Runs every page load; harmless when user is already valid.
+if st.session_state.get("admin_authenticated", False) and st.session_state.get("current_user") is None:
+    try:
+        _admin_data = RBACManager.DEMO_USERS.get("admin")
+        if _admin_data is not None:
+            _restored = RBACManager._build_demo_user("admin", _admin_data)
+            st.session_state.authenticated = True
+            st.session_state.current_user = _restored
+            st.session_state.current_user_data = _restored.to_dict()
+    except Exception:
+        pass
+
+if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
     st.error("🚫 ADMIN access required")
     show_login_form()
     st.stop()
+
+# ── Temporary auth debug panel (session booleans only — no credentials) ───────
+# Remove this block once the RBAC log-out issue is confirmed resolved.
+with st.sidebar.expander("🔑 Auth Debug (temp)", expanded=False):
+    _ss = st.session_state
+    st.write("authenticated:", _ss.get("authenticated"))
+    st.write("admin_authenticated:", _ss.get("admin_authenticated"))
+    st.write("current_user present:", _ss.get("current_user") is not None)
+    st.write(
+        "current_user_data present:",
+        isinstance(_ss.get("current_user_data"), dict),
+    )
+    _cu = _ss.get("current_user")
+    if _cu is not None:
+        st.write("user role:", str(getattr(_cu, "role", "n/a")))
+    all_keys = list(_ss.keys())
+    st.caption("All session keys: " + ", ".join(sorted(all_keys)))
 
 # Database connection
 try:
@@ -416,11 +436,46 @@ def _latest_bot_mode_event() -> dict | None:
     return None
 
 
+@st.cache_data(ttl=15)
+def _latest_bot_mode_events_all() -> dict:
+    """Return {bot_name_lower: latest_event} by reading the full append JSONL log.
+
+    Each line in bot_mode_events.jsonl is one event; we keep the LAST event
+    per bot so every bot gets its own up-to-date status.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    events_path = repo_root / "logs" / "bot_mode_events.jsonl"
+    if not events_path.exists():
+        # Fallback: try the single-event file for at least the last bot
+        ev = _latest_bot_mode_event()
+        if ev and ev.get("bot"):
+            return {ev["bot"].lower(): ev}
+        return {}
+
+    per_bot: dict = {}
+    try:
+        with events_path.open("r", encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    ev = json.loads(raw)
+                    if isinstance(ev, dict) and ev.get("bot"):
+                        per_bot[str(ev["bot"]).lower()] = ev
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return per_bot
+
+
 def get_bot_status(bot_name: str = "Titan"):
     """Resolve launcher-first status without relying on bot_status."""
     strategy = "Mansa Tech - Titan Bot"
     trading_mode = _get_bot_trading_mode(bot_name)
-    latest_event = _latest_bot_mode_event()
+    all_events = _latest_bot_mode_events_all()
+    latest_event = all_events.get(bot_name.lower())
 
     if (
         latest_event
@@ -939,19 +994,25 @@ def _get_configured_launch_bots() -> list[str]:
 
 def _build_launch_status_rows() -> pd.DataFrame:
     rows = []
-    latest_event = _latest_bot_mode_event() or {}
-    latest_bot_name = str(latest_event.get("bot", ""))
-    latest_timestamp = latest_event.get("timestamp", "")
+    all_events = _latest_bot_mode_events_all()
 
     for bot_name in _get_configured_launch_bots():
         status = get_bot_status(bot_name)
+        ev = all_events.get(bot_name.lower(), {})
+        raw_status = str(status.get("status", "unknown")).lower()
+        if raw_status == "active":
+            indicator = "🟢 RUNNING"
+        elif raw_status == "inactive":
+            indicator = "🔴 OFF"
+        else:
+            indicator = "🟡 UNKNOWN"
         rows.append(
             {
                 "Bot": bot_name,
                 "Broker": str(BOT_BROKER_MAPPING.get(bot_name, "unknown")).upper(),
                 "Mode": str(status.get("trading_mode", "paper")).upper(),
-                "Status": str(status.get("status", "unknown")).upper(),
-                "Last Updated": latest_timestamp if latest_bot_name.lower() == bot_name.lower() else "",
+                "Status": indicator,
+                "Last Updated": ev.get("timestamp", ""),
                 "Note": str(status.get("note", "")),
             }
         )
@@ -1275,7 +1336,32 @@ def load_titan_snapshot() -> dict:
 # Sidebar controls
 st.sidebar.header("🎛️ Bot Controls")
 
-# Bot status
+# ── Fleet overview (all bots, compact) ────────────────────────────────────
+_all_ev = _latest_bot_mode_events_all()
+_fleet_rows = []
+for _bname in _get_configured_launch_bots():
+    _ev = _all_ev.get(_bname.lower(), {})
+    _m = str(_ev.get("mode", "")).lower()
+    _s = str(_ev.get("status", "")).lower()
+    if _m == "on" and _s in ("ready", "warning", "placeholder", "active"):
+        _ind = "🟢"
+    elif _m == "off":
+        _ind = "🔴"
+    else:
+        _ind = "🟡"
+    _fleet_rows.append(f"{_ind} {_bname}")
+
+with st.sidebar.expander("📊 Fleet Status (all bots)", expanded=True):
+    _mid = len(_fleet_rows) // 2 + len(_fleet_rows) % 2
+    _fc1, _fc2 = st.columns(2)
+    with _fc1:
+        for r in _fleet_rows[:_mid]:
+            st.markdown(r)
+    with _fc2:
+        for r in _fleet_rows[_mid:]:
+            st.markdown(r)
+
+# Bot status (Titan – header section)
 bot_status = get_bot_status()
 status_color = "🟢" if bot_status['status'] == 'active' else "🟡" if bot_status['status'] == 'unknown' else "🔴"
 st.sidebar.markdown(f"**Status:** {status_color} {bot_status['status'].upper()}")

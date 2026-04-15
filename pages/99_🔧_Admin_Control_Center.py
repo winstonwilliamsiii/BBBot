@@ -1306,6 +1306,73 @@ def get_last_bot_mode_event() -> dict | None:
     return None
 
 
+@st.cache_data(ttl=15)
+def get_all_bot_mode_events() -> dict:
+    """Return {bot_name_lower: latest_event} by scanning bot_mode_events.jsonl.
+
+    Falls back to last_bot_mode_event.json when the append log doesn't exist.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    events_path = repo_root / "logs" / "bot_mode_events.jsonl"
+    per_bot: dict = {}
+
+    if events_path.exists():
+        try:
+            with events_path.open("r", encoding="utf-8") as fh:
+                for raw in fh:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        ev = json.loads(raw)
+                        if isinstance(ev, dict) and ev.get("bot"):
+                            per_bot[str(ev["bot"]).lower()] = ev
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+    else:
+        ev = get_last_bot_mode_event()
+        if ev and ev.get("bot"):
+            per_bot[str(ev["bot"]).lower()] = ev
+
+    return per_bot
+
+
+def build_deployed_bots_df() -> pd.DataFrame:
+    """Build the Deployed Bots table by merging catalog and live launcher state."""
+    catalog = get_bot_catalog_rows()
+    all_events = get_all_bot_mode_events()
+
+    rows = []
+    for entry in catalog:
+        bot_key = str(entry.get("bot", "")).lower()
+        ev = all_events.get(bot_key, {})
+        mode_raw = str(ev.get("mode", "")).lower()
+        status_raw = str(ev.get("status", "")).lower()
+
+        if mode_raw == "on" and status_raw in ("ready", "warning", "placeholder", "active"):
+            status_label = "🟢 RUNNING"
+        elif mode_raw == "off":
+            status_label = "🔴 OFF"
+        else:
+            status_label = "🟡 UNKNOWN"
+
+        rows.append(
+            {
+                "Bot": entry.get("bot", ""),
+                "Fund": entry.get("fund", ""),
+                "Strategy": entry.get("strategy", ""),
+                "Status": status_label,
+                "Mode": str(ev.get("trading_mode", "paper")).upper() if ev else "PAPER",
+                "Broker": str(ev.get("broker", "")).upper() if ev else "",
+                "Last Updated": ev.get("timestamp", "")[:19].replace("T", " ") if ev.get("timestamp") else "",
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
 def get_bot_launch_mode(bot_name: str, fallback_broker: str) -> str:
     if get_broker_mode_config is None:
         return "paper"
@@ -1881,19 +1948,28 @@ def main():
             st.json(triton_snapshot)
 
         st.markdown("---")
-        
+
         # Bot deployment controls
         col1, col2 = st.columns([3, 1])
-        
+
         with col1:
             st.subheader("Deployed Bots")
         with col2:
             if st.button("➕ Deploy New Bot", type="primary"):
                 st.session_state.show_deploy_modal = True
-        
-        # Bot list
+
+        # ── Live launcher status (always shown) ──────────────────────────
+        deployed_df = build_deployed_bots_df()
+        st.dataframe(deployed_df, use_container_width=True, hide_index=True)
+
+        col_run, col_cnt = st.columns(2)
+        n_running = len(deployed_df[deployed_df["Status"].str.startswith("🟢")])
+        n_off = len(deployed_df[deployed_df["Status"].str.startswith("🔴")])
+        col_run.metric("🟢 Running", n_running)
+        col_cnt.metric("🔴 Off", n_off)
+
+        # ── API-sourced data overlay (if available) ───────────────────────
         bots_data = api_request("/api/admin/bots/list")
-        
         if bots_data:
             bots_df = pd.DataFrame(bots_data.get("bots", []))
             if not bots_df.empty:
@@ -1902,7 +1978,6 @@ def main():
                 if "mansa_fund" not in bots_df.columns:
                     bots_df["mansa_fund"] = "Mansa Fund"
 
-                # Normalize displayed bot names for known Mansa fund strategies.
                 fund_to_bot = {
                     "mansa minerals - gold strategy": "Orion",
                     "mansa_minerals": "Orion",
@@ -1917,13 +1992,7 @@ def main():
 
                 bots_df["bot_name"] = bots_df.apply(normalize_bot_name, axis=1)
 
-                display_cols = [
-                    "bot_name",
-                    "mansa_fund",
-                    "status",
-                    "broker",
-                    "uptime",
-                ]
+                display_cols = ["bot_name", "mansa_fund", "status", "broker", "uptime"]
                 available_cols = [col for col in display_cols if col in bots_df.columns]
                 display_df = bots_df[available_cols].copy()
                 display_df = display_df.rename(columns={
@@ -1933,47 +2002,9 @@ def main():
                     "broker": "Broker",
                     "uptime": "Uptime",
                 })
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("No bots returned from API.")
-        else:
-            # Sample bot data
-            bots = [
-                {"id": 1, "bot_name": "Orion", "mansa_fund": "Mansa Minerals - Gold Strategy", "status": "running", "broker": "Alpaca", "uptime": "3d 5h"},
-                {"id": 2, "bot_name": "Portfolio Optimizer", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Multi", "uptime": "7d 12h"},
-            ]
-            st.dataframe(
-                pd.DataFrame(bots).rename(columns={
-                    "bot_name": "Bot Name",
-                    "mansa_fund": "Mansa Fund",
-                    "status": "Status",
-                    "broker": "Broker",
-                    "uptime": "Uptime",
-                })[["Bot Name", "Mansa Fund", "Status", "Broker", "Uptime"]],
-                use_container_width=True,
-                hide_index=True,
-            )
-            
-            for idx, bot in enumerate(bots):
-                col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
-                
-                with col1:
-                    st.markdown(f"**{bot['bot_name']}**")
-                with col2:
-                    st.markdown(get_status_badge(bot['status']), unsafe_allow_html=True)
-                with col3:
-                    st.text(f"Broker: {bot['broker']}")
-                with col4:
-                    st.text(f"Uptime: {bot['uptime']}")
-                with col5:
-                    if st.button("⏸️", key=f"stop_{idx}"):
-                        st.info(f"Stopping {bot['bot_name']}...")
-                with col6:
-                    if st.button("📊", key=f"metrics_{idx}"):
-                        st.info(f"Loading metrics for {bot['bot_name']}...")
-                
-                st.markdown("---")
-        
+                with st.expander("API Bot List (supplemental)", expanded=False):
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
         # Deploy modal
         if st.session_state.get("show_deploy_modal", False):
             with st.expander("Deploy New Bot", expanded=True):
@@ -1981,7 +2012,7 @@ def main():
                 bot_select = st.selectbox("Select Bot", [row["bot"] for row in _catalog])
                 broker_select = st.selectbox("Select Broker", ["Alpaca", "IBKR", "Binance", "MT5 (FTMO)", "MT5 (Axi)"])
                 environment = st.radio("Environment", ["Sandbox", "Live"], horizontal=True)
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("Deploy", type="primary", use_container_width=True):

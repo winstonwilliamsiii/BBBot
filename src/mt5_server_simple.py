@@ -1,110 +1,112 @@
 """
-Simple MT5 REST API Server - No Debug Mode
+Simple MT5 REST API Server - FastAPI
 Runs on port 8002 (8000 is used by Airbyte)
 """
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import MetaTrader5 as mt5
 from datetime import datetime
 import logging
 import os
+import uvicorn
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI(title="MT5 Simple REST API", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 mt5_connected = False
 
-@app.route('/Health', methods=['GET'])
+
+@app.get("/Health")
 def health():
-    """Health check"""
-    return jsonify({
-        'status': 'healthy',
-        'mt5_initialized': mt5.initialize(),
-        'timestamp': datetime.now().isoformat()
-    })
+    initialized = mt5.initialize()
+    status = "healthy" if initialized else "degraded"
+    return {
+        "status": status,
+        "mt5_initialized": initialized,
+        "timestamp": datetime.now().isoformat(),
+    }
 
-@app.route('/Connect', methods=['GET'])
-def connect():
-    """Connect to MT5"""
+
+@app.get("/Connect")
+def connect(
+    user: str = Query(...),
+    password: str = Query(...),
+    host: str = Query(...),
+):
     global mt5_connected
-    try:
-        user = request.args.get('user')
-        password = request.args.get('password')
-        host = request.args.get('host')
-        
-        if not mt5.initialize():
-            return jsonify({
-                'success': False,
-                'error': f'MT5 initialization failed: {mt5.last_error()}'
-            }), 500
-        
-        authorized = mt5.login(login=int(user), password=password, server=host)
-        
-        if authorized:
-            mt5_connected = True
-            account = mt5.account_info()
-            return jsonify({
-                'success': True,
-                'connected': True,
-                'account': {
-                    'login': account.login,
-                    'balance': account.balance,
-                    'equity': account.equity
-                }
-            })
-        else:
-            return jsonify({'success': False, 'error': f'Login failed: {mt5.last_error()}'}), 401
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    if not mt5.initialize():
+        raise HTTPException(
+            status_code=500,
+            detail=f"MT5 initialization failed: {mt5.last_error()}",
+        )
+    authorized = mt5.login(login=int(user), password=password, server=host)
+    if authorized:
+        mt5_connected = True
+        account = mt5.account_info()
+        return {
+            "success": True,
+            "connected": True,
+            "account": {
+                "login": account.login,
+                "balance": account.balance,
+                "equity": account.equity,
+            },
+        }
+    raise HTTPException(
+        status_code=401, detail=f"Login failed: {mt5.last_error()}"
+    )
 
-@app.route('/AccountInfo', methods=['GET'])
+
+@app.get("/AccountInfo")
 def account_info():
-    """Get account info"""
     if not mt5_connected:
-        return jsonify({'error': 'Not connected'}), 401
-    
+        raise HTTPException(status_code=401, detail="Not connected")
     account = mt5.account_info()
     if not account:
-        return jsonify({'error': 'Failed to get account info'}), 500
-    
-    return jsonify({
-        'login': account.login,
-        'balance': account.balance,
-        'equity': account.equity,
-        'profit': account.profit,
-        'margin': account.margin,
-        'free_margin': account.margin_free
-    })
+        raise HTTPException(status_code=500, detail="Failed to get account info")
+    return {
+        "login": account.login,
+        "balance": account.balance,
+        "equity": account.equity,
+        "profit": account.profit,
+        "margin": account.margin,
+        "free_margin": account.margin_free,
+    }
 
-@app.route('/Positions', methods=['GET'])
+
+@app.get("/Positions")
 def positions():
-    """Get open positions"""
     if not mt5_connected:
-        return jsonify({'error': 'Not connected'}), 401
-    
-    positions = mt5.positions_get()
-    if not positions:
-        return jsonify({'positions': []})
-    
-    result = []
-    for pos in positions:
-        result.append({
-            'ticket': pos.ticket,
-            'symbol': pos.symbol,
-            'type': 'BUY' if pos.type == 0 else 'SELL',
-            'volume': pos.volume,
-            'open_price': pos.price_open,
-            'current_price': pos.price_current,
-            'profit': pos.profit
-        })
-    
-    return jsonify({'positions': result})
+        raise HTTPException(status_code=401, detail="Not connected")
+    pos_list = mt5.positions_get()
+    if not pos_list:
+        return {"positions": []}
+    result = [
+        {
+            "ticket": pos.ticket,
+            "symbol": pos.symbol,
+            "type": "BUY" if pos.type == 0 else "SELL",
+            "volume": pos.volume,
+            "open_price": pos.price_open,
+            "current_price": pos.price_current,
+            "profit": pos.profit,
+        }
+        for pos in pos_list
+    ]
+    return {"positions": result}
 
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', '8002'))
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "8002"))
     print(f"\n🚀 MT5 REST API Server starting on http://localhost:{port}")
     print("📡 Endpoints: /Health, /Connect, /AccountInfo, /Positions\n")
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
+    uvicorn.run(app, host="0.0.0.0", port=port)

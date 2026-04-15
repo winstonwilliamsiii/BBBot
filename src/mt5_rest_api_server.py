@@ -19,6 +19,7 @@ from flask_cors import CORS
 import MetaTrader5 as mt5
 from datetime import datetime
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +64,9 @@ def connect():
             }), 400
         
         # Initialize MT5 with timeout so API doesn't hang indefinitely.
-        if not mt5.initialize(timeout=10000):
+        # Use MT5_PATH to target a specific terminal install (fixes IPC when multiple installs exist).
+        mt5_path = os.getenv('MT5_PATH') or None
+        if not mt5.initialize(path=mt5_path, timeout=10000):
             error = mt5.last_error()
             return jsonify({
                 'success': False,

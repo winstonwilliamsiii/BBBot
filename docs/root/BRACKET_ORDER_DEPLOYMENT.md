@@ -194,7 +194,7 @@ git push origin main
 If you encounter any issues:
 1. Check order status in Alpaca dashboard
 2. Review logs for error messages
-3. Run `python quick_alpaca_test.py` to validate connection
+3. Run `python trades/quick_alpaca_test.py` to validate connection
 4. Verify environment variables are set correctly
 
 ---

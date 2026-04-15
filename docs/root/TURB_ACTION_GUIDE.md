@@ -100,7 +100,7 @@ python -c "import os; import requests; from dotenv import load_dotenv; load_dote
 
 **To Check Current Status Anytime**:
 ```bash
-python check_turb_status_direct.py
+python trades/check_turb_status_direct.py
 ```
 
 **Your Requirement**: ✅ **SATISFIED** - All future trades use automatic bracket orders with stop loss protection.

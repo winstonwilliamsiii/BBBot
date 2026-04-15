@@ -240,5 +240,5 @@ Consider adding:
 
 - [`frontend/utils/discord_alpaca.py`](../frontend/utils/discord_alpaca.py) - Discord notification function
 - [`tests/test_alpaca_connection.py`](../tests/test_alpaca_connection.py) - Example implementation
-- [`place_turb_supx_orders.py`](../place_turb_supx_orders.py) - Needs integration
+- [`place_turb_supx_orders.py`](place_turb_supx_orders.py) - Needs integration
 - [`.env.example`](../.env.example) - Environment variable template

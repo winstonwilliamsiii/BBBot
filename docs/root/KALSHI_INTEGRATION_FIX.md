@@ -112,7 +112,7 @@ The **Prediction Analytics** page at `pages/02_🔮_Prediction_Analytics.py` sho
    ```bash
    python tests/manual/test_kalshi_portfolio.py
    python tests/manual/test_kalshi_comprehensive.py
-   python display_portfolio.py
+   python trades/display_portfolio.py
    ```
 
 ---

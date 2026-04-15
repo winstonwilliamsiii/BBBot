@@ -233,8 +233,8 @@ Separate from import errors. Verify secrets configuration:
 ### Check 4: Alpaca API Issues
 Verify in Streamlit secrets:
 ```toml
-ALPACA_API_KEY = "PKAYRIJUWUPO5VVWVTIWDXPRJ3"
-ALPACA_SECRET_KEY = "HDegV257ex4j1Wc7C3714mVBLoyircYYMTxTozZKWeaA"
+ALPACA_API_KEY = "***REDACTED***"
+ALPACA_SECRET_KEY = "***REDACTED***"
 ALPACA_PAPER = "true"
 ```
 

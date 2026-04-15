@@ -101,8 +101,8 @@ BUDGET_MYSQL_PASSWORD = "cBlIUSygvPJCgPbNKHePJekQlClRamri"
 
 ### Alpaca Secrets (Broker Trading page)
 ```toml
-ALPACA_API_KEY = "PKAYRIJUWUPO5VVWVTIWDXPRJ3"
-ALPACA_SECRET_KEY = "HDegV257ex4j1Wc7C3714mVBLoyircYYMTxTozZKWeaA"
+ALPACA_API_KEY = "***REDACTED***"
+ALPACA_SECRET_KEY = "***REDACTED***"
 ALPACA_PAPER = "true"
 ```
 **Without these:** Alpaca connection fails, can't test paper trading account

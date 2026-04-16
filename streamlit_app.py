@@ -380,6 +380,114 @@ def calculate_portfolio_metrics(portfolio_df):
         return None, None, None, None
 
 
+import json
+
+
+def _render_bot_trades_tab():
+    """Render the Bot Trades Overview tab with paper/live dropdown."""
+    import json as _json
+
+    log_path = os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "rigel_trade_log.json")
+    )
+
+    st.subheader("🤖 Rigel Bot — Trade Execution Overview")
+
+    # Load trade log
+    trades = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8") as f:
+                trades = _json.load(f)
+        except Exception as e:
+            st.warning(f"Could not load trade log: {e}")
+    
+    if not trades:
+        st.info("No trades logged yet. Run the Rigel bot to generate trade signals.")
+        st.caption(f"Log path: `{log_path}`")
+        return
+
+    trades_df = pd.DataFrame(trades)
+    trades_df["timestamp"] = pd.to_datetime(trades_df["timestamp"], errors="coerce")
+    trades_df = trades_df.sort_values("timestamp", ascending=False).reset_index(drop=True)
+
+    # Mode filter
+    all_modes = sorted(trades_df["mode"].dropna().unique().tolist())
+    col_mode, col_broker, col_refresh = st.columns([2, 2, 1])
+    with col_mode:
+        selected_modes = st.multiselect(
+            "Trading Mode",
+            options=all_modes,
+            default=all_modes,
+            key="bot_trades_mode_filter",
+        )
+    with col_broker:
+        all_brokers = sorted(trades_df["broker"].dropna().unique().tolist())
+        selected_brokers = st.multiselect(
+            "Broker",
+            options=all_brokers,
+            default=all_brokers,
+            key="bot_trades_broker_filter",
+        )
+    with col_refresh:
+        st.write("")
+        if st.button("🔄 Refresh", key="bot_trades_refresh"):
+            st.rerun()
+
+    filtered = trades_df[
+        trades_df["mode"].isin(selected_modes) & trades_df["broker"].isin(selected_brokers)
+    ]
+
+    # KPI row
+    total_trades = len(filtered)
+    submitted = (filtered["status"] == "submitted").sum()
+    simulated = (filtered["status"].isin(["simulated", "disabled"])).sum()
+    pairs = filtered["symbol"].nunique() if "symbol" in filtered.columns else 0
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Total Signals", total_trades)
+    kpi2.metric("Submitted Orders", int(submitted))
+    kpi3.metric("Simulated / Disabled", int(simulated))
+    kpi4.metric("Pairs Traded", pairs)
+
+    st.markdown("---")
+
+    # Per-pair signal breakdown
+    if "symbol" in filtered.columns and not filtered.empty:
+        st.markdown("#### 📊 Signals per Pair")
+        pair_counts = filtered.groupby(["symbol", "side"]).size().reset_index(name="count")
+        try:
+            import plotly.express as px
+            fig = px.bar(
+                pair_counts,
+                x="symbol",
+                y="count",
+                color="side",
+                barmode="group",
+                color_discrete_map={"BUY": "#14B8A6", "SELL": "#F59E0B"},
+                template="plotly_dark",
+                height=300,
+            )
+            fig.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+            st.plotly_chart(fig, use_container_width=True)
+        except ImportError:
+            st.dataframe(pair_counts, use_container_width=True)
+
+    # Recent trades table
+    st.markdown("#### 📋 Recent Trades")
+    display_cols = [c for c in ["timestamp", "symbol", "side", "mode", "broker", "status",
+                                "qty", "entry_price", "stop_price", "target_price",
+                                "confidence", "ml_prediction", "order_id"]
+                    if c in filtered.columns]
+    st.dataframe(
+        filtered[display_cols].head(50).reset_index(drop=True),
+        use_container_width=True,
+        height=400,
+    )
+
+    st.caption(f"Showing {min(50, len(filtered))} of {len(filtered)} entries | Log: `{log_path}`")
+
+
 def main():
     # Reload environment variables for cache-busting (ensures fresh values on every run)
     if ENV_RELOAD_AVAILABLE:
@@ -486,7 +594,7 @@ def main():
     if APPWRITE_SERVICES_AVAILABLE:
         st.header("⚡ Quick Actions")
         
-        action_tab1, action_tab2 = st.tabs(["💸 Transactions", "📊 Watchlist"])
+        action_tab1, action_tab2, action_tab3 = st.tabs(["💸 Transactions", "📊 Watchlist", "🤖 Bot Trades"])
         
         with action_tab1:
             col_tx1, col_tx2 = st.columns(2)
@@ -557,6 +665,9 @@ def main():
                     else:
                         st.warning("Please enter a User ID")
         
+        with action_tab3:
+            _render_bot_trades_tab()
+
         st.markdown("---")
     
     # ==========================================================================

@@ -572,6 +572,94 @@ class ProcryonBot:
             "platform": self.config.trading_platform,
         }
 
+    def place_trade(
+        self,
+        broker_name: str,
+        symbol: str,
+        action: str,
+        volume: float,
+        sl: Optional[float] = None,
+        tp: Optional[float] = None,
+        comment: str = "Procryon",
+    ) -> dict[str, Any]:
+        """Place a live trade via the MT5 connector for the given broker.
+
+        Returns a dict with keys: success, ticket, broker, symbol, action,
+        volume, error (on failure).
+        """
+        if not MT5_CONNECTOR_AVAILABLE or MT5Connector is None:
+            return {
+                "success": False,
+                "error": "MT5 connector not available",
+                "broker": broker_name,
+            }
+
+        credentials = self._resolve_mt5_credentials(broker_name)
+        if credentials["missing"]:
+            return {
+                "success": False,
+                "error": f"Missing credentials: {credentials['missing']}",
+                "broker": broker_name,
+            }
+
+        connector = MT5Connector(credentials["api_url"])
+        connector.request_timeout = self.config.request_timeout if hasattr(self.config, "request_timeout") else 20.0
+
+        if not connector.health_check():
+            return {
+                "success": False,
+                "error": "MT5 bridge health check failed",
+                "broker": broker_name,
+                "api_url": credentials["api_url"],
+            }
+
+        connected = connector.connect(
+            credentials["user"],
+            credentials["password"],
+            credentials["host"],
+            credentials["port"],
+        )
+        if not connected:
+            return {
+                "success": False,
+                "error": "MT5 login failed",
+                "broker": broker_name,
+                "api_url": credentials["api_url"],
+            }
+
+        try:
+            result = connector.place_trade(
+                symbol=symbol,
+                order_type=action.upper(),
+                volume=volume,
+                sl=sl,
+                tp=tp,
+                comment=comment,
+            )
+        finally:
+            connector.disconnect()
+
+        if result is None:
+            return {
+                "success": False,
+                "error": "place_trade returned None",
+                "broker": broker_name,
+                "symbol": symbol,
+                "action": action,
+                "volume": volume,
+            }
+
+        ticket = result.get("ticket") or result.get("order") or result.get("retcode")
+        return {
+            "success": bool(result.get("success", result.get("retcode") == 10009)),
+            "ticket": ticket,
+            "broker": broker_name,
+            "symbol": symbol,
+            "action": action,
+            "volume": volume,
+            "raw": result,
+        }
+
     def log_training_run(self, metrics: dict[str, float]) -> dict[str, Any]:
         if not MLFLOW_AVAILABLE or get_mlflow_tracking_uri is None:
             return {"logged": False, "reason": "mlflow unavailable"}

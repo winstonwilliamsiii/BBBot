@@ -2,6 +2,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const cron = require('node-cron');
+const yahooFinance = require('yahoo-finance2').default;
 const fs = require('fs');
 const mysql = require('mysql2/promise');
 const path = require('path');
@@ -460,18 +461,13 @@ async function fetchQuoteFromAlphaVantage(symbol) {
 // Simple Yahoo Finance quote fetch
 async function fetchQuoteFromYahoo(symbol) {
   try {
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
-    const { data } = await axios.get(url, {
-      timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
-    const q = data.quoteResponse.result[0];
+    const q = await yahooFinance.quote(symbol, {}, { validateResult: false });
     if (!q) return null;
     return {
       symbol: q.symbol,
       price: q.regularMarketPrice,
       changePercent: q.regularMarketChangePercent,
-      currency: q.currency
+      currency: q.currency || 'USD'
     };
   } catch (err) {
     console.error(`Quote error ${symbol}:`, err.message);
@@ -637,7 +633,11 @@ async function runCombinedAlert() {
 
     const universeLabel = universeContext.universe || 'Configured Universe';
     const content = `${universeContext.botName || ALERT_BOT} | ${universeLabel} Alerts`;
-    const embeds = [
+    const totalDataPoints = gainers.length + losers.length;
+    const dataQualityWarning = totalDataPoints === 0
+      ? [{ title: '⚠️ Data Provider Warning', description: 'All market data sources failed (Tiingo 403, AlphaVantage DNS, Yahoo fallback). Quotes unavailable — check API keys and network.', color: 16776960 }]
+      : [];
+    const embeds = [...dataQualityWarning,
       {
         title: `Top Gainers | ${universeLabel}`,
         description:

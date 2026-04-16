@@ -18,10 +18,29 @@ function New-AlertTasks {
         exit 1
     }
 
-    $taskCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$runner`""
+    $action = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$runner`""
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -StartWhenAvailable `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+        -MultipleInstances IgnoreNew
 
     foreach ($schedule in $schedules) {
-        schtasks /create /tn $schedule.Name /tr $taskCommand /sc weekly /d MON,TUE,WED,THU,FRI /st $schedule.Time /f | Out-Host
+        $trigger = New-ScheduledTaskTrigger -Weekly `
+            -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday `
+            -At $schedule.Time
+
+        Register-ScheduledTask `
+            -TaskName $schedule.Name `
+            -Action $action `
+            -Trigger $trigger `
+            -Settings $settings `
+            -RunLevel Highest `
+            -Force | Out-Null
+
+        Write-Host "  ✓ $($schedule.Name) @ $($schedule.Time) (StartWhenAvailable=true)" -ForegroundColor Cyan
     }
 
     Write-Host "Created/updated alert tasks successfully." -ForegroundColor Green

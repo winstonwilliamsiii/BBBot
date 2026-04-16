@@ -1,0 +1,40 @@
+{
+  "ticker": "HIMS",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": 0.9156894396954463,
+    "average_return": 0.009156894396954463,
+    "lookback": 20,
+    "latest_price": 162.25,
+    "signal": true
+  },
+  "fundamental": {
+    "score": 0.0,
+    "forward_pe": null,
+    "return_on_equity": null,
+    "revenue_growth": null,
+    "operating_margin": null,
+    "roe_component": 0.0,
+    "growth_component": 0.0,
+    "margin_component": 0.0,
+    "pe_component": 0.0
+  },
+  "technical": {
+    "score": 1.0,
+    "short_sma": 151.59722222222223,
+    "long_sma": 139.40277777777777,
+    "signal": true,
+    "short_window": 18,
+    "long_window": 36
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 0,
+    "method": "none"
+  },
+  "latest_price": 162.25,
+  "composite_score": 0.5705,
+  "buy_threshold": 0.15,
+  "action": "BUY"
+}

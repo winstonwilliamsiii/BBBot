@@ -79,12 +79,9 @@ class MT5Connector:
         self.session = requests.Session()
         self.account: Optional[MT5Account] = None
         self.last_connect_error: str = ""
-        self.request_timeout = float(os.getenv("MT5_REQUEST_TIMEOUT", "10"))
+        self.request_timeout = float(os.getenv("MT5_REQUEST_TIMEOUT", "20"))
         self.connect_retries = int(os.getenv("MT5_CONNECT_RETRIES", "3"))
-        self.connect_retry_delay = float(
-            os.getenv("MT5_CONNECT_RETRY_DELAY", "1.0")
-        )
-
+        self.connect_retry_delay = float(os.getenv("MT5_CONNECT_RETRY_DELAY", "1.0"))
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         """Execute HTTP request with retry for transient network failures."""
         timeout = kwargs.pop('timeout', self.request_timeout)
@@ -215,9 +212,9 @@ class MT5Connector:
     def disconnect(self) -> bool:
         """Disconnect from MT5 account"""
         try:
-            response = self._request_with_fallback('GET', ['/Disconnect'], timeout=5)
+            response = self._request_with_fallback('POST', ['/disconnect'], timeout=5)
             if response.status_code == 404:
-                response = self._request_with_fallback('POST', ['/disconnect'], timeout=5)
+                response = self._request_with_fallback('GET', ['/Disconnect'], timeout=5)
             response.raise_for_status()
             
             self.connected = False
@@ -241,7 +238,7 @@ class MT5Connector:
             return None
             
         try:
-            response = self._request_with_fallback('GET', ['/AccountInfo', '/account'], timeout=5)
+            response = self._request_with_fallback('GET', ['/account', '/AccountInfo'], timeout=5)
             response.raise_for_status()
             
             return response.json()
@@ -262,7 +259,7 @@ class MT5Connector:
             return None
             
         try:
-            response = self._request_with_fallback('GET', ['/Positions', '/positions'], timeout=5)
+            response = self._request_with_fallback('GET', ['/positions', '/Positions'], timeout=5)
             response.raise_for_status()
             
             data = response.json()
@@ -548,13 +545,13 @@ class MT5Connector:
             True if server is healthy, False otherwise
         """
         try:
-            response = self._request_with_fallback('GET', ['/Health', '/health'], timeout=3)
+            response = self._request_with_fallback('GET', ['/health', '/Health'], timeout=3)
             response.raise_for_status()
             
             result = response.json()
             status = str(result.get('status', '')).lower()
             mt5_initialized = result.get('mt5_initialized', True)
-            return status in {'healthy', 'ok'} and mt5_initialized
+            return status in {'healthy', 'ok', 'running'} and bool(mt5_initialized)
             
         except Exception as e:
             logger.error(f"Health check failed: {e}")

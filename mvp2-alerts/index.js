@@ -538,6 +538,19 @@ async function fetchTopLosers(limit = 5) {
   }
 }
 
+// ---------- Universe-based gainers/losers (ranked from bot universe quotes) ----------
+async function fetchUniverseGainersLosers(symbols, gainLimit = 5, lossLimit = 5) {
+  const results = await Promise.all(symbols.map(s => fetchQuote(s)));
+  const valid = results.filter(q => q && Number.isFinite(Number(q.changePercent)));
+  if (valid.length === 0) {
+    return { gainers: [], losers: [] };
+  }
+  valid.sort((a, b) => Number(b.changePercent) - Number(a.changePercent));
+  const gainers = valid.slice(0, gainLimit);
+  const losers = valid.slice(-lossLimit).reverse();
+  return { gainers, losers };
+}
+
 // ---------- Portfolio alerts (>5% move) ----------
 async function portfolioAlerts(portfolioSymbols, thresholdPct = 5) {
   const alerts = [];
@@ -587,21 +600,25 @@ async function runCombinedAlert() {
       'portfolio source'
     );
     const portfolio = selectPortfolioSymbolsForRun(universePortfolio);
-    const [gainersRaw, losersRaw, portfolioMovesRaw] = await Promise.all([
-      fetchTopGainers(5),
-      fetchTopLosers(5),
-      portfolioAlerts(portfolio, 5)
-    ]);
-    const gainers = filterQuotesByBotUniverse(
-      gainersRaw,
-      universeContext,
-      'top gainers'
-    );
-    const losers = filterQuotesByBotUniverse(
-      losersRaw,
-      universeContext,
-      'top losers'
-    );
+    const universeSymbols = universeContext.allowedSymbols.size > 0
+      ? Array.from(universeContext.allowedSymbols)
+      : [];
+
+    let gainers, losers;
+    if (universeSymbols.length > 0) {
+      // Fetch and rank quotes directly from the bot universe (avoids empty filter on global screener)
+      const g = await fetchUniverseGainersLosers(universeSymbols, 5, 5);
+      gainers = g.gainers;
+      losers = g.losers;
+      console.log(`✓ Universe gainers/losers: ${gainers.length} gainers, ${losers.length} losers from ${universeSymbols.length} symbols`);
+    } else {
+      // Fallback to global Yahoo screener + universe filter
+      const [gainersRaw, losersRaw] = await Promise.all([fetchTopGainers(5), fetchTopLosers(5)]);
+      gainers = filterQuotesByBotUniverse(gainersRaw, universeContext, 'top gainers');
+      losers = filterQuotesByBotUniverse(losersRaw, universeContext, 'top losers');
+    }
+
+    const portfolioMovesRaw = await portfolioAlerts(portfolio, 5);
     const portfolioMoves = filterQuotesByBotUniverse(
       portfolioMovesRaw,
       universeContext,

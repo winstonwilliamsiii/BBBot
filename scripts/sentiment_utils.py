@@ -8,20 +8,14 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 
-try:
-    import mlflow
-except ImportError:
-    mlflow = None
+mlflow = None  # loaded lazily in log_to_mlflow() to avoid blocking startup
 
 try:
     import mysql.connector
 except ImportError:
     mysql = None
 
-try:
-    from transformers import pipeline
-except ImportError:
-    pipeline = None
+pipeline = None  # loaded lazily in _get_classifier() to avoid blocking startup
 
 
 logger = logging.getLogger(__name__)
@@ -104,11 +98,15 @@ class HeadlineSentimentService:
     def _get_classifier(self):
         if self._classifier is not None:
             return self._classifier
-        if pipeline is None:
+        try:
+            from transformers import pipeline as _pipeline
+        except ImportError:
+            _pipeline = None
+        if _pipeline is None:
             raise RuntimeError(
                 "transformers is not installed for sentiment analysis"
             )
-        self._classifier = pipeline(
+        self._classifier = _pipeline(
             "sentiment-analysis",
             model=self.model_name,
         )
@@ -181,27 +179,29 @@ class HeadlineSentimentService:
         analysis: Dict[str, Any],
         tickers: Sequence[str],
     ) -> None:
-        if mlflow is None:
+        try:
+            import mlflow as _mlflow
+        except ImportError:
             return
         try:
-            mlflow.set_tracking_uri(
+            _mlflow.set_tracking_uri(
                 os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
             )
-            with mlflow.start_run(
+            with _mlflow.start_run(
                 run_name=f"{self.source_name}-headline-sentiment"
             ):
-                mlflow.log_param("source", self.source_name)
-                mlflow.log_param("tickers", ",".join(tickers))
-                mlflow.log_param(
+                _mlflow.log_param("source", self.source_name)
+                _mlflow.log_param("tickers", ",".join(tickers))
+                _mlflow.log_param(
                     "sentiment_label",
                     analysis["sentiment_label"],
                 )
-                mlflow.log_param("model_name", analysis["model_name"])
-                mlflow.log_metric(
+                _mlflow.log_param("model_name", analysis["model_name"])
+                _mlflow.log_metric(
                     f"{self.source_name}_sentiment_score",
                     float(analysis["sentiment_score"]),
                 )
-                mlflow.log_metric(
+                _mlflow.log_metric(
                     f"{self.source_name}_confidence_score",
                     float(analysis["confidence_score"]),
                 )

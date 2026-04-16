@@ -40,6 +40,35 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _notify_discord_trade(
+    side: str,
+    symbol: str,
+    qty: float,
+    broker: Optional[str] = None,
+    order_id: Optional[str] = None,
+) -> None:
+    webhook = (
+        os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+        or os.getenv("DISCORD_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
+    )
+    if not webhook:
+        return
+    color = 3066993 if str(side).lower() == "buy" else 15158332
+    broker_label = f" via {broker}" if broker else ""
+    order_label = f" | order: {order_id}" if order_id else ""
+    embed = {
+        "title": f"🤖 Triton Trade: {side.upper()} {symbol}",
+        "description": f"Qty: {qty}{broker_label}{order_label}",
+        "color": color,
+    }
+    try:
+        requests.post(webhook, json={"embeds": [embed]}, timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Discord trade notification failed: %s", exc)
+
+
 def _as_bool(value: Optional[str], default: bool) -> bool:
     if value is None:
         return default
@@ -610,6 +639,7 @@ class TritonBot:
             )
             preview["status"] = "submitted"
             preview["order_id"] = getattr(order, "id", None)
+            _notify_discord_trade(normalized_action, symbol, qty, "alpaca", preview["order_id"])
             return preview
 
         if normalized_broker == "ibkr":
@@ -634,6 +664,7 @@ class TritonBot:
             )
             if connected_here:
                 ib_client.disconnect()
+            _notify_discord_trade(normalized_action, symbol, qty, "ibkr", preview["order_id"])
             return preview
 
         raise ValueError("Broker must be 'alpaca' or 'ibkr'")

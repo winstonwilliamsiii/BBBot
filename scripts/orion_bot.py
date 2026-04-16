@@ -346,6 +346,33 @@ def _execute_broker_order(
             "execution_venue": settings.execution_venue,
         }
 
+    if effective_mode == "paper":
+        import uuid as _uuid
+        from datetime import timezone as _tz
+        ticket = int(str(_uuid.uuid4().int)[:9])
+        ts = datetime.now(_tz.utc).isoformat()
+        logger.info(
+            "Orion PAPER order: %s %s->%s vol=%s url=%s user=%s",
+            signal, selected_symbol, execution_symbol,
+            settings.volume_lots, mt5_api_url, user,
+        )
+        return {
+            "enabled": True,
+            "attempted": True,
+            "mode": "paper",
+            "status": "submitted",
+            "detail": (
+                f"Paper order logged (no live execution): "
+                f"{signal} {selected_symbol}->{execution_symbol} "
+                f"vol={settings.volume_lots}"
+            ),
+            "mt5_api_url": mt5_api_url,
+            "execution_symbol": execution_symbol,
+            "selected_symbol": selected_symbol,
+            "paper_ticket": ticket,
+            "paper_timestamp": ts,
+        }
+
     if not connector.connect(
         user=user,
         password=password,

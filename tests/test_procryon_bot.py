@@ -13,6 +13,8 @@ def test_procryon_config_from_env_prefers_control_center_and_remote_mt5(
         "AXI_MT5_API_URL",
         "https://example-mt5-bridge.invalid",
     )
+    # Ensure real .env FTMO value doesn't override the fallback assertion
+    monkeypatch.delenv("FTMO_MT5_API_URL", raising=False)
 
     config = ProcryonConfig.from_env()
     ftmo_credentials = ProcryonBot(config)._resolve_mt5_credentials("ftmo")

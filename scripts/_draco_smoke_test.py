@@ -84,17 +84,17 @@ check("GET /healthz → status ok", body, status, required_keys=["status"])
 print("\n[2] Draco health")
 body, status = get("/draco/healthz", timeout=5)
 check("GET /draco/healthz → fields present", body, status,
-      required_keys=["status", "trading_enabled", "broker"])
+      required_keys=["status", "trading_enabled", "dependencies"])
 
 # 3. Technical (warm-up may take a while due to yfinance)
 print(f"\n[3] Technical endpoint — ticker={TICKER} (up to 120s)")
 body, status = get(f"/draco/technical?ticker={TICKER}", timeout=120)
-check("GET /draco/technical → rsi present", body, status, required_keys=["ticker", "rsi"])
+check("GET /draco/technical → technical payload present", body, status, required_keys=["ticker", "rsi_14"])
 
 # 4. Fundamentals
 print(f"\n[4] Fundamentals — ticker={TICKER}")
-body, status = get(f"/draco/fundamentals?ticker={TICKER}", timeout=60)
-check("GET /draco/fundamentals → ticker present", body, status, required_keys=["ticker"])
+body, status = get(f"/draco/fundamental?ticker={TICKER}", timeout=60)
+check("GET /draco/fundamental → ticker present", body, status, required_keys=["ticker"])
 
 # 5. Forecast
 print(f"\n[5] Forecast — ticker={TICKER}")
@@ -106,13 +106,29 @@ if "model" in body:
 
 # 6. Sentiment (textblob absent → should return neutral or fallback)
 print(f"\n[6] Sentiment — headline")
-payload2 = {"headlines": ["Apple reports record revenue", "Stock market falls sharply"]}
+payload2 = {
+    "ticker": TICKER,
+    "news_headlines": [
+        "Apple reports record revenue",
+        "Stock market falls sharply",
+    ],
+}
 body, status = post("/draco/sentiment", payload2, timeout=30)
-check("POST /draco/sentiment → score present", body, status, required_keys=["score"])
+check(
+    "POST /draco/sentiment → sentiment present",
+    body,
+    status,
+    required_keys=["ticker", "sentiment_score"],
+)
 
 # 7. Trade (dry run — DRACO_ENABLE_TRADING not set)
 print("\n[7] Trade (dry run expected)")
-trade_payload = {"ticker": TICKER, "side": "buy", "qty": 1}
+trade_payload = {
+    "ticker": TICKER,
+    "side": "buy",
+    "qty": 1,
+    "broker": "alpaca",
+}
 body, status = post("/draco/trade", trade_payload, timeout=15)
 check("POST /draco/trade → dry_run status", body, status,
       required_keys=["status"])

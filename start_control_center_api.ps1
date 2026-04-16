@@ -18,5 +18,14 @@ if (-not (Test-Path $PythonPath)) {
     exit 1
 }
 
+# Kill any existing process holding the port before binding
+$netstatOutput = netstat -ano | Select-String ":5001\s.*LISTENING"
+if ($netstatOutput) {
+    $pid = ($netstatOutput -split '\s+')[-1]
+    Write-Host "Stopping existing process on port $Port (PID $pid)..." -ForegroundColor Yellow
+    taskkill /PID $pid /F 2>$null
+    Start-Sleep -Milliseconds 800
+}
+
 Write-Host "Starting Bentley FastAPI Control Center on http://localhost:$Port ..." -ForegroundColor Cyan
 & $PythonPath -m uvicorn Main:app --host $ApiHost --port $Port

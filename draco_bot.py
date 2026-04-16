@@ -1,3 +1,4 @@
+-- Active: 1737943595894@@127.0.0.1@3306@mansa_bot
 from __future__ import annotations
 
 import json
@@ -257,49 +258,100 @@ def get_price_history(
 
     history = None
     for candidate_period, candidate_interval in attempts:
-        history = yfinance_module.download(
-            symbol,
-            period=candidate_period,
-            interval=candidate_interval,
-            auto_adjust=False,
-            progress=False,
-            threads=False,
-        )
+        try:
+            history = yfinance_module.download(
+                symbol,
+                period=candidate_period,
+                interval=candidate_interval,
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                "yfinance download failed for %s (%s/%s): %s",
+                symbol,
+                candidate_period,
+                candidate_interval,
+                exc,
+            )
+            history = None
         if history is not None and not history.empty:
             return history
 
-    ticker_history = yfinance_module.Ticker(symbol).history(
-        period=requested_period,
-        interval=requested_interval,
-        auto_adjust=False,
-    )
+    try:
+        ticker_history = yfinance_module.Ticker(symbol).history(
+            period=requested_period,
+            interval=requested_interval,
+            auto_adjust=False,
+        )
+    except Exception as exc:
+        logger.warning("Ticker.history failed for %s: %s", symbol, exc)
+        ticker_history = None
     if ticker_history is not None and not ticker_history.empty:
         return ticker_history
 
-    if history is None or history.empty:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No market data returned for {symbol}",
-        )
-    return history
+    raise HTTPException(
+        status_code=404,
+        detail=f"No market data returned for {symbol}",
+    )
+
+
+def _ticker_fast_info(symbol: str) -> dict[str, Any]:
+    yfinance_module = _require_package("yfinance", yf)
+    try:
+        fast_info = getattr(yfinance_module.Ticker(symbol), "fast_info", {})
+        return dict(fast_info or {})
+    except Exception as exc:
+        logger.warning("Ticker.fast_info failed for %s: %s", symbol, exc)
+        return {}
+
+
+def _technical_quote_fallback(ticker: str) -> dict[str, Any]:
+    symbol = _sanitize_ticker(ticker)
+    fast_info = _ticker_fast_info(symbol)
+    last_price = fast_info.get("lastPrice") or fast_info.get("last_price")
+    previous_close = (
+        fast_info.get("previousClose")
+        or fast_info.get("previous_close")
+        or last_price
+    )
+    return {
+        "timestamp": None,
+        "close": float(previous_close) if _is_finite_number(previous_close) else None,
+        "sma_20": None,
+        "sma_50": None,
+        "rsi_14": None,
+        "ticker": symbol,
+        "data_source": "quote_fallback",
+    }
 
 
 def fundamental_analysis(ticker: str) -> dict[str, Any]:
     yfinance_module = _require_package("yfinance", yf)
     symbol = _sanitize_ticker(ticker)
-    info = yfinance_module.Ticker(symbol).info or {}
+    try:
+        info = yfinance_module.Ticker(symbol).info or {}
+    except Exception as exc:
+        logger.warning("Ticker.info failed for %s: %s", symbol, exc)
+        info = {}
+
+    fast_info = _ticker_fast_info(symbol)
+    currency = info.get("currency") or fast_info.get("currency")
+    market_cap = info.get("marketCap") or fast_info.get("marketCap")
     return {
         "ticker": symbol,
-        "short_name": info.get("shortName"),
+        "short_name": info.get("shortName") or info.get("longName") or symbol,
         "sector": info.get("sector"),
         "industry": info.get("industry"),
-        "currency": info.get("currency"),
+        "currency": currency,
         "forward_pe": info.get("forwardPE"),
-        "market_cap": info.get("marketCap"),
+        "market_cap": market_cap,
         "dividend_yield": info.get("dividendYield"),
         "profit_margins": info.get("profitMargins"),
         "return_on_equity": info.get("returnOnEquity"),
         "beta": info.get("beta"),
+        "data_source": "ticker_info" if info else "fast_info_fallback",
     }
 
 
@@ -528,6 +580,24 @@ def connect_ibkr() -> Any:
     return ib
 
 
+def _notify_discord_trade(bot_name: str, side: str, qty: float, result: dict[str, Any], order_type: str = "market", limit_price: Any = None) -> None:
+    """Fire a Discord Bot_Talk notification. Never raises."""
+    try:
+        from frontend.utils.discord_alpaca import send_discord_trade_notification
+        order_id = result.get("order_id")
+        id_suffix = f" | order_id: {order_id}" if order_id else ""
+        send_discord_trade_notification(
+            symbol=str(result.get("ticker", "")),
+            side=side,
+            qty=qty,
+            order_type=order_type,
+            limit_price=limit_price,
+            status=f"[{bot_name}] {result.get('status', 'submitted')}{id_suffix}",
+        )
+    except Exception:
+        pass
+
+
 def submit_trade(request: TradeRequest) -> dict[str, Any]:
     symbol = _sanitize_ticker(request.ticker)
 
@@ -565,13 +635,15 @@ def submit_trade(request: TradeRequest) -> dict[str, Any]:
                 detail=f"Alpaca order failed: {exc}",
             ) from exc
 
-        return {
+        result = {
             "status": "submitted",
             "broker": "alpaca",
             "ticker": symbol,
             "order_id": getattr(order, "id", None),
             "raw_status": getattr(order, "status", None),
         }
+        _notify_discord_trade("Draco", request.side, request.qty, result, request.order_type, request.limit_price)
+        return result
 
     ib_module = _require_package("ib_insync", ib_insync)
     ib = connect_ibkr()
@@ -592,12 +664,14 @@ def submit_trade(request: TradeRequest) -> dict[str, Any]:
         trade = ib.placeOrder(contract, order)
         status = getattr(getattr(trade, "orderStatus", None), "status", None)
         order_id = getattr(getattr(trade, "order", None), "orderId", None)
-        return {
+        result = {
             "status": status or "submitted",
             "broker": "ibkr",
             "ticker": symbol,
             "order_id": order_id,
         }
+        _notify_discord_trade("Draco", request.side, request.qty, result, request.order_type, request.limit_price)
+        return result
     except Exception as exc:
         raise HTTPException(
             status_code=502,
@@ -662,10 +736,16 @@ def get_fundamental(ticker: str = Query(...)) -> dict[str, Any]:
 
 @app.get("/technical")
 def get_technical(ticker: str = Query(...)) -> dict[str, Any]:
-    history = get_price_history(ticker, period="6mo", interval="1d")
-    result = technical_analysis(history)
-    result["ticker"] = _sanitize_ticker(ticker)
-    return result
+    try:
+        history = get_price_history(ticker, period="6mo", interval="1d")
+        result = technical_analysis(history)
+        result["ticker"] = _sanitize_ticker(ticker)
+        result["data_source"] = "price_history"
+        return result
+    except HTTPException as exc:
+        if exc.status_code in {404, 502}:
+            return _technical_quote_fallback(ticker)
+        raise
 
 
 @app.post("/sentiment")

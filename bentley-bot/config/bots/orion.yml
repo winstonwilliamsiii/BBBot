@@ -8,7 +8,7 @@ bot:
 
 execution:
   primary_client: mt5_client
-  venue: axi
+  venue: ftmo
   mode: paper
   enabled: true
   order_type: market

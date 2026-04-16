@@ -1,4 +1,3 @@
--- Active: 1737943595894@@127.0.0.1@3306@mansa_bot
 from __future__ import annotations
 
 import json

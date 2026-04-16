@@ -46,10 +46,12 @@ except (ImportError, OSError, RuntimeError, ValueError) as exc:
     TRITON_IMPORT_ERROR = str(exc)
 
 from draco_bot import app as draco_app
+from vega_bot import app as vega_app
 from frontend.components.ibkr_gateway_client import (
     GatewayConfig,
     IBKRGatewayClient,
 )
+from frontend.utils.discord_alpaca import send_discord_trade_notification as _discord_trade
 from scripts.webhook_ws import router as sentiment_router
 
 app = FastAPI(
@@ -64,18 +66,41 @@ app = FastAPI(
 API_VERSION = "0.2.0"
 
 _BROKER_MODES_PATH = os.path.join(
-    os.path.dirname(__file__), "config", "broker_modes.json"
+    os.path.abspath(os.path.dirname(__file__) or "."), "config", "broker_modes.json"
 )
 
 
 def _is_bot_active(bot_name: str) -> bool:
     """Return True if *bot_name* is marked active in config/broker_modes.json."""
     try:
-        with open(_BROKER_MODES_PATH, "r", encoding="utf-8") as fh:
+        with open(_BROKER_MODES_PATH, "r", encoding="utf-8-sig") as fh:
             data = json.load(fh)
         return bool(data.get("active_bots", {}).get(bot_name, False))
     except (OSError, json.JSONDecodeError, KeyError):
         return False
+
+
+def _notify_bot_trade(bot_name: str, trade_result: dict[str, Any]) -> None:
+    """Send a Discord Bot_Talk notification for a submitted or simulated bot trade.
+
+    Never raises — Discord failure must not break the trade response.
+    """
+    status = trade_result.get("status", "")
+    if status not in ("submitted", "simulated", "dry_run"):
+        return
+    try:
+        side = trade_result.get("action") or trade_result.get("side") or ""
+        order_id = trade_result.get("order_id")
+        id_suffix = f" | order_id: {order_id}" if order_id else ""
+        _discord_trade(
+            symbol=str(trade_result.get("ticker", "")),
+            side=str(side),
+            qty=float(trade_result.get("qty", 0)),
+            order_type="market",
+            status=f"[{bot_name}] {status}{id_suffix}",
+        )
+    except Exception:
+        pass
 
 
 class IBKROrderRequest(BaseModel):
@@ -462,6 +487,7 @@ async def healthz():
     return await health()
 
 
+
 @app.get("/status")
 @app.get("/api/status")
 async def status():
@@ -728,6 +754,7 @@ async def hydra_trade(payload: dict[str, Any]):
             analysis=last_analysis,
             analysis_id=analysis_id,
         )
+        _notify_bot_trade("Hydra", trade)
         return trade
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -804,13 +831,15 @@ async def triton_trade(payload: TritonTradeRequest):
     if TritonBot is None:
         raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
     try:
-        return get_triton_bot().execute_trade(
+        result = get_triton_bot().execute_trade(
             payload.broker,
             payload.ticker,
             payload.action,
             qty=payload.qty,
             dry_run=payload.dry_run,
         )
+        _notify_bot_trade("Triton", result)
+        return result
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -824,6 +853,7 @@ async def triton_configure(payload: TritonConfigureRequest):
 
 app.include_router(sentiment_router)
 app.mount("/draco", draco_app)
+app.mount("/vega", vega_app)
 
 
 @app.get("/ibkr/health")

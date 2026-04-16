@@ -514,6 +514,12 @@ def _execute_broker_order(
                 "selected_symbol": selected_symbol,
             }
 
+        _notify_discord_trade(
+            signal,
+            execution_symbol,
+            settings.volume_lots,
+            order_id=result.get("ticket") if isinstance(result, dict) else None,
+        )
         return {
             "enabled": True,
             "attempted": True,

@@ -21,9 +21,9 @@ if (-not (Test-Path $PythonPath)) {
 # Kill any existing process holding the port before binding
 $netstatOutput = netstat -ano | Select-String ":5001\s.*LISTENING"
 if ($netstatOutput) {
-    $pid = ($netstatOutput -split '\s+')[-1]
-    Write-Host "Stopping existing process on port $Port (PID $pid)..." -ForegroundColor Yellow
-    taskkill /PID $pid /F 2>$null
+    $procId = ($netstatOutput -split '\s+')[-1]
+    Write-Host "Stopping existing process on port $Port (PID $procId)..." -ForegroundColor Yellow
+    taskkill /PID $procId /F 2>$null
     Start-Sleep -Milliseconds 800
 }
 

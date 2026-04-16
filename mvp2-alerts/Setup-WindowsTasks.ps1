@@ -40,7 +40,7 @@ function New-AlertTasks {
             -RunLevel Highest `
             -Force | Out-Null
 
-        Write-Host "  ✓ $($schedule.Name) @ $($schedule.Time) (StartWhenAvailable=true)" -ForegroundColor Cyan
+        Write-Host "  [OK] $($schedule.Name) @ $($schedule.Time) (StartWhenAvailable=true)" -ForegroundColor Cyan
     }
 
     Write-Host "Created/updated alert tasks successfully." -ForegroundColor Green

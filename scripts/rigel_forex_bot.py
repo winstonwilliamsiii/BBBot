@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from enum import Enum
 import pandas as pd
 import numpy as np
+import requests
 from alpaca_trade_api import REST, TimeFrame
 from dotenv import load_dotenv
 
@@ -51,6 +52,34 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def _notify_discord_trade(
+    side: str,
+    symbol: str,
+    qty: float,
+    broker: str = "unknown",
+    order_id: Optional[str] = None,
+) -> None:
+    webhook = (
+        os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+        or os.getenv("DISCORD_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
+    )
+    if not webhook:
+        return
+    color = 3066993 if str(side).lower() == "buy" else 15158332
+    order_label = f" | order: {order_id}" if order_id else ""
+    embed = {
+        "title": f"🤖 Rigel Trade: {side.upper()} {symbol}",
+        "description": f"Qty: {qty} via {broker}{order_label}",
+        "color": color,
+    }
+    try:
+        requests.post(webhook, json={"embeds": [embed]}, timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Discord trade notification failed: %s", exc)
 
 
 # ============================================================================
@@ -999,6 +1028,7 @@ class RigelForexBot:
                         "MT5 order placed: %s",
                         result.get("ticket", "unknown"),
                     )
+                    _notify_discord_trade(side, mt5_symbol, lot_size, "mt5", str(result.get("ticket", "")) or None)
                     return "submitted"
                 else:
                     logger.error("Failed to execute MT5 trade: %s", result)
@@ -1024,6 +1054,7 @@ class RigelForexBot:
             )
             
             logger.info(f"Order placed: {order.id}")
+            _notify_discord_trade(side, signal.symbol, position_size, "alpaca", str(order.id))
             return "submitted"
             
         except Exception as e:

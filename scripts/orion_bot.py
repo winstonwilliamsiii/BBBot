@@ -14,6 +14,7 @@ from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
+import requests
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -62,6 +63,33 @@ else:
 
 logger = logging.getLogger(__name__)
 load_dotenv(override=False)
+
+
+def _notify_discord_trade(
+    side: str,
+    symbol: str,
+    volume: float,
+    order_id: Any = None,
+) -> None:
+    webhook = (
+        os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+        or os.getenv("DISCORD_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
+    )
+    if not webhook:
+        return
+    color = 3066993 if str(side).lower() == "buy" else 15158332
+    order_label = f" | ticket: {order_id}" if order_id else ""
+    embed = {
+        "title": f"🤖 Orion Trade: {side.upper()} {symbol}",
+        "description": f"Volume: {volume} lots via MT5{order_label}",
+        "color": color,
+    }
+    try:
+        requests.post(webhook, json={"embeds": [embed]}, timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Discord trade notification failed: %s", exc)
 
 
 def _normalize_close_frame(data: pd.DataFrame) -> pd.DataFrame:

@@ -46,6 +46,30 @@ def _notify_discord_trade(
     qty: float,
     broker: Optional[str] = None,
     order_id: Optional[str] = None,
+    mode: str = "paper",
+) -> None:
+    try:
+        from frontend.utils.discord_notify import notify_trade
+        notify_trade(
+            bot_name="Triton",
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            status="submitted",
+            mode=mode,
+            ticket=order_id,
+            broker=broker or "",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Discord trade notification failed: %s", exc)
+
+
+def _notify_discord_trade_triton_legacy(
+    side: str,
+    symbol: str,
+    qty: float,
+    broker: Optional[str] = None,
+    order_id: Optional[str] = None,
 ) -> None:
     webhook = (
         os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()

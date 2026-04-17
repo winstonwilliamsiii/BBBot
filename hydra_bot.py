@@ -46,25 +46,20 @@ def _notify_discord_trade(
     qty: float,
     broker: Optional[str] = None,
     order_id: Optional[str] = None,
+    mode: str = "paper",
 ) -> None:
-    webhook = (
-        os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
-        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-        or os.getenv("DISCORD_WEBHOOK", "").strip()
-        or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
-    )
-    if not webhook:
-        return
-    color = 3066993 if str(side).lower() == "buy" else 15158332
-    broker_label = f" via {broker}" if broker else ""
-    order_label = f" | order: {order_id}" if order_id else ""
-    embed = {
-        "title": f"🤖 Hydra Trade: {side.upper()} {symbol}",
-        "description": f"Qty: {qty}{broker_label}{order_label}",
-        "color": color,
-    }
     try:
-        requests.post(webhook, json={"embeds": [embed]}, timeout=5)
+        from frontend.utils.discord_notify import notify_trade
+        notify_trade(
+            bot_name="Hydra",
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            status="submitted",
+            mode=mode,
+            ticket=order_id,
+            broker=broker or "",
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Discord trade notification failed: %s", exc)
 

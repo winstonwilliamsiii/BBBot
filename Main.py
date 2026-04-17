@@ -51,7 +51,8 @@ from frontend.components.ibkr_gateway_client import (
     GatewayConfig,
     IBKRGatewayClient,
 )
-from frontend.utils.discord_alpaca import send_discord_trade_notification as _discord_trade
+# discord_alpaca kept for backwards-compat with any direct callers in scripts/
+# _discord_trade alias removed; _notify_bot_trade now uses discord_notify
 from scripts.webhook_ws import router as sentiment_router
 
 app = FastAPI(
@@ -89,15 +90,17 @@ def _notify_bot_trade(bot_name: str, trade_result: dict[str, Any]) -> None:
     if status not in ("submitted", "simulated", "dry_run"):
         return
     try:
-        side = trade_result.get("action") or trade_result.get("side") or ""
-        order_id = trade_result.get("order_id")
-        id_suffix = f" | order_id: {order_id}" if order_id else ""
-        _discord_trade(
+        from frontend.utils.discord_notify import notify_trade
+        side = str(trade_result.get("action") or trade_result.get("side") or "")
+        notify_trade(
+            bot_name=bot_name,
             symbol=str(trade_result.get("ticker", "")),
-            side=str(side),
+            side=side,
             qty=float(trade_result.get("qty", 0)),
-            order_type="market",
-            status=f"[{bot_name}] {status}{id_suffix}",
+            status=status,
+            mode=str(trade_result.get("mode", "paper")),
+            ticket=str(trade_result.get("order_id", "")) or None,
+            broker=str(trade_result.get("broker", "")),
         )
     except Exception:
         pass
@@ -854,6 +857,234 @@ async def triton_configure(payload: TritonConfigureRequest):
 app.include_router(sentiment_router)
 app.mount("/draco", draco_app)
 app.mount("/vega", vega_app)
+
+# ── Cosmic Signal Router ──────────────────────────────────────────────────────
+try:
+    from frontend.utils.cosmic_signal import (
+        compute_cosmic_score,
+        get_engine as _get_cosmic_engine,
+
+        HEAD_MOMENTUM, HEAD_RSI, HEAD_SENTIMENT, HEAD_VOLATILITY,
+        HEAD_LIQUIDITY, HEAD_ML_CONF, HEAD_SPREAD, HEAD_MULTIFRAME,
+    )
+    COSMIC_AVAILABLE = True
+except Exception as _cosmic_exc:
+    COSMIC_AVAILABLE = False
+    _COSMIC_IMPORT_ERROR = str(_cosmic_exc)
+
+# Known bots and their strategy metadata
+_BOT_SIGNAL_META: dict[str, dict] = {
+    "Titan":    {"fund": "Mansa Tech",         "strategy": "CNN Deep Learning"},
+    "Vega":     {"fund": "Mansa Retail",        "strategy": "MTF-ML"},
+    "Rigel":    {"fund": "Mansa FOREX",         "strategy": "Mean Reversion"},
+    "Dogon":    {"fund": "Mansa ETF",           "strategy": "Portfolio Optimizer"},
+    "Orion":    {"fund": "Mansa Minerals",      "strategy": "GoldRSI Strategy"},
+    "Draco":    {"fund": "Mansa Money Bag",     "strategy": "Sentiment Analyzer"},
+    "Altair":   {"fund": "Mansa AI",            "strategy": "News Trading"},
+    "Procryon": {"fund": "Mansa Crypto Fund",   "strategy": "Crypto Spread Arbitrage"},
+    "Hydra":    {"fund": "Mansa Health",        "strategy": "Momentum Strategy"},
+    "Triton":   {"fund": "Mansa Transportation", "strategy": "Pending"},
+    "Dione":    {"fund": "Mansa Options",       "strategy": "Put Call Parity"},
+    "Cephei":   {"fund": "Mansa Cephei",        "strategy": "Volatility Arb"},
+    "Rhea":     {"fund": "Mansa ADI",           "strategy": "Intra-Day / Swing"},
+    "Jupicita": {"fund": "Mansa Smalls",        "strategy": "Pairs Trading"},
+}
+
+_VALID_BOTS = sorted(_BOT_SIGNAL_META.keys())
+
+
+class CosmicEvaluateRequest(BaseModel):
+    """Input payload for POST /signals/evaluate."""
+    context:  dict[str, Any] = Field(default_factory=dict)
+    symbol:   Optional[str] = None
+    bot_name: Optional[str] = None
+    mode:     str = "paper"
+
+
+@app.get("/signals/heads")
+@app.get("/api/signals/heads")
+async def signals_heads_info():
+    """Return the list of analytic heads, their default weights, and purpose."""
+    if not COSMIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Cosmic signal engine unavailable")
+    from frontend.utils.cosmic_signal import DEFAULT_WEIGHTS
+    heads = [
+        {"head": HEAD_MOMENTUM,   "weight": DEFAULT_WEIGHTS[HEAD_MOMENTUM],   "purpose": "Short-term price momentum direction"},
+        {"head": HEAD_RSI,        "weight": DEFAULT_WEIGHTS[HEAD_RSI],        "purpose": "RSI overbought/oversold reversal signal"},
+        {"head": HEAD_SENTIMENT,  "weight": DEFAULT_WEIGHTS[HEAD_SENTIMENT],  "purpose": "News/market sentiment overlay"},
+        {"head": HEAD_VOLATILITY, "weight": DEFAULT_WEIGHTS[HEAD_VOLATILITY], "purpose": "Bollinger bandwidth / volatility gate"},
+        {"head": HEAD_LIQUIDITY,  "weight": DEFAULT_WEIGHTS[HEAD_LIQUIDITY],  "purpose": "Cash-to-equity liquidity guardrail"},
+        {"head": HEAD_ML_CONF,    "weight": DEFAULT_WEIGHTS[HEAD_ML_CONF],    "purpose": "ML model probability directional vote"},
+        {"head": HEAD_SPREAD,     "weight": DEFAULT_WEIGHTS[HEAD_SPREAD],     "purpose": "Execution quality (spread / slippage)"},
+        {"head": HEAD_MULTIFRAME, "weight": DEFAULT_WEIGHTS[HEAD_MULTIFRAME], "purpose": "Cross-timeframe alignment score"},
+    ]
+    return {
+        "heads": heads,
+        "thresholds": {
+            "buy_threshold": 0.20,
+            "sell_threshold": -0.20,
+        },
+        "decisions": {
+            "BUY":  "🔥 starfire  — positive cosmic alignment",
+            "SELL": "🌑 eclipse   — negative cosmic alignment",
+            "HOLD": "⚖️  cosmic balance — neutral zone",
+        },
+    }
+
+
+@app.get("/signals/cosmic")
+@app.get("/api/signals/cosmic")
+async def signals_cosmic(
+    symbol: Optional[str] = Query(default=None),
+    bot_name: Optional[str] = Query(default=None),
+    mode: str = Query(default="paper"),
+    rsi: float = Query(default=50.0),
+    momentum: float = Query(default=0.0),
+    sentiment_score: float = Query(default=0.0),
+    volatility_bandwidth: float = Query(default=0.5),
+    liquidity_ratio: float = Query(default=0.5),
+    execution_probability: float = Query(default=0.5),
+    predicted_side: str = Query(default="buy"),
+    average_spread_bps: float = Query(default=20.0),
+):
+    """Evaluate the Cosmic Score from query-parameter inputs.
+
+    Returns the full analytic head breakdown plus the braided decision
+    (BUY 🔥 starfire / SELL 🌑 eclipse / HOLD ⚖️ cosmic balance).
+    """
+    if not COSMIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Cosmic signal engine unavailable")
+
+    ctx = {
+        "rsi": rsi,
+        "momentum": momentum,
+        "sentiment_score": sentiment_score,
+        "volatility_bandwidth": volatility_bandwidth,
+        "liquidity_ratio": liquidity_ratio,
+        "execution_probability": execution_probability,
+        "predicted_side": predicted_side,
+        "average_spread_bps": average_spread_bps,
+    }
+    snap = compute_cosmic_score(ctx, symbol=symbol, bot_name=bot_name, mode=mode)
+    return snap.to_dict()
+
+
+@app.post("/signals/evaluate")
+@app.post("/api/signals/evaluate")
+async def signals_evaluate(payload: CosmicEvaluateRequest):
+    """Evaluate Cosmic Score from a full market-context payload.
+
+    Accepts any combination of the recognised signal keys; unknown keys are
+    forwarded as-is for custom head logic.
+    """
+    if not COSMIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Cosmic signal engine unavailable")
+    snap = compute_cosmic_score(
+        payload.context,
+        symbol=payload.symbol,
+        bot_name=payload.bot_name,
+        mode=payload.mode,
+    )
+    return snap.to_dict()
+
+
+@app.get("/signals/{bot_name}")
+@app.get("/api/signals/{bot_name}")
+async def signals_for_bot(
+    bot_name: str,
+    mode: str = Query(default="paper"),
+):
+    """Return the last cached Cosmic Signal snapshot for a specific bot.
+
+    If no evaluation has been cached yet, returns a neutral demo snapshot
+    using each bot's live telemetry where available.
+    """
+    if not COSMIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Cosmic signal engine unavailable")
+
+    canonical = next(
+        (b for b in _VALID_BOTS if b.lower() == bot_name.lower()), None
+    )
+    if canonical is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown bot '{bot_name}'. Valid bots: {_VALID_BOTS}",
+        )
+
+    engine = _get_cosmic_engine()
+    snap = engine.last_snapshot(bot_name=canonical)
+
+    if snap is None:
+        # Build a representative context from live bot telemetry where possible
+        ctx: dict[str, Any] = {}
+
+        if canonical == "Procryon" and ProcryonBot is not None:
+            try:
+                bot = get_procryon_bot()
+                eval_r = bot.evaluate_opportunity(
+                    spread_vector=[0.0, 0.0, 0.0],
+                    execution_features=[0.0, 0.0, 0.0, 0.0, 0.0],
+                )
+                ctx["execution_probability"] = float(eval_r.get("execution_probability", 0.5))
+                ctx["predicted_side"] = "buy" if eval_r.get("execute") else "sell"
+                ctx["average_spread_bps"] = float(eval_r.get("average_spread_bps", 20.0))
+            except Exception:
+                pass
+
+        elif canonical in ("Hydra", "Triton") and HydraBot is not None:
+            try:
+                bot_obj = get_hydra_bot() if canonical == "Hydra" else get_triton_bot()
+                analysis = bot_obj.analyze("SPY", [])
+                ctx["sentiment_score"] = float(analysis.get("sentiment_score", 0.0))
+                ctx["execution_probability"] = float(analysis.get("prediction_probability", 0.5))
+            except Exception:
+                pass
+
+        snap = engine.evaluate(ctx, symbol=None, bot_name=canonical, mode=mode, force=True)
+
+    meta = _BOT_SIGNAL_META.get(canonical, {})
+    result = snap.to_dict()
+    result["bot_meta"] = meta
+    return result
+
+
+@app.get("/signals")
+@app.get("/api/signals")
+async def signals_all(mode: str = Query(default="paper")):
+    """Return a summary of Cosmic Scores across all known bots.
+
+    Bots not yet evaluated return a neutral snapshot.
+    """
+    if not COSMIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Cosmic signal engine unavailable")
+
+    from frontend.utils.cosmic_signal import compute_cosmic_score as _ccs
+
+    engine = _get_cosmic_engine()
+    results = []
+    for bot in _VALID_BOTS:
+        snap = engine.last_snapshot(bot_name=bot)
+        if snap is None:
+            snap = _ccs({}, bot_name=bot, mode=mode)
+        meta = _BOT_SIGNAL_META.get(bot, {})
+        results.append({
+            "bot_name":     bot,
+            "fund":         meta.get("fund", ""),
+            "strategy":     meta.get("strategy", ""),
+            "cosmic_score": snap.cosmic_score,
+            "decision":     snap.decision,
+            "cosmic_symbol": snap.cosmic_symbol,
+            "timestamp":    snap.timestamp,
+            "mode":         snap.mode,
+        })
+
+    return {
+        "signals": results,
+        "total":   len(results),
+        "buy_count":  sum(1 for r in results if r["decision"] == "BUY"),
+        "sell_count": sum(1 for r in results if r["decision"] == "SELL"),
+        "hold_count": sum(1 for r in results if r["decision"] == "HOLD"),
+    }
 
 
 @app.get("/ibkr/health")

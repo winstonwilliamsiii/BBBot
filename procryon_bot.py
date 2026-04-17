@@ -42,6 +42,25 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# ── Mansa Crypto Fund — digital asset universe ────────────────────────────────
+# FTMO-supported crypto CFD symbols used for spread clustering + execution.
+# User may override by providing live market data via ingest_spread().
+CRYPTO_UNIVERSE: list[str] = [
+    "BTCUSD",   # Bitcoin
+    "ETHUSD",   # Ethereum
+    "LTCUSD",   # Litecoin
+    "XRPUSD",   # Ripple / XRP
+    "BCHUSD",   # Bitcoin Cash
+    "ADAUSD",   # Cardano
+    "SOLUSD",   # Solana
+    "DOTUSD",   # Polkadot
+    "LINKUSD",  # Chainlink
+    "AVAXUSD",  # Avalanche
+]
+
+# Default symbol for paper/live execution — BTCUSD highest FTMO liquidity
+DEFAULT_CRYPTO_SYMBOL: str = "BTCUSD"
+
 
 if load_dotenv is not None:
     load_dotenv()
@@ -113,13 +132,21 @@ class ProcryonConfig:
     execution_threshold: float = 0.55
     fastapi_base_url: str = "http://127.0.0.1:5001"
     mt5_api_url: str = "http://localhost:8002"
-    mlflow_experiment: str = "Procryon_MT5_Arbitrage"
+    mlflow_experiment: str = "Procryon_Crypto_Execution"
     trading_platform: str = "MT5"
     preferred_brokers: tuple[str, ...] = ("ftmo", "axi")
+    asset_universe: tuple[str, ...] = tuple([
+        "BTCUSD", "ETHUSD", "LTCUSD", "XRPUSD",
+        "BCHUSD", "ADAUSD", "SOLUSD", "DOTUSD",
+        "LINKUSD", "AVAXUSD",
+    ])
+    default_symbol: str = "BTCUSD"
+    fund_name: str = "Mansa Crypto Fund"
     objective: str = (
-        "Cluster spread regimes with KNN and optimize execution decisions "
-        "with a feed-forward neural network for MT5-connected FTMO and AXI "
-        "accounts."
+        "Cluster crypto spread regimes with KNN and optimize execution "
+        "decisions with a feed-forward neural network across a digital asset "
+        "universe (BTC, ETH, LTC, XRP, BCH, ADA, SOL, DOT, LINK, AVAX) "
+        "for MT5-connected FTMO accounts — Mansa Crypto Fund."
     )
 
     @classmethod
@@ -150,8 +177,8 @@ class ProcryonConfig:
             ),
             mlflow_experiment=_clean_env_text(os.getenv(
                 "PROCRYON_MLFLOW_EXPERIMENT",
-                "Procryon_MT5_Arbitrage",
-            )) or "Procryon_MT5_Arbitrage",
+                "Procryon_Crypto_Execution",
+            )) or "Procryon_Crypto_Execution",
             trading_platform=(
                 _clean_env_text(os.getenv("PROCRYON_TRADING_PLATFORM"))
                 or "MT5"
@@ -160,14 +187,16 @@ class ProcryonConfig:
             objective=_clean_env_text(os.getenv(
                 "PROCRYON_OBJECTIVE",
                 (
-                    "Cluster spread regimes with KNN and optimize execution "
-                    "decisions with a feed-forward neural network for "
-                    "MT5-connected FTMO and AXI accounts."
+                    "Cluster crypto spread regimes with KNN and optimize "
+                    "execution decisions with a feed-forward neural network "
+                    "across a digital asset universe for MT5-connected FTMO "
+                    "accounts — Mansa Crypto Fund."
                 ),
             )) or (
-                "Cluster spread regimes with KNN and optimize execution "
-                "decisions with a feed-forward neural network for "
-                "MT5-connected FTMO and AXI accounts."
+                "Cluster crypto spread regimes with KNN and optimize "
+                "execution decisions with a feed-forward neural network "
+                "across a digital asset universe for MT5-connected FTMO "
+                "accounts — Mansa Crypto Fund."
             ),
         )
 
@@ -223,21 +252,33 @@ class ProcryonBot:
         if self.spread_data or self.execution_data:
             return self.train_all(log_to_mlflow=False)
 
+        # Crypto spread vectors: [bid_ask_spread, min_spread, max_spread]
+        # Values in fractional form (0.0060 = 60 bps).
+        # Cluster 0 = tight/normal spread (favourable execution)
+        # Cluster 1 = wide/volatile spread (high cost, caution)
+        # Representative of BTC/ETH/LTC/XRP on FTMO CFDs.
         spread_samples = [
-            ([0.0008, 0.0005, 0.0011], 0),
-            ([0.0012, 0.0009, 0.0015], 0),
-            ([0.0035, 0.0028, 0.0042], 1),
-            ([0.0041, 0.0032, 0.0048], 1),
-            ([0.0060, 0.0055, 0.0068], 1),
-            ([0.0010, 0.0007, 0.0013], 0),
+            ([0.0050, 0.0040, 0.0065], 0),   # BTC tight market
+            ([0.0060, 0.0048, 0.0075], 0),   # ETH normal
+            ([0.0055, 0.0042, 0.0070], 0),   # LTC/XRP tight
+            ([0.0120, 0.0095, 0.0150], 1),   # BTC volatile session
+            ([0.0180, 0.0140, 0.0220], 1),   # ETH high volatility
+            ([0.0150, 0.0120, 0.0190], 1),   # BTC news spike
+            ([0.0058, 0.0045, 0.0072], 0),   # AVAX/SOL tight
+            ([0.0200, 0.0160, 0.0250], 1),   # Altcoin extreme spread
         ]
+        # Execution features:
+        # [spread_bps, model_confidence, volume_rank, time_bucket, fnn_acc]
+        # volume_rank: 1=low..10=high, time_bucket: 1=overnight..5=peak
         execution_samples = [
-            ([35, 0.90, 6, 2, 0.80], 1),
-            ([80, 0.45, 14, 7, 0.30], 0),
-            ([42, 0.75, 8, 3, 0.72], 1),
-            ([120, 0.35, 18, 9, 0.20], 0),
-            ([28, 0.88, 5, 2, 0.85], 1),
-            ([95, 0.40, 16, 8, 0.25], 0),
+            ([55, 0.90, 8, 4, 0.82], 1),    # BTC peak session, high conf
+            ([160, 0.38, 3, 1, 0.28], 0),   # wide spread, overnight
+            ([62, 0.78, 7, 4, 0.74], 1),    # ETH normal, good conf
+            ([190, 0.30, 2, 1, 0.18], 0),   # extreme spread, low volume
+            ([48, 0.92, 9, 5, 0.88], 1),    # BTC NY open, best signal
+            ([140, 0.42, 4, 2, 0.32], 0),   # volatile, low conf
+            ([70, 0.80, 6, 3, 0.76], 1),    # SOL/AVAX normal window
+            ([210, 0.25, 1, 1, 0.15], 0),   # illiquid altcoin extreme
         ]
 
         for spread_vector, label in spread_samples:
@@ -605,10 +646,10 @@ class ProcryonBot:
         connector = MT5Connector(credentials["api_url"])
         connector.request_timeout = self.config.request_timeout if hasattr(self.config, "request_timeout") else 20.0
 
-        if not connector.health_check():
+        if not connector.is_reachable():
             return {
                 "success": False,
-                "error": "MT5 bridge health check failed",
+                "error": "MT5 bridge unreachable at " + credentials["api_url"],
                 "broker": broker_name,
                 "api_url": credentials["api_url"],
             }

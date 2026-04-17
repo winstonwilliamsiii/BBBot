@@ -1,23 +1,28 @@
 """
-Procryon FTMO Test Trade — 9:30 AM Scheduled Runner
-====================================================
+Procryon FTMO Paper Trade — Mansa Crypto Fund
+=============================================
 Waits until 09:30 (local time), fetches the latest MLflow Procryon training
-run metrics, runs evaluate_opportunity, and if the signal is valid places a
-micro test trade on FTMO via the local MT5 bridge.
+run metrics, runs evaluate_opportunity over the digital asset universe, and if
+the signal is valid places a micro test trade on FTMO via the MT5 bridge.
+
+Asset universe (FTMO CFDs): BTCUSD, ETHUSD, LTCUSD, XRPUSD, BCHUSD,
+                            ADAUSD, SOLUSD, DOTUSD, LINKUSD, AVAXUSD
 
 Discord notifications:
-  • DISCORD_WEBHOOK_NOOMO  → #ai-ml thread  (MLflow results + Procryon signal)
-  • DISCORD_BOT_TALK_WEBHOOK → #bot_talk    (trade execution result)
+  • DISCORD_WEBHOOK_NOOMO    → #ai-ml thread  (MLflow results + Procryon signal)
+  • DISCORD_BOT_TALK_WEBHOOK → #bot_talk       (trade execution result)
 
 Usage:
     python scripts/procryon_ftmo_test_trade.py           # waits for 09:30 today
     python scripts/procryon_ftmo_test_trade.py --now     # runs immediately (skip wait)
     python scripts/procryon_ftmo_test_trade.py --dry-run # signal only, no trade
+    python scripts/procryon_ftmo_test_trade.py --now --symbol ETHUSD
 """
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import os
@@ -34,7 +39,7 @@ load_dotenv(override=True)
 # Ensure project root on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from procryon_bot import ProcryonBot, ProcryonConfig, MLFLOW_AVAILABLE  # noqa: E402
+from procryon_bot import ProcryonBot, ProcryonConfig, MLFLOW_AVAILABLE, CRYPTO_UNIVERSE  # noqa: E402
 
 try:
     from bbbot1_pipeline.mlflow_config import get_mlflow_tracking_uri
@@ -51,10 +56,12 @@ logger = logging.getLogger("procryon_ftmo_test")
 # ── Constants ─────────────────────────────────────────────────────────────────
 TRADE_TIME_HOUR = 9
 TRADE_TIME_MINUTE = 30
-DEFAULT_SYMBOL = "EURUSD"
+DEFAULT_SYMBOL = "BTCUSD"         # Primary Mansa Crypto Fund execution symbol
 DEFAULT_ACTION = "BUY"
-DEFAULT_VOLUME = 0.01          # micro-lot — smallest possible test trade
+DEFAULT_VOLUME = 0.01              # micro-lot — smallest FTMO test trade
 BROKER = "ftmo"
+FUND_NAME = "Mansa Crypto Fund"
+MLFLOW_LIVE_FETCH_TIMEOUT_SECONDS = 8
 
 # ── Discord helpers ────────────────────────────────────────────────────────────
 
@@ -190,12 +197,13 @@ def notify_bot_talk(
     embed = {
         "title": f"🤖 Procryon | {broker} Trade [{mode_tag}]",
         "description": (
+            f"**Fund:** {FUND_NAME}\n"
             f"**{action} {symbol}** — {volume} lot(s)\n"
             f"{status_line}\n"
             f"Signal probability: {probability:.1%}"
         ),
         "color": color,
-        "footer": {"text": f"Procryon MT5 | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"},
+        "footer": {"text": f"Procryon MT5 Crypto | {FUND_NAME} | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"},
     }
 
     _discord_post(webhook, {"embeds": [embed]})
@@ -231,6 +239,23 @@ def _fetch_latest_mlflow_metrics(bot: ProcryonBot) -> dict[str, Any]:
         return {}
 
 
+def _fetch_latest_mlflow_metrics_with_timeout(bot: ProcryonBot) -> dict[str, Any]:
+    """Fetch MLflow metrics with a hard timeout so trading never blocks on MLflow."""
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_fetch_latest_mlflow_metrics, bot)
+            return future.result(timeout=MLFLOW_LIVE_FETCH_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError:
+        logger.warning(
+            "MLflow live metric fetch timed out after %ss; continuing with local metrics",
+            MLFLOW_LIVE_FETCH_TIMEOUT_SECONDS,
+        )
+        return {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("MLflow live metric fetch failed unexpectedly: %s", exc)
+        return {}
+
+
 # ── Wait until 09:30 ──────────────────────────────────────────────────────────
 
 def _wait_until_930() -> None:
@@ -253,16 +278,19 @@ def _wait_until_930() -> None:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Procryon FTMO test trade at 09:30")
+    parser = argparse.ArgumentParser(description="Procryon Mansa Crypto Fund paper trade at 09:30")
     parser.add_argument("--now", action="store_true", help="Skip wait, run immediately")
     parser.add_argument("--dry-run", action="store_true", dest="dry_run",
                         help="Evaluate signal but do not place trade")
-    parser.add_argument("--symbol", default=DEFAULT_SYMBOL)
+    parser.add_argument("--symbol", default=DEFAULT_SYMBOL,
+                        choices=CRYPTO_UNIVERSE,
+                        help=f"Crypto symbol to trade (default: {DEFAULT_SYMBOL})")
     parser.add_argument("--action", default=DEFAULT_ACTION, choices=["BUY", "SELL"])
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME)
     args = parser.parse_args()
 
-    logger.info("=== Procryon FTMO Test Trade Runner ===")
+    logger.info("=== Procryon | Mansa Crypto Fund | FTMO Paper Trade ===")
+    logger.info("Asset Universe: %s", ", ".join(CRYPTO_UNIVERSE))
     logger.info("Mode: %s | Symbol: %s | Action: %s | Volume: %s",
                 "DRY RUN" if args.dry_run else "LIVE",
                 args.symbol, args.action, args.volume)
@@ -282,7 +310,7 @@ def main() -> None:
                 training_metrics.get("fnn_train_accuracy", 0) * 100)
 
     # Attempt to overlay real MLflow metrics if available
-    live_metrics = _fetch_latest_mlflow_metrics(bot)
+    live_metrics = _fetch_latest_mlflow_metrics_with_timeout(bot)
     if live_metrics:
         logger.info("MLflow live metrics loaded: %s", live_metrics)
         training_metrics.update(live_metrics)
@@ -291,12 +319,13 @@ def main() -> None:
     mlflow_status = bot.check_mlflow()
     logger.info("MLflow reachable: %s", mlflow_status.get("reachable"))
 
-    # ── 4. Build eval features from current metrics ───────────────────────────
-    # Spread vector from training — use live metrics if available, else demo
+    # ── 4. Build eval features from current crypto metrics ───────────────────
+    # Crypto spread vector: [bid_ask_spread, min_spread, max_spread] (fractional)
+    # BTCUSD on FTMO: normal session spread ~50-75 bps (0.0050-0.0075)
     knn_acc = float(training_metrics.get("knn_train_accuracy", 0.85))
     fnn_acc = float(training_metrics.get("fnn_train_accuracy", 0.85))
-    spread_vector = [0.0036, 0.0029, 0.0041]     # representative EURUSD spreads
-    exec_features = [30, knn_acc, 6, 2, fnn_acc]  # RSI-like, accuracy, volume, time, fnn_acc
+    spread_vector = [0.0058, 0.0045, 0.0072]     # BTCUSD normal session (58 bps avg)
+    exec_features = [58, knn_acc, 8, 4, fnn_acc]  # spread_bps, knn_conf, vol_rank, time_bucket, fnn_conf
 
     eval_result = bot.evaluate_opportunity(spread_vector, exec_features)
     logger.info("Signal: execute=%s probability=%.3f cluster=%s",
@@ -335,14 +364,14 @@ def main() -> None:
             "error": f"execute=False (probability={eval_result['execution_probability']:.3f})",
         }
     else:
-        logger.info("Placing FTMO test trade: %s %s %.2f lots",
-                    args.action, args.symbol, args.volume)
+        logger.info("Placing FTMO paper trade: %s %s %.2f lots | Fund: %s",
+                    args.action, args.symbol, args.volume, FUND_NAME)
         trade_result = bot.place_trade(
             broker_name=BROKER,
             symbol=args.symbol,
             action=args.action,
             volume=args.volume,
-            comment="Procryon-Test-9:30",
+            comment="Procryon-Mansa-Crypto",
         )
 
     print("=== TRADE RESULT ===")

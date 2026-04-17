@@ -1,8 +1,12 @@
 """Simple MT5 connection test - clean output"""
 import MetaTrader5 as mt5
 
+MT5_PATH = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+
 print("Testing MT5...")
+print(f"Terminal path: {MT5_PATH}")
 result = mt5.initialize(
+    path=MT5_PATH,
     login=531220202,
     password="*zH4!B5ZGB!8a",
     server="FTMO-Server3",

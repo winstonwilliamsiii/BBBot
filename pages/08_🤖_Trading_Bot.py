@@ -2044,9 +2044,9 @@ with tab3:
         st.markdown("#### 🧠 Analytic Head Breakdown")
         _heads_data = _snap.to_dict().get("heads", [])
         if _heads_data:
-            _h_names  = [h["head"] for h in _heads_data]
-            _h_scores = [h["score"] for h in _heads_data]
-            _h_wt_contrib = [h["score"] * h["weight"] for h in _heads_data]
+            _h_names  = [h["head"] for h in reversed(_heads_data)]
+            _h_scores = [h["score"] for h in reversed(_heads_data)]
+            _h_wt_contrib = [h["score"] * h["weight"] for h in reversed(_heads_data)]
             _h_colors = ["#10B981" if s >= 0 else "#EF4444" for s in _h_scores]
 
             _hbar_fig = go.Figure()
@@ -2081,7 +2081,7 @@ with tab3:
                 ),
                 yaxis=dict(
                     showgrid=False, tickfont=dict(color="#FFFFFF"),
-                    autorange="reversed",
+                    autorange=True,
                 ),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",

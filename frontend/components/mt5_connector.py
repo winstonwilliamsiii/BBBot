@@ -539,20 +539,37 @@ class MT5Connector:
     
     def health_check(self) -> bool:
         """
-        Check if MT5 REST API server is reachable
-        
+        Check if MT5 REST API server is reachable AND MT5 is initialized.
+        Use is_reachable() for a pre-connect server-up check.
+
         Returns:
-            True if server is healthy, False otherwise
+            True if server is healthy and MT5 terminal is connected.
         """
         try:
             response = self._request_with_fallback('GET', ['/health', '/Health'], timeout=3)
             response.raise_for_status()
-            
+
             result = response.json()
             status = str(result.get('status', '')).lower()
             mt5_initialized = result.get('mt5_initialized', True)
             return status in {'healthy', 'ok', 'running'} and bool(mt5_initialized)
-            
+
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return False
+
+    def is_reachable(self) -> bool:
+        """
+        Check if the MT5 REST API server process is running and accepting
+        connections. Does NOT require MT5 terminal to be connected yet.
+        Use this before calling connect().
+
+        Returns:
+            True if the server responds with any 2xx status.
+        """
+        try:
+            response = self._request_with_fallback('GET', ['/health', '/Health'], timeout=3)
+            return response.status_code < 500
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return False

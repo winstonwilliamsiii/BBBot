@@ -602,7 +602,7 @@ def load_active_signals():
 # ── Calendar & Analytics Helpers ─────────────────────────────────────────────
 
 @st.cache_data(ttl=300)
-def load_daily_pnl(year: int, month: int) -> dict:
+def load_daily_pnl(year: int, month: int, mode: str = "All") -> dict:
     """Load daily P&L for calendar. Real data from DB when available; seeded demo otherwise."""
     if DB_AVAILABLE:
         try:
@@ -610,7 +610,12 @@ def load_daily_pnl(year: int, month: int) -> dict:
             _, last_day = _c.monthrange(year, month)
             start_d = f"{year}-{month:02d}-01"
             end_d = f"{year}-{month:02d}-{last_day:02d}"
-            q = text("""
+            mode_clause = ""
+            params: dict = {"start": start_d, "end": end_d}
+            if mode and mode.lower() in ("live", "paper"):
+                mode_clause = "AND LOWER(COALESCE(mode,'paper')) = :mode"
+                params["mode"] = mode.lower()
+            q = text(f"""
                 SELECT DATE(timestamp) AS day,
                        ROUND(SUM(
                            CASE WHEN side = 'sell'
@@ -621,10 +626,11 @@ def load_daily_pnl(year: int, month: int) -> dict:
                 FROM titan_trades
                 WHERE DATE(timestamp) BETWEEN :start AND :end
                   AND status IN ('filled', 'submitted')
+                  {mode_clause}
                 GROUP BY DATE(timestamp)
             """)
             with engine.connect() as conn:
-                rows = conn.execute(q, {"start": start_d, "end": end_d}).fetchall()
+                rows = conn.execute(q, params).fetchall()
             if rows:
                 return {str(r[0]): float(r[1]) for r in rows}
         except Exception:
@@ -816,19 +822,29 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
 
 
 @st.cache_data(ttl=60)
-def load_bot_analytics(bot_name: str, days: int) -> dict:
+def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
     """Load per-bot analytics. Merges real titan_trades data with estimated demo values."""
     import random
-    _VALID_BOTS = ["Titan", "Dogon", "Orion", "Rigel", "Vega"]
+    _VALID_BOTS = [
+        "Titan", "Dogon", "Orion", "Rigel", "Vega",
+        "Draco", "Altair", "Procryon", "Hydra", "Triton",
+        "Dione", "Cephei", "Rhea", "Jupicita",
+    ]
     _SAFE = set(_VALID_BOTS) | {"All Bots"}
     if bot_name not in _SAFE:
         bot_name = "All Bots"
+
+    mode_clause = ""
+    mode_params: dict = {}
+    if mode and mode.lower() in ("live", "paper"):
+        mode_clause = "AND LOWER(COALESCE(mode,'paper')) = :mode_val"
+        mode_params["mode_val"] = mode.lower()
 
     real_strategies = []
     if DB_AVAILABLE:
         try:
             if bot_name == "All Bots":
-                q = text("""
+                q = text(f"""
                     SELECT COALESCE(strategy,'unknown') AS strategy,
                            COUNT(*)                          AS total_trades,
                            SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END) AS buy_cnt,
@@ -837,11 +853,12 @@ def load_bot_analytics(bot_name: str, days: int) -> dict:
                            AVG(qty)                          AS avg_qty
                     FROM titan_trades
                     WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
+                    {mode_clause}
                     GROUP BY COALESCE(strategy,'unknown')
                 """)
-                params = {"days": days}
+                params = {"days": days, **mode_params}
             else:
-                q = text("""
+                q = text(f"""
                     SELECT COALESCE(strategy,'unknown') AS strategy,
                            COUNT(*)                          AS total_trades,
                            SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END) AS buy_cnt,
@@ -851,9 +868,10 @@ def load_bot_analytics(bot_name: str, days: int) -> dict:
                     FROM titan_trades
                     WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
                       AND LOWER(strategy) LIKE :pat
+                    {mode_clause}
                     GROUP BY COALESCE(strategy,'unknown')
                 """)
-                params = {"days": days, "pat": f"%{bot_name.lower()}%"}
+                params = {"days": days, "pat": f"%{bot_name.lower()}%", **mode_params}
             with engine.connect() as conn:
                 rows = conn.execute(q, params).fetchall()
             real_strategies = [
@@ -915,13 +933,25 @@ def load_bot_analytics(bot_name: str, days: int) -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 def _build_titan_status_rows() -> pd.DataFrame:
     rows = []
+    all_events = _latest_bot_mode_events_all()
     for bot_name, fund_name in BOT_FUND_ALLOCATIONS.items():
         display_name = "Mansa Star Bots" if bot_name == "Titan" else bot_name
+        ev = all_events.get(bot_name.lower(), {})
+        mode_raw = str(ev.get("mode", "")).lower()
+        status_raw = str(ev.get("status", "")).lower()
+        if mode_raw == "on" and status_raw in ("ready", "warning", "placeholder", "active"):
+            live_status = "🟢 running"
+        elif mode_raw == "off":
+            live_status = "🔴 off"
+        elif ev:
+            live_status = f"🟡 {status_raw or 'unknown'}"
+        else:
+            live_status = "⚪ not started"
         rows.append(
             {
                 "Bot": display_name,
                 "Fund": fund_name,
-                "Status": "active" if bot_name == "Titan" else "pending",
+                "Status": live_status,
             }
         )
     return pd.DataFrame(rows)
@@ -1179,6 +1209,7 @@ def _render_quick_launch_buttons() -> None:
                     execution = _execute_bot_mode(bot_name, "on", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 _record_bot_action(bot_name, "on", selected_mode, execution)
+                st.rerun()
         with c6:
             if st.button("Run OFF", key=f"exec_off_{bot_name}"):
                 _set_bot_launch_preferences(bot_name, selected_mode, False)
@@ -1186,6 +1217,7 @@ def _render_quick_launch_buttons() -> None:
                     execution = _execute_bot_mode(bot_name, "off", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 _record_bot_action(bot_name, "off", selected_mode, execution)
+                st.rerun()
 
     selected_cmd = st.session_state.get("selected_bot_launch_command")
     if selected_cmd:
@@ -1391,6 +1423,7 @@ with col1:
             execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "on", titan_sidebar_mode, execution)
+        st.rerun()
 
 with col2:
     if st.button("⏸️ Titan OFF", use_container_width=True):
@@ -1399,6 +1432,7 @@ with col2:
             execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "off", titan_sidebar_mode, execution)
+        st.rerun()
 
 hydra_sidebar_status = get_bot_status("Hydra")
 hydra_snapshot = fetch_hydra_api_snapshot()
@@ -1426,6 +1460,7 @@ with hcol1:
             execution = _execute_bot_mode("Hydra", "on", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "on", hydra_sidebar_mode, execution)
+        st.rerun()
 
 with hcol2:
     if st.button("⏸️ Hydra OFF", use_container_width=True):
@@ -1434,6 +1469,7 @@ with hcol2:
             execution = _execute_bot_mode("Hydra", "off", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "off", hydra_sidebar_mode, execution)
+        st.rerun()
 
 st.sidebar.caption(
     "Hydra API reachable: "
@@ -1490,8 +1526,8 @@ with tab1:
     trades_df = load_recent_trades(selected_days)
     perf_df = load_performance_metrics(selected_days)
 
-    # ── Month / Year selector ──────────────────────────────────────────────
-    cal_c1, cal_c2, _ = st.columns([1, 1, 4])
+    # ── Month / Year / Mode selectors ─────────────────────────────────────
+    cal_c1, cal_c2, cal_c3, _ = st.columns([1, 1, 1, 3])
     _now = datetime.now()
     with cal_c1:
         cal_year = st.selectbox(
@@ -1504,17 +1540,30 @@ with tab1:
             format_func=lambda x: datetime(cal_year, x, 1).strftime("%B"),
             key="cal_month",
         )
+    with cal_c3:
+        _ov_trade_mode = st.selectbox(
+            "Trade Mode",
+            options=["All", "paper", "live"],
+            index=0,
+            key="ov_trade_mode",
+        )
 
     # ── Load data ──────────────────────────────────────────────────────────
-    _daily_pnl = load_daily_pnl(cal_year, cal_month)
+    _daily_pnl = load_daily_pnl(cal_year, cal_month, _ov_trade_mode)
     _ov = load_overview_metrics(cal_year, cal_month, _daily_pnl)
+
+    _ov_mode_tag = (
+        f"🔴 Live only"   if _ov_trade_mode == "live"
+        else f"📄 Paper only" if _ov_trade_mode == "paper"
+        else "All trades"
+    )
 
     # ── 9 Aggregate Metric Cards ───────────────────────────────────────────
     st.markdown(
-        "<p style='font-size:0.75rem;color:#FFFFFF;margin-bottom:6px;opacity:0.92;'>"
-        "Aggregate across all broker bot trades — "
+        f"<p style='font-size:0.75rem;color:#FFFFFF;margin-bottom:6px;opacity:0.92;'>"
+        f"Aggregate across all broker bot trades — "
         + ("live DB" if DB_AVAILABLE else "estimated demo")
-        + "</p>",
+        + f" · {_ov_mode_tag}</p>",
         unsafe_allow_html=True,
     )
 
@@ -1682,19 +1731,30 @@ with tab1:
 
 # TAB 2: Performance
 with tab2:
-    pf1, pf2 = st.columns([2, 2])
+    pf1, pf2, pf3 = st.columns([2, 1, 1])
     with pf1:
         bot_filter = st.selectbox(
-            "🤖 Bot", ["All Bots", "Titan", "Dogon", "Orion", "Rigel", "Vega"],
+            "🤖 Bot", [
+                "All Bots", "Titan", "Dogon", "Orion", "Rigel", "Vega",
+                "Draco", "Altair", "Procryon", "Hydra", "Triton",
+                "Dione", "Cephei", "Rhea", "Jupicita",
+            ],
             key="perf_bot_filter",
         )
     with pf2:
+        _perf_mode = st.selectbox(
+            "Trade Mode",
+            options=["All", "paper", "live"],
+            index=0,
+            key="perf_trade_mode",
+        )
+    with pf3:
         st.markdown(
             f"<br><small style='color:#FFFFFF;opacity:0.9;'>Period: {date_range}</small>",
             unsafe_allow_html=True,
         )
 
-    _analytics = load_bot_analytics(bot_filter, selected_days)
+    _analytics = load_bot_analytics(bot_filter, selected_days, _perf_mode)
     _bots = _analytics["bots"]
     if not _analytics.get("has_real_data"):
         st.caption(
@@ -1840,55 +1900,240 @@ with tab2:
     } for b in _bots])
     st.dataframe(_tbl, use_container_width=True, hide_index=True)
 
-# TAB 3: Active Signals
+# TAB 3: Active Signals — Cosmic Signal Engine
 with tab3:
-    st.subheader("Today's Trading Signals")
+    # ── Cosmic Signal Engine ───────────────────────────────────────────────
+    try:
+        from frontend.utils.cosmic_signal import (
+            compute_cosmic_score,
+            DEFAULT_WEIGHTS,
+            DECISION_BUY, DECISION_SELL, DECISION_HOLD,
+        )
+        _COSMIC_OK = True
+    except Exception as _ce:
+        _COSMIC_OK = False
 
-    st.markdown("### Orion Execution Snapshot")
-    _render_orion_snapshot()
+    # ── Controls row ──────────────────────────────────────────────────────
+    _sig_c1, _sig_c2, _sig_c3, _sig_c4 = st.columns([2, 2, 1, 1])
+    with _sig_c1:
+        _sig_bot = st.selectbox(
+            "🤖 Bot",
+            ["Titan", "Vega", "Rigel", "Dogon", "Orion", "Draco", "Altair",
+             "Procryon", "Hydra", "Triton", "Dione", "Cephei", "Rhea", "Jupicita"],
+            key="sig_bot_select",
+        )
+    with _sig_c2:
+        _sig_symbol = st.text_input("Ticker / Symbol", value="SPY", key="sig_symbol_input")
+    with _sig_c3:
+        _sig_mode = st.selectbox("Mode", ["paper", "live"], key="sig_mode_select")
+    with _sig_c4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        _sig_refresh = st.button("🔄 Evaluate", key="sig_refresh_btn", use_container_width=True)
+
     st.markdown("---")
-    
-    signals_df = load_active_signals()
-    
-    if not signals_df.empty:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**🟢 Buy Signals**")
-            buy_signals = signals_df[signals_df['signal'] == 1]
-            
-            if not buy_signals.empty:
-                for _, signal in buy_signals.iterrows():
-                    st.markdown(f"""
-                        <div class="trade-card trade-buy">
-                            <strong>{signal['ticker']}</strong><br>
-                            Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No buy signals today")
-        
-        with col2:
-            st.markdown("**🔴 Sell Signals**")
-            sell_signals = signals_df[signals_df['signal'] == -1]
-            
-            if not sell_signals.empty:
-                for _, signal in sell_signals.iterrows():
-                    st.markdown(f"""
-                        <div class="trade-card trade-sell">
-                            <strong>{signal['ticker']}</strong><br>
-                            Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No sell signals today")
-    
+
+    if _COSMIC_OK:
+        # ── Input sliders (collapsed) ─────────────────────────────────────
+        with st.expander("⚙️ Market Context Inputs", expanded=False):
+            _ic1, _ic2, _ic3, _ic4 = st.columns(4)
+            with _ic1:
+                _rsi_val  = st.slider("RSI",  0.0, 100.0, 50.0, 0.5, key="cs_rsi")
+                _mom_val  = st.slider("Momentum (% change)", -10.0, 10.0, 0.0, 0.1, key="cs_mom")
+            with _ic2:
+                _sent_val = st.slider("Sentiment score", -1.0, 1.0, 0.0, 0.01, key="cs_sent")
+                _vol_bw   = st.slider("Volatility bandwidth", 0.0, 2.0, 0.5, 0.01, key="cs_vol")
+            with _ic3:
+                _liq_val  = st.slider("Liquidity ratio", 0.0, 1.0, 0.5, 0.01, key="cs_liq")
+                _ml_prob  = st.slider("ML probability", 0.0, 1.0, 0.5, 0.01, key="cs_ml")
+            with _ic4:
+                _spread_bps = st.slider("Avg spread (bps)", 0.0, 100.0, 20.0, 0.5, key="cs_spread")
+                _ml_side    = st.selectbox("Predicted side", ["buy", "sell", "hold"], key="cs_side")
+
+        _ctx = {
+            "rsi": st.session_state.cs_rsi,
+            "momentum": st.session_state.cs_mom,
+            "sentiment_score": st.session_state.cs_sent,
+            "volatility_bandwidth": st.session_state.cs_vol,
+            "liquidity_ratio": st.session_state.cs_liq,
+            "execution_probability": st.session_state.cs_ml,
+            "predicted_side": st.session_state.cs_side,
+            "average_spread_bps": st.session_state.cs_spread,
+        }
+
+        # ── Evaluate ──────────────────────────────────────────────────────
+        _snap = compute_cosmic_score(
+            _ctx,
+            symbol=_sig_symbol.strip() or None,
+            bot_name=_sig_bot,
+            mode=_sig_mode,
+        )
+
+        # ── Decision badge ────────────────────────────────────────────────
+        _DEC_BADGE = {
+            DECISION_BUY:  ("#10B981", "🔥 starfire",       "BUY"),
+            DECISION_SELL: ("#EF4444", "🌑 eclipse",        "SELL"),
+            DECISION_HOLD: ("#9B59B6", "⚖️ cosmic balance", "HOLD"),
+        }
+        _badge_color, _badge_label, _badge_decision = _DEC_BADGE.get(
+            _snap.decision, ("#06B6D4", _snap.cosmic_symbol, _snap.decision)
+        )
+
+        _badge_col, _score_col, _mode_col = st.columns([3, 3, 2])
+        with _badge_col:
+            st.markdown(
+                f"<div style='background:rgba(15,23,42,0.8);border:2px solid {_badge_color};"
+                f"border-radius:12px;padding:20px 24px;text-align:center;'>"
+                f"<p style='margin:0;font-size:0.75rem;color:#FFFFFF;opacity:0.8;"
+                f"text-transform:uppercase;letter-spacing:.08em;'>Cosmic Decision</p>"
+                f"<p style='margin:6px 0 4px;font-size:2.2rem;font-weight:800;color:{_badge_color};"
+                f"font-family:monospace;'>{_badge_decision}</p>"
+                f"<p style='margin:0;font-size:1rem;color:#FFFFFF;opacity:0.9;'>{_badge_label}</p>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with _score_col:
+            _gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=round(_snap.cosmic_score, 4),
+                number={"font": {"color": "#FFFFFF", "size": 28}, "suffix": ""},
+                gauge={
+                    "axis": {"range": [-1, 1], "tickcolor": "#FFFFFF",
+                             "tickfont": {"color": "#FFFFFF", "size": 11}},
+                    "bar": {"color": _badge_color},
+                    "bgcolor": "rgba(0,0,0,0)",
+                    "steps": [
+                        {"range": [-1, -0.20], "color": "rgba(239,68,68,0.18)"},
+                        {"range": [-0.20, 0.20], "color": "rgba(139,92,246,0.18)"},
+                        {"range": [0.20, 1], "color": "rgba(16,185,129,0.18)"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "#FFFFFF", "width": 2},
+                        "thickness": 0.8,
+                        "value": _snap.cosmic_score,
+                    },
+                },
+                title={"text": "Cosmic Score", "font": {"color": "#FFFFFF", "size": 13}},
+            ))
+            _gauge.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#FFFFFF"),
+                height=200,
+                margin=dict(l=20, r=20, t=30, b=10),
+            )
+            st.plotly_chart(_gauge, use_container_width=True)
+        with _mode_col:
+            _mode_label = "🔴 LIVE" if _sig_mode == "live" else "📄 PAPER"
+            _ts = _snap.timestamp
+            _ts_fmt = _ts[:19].replace("T", " ") if _ts else "—"
+            st.markdown(
+                f"<div style='background:rgba(15,23,42,0.8);border:1px solid rgba(255,255,255,0.1);"
+                f"border-radius:10px;padding:14px 16px;'>"
+                f"<p style='margin:0 0 6px;font-size:0.72rem;color:#FFFFFF;opacity:0.8;"
+                f"text-transform:uppercase;'>Details</p>"
+                f"<p style='margin:2px 0;font-size:0.88rem;color:#FFFFFF;'>Bot: <b>{_sig_bot}</b></p>"
+                f"<p style='margin:2px 0;font-size:0.88rem;color:#FFFFFF;'>Symbol: <b>{_sig_symbol or '—'}</b></p>"
+                f"<p style='margin:2px 0;font-size:0.88rem;color:#FFFFFF;'>Mode: <b>{_mode_label}</b></p>"
+                f"<p style='margin:6px 0 0;font-size:0.72rem;color:#FFFFFF;opacity:0.65;'>{_ts_fmt}</p>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+
+        # ── Analytic Heads bar chart ───────────────────────────────────────
+        st.markdown("#### 🧠 Analytic Head Breakdown")
+        _heads_data = _snap.to_dict().get("heads", [])
+        if _heads_data:
+            _h_names  = [h["head"] for h in _heads_data]
+            _h_scores = [h["score"] for h in _heads_data]
+            _h_wt_contrib = [h["score"] * h["weight"] for h in _heads_data]
+            _h_colors = ["#10B981" if s >= 0 else "#EF4444" for s in _h_scores]
+
+            _hbar_fig = go.Figure()
+            _hbar_fig.add_trace(go.Bar(
+                y=_h_names, x=_h_scores, orientation="h",
+                marker_color=_h_colors, marker_opacity=0.85,
+                name="Raw Score",
+                text=[f"{s:+.3f}" for s in _h_scores],
+                textposition="outside",
+                textfont=dict(color="#FFFFFF", size=10),
+                hovertemplate="<b>%{y}</b><br>Score: %{x:+.4f}<extra></extra>",
+            ))
+            _hbar_fig.add_trace(go.Bar(
+                y=_h_names, x=_h_wt_contrib, orientation="h",
+                marker_color=[c.replace(")", ",0.45)").replace("rgb", "rgba") for c in _h_colors],
+                name="Weighted Contribution",
+                visible="legendonly",
+                hovertemplate="<b>%{y}</b><br>Weighted: %{x:+.4f}<extra></extra>",
+            ))
+            _hbar_fig.add_vline(x=0, line_color="rgba(255,255,255,0.3)", line_width=1)
+            _hbar_fig.add_vline(x=0.20, line_dash="dot", line_color="rgba(16,185,129,0.45)", line_width=1)
+            _hbar_fig.add_vline(x=-0.20, line_dash="dot", line_color="rgba(239,68,68,0.45)", line_width=1)
+            _hbar_fig.update_layout(
+                barmode="group",
+                xaxis=dict(
+                    title="Signal Score  (−1 → −, 0 = Neutral, +1 → +)",
+                    range=[-1.15, 1.15],
+                    showgrid=True, gridcolor="rgba(255,255,255,0.07)",
+                    zeroline=True, zerolinecolor="rgba(255,255,255,0.25)",
+                    tickfont=dict(color="#FFFFFF"),
+                    titlefont=dict(color="#FFFFFF"),
+                ),
+                yaxis=dict(
+                    showgrid=False, tickfont=dict(color="#FFFFFF"),
+                    autorange="reversed",
+                ),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#FFFFFF", size=11),
+                height=320,
+                margin=dict(l=10, r=70, t=10, b=30),
+                legend=dict(
+                    font=dict(color="#FFFFFF"),
+                    bgcolor="rgba(0,0,0,0)",
+                    orientation="h", y=-0.12,
+                ),
+            )
+            st.plotly_chart(_hbar_fig, use_container_width=True)
+
+            # Numeric table
+            _htbl_rows = []
+            for h in _heads_data:
+                _htbl_rows.append({
+                    "Head":         h["head"],
+                    "Score":        f"{h['score']:+.4f}",
+                    "Weight":       f"{h['weight']:.2f}",
+                    "Contribution": f"{h['score'] * h['weight']:+.4f}",
+                    "Explanation":  h.get("explanation", ""),
+                })
+            st.dataframe(pd.DataFrame(_htbl_rows), use_container_width=True, hide_index=True)
+
+        # ── Notify Discord button ─────────────────────────────────────────
+        st.markdown("---")
+        _nb_col, _ = st.columns([1, 3])
+        with _nb_col:
+            if st.button("📣 Notify Discord", key="cs_discord_notify", use_container_width=True):
+                try:
+                    from frontend.utils.discord_notify import notify_signal
+                    notify_signal(
+                        bot_name=_sig_bot,
+                        symbol=_sig_symbol or "",
+                        decision=_snap.decision,
+                        cosmic_score=_snap.cosmic_score,
+                        heads=_snap.to_dict().get("heads"),
+                        mode=_sig_mode,
+                    )
+                    st.success("Signal posted to Discord.")
+                except Exception as _dn_err:
+                    st.error(f"Discord notify failed: {_dn_err}")
+
     else:
-        st.info("No active signals today")
+        st.warning("Cosmic Signal Engine not available — check `frontend/utils/cosmic_signal.py`.")
+
+    # ── Orion Execution Snapshot (secondary context) ───────────────────────
+    st.markdown("---")
+    st.markdown("### 🌌 Orion Execution Snapshot")
+    _render_orion_snapshot()
 
 # TAB 4: Trade History
 with tab4:

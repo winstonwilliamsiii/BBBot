@@ -1,14 +1,67 @@
 # Titan Bot README
 
 ## Overview
-Titan Bot (`scripts/mansa_titan_bot.py`) is a tech-focused trading bot module aligned with the Bentley platform.
+Titan Bot (`scripts/mansa_titan_bot.py`) is the **Mansa Tech fund** bot. It targets Mag7 and large-cap technology stocks, screening candidates by fundamental health before applying a CNN sequence model to generate trade signals.
 
 Core capabilities:
+- Tech fundamental screening (PE, ROE, debt/equity, volume gates)
+- CNN sequence model (`TitanRiskModel/Production`) for risk/signal prediction
 - Alpaca execution support
 - MySQL persistence for trade and service-health logs
 - MLflow prediction integration
 - Airflow and Airbyte health checks
 - Screener-based candidate loading
+
+---
+
+## Strategy: Tech Fundamentals + CNN Sequence Model
+
+### Fund
+Mansa Tech — Bot ID: 1
+
+### Universe
+Mag7 + large-cap technology stocks loaded from `titan_tech_fundamentals.csv` (screener output).
+
+### Stage 1: Fundamental Screening
+
+Candidates from the screener are filtered by:
+
+| Rule | Threshold |
+|------|-----------|
+| Minimum average daily volume | 5,000,000 shares |
+| Maximum P/E ratio | 40x |
+| Minimum Return on Equity | 15% |
+| Maximum Debt-to-Equity ratio | 0.8 |
+
+Candidates that fail any filter are dropped before the ML stage.
+
+### Stage 2: CNN Sequence Model
+
+Titan feeds a sequence of recent price and feature data into a pre-trained CNN:
+- Model: `TitanRiskModel/Production` (MLflow model registry)
+- Model type: CNN (Convolutional Neural Network) v2 — sequence-to-signal
+- Output: risk score / signal confidence
+- Prediction artifacts loaded at runtime from MLflow
+
+### Signal Logic
+
+```
+IF candidate passes fundamental filters
+AND CNN model confidence >= threshold:
+    → Signal: BUY
+ELSE:
+    → Signal: HOLD / SKIP
+```
+
+### Position Sizing
+
+| Parameter | Value |
+|-----------|-------|
+| Default position size | $5,000 |
+| Execution | Alpaca (paper by default) |
+| Persistence | MySQL (`titan_trades`, `titan_service_health`) |
+
+---
 
 ## Main File
 - `scripts/mansa_titan_bot.py`

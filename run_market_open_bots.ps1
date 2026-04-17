@@ -30,13 +30,19 @@ $env:TITAN_MAX_TRADES = [string]$MaxTrades
 if ($ForceDryRun.IsPresent) {
     $env:TITAN_DRY_RUN = "true"
     $env:TITAN_ENABLE_TRADING = "false"
+    # Rigel respects these same env vars
+    $env:DRY_RUN = "true"
+    $env:ENABLE_TRADING = "false"
 } else {
     $env:TITAN_DRY_RUN = "false"
     $env:TITAN_ENABLE_TRADING = "true"
+    $env:DRY_RUN = "false"
+    $env:ENABLE_TRADING = "true"
 }
 
 # Keep paper mode explicit for morning automation.
 $env:ALPACA_PAPER = "true"
+$env:ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 
 # Keep IBKR connectivity explicit for morning automation.
 if (-not $env:IBKR_HOST) {
@@ -50,7 +56,7 @@ if (-not $env:IBKR_CLIENT_ID) {
     $env:IBKR_CLIENT_ID = "1"
 }
 
-# Ensure Discord webhook is available for Titan notifications.
+# Ensure Discord webhook is available for all bot notifications.
 if (-not $env:DISCORD_WEBHOOK_URL) {
     if ($env:DISCORD_WEBHOOK) {
         $env:DISCORD_WEBHOOK_URL = $env:DISCORD_WEBHOOK
@@ -85,7 +91,7 @@ if ($runningNames -notcontains $mysqlContainerName) {
     }
 }
 
-Write-Host "Launching market-open bot cycle..." -ForegroundColor Cyan
+Write-Host "Launching market-open bot cycle (Titan, Dogon, Orion, Rigel)..." -ForegroundColor Cyan
 Write-Host "Log file: $logFile" -ForegroundColor Gray
 
 $cmdOutput = & $pythonExe -m scripts.run_market_open_bots 2>&1

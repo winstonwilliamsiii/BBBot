@@ -2,6 +2,50 @@
 
 Hydra is the Mansa Health momentum bot. The production scaffold lives in [hydra_bot.py](hydra_bot.py) and exposes FastAPI, Airbyte, Airflow, and MLflow integration points.
 
+## Strategy Reference
+
+| Field | Value |
+|-------|-------|
+| **Bot ID** | 6 |
+| **Fund** | Mansa Health |
+| **Strategy** | Healthcare Sector Momentum |
+| **Universe** | XLV, UNH, ELV, CI, CVS, HCA, ISRG, LLY, ABBV (9 healthcare stocks) |
+| **Timeframe** | 1D |
+| **Position size** | $2,200 |
+
+### Momentum Algorithm
+
+Hydra scores each stock in the healthcare universe using a momentum indicator computed over a 20-day lookback window, confirmed by a dual-SMA crossover filter:
+
+```
+momentum_score = (price_today - price_20d_ago) / price_20d_ago
+
+SMA_short = SMA(50 periods)   # trend direction filter
+SMA_long  = SMA(200 periods)  # macro trend baseline
+
+BUY  if momentum_score >= 0.15 AND SMA_short > SMA_long
+HOLD otherwise
+```
+
+Sentiment from Stocktwits headlines is scored via TextBlob (fallback: keyword scoring) and can modify or veto signals when polarity is strongly negative.
+
+### Risk Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| Momentum lookback | 20 days |
+| Buy threshold | 0.15 (15% momentum) |
+| SMA short window | 50 periods |
+| SMA long window | 200 periods |
+| Min volume | 750,000 shares/day |
+| Max drawdown | 6.0% |
+| Max daily loss | 1.5% |
+| Max open positions | 5 |
+
+For complete strategy documentation see [docs/root/HYDRA_README.md](../root/HYDRA_README.md) (if available).
+
+---
+
 ## Components
 
 - FastAPI routes: `/hydra/health`, `/hydra/status`, `/hydra/bootstrap`, `/hydra/analyze`, `/hydra/trade`, `/hydra/airbyte-config`

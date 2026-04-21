@@ -139,6 +139,20 @@ show_user_info()
 
 # Pre-auth repair: restore admin User object inline — no st.rerun() needed.
 # Runs every page load; harmless when user is already valid.
+# Path 1: current_user_data dict is present — rebuild the User object from it.
+if (
+    st.session_state.get("authenticated", False)
+    and st.session_state.get("current_user") is None
+    and isinstance(st.session_state.get("current_user_data"), dict)
+):
+    try:
+        from frontend.utils.rbac import User as _User
+        _restored = _User.from_dict(st.session_state["current_user_data"])
+        st.session_state.current_user = _restored
+    except Exception:
+        pass
+
+# Path 2: admin marker present but User object missing — rebuild from DEMO_USERS.
 if st.session_state.get("admin_authenticated", False) and st.session_state.get("current_user") is None:
     try:
         _admin_data = RBACManager.DEMO_USERS.get("admin")

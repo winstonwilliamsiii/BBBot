@@ -2,7 +2,8 @@
 require('dotenv').config();
 const axios = require('axios');
 const cron = require('node-cron');
-const yahooFinance = require('yahoo-finance2').default;
+const YahooFinanceLib = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinanceLib({ suppressNotices: ['yahooSurvey'] });
 const fs = require('fs');
 const mysql = require('mysql2/promise');
 const path = require('path');

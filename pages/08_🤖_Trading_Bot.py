@@ -2072,12 +2072,14 @@ with tab3:
             _hbar_fig.update_layout(
                 barmode="group",
                 xaxis=dict(
-                    title="Signal Score  (−1 → −, 0 = Neutral, +1 → +)",
+                    title=dict(
+                        text="Signal Score  (−1 → −, 0 = Neutral, +1 → +)",
+                        font=dict(color="#FFFFFF"),
+                    ),
                     range=[-1.15, 1.15],
                     showgrid=True, gridcolor="rgba(255,255,255,0.07)",
                     zeroline=True, zerolinecolor="rgba(255,255,255,0.25)",
                     tickfont=dict(color="#FFFFFF"),
-                    titlefont=dict(color="#FFFFFF"),
                 ),
                 yaxis=dict(
                     showgrid=False, tickfont=dict(color="#FFFFFF"),

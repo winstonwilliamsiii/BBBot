@@ -251,6 +251,58 @@ class APIClient:
             },
         )
 
+    def get_rhea_status(self) -> Optional[Dict[str, Any]]:
+        """Get Rhea bot status."""
+        return self._request("GET", "/rhea/status")
+
+    def get_rhea_health(self) -> Optional[Dict[str, Any]]:
+        """Get Rhea dependency and broker health."""
+        return self._request("GET", "/rhea/health")
+
+    def bootstrap_rhea(self) -> Optional[Dict[str, Any]]:
+        """Bootstrap Rhea demo analysis state."""
+        return self._request("POST", "/rhea/bootstrap")
+
+    def analyze_rhea(
+        self,
+        ticker: str,
+        news_headlines: Optional[list[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Analyze an ADI-sector ticker using Rhea's signal stack."""
+        return self._request(
+            "POST",
+            "/rhea/analyze",
+            json={
+                "ticker": ticker,
+                "news_headlines": news_headlines or [],
+            },
+        )
+
+    def trade_rhea(
+        self,
+        broker: str,
+        ticker: str,
+        action: str,
+        qty: float,
+        dry_run: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Submit or simulate a Rhea trade decision."""
+        return self._request(
+            "POST",
+            "/rhea/trade",
+            json={
+                "broker": broker,
+                "ticker": ticker,
+                "action": action,
+                "qty": qty,
+                "dry_run": dry_run,
+            },
+        )
+
+    def get_rhea_airbyte_config(self) -> Optional[Dict[str, Any]]:
+        """Get Rhea's Airbyte source configuration payload."""
+        return self._request("GET", "/rhea/airbyte-config")
+
 
 def get_api_client() -> APIClient:
     """Factory function for API client (singleton pattern)"""

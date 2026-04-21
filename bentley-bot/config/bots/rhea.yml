@@ -4,7 +4,7 @@ bot:
   runtime_name: Rhea_Bot
   fund: Mansa ADI
   strategy: Intra-Day / Swing
-  module: bentley-bot/bots/rhea.py
+  module: rhea_bot.py
 
 execution:
   primary_client: alpaca_client
@@ -15,9 +15,26 @@ execution:
 strategy:
   label: Rhea_Intraday_Swing
   screener_file: rhea_adi_swing.csv
-  universe: ADI_Swing_Basket
+  universe: Aerospace_Defense_Industrials
   timeframe: 30m
   position_size: 1800
+
+services:
+  fastapi:
+    route_prefix: /rhea
+    health_endpoint: /rhea/health
+    analyze_endpoint: /rhea/analyze
+    trade_endpoint: /rhea/trade
+  airflow:
+    dag_id: rhea_mansa_adi
+    schedule: 20 8 * * 1-5
+  airbyte:
+    source: stocktwits
+    source_config: airbyte/sources/stocktwits/rhea_mansa_config.json
+    connection_id_env: RHEA_AIRBYTE_CONNECTION_ID
+  mlflow:
+    experiment: Rhea_Mansa_ADI
+    tracking_uri_env: MLFLOW_TRACKING_URI
 
 risk:
   max_holding_days: 5

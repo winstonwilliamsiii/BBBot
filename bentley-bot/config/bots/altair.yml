@@ -2,12 +2,14 @@ bot:
   id: 4
   name: Altair
   runtime_name: Altair_Bot
-  fund: Mansa AI
+  fund: Mansa AI Fund
   strategy: News Trading
-  module: bentley-bot/bots/altair.py
+  module: altair_bot.py
+  objective: Route Altair news-trading signals through Bentley Dashboard with Airflow scheduling, MLflow experiment tracking, MySQL health visibility, and Discord trade notifications.
 
 execution:
-  primary_client: alpaca_client
+  primary_client: alpaca
+  fallback_client: ibkr
   mode: paper
   enabled: false
   order_type: market
@@ -19,8 +21,29 @@ strategy:
   timeframe: 30m
   position_size: 1800
 
+services:
+  fastapi:
+    route_prefix: /altair
+    health_endpoint: /altair/health
+    analyze_endpoint: /altair/analyze
+    trade_endpoint: /altair/trade
+  airflow:
+    dag_id: altair_mansa_ai_fund
+    schedule: 15 8 * * 1-5
+  airbyte:
+    source: stocktwits
+    source_config: airbyte/sources/stocktwits/altair_mansa_config.json
+    connection_id_env: ALTAIR_AIRBYTE_CONNECTION_ID
+  mlflow:
+    experiment: Altair_Mansa_AI_Fund
+    tracking_uri_env: MLFLOW_TRACKING_URI
+
 risk:
   min_news_score: 0.70
+  min_volume: 800000
+  max_pe: 60
+  min_roe: 10
+  max_debt_to_equity: 0.7
   max_holding_hours: 24
   max_daily_loss_pct: 1.5
   max_open_positions: 4

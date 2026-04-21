@@ -376,7 +376,7 @@ class RBACManager:
             st.session_state.current_user_data = None
 
         # Rebuild the user object from serialized data when session reruns lose
-        # the in-memory User instance.
+        # the in-memory User instance (common on Streamlit Cloud).
         if (
             st.session_state.get('authenticated', False)
             and st.session_state.get('current_user') is None
@@ -387,9 +387,9 @@ class RBACManager:
                     st.session_state.current_user_data
                 )
             except Exception:
-                st.session_state.authenticated = False
+                # Only clear the stale User object — keep current_user_data and
+                # authenticated so the legacy repair path below can recover.
                 st.session_state.current_user = None
-                st.session_state.current_user_data = None
 
         # Secondary repair path: if auth flag is true but user payload is gone,
         # recover from legacy admin markers instead of forcing a logout.

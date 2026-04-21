@@ -40,7 +40,7 @@ CONFIG_FILE = CONFIG_DIR / "broker_modes.json"
 # Default bot-to-broker mapping
 BOT_BROKER_MAPPING = {
     "Titan": "alpaca",
-    "Vega": "ibkr",
+    "Vega": "axi",
     "Draco": "alpaca",
     "Altair": "alpaca",
     "Procryon": "alpaca",
@@ -48,14 +48,14 @@ BOT_BROKER_MAPPING = {
     "Triton": "alpaca",
     "Dione": "ibkr",
     "Dogon": "alpaca",
-    "Rigel": "mt5",
+    "Rigel": "ftmo",
     "Orion": "mt5",
     "Rhea": "alpaca",
     "Jupicita": "alpaca",
 }
 
 # Supported brokers
-SUPPORTED_BROKERS = ["alpaca", "mt5", "axi", "ibkr"]
+SUPPORTED_BROKERS = ["alpaca", "mt5", "ftmo", "axi", "ibkr"]
 
 
 class BrokerModeConfig:
@@ -91,6 +91,7 @@ class BrokerModeConfig:
             "broker_modes": {
                 "alpaca": "paper",
                 "mt5": "paper",
+                "ftmo": "paper",
                 "axi": "paper",
                 "ibkr": "paper",
             },

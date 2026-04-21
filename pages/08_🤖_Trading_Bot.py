@@ -1223,6 +1223,8 @@ def _render_quick_launch_buttons() -> None:
                     execution = _execute_bot_mode(bot_name, "on", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 _record_bot_action(bot_name, "on", selected_mode, execution)
+                # Clear cached bot events so the status indicator updates immediately.
+                _latest_bot_mode_events_all.clear()
                 st.rerun()
         with c6:
             if st.button("Run OFF", key=f"exec_off_{bot_name}"):
@@ -1231,6 +1233,8 @@ def _render_quick_launch_buttons() -> None:
                     execution = _execute_bot_mode(bot_name, "off", selected_mode)
                 st.session_state["selected_bot_launch_output"] = execution["output"]
                 _record_bot_action(bot_name, "off", selected_mode, execution)
+                # Clear cached bot events so the status indicator updates immediately.
+                _latest_bot_mode_events_all.clear()
                 st.rerun()
 
     selected_cmd = st.session_state.get("selected_bot_launch_command")
@@ -1437,6 +1441,7 @@ with col1:
             execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "on", titan_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
         st.rerun()
 
 with col2:
@@ -1446,6 +1451,7 @@ with col2:
             execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "off", titan_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
         st.rerun()
 
 hydra_sidebar_status = get_bot_status("Hydra")
@@ -1474,6 +1480,7 @@ with hcol1:
             execution = _execute_bot_mode("Hydra", "on", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "on", hydra_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
         st.rerun()
 
 with hcol2:
@@ -1483,6 +1490,7 @@ with hcol2:
             execution = _execute_bot_mode("Hydra", "off", hydra_sidebar_mode)
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "off", hydra_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
         st.rerun()
 
 st.sidebar.caption(

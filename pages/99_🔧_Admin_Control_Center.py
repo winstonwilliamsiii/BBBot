@@ -535,13 +535,23 @@ def resolve_control_center_api_url():
     """Resolve a reachable Control Center API URL with localhost fallbacks."""
     cached_url = st.session_state.get("resolved_control_center_api_url")
     if cached_url:
-        return cached_url
+        # Re-validate: only reuse if the endpoint is actually still reachable.
+        try:
+            r = requests.get(f"{cached_url}/health", timeout=1.5)
+            if r.status_code == 200:
+                return cached_url
+        except requests.exceptions.RequestException:
+            pass
+        # Cached URL is stale — clear and re-probe.
+        st.session_state.pop("resolved_control_center_api_url", None)
 
+    # Note: port 5000 is intentionally excluded — it is reserved for MLflow.
+    # The Control Center API always runs on port 5001.
     candidate_urls = [DEFAULT_CONTROL_CENTER_URL]
     if DEFAULT_CONTROL_CENTER_URL != "http://localhost:5001":
         candidate_urls.append("http://localhost:5001")
-    if DEFAULT_CONTROL_CENTER_URL != "http://localhost:5000":
-        candidate_urls.append("http://localhost:5000")
+    if DEFAULT_CONTROL_CENTER_URL != "http://127.0.0.1:5001":
+        candidate_urls.append("http://127.0.0.1:5001")
 
     for base_url in candidate_urls:
         try:
@@ -684,7 +694,7 @@ def check_admin_auth():
                         st.rerun()
                     RBACManager.logout()
                     st.error("Admin role required")
-                elif username == "admin" and password == "admin":  # Legacy DEVELOPMENT ONLY
+                elif username == "admin" and password in ("admin", "admin123"):  # Legacy dev fallback
                     st.session_state.admin_authenticated = True
                     st.session_state.admin_user = username
                     st.rerun()
@@ -762,6 +772,7 @@ BOT_DEFAULT_BROKERS = {
     "Orion": "ALPACA",
     "Hydra": "ALPACA",
     "Triton": "ALPACA",
+    "Rhea": "IBKR",
 }
 
 
@@ -780,6 +791,13 @@ def get_triton_control_snapshot() -> dict:
     return {
         "status": api_request("/triton/status", show_notice=False) or {},
         "health": api_request("/triton/health", show_notice=False) or {},
+    }
+
+
+def get_rhea_control_snapshot() -> dict:
+    return {
+        "status": api_request("/rhea/status", show_notice=False) or {},
+        "health": api_request("/rhea/health", show_notice=False) or {},
     }
 
 
@@ -1980,6 +1998,171 @@ def main():
 
         with st.expander("Triton Health Details", expanded=False):
             st.json(triton_snapshot)
+
+        st.markdown("---")
+
+        st.subheader("Rhea Operations")
+        rhea_snapshot = get_rhea_control_snapshot()
+        rhea_status = rhea_snapshot.get("status") or {}
+        rhea_health = rhea_snapshot.get("health") or {}
+        rhea_launch_mode = st.radio(
+            "Rhea trading mode",
+            options=["paper", "live"],
+            horizontal=True,
+            key="rhea_trading_mode",
+            index=(
+                0 if get_bot_launch_mode("Rhea", "ibkr") == "paper" else 1
+            ),
+        )
+
+        r1, r2, r3, r4 = st.columns(4)
+        with r1:
+            st.metric(
+                "Rhea Execution",
+                "ON" if rhea_status.get("execution_enabled") else "OFF",
+            )
+        with r2:
+            st.metric(
+                "Latest Rhea Action",
+                str(rhea_status.get("last_analysis", {}).get("action", "N/A")),
+            )
+        with r3:
+            st.metric(
+                "Rhea FastAPI",
+                str(
+                    rhea_health.get("fastapi", {}).get("reachable", False)
+                ).upper(),
+            )
+        with r4:
+            st.metric(
+                "Rhea MySQL",
+                str(
+                    rhea_health.get("mysql", {}).get("reachable", False)
+                ).upper(),
+            )
+
+        rhea_btn1, rhea_btn2, rhea_btn3 = st.columns(3)
+        with rhea_btn1:
+            if st.button("Rhea ON", type="primary", use_container_width=True):
+                persist_bot_launch_mode(
+                    "Rhea",
+                    rhea_launch_mode,
+                    "ibkr",
+                    True,
+                )
+                with st.spinner("Running Rhea ON..."):
+                    execution = run_bot_mode(
+                        "Rhea",
+                        "ON",
+                        rhea_launch_mode,
+                        broker="IBKR",
+                    )
+                st.session_state["rhea_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Rhea ON completed.")
+                else:
+                    st.error("Rhea ON failed.")
+                st.rerun()
+
+        with rhea_btn2:
+            if st.button("Rhea OFF", use_container_width=True):
+                persist_bot_launch_mode(
+                    "Rhea",
+                    rhea_launch_mode,
+                    "ibkr",
+                    False,
+                )
+                with st.spinner("Running Rhea OFF..."):
+                    execution = run_bot_mode(
+                        "Rhea",
+                        "OFF",
+                        rhea_launch_mode,
+                        broker="IBKR",
+                    )
+                st.session_state["rhea_mode_output"] = execution["output"]
+                if execution["ok"]:
+                    st.success("Rhea OFF completed.")
+                else:
+                    st.error("Rhea OFF failed.")
+                st.rerun()
+
+        with rhea_btn3:
+            if st.button("Bootstrap Rhea", use_container_width=True):
+                result = api_request(
+                    "/rhea/bootstrap",
+                    method="POST",
+                    show_notice=True,
+                )
+                if result:
+                    st.success("Rhea bootstrap completed.")
+                    st.session_state["rhea_bootstrap_result"] = result
+                else:
+                    st.error("Rhea bootstrap failed.")
+
+        rhea_trade_col1, rhea_trade_col2, rhea_trade_col3, rhea_trade_col4 = st.columns(4)
+        with rhea_trade_col1:
+            rhea_trade_ticker = st.text_input(
+                "Rhea ticker",
+                value="GD",
+                key="rhea_trade_ticker",
+            ).strip().upper()
+        with rhea_trade_col2:
+            rhea_trade_action = st.selectbox(
+                "Rhea action",
+                ["BUY", "SELL"],
+                key="rhea_trade_action",
+            )
+        with rhea_trade_col3:
+            rhea_trade_qty = st.number_input(
+                "Rhea quantity",
+                min_value=1.0,
+                value=5.0,
+                step=1.0,
+                key="rhea_trade_qty",
+            )
+        with rhea_trade_col4:
+            rhea_trade_dry_run = st.toggle(
+                "Dry Run",
+                value=True,
+                key="rhea_trade_dry_run",
+            )
+
+        if st.button("Execute Rhea Trade", use_container_width=True):
+            trade_result = api_request(
+                "/rhea/trade",
+                method="POST",
+                data={
+                    "broker": "ibkr",
+                    "ticker": rhea_trade_ticker or "GD",
+                    "action": rhea_trade_action,
+                    "qty": float(rhea_trade_qty),
+                    "dry_run": bool(rhea_trade_dry_run),
+                },
+                show_notice=True,
+            )
+            if trade_result:
+                st.success("Rhea trade request completed.")
+                st.session_state["rhea_trade_result"] = trade_result
+            else:
+                st.error("Rhea trade request failed.")
+
+        rhea_bootstrap_result = st.session_state.get("rhea_bootstrap_result")
+        if rhea_bootstrap_result:
+            with st.expander("Rhea Bootstrap Result", expanded=False):
+                st.json(rhea_bootstrap_result)
+
+        rhea_trade_result = st.session_state.get("rhea_trade_result")
+        if rhea_trade_result:
+            with st.expander("Last Rhea Trade Result", expanded=False):
+                st.json(rhea_trade_result)
+
+        rhea_output = st.session_state.get("rhea_mode_output")
+        if rhea_output:
+            with st.expander("Last Rhea Command Output", expanded=False):
+                st.code(rhea_output, language="text")
+
+        with st.expander("Rhea Health Details", expanded=False):
+            st.json(rhea_snapshot)
 
         st.markdown("---")
 

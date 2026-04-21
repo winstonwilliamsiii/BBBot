@@ -1,0 +1,11 @@
+{
+  "tickers": [
+    "QBTS",
+    "RGTI",
+    "QSI",
+    "QS",
+    "SOUN",
+    "NBIS"
+  ],
+  "user_agent": "Mozilla/5.0 (compatible; AltairBot/1.0)"
+}

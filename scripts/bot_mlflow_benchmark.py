@@ -82,6 +82,11 @@ def log_bot_benchmark_run(
         mlflow.set_tracking_uri(resolved_tracking_uri)
         mlflow.set_experiment(experiment_name)
 
+        # End any lingering active run before starting a new one (e.g. from a
+        # previous crashed invocation in the same process).
+        if mlflow.active_run() is not None:
+            mlflow.end_run()
+
         with mlflow.start_run(run_name=run_name):
             _safe_set_tags(
                 {

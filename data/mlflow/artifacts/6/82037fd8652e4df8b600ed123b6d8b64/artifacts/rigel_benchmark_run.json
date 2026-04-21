@@ -1,0 +1,10 @@
+{
+  "bot": "Rigel",
+  "fund": "Mansa_FOREX",
+  "timestamp": "2026-04-18T17:56:30.450021+00:00",
+  "signals_generated": 0.0,
+  "executed_signals": 0.0,
+  "avg_signal_confidence": 0.0,
+  "status": "blocked_daily_loss_limit",
+  "detail": "Daily loss limit exceeded."
+}

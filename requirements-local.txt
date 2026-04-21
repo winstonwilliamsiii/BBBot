@@ -68,6 +68,10 @@ torch>=2.5.0
 
 # Interactive Brokers - Forex, Futures, Commodities
 ibapi>=10.19.2
+ib_insync>=0.9.86
+
+# Alpaca - US Equities
+alpaca-trade-api>=3.0.0
 
 # Binance - Cryptocurrency
 python-binance>=1.0.17

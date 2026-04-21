@@ -45,6 +45,22 @@ except (ImportError, OSError, RuntimeError, ValueError) as exc:
     TritonBot = None
     TRITON_IMPORT_ERROR = str(exc)
 
+try:
+    from rhea_bot import RheaBot
+
+    RHEA_IMPORT_ERROR = None
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    RheaBot = None
+    RHEA_IMPORT_ERROR = str(exc)
+
+try:
+    from altair_bot import app as altair_app
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    altair_app = None
+    ALTAIR_IMPORT_ERROR = str(exc)
+else:
+    ALTAIR_IMPORT_ERROR = None
+
 from draco_bot import app as draco_app
 from vega_bot import app as vega_app
 from frontend.components.ibkr_gateway_client import (
@@ -164,6 +180,19 @@ class TritonTradeRequest(BaseModel):
 
 class TritonConfigureRequest(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
+
+
+class RheaAnalyzeRequest(BaseModel):
+    ticker: str = Field(min_length=1)
+    news_headlines: list[str] = Field(default_factory=list)
+
+
+class RheaTradeRequest(BaseModel):
+    broker: str = Field(default="ibkr", min_length=1)
+    ticker: str = Field(min_length=1)
+    action: Literal["BUY", "SELL"]
+    qty: float = Field(gt=0)
+    dry_run: bool = True
 
 
 class LiquiditySettingsRequest(BaseModel):
@@ -394,6 +423,15 @@ def get_triton_bot() -> Any:
     if TritonBot is None:
         raise RuntimeError(TRITON_IMPORT_ERROR or "Triton unavailable")
     bot = TritonBot()
+    bot.bootstrap_demo_state()
+    return bot
+
+
+@lru_cache(maxsize=1)
+def get_rhea_bot() -> Any:
+    if RheaBot is None:
+        raise RuntimeError(RHEA_IMPORT_ERROR or "Rhea unavailable")
+    bot = RheaBot()
     bot.bootstrap_demo_state()
     return bot
 
@@ -854,9 +892,75 @@ async def triton_configure(payload: TritonConfigureRequest):
     return get_triton_bot().configure(payload.settings)
 
 
+@app.get("/rhea/health")
+async def rhea_health():
+    if RheaBot is None:
+        raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
+    return get_rhea_bot().health_snapshot(probe_fastapi=False)
+
+
+@app.get("/rhea/status")
+async def rhea_status():
+    if RheaBot is None:
+        raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
+    result = get_rhea_bot().status()
+    result["execution_enabled"] = _is_bot_active("Rhea")
+    return result
+
+
+@app.post("/rhea/bootstrap")
+async def rhea_bootstrap():
+    if RheaBot is None:
+        raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
+    return {
+        "status": "bootstrapped",
+        "analysis": get_rhea_bot().bootstrap_demo_state(),
+    }
+
+
+@app.post("/rhea/analyze")
+async def rhea_analyze(payload: RheaAnalyzeRequest):
+    if RheaBot is None:
+        raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
+    try:
+        return get_rhea_bot().analyze_ticker(
+            payload.ticker,
+            headlines=payload.news_headlines,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/rhea/trade")
+async def rhea_trade(payload: RheaTradeRequest):
+    if RheaBot is None:
+        raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
+    try:
+        result = get_rhea_bot().execute_trade(
+            payload.broker,
+            payload.ticker,
+            payload.action,
+            qty=payload.qty,
+            dry_run=payload.dry_run,
+        )
+        _notify_bot_trade("Rhea", result)
+        return result
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/rhea/airbyte-config")
+async def rhea_airbyte_config():
+    if RheaBot is None:
+        raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
+    return get_rhea_bot().airbyte_source_config()
+
+
 app.include_router(sentiment_router)
 app.mount("/draco", draco_app)
 app.mount("/vega", vega_app)
+if altair_app is not None:
+    app.mount("/altair", altair_app)
 
 # ── Cosmic Signal Router ──────────────────────────────────────────────────────
 try:
@@ -880,7 +984,7 @@ _BOT_SIGNAL_META: dict[str, dict] = {
     "Dogon":    {"fund": "Mansa ETF",           "strategy": "Portfolio Optimizer"},
     "Orion":    {"fund": "Mansa Minerals",      "strategy": "GoldRSI Strategy"},
     "Draco":    {"fund": "Mansa Money Bag",     "strategy": "Sentiment Analyzer"},
-    "Altair":   {"fund": "Mansa AI",            "strategy": "News Trading"},
+    "Altair":   {"fund": "Mansa AI Fund",       "strategy": "News Trading"},
     "Procryon": {"fund": "Mansa Crypto Fund",   "strategy": "Crypto Spread Arbitrage"},
     "Hydra":    {"fund": "Mansa Health",        "strategy": "Momentum Strategy"},
     "Triton":   {"fund": "Mansa Transportation", "strategy": "Pending"},

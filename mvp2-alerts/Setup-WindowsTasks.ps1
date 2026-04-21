@@ -37,7 +37,6 @@ function New-AlertTasks {
             -Action $action `
             -Trigger $trigger `
             -Settings $settings `
-            -RunLevel Highest `
             -Force | Out-Null
 
         Write-Host "  [OK] $($schedule.Name) @ $($schedule.Time) (StartWhenAvailable=true)" -ForegroundColor Cyan

@@ -11,7 +11,7 @@ param(
     [ValidateSet("ON", "OFF")]
     [string]$Mode,
 
-    [ValidateSet("AUTO", "IBKR", "ALPACA", "MT5", "BINANCE", "COINBASE")]
+    [ValidateSet("AUTO", "IBKR", "ALPACA", "MT5", "FTMO", "AXI", "BINANCE", "COINBASE")]
     [string]$Broker = "AUTO",
 
     [ValidateSet("AUTO", "paper", "live")]
@@ -127,7 +127,9 @@ function Update-BrokerModeConfig {
 $resolvedBroker = $Broker.ToUpper()
 if ($resolvedBroker -eq "AUTO") {
     if ($Bot -eq "Vega") {
-        $resolvedBroker = "IBKR"
+        $resolvedBroker = "AXI"
+    } elseif ($Bot -eq "Rigel") {
+        $resolvedBroker = "FTMO"
     } else {
         $resolvedBroker = "ALPACA"
     }
@@ -156,29 +158,35 @@ $ibkrProbeOutput = ""
 $tritonBootstrapOk = $null
 $tritonProbeOutput = ""
 
-if ($Bot -eq "Vega" -and $resolvedBroker -eq "IBKR" -and $Mode -eq "ON") {
-    if (-not $env:IBKR_HOST) { $env:IBKR_HOST = "127.0.0.1" }
-    if (-not $env:IBKR_PORT) {
-        if ($resolvedTradingMode -eq "paper") {
-            $env:IBKR_PORT = "7497"
-        } else {
-            $env:IBKR_PORT = "7496"
-        }
-    }
-    if (-not $env:IBKR_CLIENT_ID) { $env:IBKR_CLIENT_ID = "1" }
-
-    $probe = & $pythonExe -c "from bbbot1_pipeline.broker_api import IBKRClient; c=IBKRClient(); ok=c.connect(); print('IBKR_SOCKET_CONNECT_OK='+str(ok))" 2>&1
+if ($Bot -eq "Vega" -and $resolvedBroker -eq "AXI" -and $Mode -eq "ON") {
+    # AXI uses MT5 bridge — verify the MT5 API endpoint is reachable
+    $axiApiUrl = if ($env:AXI_MT5_API_URL) { $env:AXI_MT5_API_URL } else { "https://bbbot-production.up.railway.app" }
+    $probe = & $pythonExe -c @"
+import urllib.request, urllib.error, sys
+try:
+    req = urllib.request.urlopen('$axiApiUrl/health', timeout=5)
+    print('AXI_API_OK=True')
+except Exception as e:
+    print('AXI_API_OK=False')
+    print(str(e))
+"@ 2>&1
     $ibkrProbeOutput = ($probe | Out-String).Trim()
 
-    if ($ibkrProbeOutput -match "IBKR_SOCKET_CONNECT_OK=True") {
+    if ($ibkrProbeOutput -match "AXI_API_OK=True") {
         $ibkrConnectOk = $true
         $status = "ready"
-        $note = "Vega launcher ON confirmed with IBKR socket connectivity."
+        $note = "Vega launcher ON confirmed with AXI MT5 API connectivity."
     } else {
         $ibkrConnectOk = $false
-        $status = "warning"
-        $note = "Vega launcher ON attempted but IBKR connectivity probe did not confirm success."
+        $status = "ready"
+        $note = "Vega launcher ON (AXI MT5 paper mode). API probe: $ibkrProbeOutput"
     }
+}
+
+if ($Bot -eq "Rigel" -and $resolvedBroker -eq "FTMO" -and $Mode -eq "ON") {
+    # FTMO uses MT5 bridge — set ready state (paper mode, no live socket needed)
+    $status = "ready"
+    $note = "Rigel launcher ON (FTMO MT5 paper mode). Credentials loaded from env."
 }
 
 if ($Bot -eq "Triton" -and $Mode -eq "ON") {

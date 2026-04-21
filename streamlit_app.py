@@ -874,7 +874,7 @@ def main():
         "Cephei": "SH",
         "Rigel": "UUP",
         "Orion": "GLD",
-        "Rhea": "VNQ",
+        "Rhea": "GD",
         "Jupicita": "IWM",
     }
 

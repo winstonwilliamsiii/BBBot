@@ -103,6 +103,10 @@ class VegaConfig:
     forecast_steps: int
     default_history_period: str
     default_history_interval: str
+    # Retail universe
+    retail_universe: tuple[str, ...] = (
+        "KOF", "SBH", "WMT", "FDX", "W", "LULU", "DG", "KO", "PG", "COST",
+    )
     # Identity
     bot_name: str = "Vega_Bot"
     fund_name: str = "Mansa_Retail"
@@ -138,6 +142,14 @@ class VegaConfig:
             forecast_steps=_as_int(os.getenv("VEGA_FORECAST_STEPS"), 5),
             default_history_period=os.getenv("VEGA_HISTORY_PERIOD", "6mo"),
             default_history_interval=os.getenv("VEGA_HISTORY_INTERVAL", "1d"),
+            retail_universe=tuple(
+                t.strip().upper()
+                for t in os.getenv(
+                    "VEGA_UNIVERSE",
+                    "KOF,SBH,WMT,FDX,W,LULU,DG,KO,PG,COST",
+                ).split(",")
+                if t.strip()
+            ),
         )
 
 
@@ -968,6 +980,12 @@ def post_trade(request: TradeRequest) -> dict[str, Any]:
     return submit_trade(request)
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("vega_bot:app", host="127.0.0.1", port=8011, reload=False)
+@app.get("/universe")
+def get_universe() -> dict[str, Any]:
+    """Return the Vega retail universe of tickers."""
+    return {
+        "bot": CONFIG.bot_name,
+        "fund": CONFIG.fund_name,
+        "sector": "Retail",
+        "tickers": list(CONFIG.retail_universe),
+    }

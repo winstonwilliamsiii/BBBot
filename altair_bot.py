@@ -325,7 +325,7 @@ class AltairConfig:
             fastapi_base_url=str(os.getenv("ALTAIR_FASTAPI_BASE_URL", os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001"))).rstrip("/"),
             dashboard_url=str(os.getenv("BENTLEY_UI_URL", os.getenv("STREAMLIT_PUBLIC_URL", "http://localhost:8501"))).rstrip("/"),
             enable_trading=_truthy(os.getenv("ALTAIR_ENABLE_TRADING", execution.get("enabled", False))),
-            execution_mode=str(os.getenv("ALTAIR_EXECUTION_MODE", execution.get("mode") or "paper")).strip().lower(),
+            execution_mode=str(os.getenv("ALTAIR_TRADING_MODE") or os.getenv("ALTAIR_EXECUTION_MODE", execution.get("mode") or "paper")).strip().lower(),
             primary_broker=str(
                 os.getenv("ALTAIR_PRIMARY_BROKER", execution.get("primary_client") or "alpaca")
             ).strip().lower().replace("_client", ""),
@@ -335,10 +335,20 @@ class AltairConfig:
             alpaca_api_key=os.getenv("ALPACA_API_KEY"),
             alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY"),
             alpaca_base_url=str(
-                os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+                os.getenv("ALPACA_BASE_URL") or (
+                    "https://api.alpaca.markets"
+                    if (os.getenv("ALTAIR_TRADING_MODE") or os.getenv("ALTAIR_EXECUTION_MODE", execution.get("mode") or "paper")).strip().lower() == "live"
+                    else "https://paper-api.alpaca.markets"
+                )
             ).strip(),
             ibkr_host=str(os.getenv("IBKR_HOST", "127.0.0.1")).strip(),
-            ibkr_port=int(str(os.getenv("IBKR_PORT", "7497")).strip()),
+            ibkr_port=int(str(
+                os.getenv("IBKR_PORT") or (
+                    "7496"
+                    if (os.getenv("ALTAIR_TRADING_MODE") or os.getenv("ALTAIR_EXECUTION_MODE", execution.get("mode") or "paper")).strip().lower() == "live"
+                    else "7497"
+                )
+            ).strip()),
             ibkr_client_id=int(str(os.getenv("IBKR_CLIENT_ID", "7")).strip()),
             min_volume=_to_float(risk.get("min_volume"), 800000.0),
             max_pe=_to_float(risk.get("max_pe"), 60.0),

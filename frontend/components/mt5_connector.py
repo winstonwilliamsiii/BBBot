@@ -18,6 +18,7 @@ from datetime import datetime
 import logging
 import os
 import time
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,39 @@ class MT5Connector:
         self.request_timeout = float(os.getenv("MT5_REQUEST_TIMEOUT", "20"))
         self.connect_retries = int(os.getenv("MT5_CONNECT_RETRIES", "3"))
         self.connect_retry_delay = float(os.getenv("MT5_CONNECT_RETRY_DELAY", "1.0"))
+
+    def _candidate_base_urls(self) -> List[str]:
+        """Return ordered bridge URL candidates for local development resilience."""
+        primary = self.base_url.rstrip('/')
+        candidates: List[str] = [primary]
+
+        parsed = urlparse(primary)
+        host = parsed.hostname
+        if not host:
+            return candidates
+
+        # Improve local reliability by probing loopback aliases and common MT5 ports.
+        if host in {"localhost", "127.0.0.1"}:
+            scheme = parsed.scheme or "http"
+            aliases = ["localhost", "127.0.0.1"]
+            common_ports = [8002, 8000, 8080]
+            selected_port = parsed.port
+            ordered_ports: List[int] = []
+
+            if selected_port is not None:
+                ordered_ports.append(selected_port)
+            for candidate_port in common_ports:
+                if candidate_port not in ordered_ports:
+                    ordered_ports.append(candidate_port)
+
+            for alias in aliases:
+                for port in ordered_ports:
+                    candidate = f"{scheme}://{alias}:{port}"
+                    if candidate not in candidates:
+                        candidates.append(candidate)
+
+        return candidates
+
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         """Execute HTTP request with retry for transient network failures."""
         timeout = kwargs.pop('timeout', self.request_timeout)
@@ -118,16 +152,25 @@ class MT5Connector:
         last_response = None
         last_error = None
 
-        for path in paths:
-            url = f"{self.base_url}{path}"
-            try:
-                response = self._request(method, url, **kwargs)
-                if response.status_code == 404:
-                    last_response = response
-                    continue
-                return response
-            except requests.exceptions.RequestException as exc:
-                last_error = exc
+        for base_url in self._candidate_base_urls():
+            for path in paths:
+                url = f"{base_url}{path}"
+                try:
+                    response = self._request(method, url, **kwargs)
+                    if response.status_code == 404:
+                        last_response = response
+                        continue
+
+                    if base_url != self.base_url:
+                        logger.info(
+                            "MT5 bridge endpoint auto-resolved to %s (from %s)",
+                            base_url,
+                            self.base_url,
+                        )
+                        self.base_url = base_url
+                    return response
+                except requests.exceptions.RequestException as exc:
+                    last_error = exc
 
         if last_response is not None:
             return last_response

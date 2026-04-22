@@ -325,6 +325,16 @@ def connect_alpaca(
     try:
         from frontend.utils.secrets_helper import get_alpaca_config
 
+        def _clean_secret_value(value: str | None) -> str:
+            cleaned = (value or "").strip()
+            if (
+                len(cleaned) >= 2
+                and cleaned[0] == cleaned[-1]
+                and cleaned[0] in ('"', "'")
+            ):
+                cleaned = cleaned[1:-1].strip()
+            return cleaned
+
         def _attempt_connect(
             key_to_use: str,
             secret_to_use: str,
@@ -365,6 +375,123 @@ def connect_alpaca(
                 "key_prefix": key_prefix_local,
             }
 
+        def _collect_alternate_candidates(default_mode: bool):
+            candidates: list[dict[str, object]] = []
+            seen_fingerprints: set[str] = set()
+
+            def _add_candidate(
+                cand_key: str | None,
+                cand_secret: str | None,
+                cand_mode: bool,
+                cand_source: str,
+            ):
+                key_clean = _clean_secret_value(cand_key)
+                secret_clean = _clean_secret_value(cand_secret)
+                if not key_clean or not secret_clean:
+                    return
+                fingerprint = f"{key_clean}|{secret_clean}|{cand_mode}"
+                if fingerprint in seen_fingerprints:
+                    return
+                seen_fingerprints.add(fingerprint)
+                candidates.append(
+                    {
+                        "key": key_clean,
+                        "secret": secret_clean,
+                        "paper": bool(cand_mode),
+                        "source": cand_source,
+                    }
+                )
+
+            # Config-resolved pair (already precedence-aware).
+            try:
+                cfg = get_alpaca_config()
+                _add_candidate(
+                    str(cfg.get("api_key", "")),
+                    str(cfg.get("secret_key", "")),
+                    bool(cfg.get("paper", default_mode)),
+                    "resolved config",
+                )
+            except Exception:
+                pass
+
+            # Explicit paper/live env pairs first.
+            _add_candidate(
+                os.getenv("ALPACA_PAPER_API_KEY"),
+                os.getenv("ALPACA_PAPER_SECRET_KEY"),
+                True,
+                "env ALPACA_PAPER_*",
+            )
+            _add_candidate(
+                os.getenv("ALPACA_LIVE_API_KEY"),
+                os.getenv("ALPACA_LIVE_SECRET_KEY"),
+                False,
+                "env ALPACA_LIVE_*",
+            )
+            _add_candidate(
+                os.getenv("ALPACA_API_KEY"),
+                os.getenv("ALPACA_SECRET_KEY"),
+                default_mode,
+                "env ALPACA_API_KEY/ALPACA_SECRET_KEY",
+            )
+            _add_candidate(
+                os.getenv("APCA_API_KEY_ID"),
+                os.getenv("APCA_API_SECRET_KEY"),
+                default_mode,
+                "env APCA_API_KEY_ID/APCA_API_SECRET_KEY",
+            )
+
+            # Streamlit secrets root + [alpaca] section.
+            try:
+                secrets_obj = getattr(st, "secrets", None)
+                if secrets_obj is not None:
+                    secrets_alpaca = None
+                    try:
+                        secrets_alpaca = secrets_obj.get("alpaca", None)
+                    except Exception:
+                        secrets_alpaca = None
+
+                    def _safe_get(container, name: str) -> str:
+                        if container is None:
+                            return ""
+                        try:
+                            value = container.get(name, "")
+                        except Exception:
+                            return ""
+                        return str(value) if value is not None else ""
+
+                    for container, cname in (
+                        (secrets_obj, "secrets root"),
+                        (secrets_alpaca, "secrets [alpaca]"),
+                    ):
+                        _add_candidate(
+                            _safe_get(container, "ALPACA_PAPER_API_KEY"),
+                            _safe_get(container, "ALPACA_PAPER_SECRET_KEY"),
+                            True,
+                            f"{cname} ALPACA_PAPER_*",
+                        )
+                        _add_candidate(
+                            _safe_get(container, "ALPACA_LIVE_API_KEY"),
+                            _safe_get(container, "ALPACA_LIVE_SECRET_KEY"),
+                            False,
+                            f"{cname} ALPACA_LIVE_*",
+                        )
+                        _add_candidate(
+                            _safe_get(container, "ALPACA_API_KEY"),
+                            _safe_get(container, "ALPACA_SECRET_KEY"),
+                            default_mode,
+                            f"{cname} ALPACA_API_KEY/ALPACA_SECRET_KEY",
+                        )
+                        _add_candidate(
+                            _safe_get(container, "APCA_API_KEY_ID"),
+                            _safe_get(container, "APCA_API_SECRET_KEY"),
+                            default_mode,
+                            f"{cname} APCA_API_KEY_ID/APCA_API_SECRET_KEY",
+                        )
+            except Exception:
+                pass
+
+            return candidates
+
         # Prefer credentials entered in UI; fallback to secrets/env.
         key = (api_key or "").strip()
         secret = (secret_key or "").strip()
@@ -399,40 +526,56 @@ def connect_alpaca(
         attempted_modes = connect_result["attempted_modes"]
         key_prefix = str(connect_result["key_prefix"])
 
-        # If manual credentials are stale/invalid, try configured secrets before failing.
-        if (not connected) and manual_credentials_provided:
-            auth_failed = "HTTP 401" in failure_detail or "HTTP 403" in failure_detail
-            if auth_failed:
-                try:
-                    fallback_config = get_alpaca_config()
-                    fallback_key = str(fallback_config["api_key"])
-                    fallback_secret = str(fallback_config["secret_key"])
-                    fallback_paper = bool(fallback_config["paper"])
+        # If auth fails, probe alternate credential sources and use the first valid pair.
+        auth_failed = "HTTP 401" in failure_detail or "HTTP 403" in failure_detail
+        if (not connected) and auth_failed:
+            fallback_errors: list[str] = []
+            tried_fingerprints = {
+                f"{key}|{secret}|{requested_mode}",
+            }
+            for candidate in _collect_alternate_candidates(requested_mode):
+                candidate_key = str(candidate["key"])
+                candidate_secret = str(candidate["secret"])
+                candidate_mode = bool(candidate["paper"])
+                candidate_source = str(candidate["source"])
+                candidate_fingerprint = (
+                    f"{candidate_key}|{candidate_secret}|{candidate_mode}"
+                )
+                if candidate_fingerprint in tried_fingerprints:
+                    continue
+                tried_fingerprints.add(candidate_fingerprint)
 
-                    # Avoid repeating the same failed attempt.
-                    if fallback_key != key or fallback_secret != secret or fallback_paper != requested_mode:
-                        fallback_result = _attempt_connect(fallback_key, fallback_secret, fallback_paper)
-                        if fallback_result["connected"]:
-                            connected = True
-                            connector = fallback_result["connector"]
-                            account = fallback_result["account"]
-                            connected_mode = fallback_result["connected_mode"]
-                            attempted_modes = fallback_result["attempted_modes"]
-                            key_prefix = str(fallback_result["key_prefix"])
-                            source = "secrets fallback"
-                            st.session_state.alpaca_api_key_stored = ""
-                            st.session_state.alpaca_secret_key_stored = ""
-                            st.session_state.alpaca_paper_trading = fallback_paper
-                        else:
-                            fallback_failure = str(fallback_result["failure_detail"] or "")
-                            if fallback_failure:
-                                failure_detail = (
-                                    f"{failure_detail} | secrets fallback failed: {fallback_failure}"
-                                    if failure_detail else f"secrets fallback failed: {fallback_failure}"
-                                )
-                except ValueError:
-                    # No configured secrets available; preserve original manual failure detail.
-                    pass
+                fallback_result = _attempt_connect(
+                    candidate_key,
+                    candidate_secret,
+                    candidate_mode,
+                )
+                if fallback_result["connected"]:
+                    connected = True
+                    connector = fallback_result["connector"]
+                    account = fallback_result["account"]
+                    connected_mode = fallback_result["connected_mode"]
+                    attempted_modes = fallback_result["attempted_modes"]
+                    key_prefix = str(fallback_result["key_prefix"])
+                    source = f"fallback: {candidate_source}"
+                    st.session_state.alpaca_api_key_stored = ""
+                    st.session_state.alpaca_secret_key_stored = ""
+                    st.session_state.alpaca_paper_trading = candidate_mode
+                    break
+
+                candidate_failure = str(fallback_result["failure_detail"] or "")
+                if candidate_failure:
+                    fallback_errors.append(
+                        f"{candidate_source}: {candidate_failure}"
+                    )
+
+            if (not connected) and fallback_errors:
+                fallback_summary = " | ".join(fallback_errors[:3])
+                failure_detail = (
+                    f"{failure_detail} | fallback attempts: {fallback_summary}"
+                    if failure_detail
+                    else f"fallback attempts: {fallback_summary}"
+                )
 
         if connected and connector and account:
             st.session_state.brokers['alpaca'] = connector

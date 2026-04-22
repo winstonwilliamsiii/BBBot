@@ -1395,29 +1395,46 @@ def build_deployed_bots_df() -> pd.DataFrame:
     """Build the Deployed Bots table by merging catalog and live launcher state."""
     catalog = get_bot_catalog_rows()
     all_events = get_all_bot_mode_events()
+    config = get_broker_mode_config() if get_broker_mode_config is not None else None
 
     rows = []
     for entry in catalog:
-        bot_key = str(entry.get("bot", "")).lower()
+        bot_name = str(entry.get("bot", ""))
+        bot_key = bot_name.lower()
         ev = all_events.get(bot_key, {})
         mode_raw = str(ev.get("mode", "")).lower()
         status_raw = str(ev.get("status", "")).lower()
 
+        active_flag = None
+        trading_mode = "paper"
+        broker_name = ""
+        if config is not None:
+            try:
+                active_flag = config.get_bot_active(bot_name)
+                trading_mode = config.get_bot_mode(bot_name)
+                broker_name = str(config.get_bot_broker(bot_name) or "")
+            except Exception:
+                active_flag = None
+
         if mode_raw == "on" and status_raw in ("ready", "warning", "placeholder", "active"):
             status_label = "🟢 RUNNING"
         elif mode_raw == "off":
+            status_label = "🔴 OFF"
+        elif active_flag is True:
+            status_label = "🟢 RUNNING"
+        elif active_flag is False:
             status_label = "🔴 OFF"
         else:
             status_label = "🟡 UNKNOWN"
 
         rows.append(
             {
-                "Bot": entry.get("bot", ""),
+                "Bot": bot_name,
                 "Fund": entry.get("fund", ""),
                 "Strategy": entry.get("strategy", ""),
                 "Status": status_label,
-                "Mode": str(ev.get("trading_mode", "paper")).upper() if ev else "PAPER",
-                "Broker": str(ev.get("broker", "")).upper() if ev else "",
+                "Mode": str(ev.get("trading_mode") or trading_mode or "paper").upper(),
+                "Broker": str(ev.get("broker") or broker_name or "").upper(),
                 "Last Updated": ev.get("timestamp", "")[:19].replace("T", " ") if ev.get("timestamp") else "",
             }
         )
@@ -1451,6 +1468,10 @@ def persist_bot_launch_mode(
     config.set_broker_mode(broker_name, trading_mode)
     if active is not None:
         config.set_bot_active(bot_name, active)
+
+
+def refresh_bot_mode_views() -> None:
+    get_all_bot_mode_events.clear()
 
 
 def run_bot_mode(
@@ -1696,6 +1717,7 @@ def main():
                     st.success("Vega ON completed.")
                 else:
                     st.error("Vega ON failed.")
+                refresh_bot_mode_views()
                 st.rerun()
         with btn_off:
             if st.button("Vega OFF", use_container_width=True):
@@ -1712,6 +1734,7 @@ def main():
                     st.success("Vega OFF completed.")
                 else:
                     st.error("Vega OFF failed.")
+                refresh_bot_mode_views()
                 st.rerun()
 
         if schedule.get("exists"):
@@ -1790,6 +1813,7 @@ def main():
                     st.success("Hydra ON completed.")
                 else:
                     st.error("Hydra ON failed.")
+                refresh_bot_mode_views()
                 st.rerun()
         with hydra_btn2:
             if st.button("Hydra OFF", use_container_width=True):
@@ -1806,6 +1830,7 @@ def main():
                     st.success("Hydra OFF completed.")
                 else:
                     st.error("Hydra OFF failed.")
+                refresh_bot_mode_views()
                 st.rerun()
         with hydra_btn3:
             if st.button("Bootstrap Hydra", use_container_width=True):
@@ -1895,6 +1920,7 @@ def main():
                     st.success("Triton ON completed.")
                 else:
                     st.error("Triton ON failed.")
+                refresh_bot_mode_views()
                 st.rerun()
 
         with triton_btn2:
@@ -1917,6 +1943,7 @@ def main():
                     st.success("Triton OFF completed.")
                 else:
                     st.error("Triton OFF failed.")
+                refresh_bot_mode_views()
                 st.rerun()
 
         with triton_btn3:
@@ -2062,6 +2089,7 @@ def main():
                     st.success("Rhea ON completed.")
                 else:
                     st.error("Rhea ON failed.")
+                refresh_bot_mode_views()
                 st.rerun()
 
         with rhea_btn2:
@@ -2084,6 +2112,7 @@ def main():
                     st.success("Rhea OFF completed.")
                 else:
                     st.error("Rhea OFF failed.")
+                refresh_bot_mode_views()
                 st.rerun()
 
         with rhea_btn3:

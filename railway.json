@@ -1,0 +1,39 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "services": {
+    "bentley-app": {
+      "build": {
+        "dockerfile": "Dockerfile"
+      },
+      "volumes": [
+        "/root/.wine",
+        "/app/logs"
+      ],
+      "environment": {
+        "PORT": "8501"
+      },
+      "rootDirectory": "."
+    },
+    "bentley-mt5-bridge": {
+      "build": {
+        "dockerfile": "Dockerfile.mt5-bridge"
+      },
+      "environment": {
+        "PORT": "8080",
+        "HOST": "0.0.0.0",
+        "MT5_REQUEST_TIMEOUT": "20",
+        "MT5_CONNECT_RETRIES": "3",
+        "MT5_CONNECT_RETRY_DELAY": "1.0"
+      },
+      "healthCheck": {
+        "type": "http",
+        "path": "/health",
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 5
+      },
+      "rootDirectory": "."
+    }
+  }
+}

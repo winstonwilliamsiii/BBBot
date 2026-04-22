@@ -1,0 +1,44 @@
+"""
+MT5 Bridge - Lightweight Docker Build for Railway (No MT5 Desktop Required)
+
+This Dockerfile runs only the FastAPI REST bridge without Wine/MT5 desktop.
+It connects to an external MT5 server (either local or cloud-based).
+
+Usage:
+  docker build -f Dockerfile.mt5-bridge -t bentley-mt5-bridge .
+  docker run -e PORT=8080 -e MT5_API_URL=http://localhost:8080 bentley-mt5-bridge
+"""
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=8080 \
+    HOST=0.0.0.0
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Ensure FastAPI/Uvicorn are available
+RUN pip install --no-cache-dir fastapi[standard]>=0.115.0 uvicorn[standard]>=0.30.0
+
+# Copy application code
+COPY scripts/mt5_rest.py ./scripts/
+COPY pages/api/mt5_bridge.py ./pages/api/
+COPY frontend/ ./frontend/
+COPY .env.example ./  # or use Railway secrets
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:${PORT}/health', timeout=5)"
+
+EXPOSE ${PORT}
+
+# Start MT5 REST bridge
+CMD ["python", "scripts/mt5_rest.py"]

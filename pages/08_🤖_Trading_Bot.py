@@ -537,6 +537,15 @@ def get_bot_status(bot_name: str = "Titan"):
     }
 
 
+def _bot_status_indicator(bot_name: str) -> str:
+    status = str(get_bot_status(bot_name).get("status", "unknown")).lower()
+    if status == "active":
+        return "🟢"
+    if status == "inactive":
+        return "🔴"
+    return "🟡"
+
+
 @st.cache_data(ttl=30)
 def fetch_hydra_api_snapshot() -> dict:
     client = get_api_client()
@@ -1390,15 +1399,7 @@ st.sidebar.header("🎛️ Bot Controls")
 _all_ev = _latest_bot_mode_events_all()
 _fleet_rows = []
 for _bname in _get_configured_launch_bots():
-    _ev = _all_ev.get(_bname.lower(), {})
-    _m = str(_ev.get("mode", "")).lower()
-    _s = str(_ev.get("status", "")).lower()
-    if _m == "on" and _s in ("ready", "warning", "placeholder", "active"):
-        _ind = "🟢"
-    elif _m == "off":
-        _ind = "🔴"
-    else:
-        _ind = "🟡"
+    _ind = _bot_status_indicator(_bname)
     _fleet_rows.append(f"{_ind} {_bname}")
 
 with st.sidebar.expander("📊 Fleet Status (all bots)", expanded=True):

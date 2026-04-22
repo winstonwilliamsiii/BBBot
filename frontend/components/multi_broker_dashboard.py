@@ -324,11 +324,51 @@ def connect_alpaca(
     """Connect to Alpaca"""
     try:
         from frontend.utils.secrets_helper import get_alpaca_config
-        from frontend.components.alpaca_connector import AlpacaConnector
+
+        def _attempt_connect(
+            key_to_use: str,
+            secret_to_use: str,
+            requested_mode_flag: bool,
+        ):
+            key_prefix_local = key_to_use[:2].upper() if key_to_use else ""
+
+            # Respect key type first to avoid invalid cross-mode attempts.
+            if key_prefix_local == "PK":
+                attempted_modes_local: list[bool] = [True]
+            elif key_prefix_local == "AK":
+                attempted_modes_local = [False]
+            else:
+                attempted_modes_local = [requested_mode_flag, not requested_mode_flag]
+
+            connector_local = None
+            account_local = None
+            connected_mode_local = requested_mode_flag
+            failure_detail_local = ""
+
+            for mode_flag in attempted_modes_local:
+                connector_candidate = AlpacaConnector(key_to_use, secret_to_use, mode_flag)
+                account_candidate = connector_candidate.get_account()
+                if account_candidate:
+                    connector_local = connector_candidate
+                    account_local = account_candidate
+                    connected_mode_local = mode_flag
+                    break
+                failure_detail_local = getattr(connector_candidate, "last_error", "") or failure_detail_local
+
+            return {
+                "connected": connector_local is not None and account_local is not None,
+                "connector": connector_local,
+                "account": account_local,
+                "connected_mode": connected_mode_local,
+                "failure_detail": failure_detail_local,
+                "attempted_modes": attempted_modes_local,
+                "key_prefix": key_prefix_local,
+            }
 
         # Prefer credentials entered in UI; fallback to secrets/env.
         key = (api_key or "").strip()
         secret = (secret_key or "").strip()
+        manual_credentials_provided = bool(key and secret)
         source = "manual"
 
         if not key or not secret:
@@ -350,32 +390,49 @@ def connect_alpaca(
             paper = True
 
         requested_mode = bool(paper)
-        key_prefix = key[:2].upper() if key else ""
+        connect_result = _attempt_connect(key, secret, requested_mode)
+        connected = bool(connect_result["connected"])
+        connector = connect_result["connector"]
+        account = connect_result["account"]
+        connected_mode = connect_result["connected_mode"]
+        failure_detail = str(connect_result["failure_detail"] or "")
+        attempted_modes = connect_result["attempted_modes"]
+        key_prefix = str(connect_result["key_prefix"])
 
-        # Respect key type first to avoid invalid cross-mode attempts.
-        if key_prefix == "PK":
-            attempted_modes: list[bool] = [True]
-        elif key_prefix == "AK":
-            attempted_modes = [False]
-        else:
-            attempted_modes = [requested_mode, not requested_mode]
+        # If manual credentials are stale/invalid, try configured secrets before failing.
+        if (not connected) and manual_credentials_provided:
+            auth_failed = "HTTP 401" in failure_detail or "HTTP 403" in failure_detail
+            if auth_failed:
+                try:
+                    fallback_config = get_alpaca_config()
+                    fallback_key = str(fallback_config["api_key"])
+                    fallback_secret = str(fallback_config["secret_key"])
+                    fallback_paper = bool(fallback_config["paper"])
 
-        connected = False
-        connected_mode = requested_mode
-        account = None
-        connector = None
-        failure_detail = ""
-
-        for mode_flag in attempted_modes:
-            connector_candidate = AlpacaConnector(key, secret, mode_flag)
-            account_candidate = connector_candidate.get_account()
-            if account_candidate:
-                connector = connector_candidate
-                account = account_candidate
-                connected = True
-                connected_mode = mode_flag
-                break
-            failure_detail = getattr(connector_candidate, "last_error", "") or failure_detail
+                    # Avoid repeating the same failed attempt.
+                    if fallback_key != key or fallback_secret != secret or fallback_paper != requested_mode:
+                        fallback_result = _attempt_connect(fallback_key, fallback_secret, fallback_paper)
+                        if fallback_result["connected"]:
+                            connected = True
+                            connector = fallback_result["connector"]
+                            account = fallback_result["account"]
+                            connected_mode = fallback_result["connected_mode"]
+                            attempted_modes = fallback_result["attempted_modes"]
+                            key_prefix = str(fallback_result["key_prefix"])
+                            source = "secrets fallback"
+                            st.session_state.alpaca_api_key_stored = ""
+                            st.session_state.alpaca_secret_key_stored = ""
+                            st.session_state.alpaca_paper_trading = fallback_paper
+                        else:
+                            fallback_failure = str(fallback_result["failure_detail"] or "")
+                            if fallback_failure:
+                                failure_detail = (
+                                    f"{failure_detail} | secrets fallback failed: {fallback_failure}"
+                                    if failure_detail else f"secrets fallback failed: {fallback_failure}"
+                                )
+                except ValueError:
+                    # No configured secrets available; preserve original manual failure detail.
+                    pass
 
         if connected and connector and account:
             st.session_state.brokers['alpaca'] = connector

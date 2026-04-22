@@ -51,6 +51,11 @@ except ImportError:
     load_screener_rows = None
     resolve_screener_path = None
 
+try:
+    from scripts.noomo_ml_notify import notify_ml_event
+except ImportError:
+    from noomo_ml_notify import notify_ml_event
+
 
 REPO_ROOT = Path(__file__).resolve().parent
 ALTAIR_PROFILE_PATH = REPO_ROOT / "bentley-bot" / "config" / "bots" / "altair.yml"
@@ -862,7 +867,9 @@ class AltairBot:
         try:
             mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
             mlflow.set_experiment(self.config.mlflow_experiment)
-            with mlflow.start_run(run_name=run_name or f"altair_{analysis['ticker'].lower()}"):
+            run_id = "n/a"
+            with mlflow.start_run(run_name=run_name or f"altair_{analysis['ticker'].lower()}") as run:
+                run_id = run.info.run_id
                 mlflow.set_tag("bot", self.config.name)
                 mlflow.set_tag("fund", self.config.fund)
                 mlflow.set_tag("strategy", self.config.strategy)
@@ -874,6 +881,15 @@ class AltairBot:
                 mlflow.log_metric("volume_score", float(analysis["screener"]["volume_score"]))
                 mlflow.log_metric("valuation_score", float(analysis["screener"]["valuation_score"]))
                 mlflow.log_metric("quality_score", float(analysis["screener"]["quality_score"]))
+            notify_ml_event(
+                bot_name="Altair",
+                event_label="signal analysis completed",
+                fields={
+                    "symbol": analysis["ticker"],
+                    "run_id": run_id,
+                    "composite_score": f"{float(analysis['composite_score']):.4f}",
+                },
+            )
             return {
                 "logged": True,
                 "tracking_uri": self.config.mlflow_tracking_uri,
@@ -898,6 +914,27 @@ app = FastAPI(
     version="0.1.0",
     description="Mansa AI Fund service surface for Bentley Dashboard, Airflow, MLflow, MySQL, and Discord integrations.",
 )
+
+
+def _notify_bot_trade(bot_name: str, trade_result: dict) -> None:
+    """Send a Discord trade notification. Never raises."""
+    status = trade_result.get("status", "")
+    if status not in ("submitted", "simulated", "dry_run"):
+        return
+    try:
+        from frontend.utils.discord_notify import notify_trade
+        notify_trade(
+            bot_name=bot_name,
+            symbol=str(trade_result.get("ticker", "")),
+            side=str(trade_result.get("action") or trade_result.get("side") or ""),
+            qty=float(trade_result.get("qty", 0)),
+            status=status,
+            mode=str(trade_result.get("mode", "paper")),
+            ticket=str(trade_result.get("order_id", "")) or None,
+            broker=str(trade_result.get("broker", "")),
+        )
+    except Exception:
+        pass
 
 
 @app.get("/")
@@ -944,13 +981,15 @@ async def analyze(payload: AltairAnalyzeRequest) -> dict[str, Any]:
 @app.post("/trade")
 async def trade(payload: AltairTradeRequest) -> dict[str, Any]:
     try:
-        return get_altair_bot().execute_trade(
+        result = get_altair_bot().execute_trade(
             payload.broker,
             payload.ticker,
             payload.action,
             qty=payload.qty,
             dry_run=payload.dry_run,
         )
+        _notify_bot_trade("Altair", result)
+        return result
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

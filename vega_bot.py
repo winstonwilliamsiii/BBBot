@@ -52,6 +52,11 @@ MlflowException = getattr(mlflow_exceptions, "MlflowException", RuntimeError)
 pd = _optional_import("pandas")
 yf = _optional_import("yfinance")
 
+try:
+    from scripts.noomo_ml_notify import notify_ml_event
+except ImportError:
+    from noomo_ml_notify import notify_ml_event
+
 logger = logging.getLogger(__name__)
 
 
@@ -227,6 +232,27 @@ app = FastAPI(
         "Vega Mansa Retail MTF-ML strategy. IBKR primary, Alpaca fallback."
     ),
 )
+
+
+def _notify_bot_trade(bot_name: str, trade_result: dict) -> None:
+    """Send a Discord trade notification. Never raises."""
+    status = trade_result.get("status", "")
+    if status not in ("submitted", "simulated", "dry_run"):
+        return
+    try:
+        from frontend.utils.discord_notify import notify_trade
+        notify_trade(
+            bot_name=bot_name,
+            symbol=str(trade_result.get("ticker", "")),
+            side=str(trade_result.get("action") or trade_result.get("side") or ""),
+            qty=float(trade_result.get("qty", 0)),
+            status=status,
+            mode=str(trade_result.get("mode", "paper")),
+            ticket=str(trade_result.get("order_id", "")) or None,
+            broker=str(trade_result.get("broker", "")),
+        )
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -666,7 +692,9 @@ def _log_mlflow(*, ticker: str, technicals: dict, fundamentals: dict) -> dict[st
                 if _is_finite(v):
                     numeric[k] = float(v)
 
-        with mlflow.start_run(run_name=f"Vega_{ticker}"):
+        run_id = "n/a"
+        with mlflow.start_run(run_name=f"Vega_{ticker}") as run:
+            run_id = run.info.run_id
             mlflow.log_param("bot_name", CONFIG.bot_name)
             mlflow.log_param("ticker", ticker)
             mlflow.log_param("strategy", CONFIG.strategy_name)
@@ -674,6 +702,20 @@ def _log_mlflow(*, ticker: str, technicals: dict, fundamentals: dict) -> dict[st
                 mlflow.log_metrics(numeric)
             if artifact_path is not None:
                 mlflow.log_artifact(str(artifact_path))
+
+        notify_ml_event(
+            bot_name="Vega",
+            event_label="signal analysis completed",
+            fields={
+                "symbol": ticker,
+                "run_id": run_id,
+                "close": (
+                    f"{float(technicals.get('close')):.4f}"
+                    if _is_finite(technicals.get("close"))
+                    else "n/a"
+                ),
+            },
+        )
 
         return {"logged": True, "tracking_uri": CONFIG.mlflow_tracking_uri, "experiment": CONFIG.mlflow_experiment}
     except (MlflowException, OSError, TypeError, ValueError, RuntimeError) as exc:
@@ -977,7 +1019,9 @@ def post_log(trade: TradeLog) -> dict[str, Any]:
 @app.post("/trade")
 def post_trade(request: TradeRequest) -> dict[str, Any]:
     """Low-level direct trade endpoint (bypass position sizing)."""
-    return submit_trade(request)
+    result = submit_trade(request)
+    _notify_bot_trade("Vega", result)
+    return result
 
 
 @app.get("/universe")

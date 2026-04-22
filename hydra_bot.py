@@ -36,6 +36,11 @@ try:
 except ImportError:
     get_mlflow_tracking_uri = None
 
+try:
+    from scripts.noomo_ml_notify import notify_ml_event
+except ImportError:
+    from noomo_ml_notify import notify_ml_event
+
 
 logger = logging.getLogger(__name__)
 
@@ -908,7 +913,9 @@ class HydraBot:
             resolved_run_name = (
                 run_name or f"hydra_{analysis['ticker'].lower()}"
             )
-            with mlflow.start_run(run_name=resolved_run_name):
+            run_id = "n/a"
+            with mlflow.start_run(run_name=resolved_run_name) as run:
+                run_id = run.info.run_id
                 mlflow.set_tag("bot", "Hydra")
                 mlflow.set_tag("fund", self.config.fund)
                 mlflow.set_tag("strategy", self.config.strategy)
@@ -943,6 +950,15 @@ class HydraBot:
                         json.dumps(analysis, indent=2, default=str),
                         f"hydra_{analysis['ticker'].lower()}_analysis.json",
                     )
+            notify_ml_event(
+                bot_name="Hydra",
+                event_label="signal analysis completed",
+                fields={
+                    "symbol": analysis["ticker"],
+                    "run_id": run_id,
+                    "composite_score": f"{float(analysis['composite_score']):.4f}",
+                },
+            )
             return {
                 "logged": True,
                 "tracking_uri": self.config.mlflow_tracking_uri,

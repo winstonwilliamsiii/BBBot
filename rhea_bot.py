@@ -71,6 +71,11 @@ except ImportError:
     load_screener_rows = None
     resolve_screener_path = None
 
+try:
+    from scripts.noomo_ml_notify import notify_ml_event
+except ImportError:
+    from noomo_ml_notify import notify_ml_event
+
 
 REPO_ROOT = Path(__file__).resolve().parent
 RHEA_PROFILE_PATH = REPO_ROOT / "bentley-bot" / "config" / "bots" / "rhea.yml"
@@ -650,11 +655,111 @@ class RheaBot:
                         json.dumps(analysis or self.last_analysis or {}),
                     ),
                 )
+                cursor.execute("SELECT LAST_INSERT_ID() AS trade_id")
+                inserted = cursor.fetchone() or {}
+                trade_id = int(inserted.get("trade_id") or 0)
+
+                successful_statuses = ("submitted", "filled", "simulated", "dry_run")
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*) AS successful_count
+                    FROM {self.config.mysql_signal_table}
+                    WHERE bot_name = %s
+                      AND LOWER(broker) = 'ibkr'
+                      AND LOWER(mode) = 'paper'
+                      AND LOWER(status) IN (%s, %s, %s, %s)
+                    """,
+                    (self.config.name, *successful_statuses),
+                )
+                success_count_row = cursor.fetchone() or {}
+                successful_ibkr_paper_trade_count = int(
+                    success_count_row.get("successful_count") or 0
+                )
+
+                cursor.execute(
+                    f"""
+                    SELECT id, ticker, action, qty, status, created_at
+                    FROM {self.config.mysql_signal_table}
+                    WHERE bot_name = %s
+                      AND LOWER(broker) = 'ibkr'
+                      AND LOWER(mode) = 'paper'
+                      AND LOWER(status) IN (%s, %s, %s, %s)
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """,
+                    (self.config.name, *successful_statuses),
+                )
+                first_success_row = cursor.fetchone() or {}
+
             conn.commit()
             conn.close()
-            return {"persisted": True, "table": self.config.mysql_signal_table}
+
+            normalized_broker = str(trade_result.get("broker", "")).lower()
+            normalized_mode = str(trade_result.get("mode", "paper")).lower()
+            normalized_status = str(trade_result.get("status", "")).lower()
+            is_successful = normalized_status in set(successful_statuses)
+            first_success = bool(
+                is_successful
+                and normalized_broker == "ibkr"
+                and normalized_mode == "paper"
+                and successful_ibkr_paper_trade_count == 1
+            )
+
+            return {
+                "persisted": True,
+                "table": self.config.mysql_signal_table,
+                "trade_id": trade_id,
+                "first_successful_ibkr_paper_trade": first_success,
+                "successful_ibkr_paper_trade_count": successful_ibkr_paper_trade_count,
+                "first_successful_trade": {
+                    "id": first_success_row.get("id"),
+                    "ticker": first_success_row.get("ticker"),
+                    "action": first_success_row.get("action"),
+                    "qty": float(first_success_row.get("qty") or 0.0),
+                    "status": first_success_row.get("status"),
+                    "created_at": str(first_success_row.get("created_at") or ""),
+                },
+            }
         except Exception as exc:
-            return {"persisted": False, "table": self.config.mysql_signal_table, "error": str(exc)}
+            return {
+                "persisted": False,
+                "table": self.config.mysql_signal_table,
+                "error": str(exc),
+                "first_successful_ibkr_paper_trade": False,
+            }
+
+    def _notify_first_successful_ibkr_paper_trade(self, trade_result: dict[str, Any], persistence: dict[str, Any]) -> bool:
+        if requests is None:
+            return False
+
+        webhook = (
+            os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
+            or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+            or os.getenv("DISCORD_WEBHOOK", "").strip()
+            or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
+        )
+        if not webhook:
+            return False
+
+        first = persistence.get("first_successful_trade") or {}
+        ticker = str(first.get("ticker") or trade_result.get("ticker") or "").upper()
+        action = str(first.get("action") or trade_result.get("action") or "").upper()
+        count = int(persistence.get("successful_ibkr_paper_trade_count") or 0)
+
+        message = (
+            f"✅ Rhea milestone: first successful IBKR paper trade recognized on Bentley Dashboard. "
+            f"Fund: {self.config.fund} | {action} {ticker} | Count: {count}"
+        )
+
+        try:
+            response = requests.post(
+                webhook,
+                json={"content": message},
+                timeout=5,
+            )
+            return bool(response.ok)
+        except Exception:
+            return False
 
     def execute_trade(self, broker: str, ticker: str, action: str, qty: float = 1.0, dry_run: Optional[bool] = None) -> dict[str, Any]:
         symbol = self._sanitize_ticker(ticker)
@@ -704,7 +809,19 @@ class RheaBot:
             discord_notified = False
 
         result["discord_notified"] = discord_notified
-        result["persistence"] = self._persist_trade_event(result, analysis=self.last_analysis)
+        persistence = self._persist_trade_event(result, analysis=self.last_analysis)
+        result["persistence"] = persistence
+
+        first_success = bool(persistence.get("first_successful_ibkr_paper_trade"))
+        result["first_successful_ibkr_paper_trade"] = first_success
+        if first_success:
+            result["milestone_discord_notified"] = self._notify_first_successful_ibkr_paper_trade(
+                result,
+                persistence,
+            )
+        else:
+            result["milestone_discord_notified"] = False
+
         return result
 
     def predict_xgboost(self, features: list[float]) -> dict[str, Any]:
@@ -879,7 +996,98 @@ class RheaBot:
             "brokers": list(self.config.broker_allowlist),
         }
 
+    def _fetch_trade_status_summary(self) -> dict[str, Any]:
+        summary = {
+            "latest_trade": None,
+            "successful_ibkr_paper_trade_count": 0,
+            "first_successful_ibkr_paper_trade": {
+                "recognized": False,
+                "trade": None,
+            },
+        }
+
+        successful_statuses = ("submitted", "filled", "simulated", "dry_run")
+
+        try:
+            conn = get_mysql_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT id, broker, ticker, action, qty, mode, status, discord_notified, created_at
+                    FROM {self.config.mysql_signal_table}
+                    WHERE bot_name = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (self.config.name,),
+                )
+                latest = cursor.fetchone() or None
+
+                if latest:
+                    summary["latest_trade"] = {
+                        "id": latest.get("id"),
+                        "broker": latest.get("broker"),
+                        "ticker": latest.get("ticker"),
+                        "action": latest.get("action"),
+                        "qty": float(latest.get("qty") or 0.0),
+                        "mode": latest.get("mode"),
+                        "status": latest.get("status"),
+                        "discord_notified": bool(latest.get("discord_notified")),
+                        "created_at": str(latest.get("created_at") or ""),
+                    }
+
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*) AS successful_count
+                    FROM {self.config.mysql_signal_table}
+                    WHERE bot_name = %s
+                      AND LOWER(broker) = 'ibkr'
+                      AND LOWER(mode) = 'paper'
+                      AND LOWER(status) IN (%s, %s, %s, %s)
+                    """,
+                    (self.config.name, *successful_statuses),
+                )
+                count_row = cursor.fetchone() or {}
+                success_count = int(count_row.get("successful_count") or 0)
+                summary["successful_ibkr_paper_trade_count"] = success_count
+
+                if success_count > 0:
+                    cursor.execute(
+                        f"""
+                        SELECT id, broker, ticker, action, qty, mode, status, discord_notified, created_at
+                        FROM {self.config.mysql_signal_table}
+                        WHERE bot_name = %s
+                          AND LOWER(broker) = 'ibkr'
+                          AND LOWER(mode) = 'paper'
+                          AND LOWER(status) IN (%s, %s, %s, %s)
+                        ORDER BY id ASC
+                        LIMIT 1
+                        """,
+                        (self.config.name, *successful_statuses),
+                    )
+                    first_success = cursor.fetchone() or {}
+                    summary["first_successful_ibkr_paper_trade"] = {
+                        "recognized": True,
+                        "trade": {
+                            "id": first_success.get("id"),
+                            "broker": first_success.get("broker"),
+                            "ticker": first_success.get("ticker"),
+                            "action": first_success.get("action"),
+                            "qty": float(first_success.get("qty") or 0.0),
+                            "mode": first_success.get("mode"),
+                            "status": first_success.get("status"),
+                            "discord_notified": bool(first_success.get("discord_notified")),
+                            "created_at": str(first_success.get("created_at") or ""),
+                        },
+                    }
+            conn.close()
+        except Exception as exc:
+            summary["error"] = str(exc)
+
+        return summary
+
     def status(self) -> dict[str, Any]:
+        trade_summary = self._fetch_trade_status_summary()
         return {
             "id": self.config.id,
             "name": self.config.name,
@@ -892,6 +1100,10 @@ class RheaBot:
             "airflow_dag_id": self.config.airflow_dag_id,
             "dashboard_url": self.config.dashboard_url,
             "last_analysis": self.last_analysis,
+            "latest_trade": trade_summary.get("latest_trade"),
+            "successful_ibkr_paper_trade_count": trade_summary.get("successful_ibkr_paper_trade_count", 0),
+            "first_successful_ibkr_paper_trade": trade_summary.get("first_successful_ibkr_paper_trade", {"recognized": False, "trade": None}),
+            "trade_summary_error": trade_summary.get("error"),
         }
 
     def log_signal_run(self, analysis: dict[str, Any], run_name: Optional[str] = None) -> dict[str, Any]:
@@ -901,7 +1113,9 @@ class RheaBot:
         try:
             mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
             mlflow.set_experiment(self.config.mlflow_experiment)
-            with mlflow.start_run(run_name=run_name or f"rhea_{analysis['ticker'].lower()}"):
+            run_id = "n/a"
+            with mlflow.start_run(run_name=run_name or f"rhea_{analysis['ticker'].lower()}") as run:
+                run_id = run.info.run_id
                 mlflow.set_tag("bot", self.config.name)
                 mlflow.set_tag("fund", self.config.fund)
                 mlflow.set_tag("strategy", self.config.strategy)
@@ -913,6 +1127,15 @@ class RheaBot:
                 mlflow.log_metric("adi", float(analysis["technical"].get("adi", 0.0)))
                 mlflow.log_metric("random_forest_vote", float(analysis["model_stack"].get("random_forest_vote", 0.0)))
                 mlflow.log_metric("xgboost_vote", float(analysis["model_stack"].get("xgboost_vote", 0.0)))
+            notify_ml_event(
+                bot_name="Rhea",
+                event_label="signal analysis completed",
+                fields={
+                    "symbol": analysis["ticker"],
+                    "run_id": run_id,
+                    "composite_score": f"{float(analysis['composite_score']):.4f}",
+                },
+            )
             return {
                 "logged": True,
                 "tracking_uri": self.config.mlflow_tracking_uri,

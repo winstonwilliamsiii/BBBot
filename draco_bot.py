@@ -37,6 +37,11 @@ textblob_module = _optional_import("textblob")
 TextBlob = getattr(textblob_module, "TextBlob", None)
 yf = _optional_import("yfinance")
 
+try:
+    from scripts.noomo_ml_notify import notify_ml_event
+except ImportError:
+    from noomo_ml_notify import notify_ml_event
+
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +148,27 @@ app = FastAPI(
         "sentiment, ARIMA forecasting, broker routing, and MLflow logging."
     ),
 )
+
+
+def _notify_bot_trade(bot_name: str, trade_result: dict) -> None:
+    """Send a Discord trade notification. Never raises."""
+    status = trade_result.get("status", "")
+    if status not in ("submitted", "simulated", "dry_run"):
+        return
+    try:
+        from frontend.utils.discord_notify import notify_trade
+        notify_trade(
+            bot_name=bot_name,
+            symbol=str(trade_result.get("ticker", "")),
+            side=str(trade_result.get("action") or trade_result.get("side") or ""),
+            qty=float(trade_result.get("qty", 0)),
+            status=status,
+            mode=str(trade_result.get("mode", "paper")),
+            ticket=str(trade_result.get("order_id", "")) or None,
+            broker=str(trade_result.get("broker", "")),
+        )
+    except Exception:
+        pass
 
 
 def _dependency_status() -> dict[str, bool]:
@@ -512,7 +538,9 @@ def log_analysis_to_mlflow(
             json.dump(forecast, handle)
             artifact_path = Path(handle.name)
 
-        with mlflow_module.start_run(run_name=f"Draco_{ticker}"):
+        run_id = "n/a"
+        with mlflow_module.start_run(run_name=f"Draco_{ticker}") as run:
+            run_id = run.info.run_id
             mlflow_module.log_param("bot_name", "Draco")
             mlflow_module.log_param("ticker", ticker)
             mlflow_module.log_param("forecast_steps", forecast.get("steps"))
@@ -528,6 +556,16 @@ def log_analysis_to_mlflow(
             )
             if artifact_path is not None:
                 mlflow_module.log_artifact(str(artifact_path))
+
+        notify_ml_event(
+            bot_name="Draco",
+            event_label="signal analysis completed",
+            fields={
+                "symbol": ticker,
+                "run_id": run_id,
+                "forecast_steps": forecast.get("steps", "n/a"),
+            },
+        )
 
         return {
             "logged": True,
@@ -775,7 +813,9 @@ def post_analysis(request: AnalysisRequest) -> dict[str, Any]:
 
 @app.post("/trade")
 def post_trade(request: TradeRequest) -> dict[str, Any]:
-    return submit_trade(request)
+    result = submit_trade(request)
+    _notify_bot_trade("Draco", result)
+    return result
 
 
 if __name__ == "__main__":

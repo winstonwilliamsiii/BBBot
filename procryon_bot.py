@@ -39,6 +39,11 @@ except ImportError:
     MT5Connector = None
     MT5_CONNECTOR_AVAILABLE = False
 
+try:
+    from scripts.noomo_ml_notify import notify_training_completion
+except ImportError:
+    from noomo_ml_notify import notify_training_completion
+
 
 logger = logging.getLogger(__name__)
 
@@ -710,7 +715,9 @@ class ProcryonBot:
         try:
             mlflow.set_tracking_uri(tracking_uri)
             mlflow.set_experiment(self.config.mlflow_experiment)
-            with mlflow.start_run(run_name="procryon_training"):
+            run_id = "n/a"
+            with mlflow.start_run(run_name="procryon_training") as run:
+                run_id = run.info.run_id
                 mlflow.log_param("platform", self.config.trading_platform)
                 mlflow.log_param(
                     "preferred_brokers",
@@ -726,6 +733,15 @@ class ProcryonBot:
                 )
                 for key, value in metrics.items():
                     mlflow.log_metric(key, float(value))
+            notify_training_completion(
+                bot_name="Procryon",
+                model_label="KNN/FNN",
+                fields={
+                    "symbol": self.config.default_symbol,
+                    "run_id": run_id,
+                    "accuracy": f"{float(metrics.get('fnn_train_accuracy', 0.0)):.4f}",
+                },
+            )
             return {"logged": True, "tracking_uri": tracking_uri}
         except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("Procryon MLflow logging failed: %s", exc)

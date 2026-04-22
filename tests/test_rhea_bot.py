@@ -99,6 +99,7 @@ def test_rhea_fastapi_routes(monkeypatch):
     status_response = client.get("/rhea/status")
     assert status_response.status_code == 200
     assert status_response.json()["name"] == "Rhea"
+    assert "first_successful_ibkr_paper_trade" in status_response.json()
 
     health_response = client.get("/rhea/health")
     assert health_response.status_code == 200
@@ -126,3 +127,85 @@ def test_rhea_fastapi_routes(monkeypatch):
     )
     assert trade_response.status_code == 200
     assert trade_response.json()["status"] == "simulated"
+
+
+def test_rhea_execute_trade_marks_first_ibkr_paper_success(monkeypatch):
+    bot = _build_rhea_bot()
+
+    monkeypatch.setattr(
+        bot,
+        "_persist_trade_event",
+        lambda *_args, **_kwargs: {
+            "persisted": True,
+            "table": "rhea_trade_events",
+            "first_successful_ibkr_paper_trade": True,
+            "successful_ibkr_paper_trade_count": 1,
+            "first_successful_trade": {
+                "id": 1,
+                "ticker": "GD",
+                "action": "BUY",
+                "qty": 2.0,
+                "status": "simulated",
+                "created_at": "2026-04-22 09:30:00",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        bot,
+        "_notify_first_successful_ibkr_paper_trade",
+        lambda *_args, **_kwargs: True,
+    )
+
+    trade = bot.execute_trade(
+        "ibkr",
+        "GD",
+        "BUY",
+        qty=2,
+        dry_run=True,
+    )
+
+    assert trade["first_successful_ibkr_paper_trade"] is True
+    assert trade["milestone_discord_notified"] is True
+
+
+def test_rhea_status_includes_trade_summary(monkeypatch):
+    bot = _build_rhea_bot()
+
+    monkeypatch.setattr(
+        bot,
+        "_fetch_trade_status_summary",
+        lambda: {
+            "latest_trade": {
+                "id": 5,
+                "broker": "ibkr",
+                "ticker": "GD",
+                "action": "BUY",
+                "qty": 3.0,
+                "mode": "paper",
+                "status": "simulated",
+                "discord_notified": True,
+                "created_at": "2026-04-22 09:31:00",
+            },
+            "successful_ibkr_paper_trade_count": 1,
+            "first_successful_ibkr_paper_trade": {
+                "recognized": True,
+                "trade": {
+                    "id": 5,
+                    "broker": "ibkr",
+                    "ticker": "GD",
+                    "action": "BUY",
+                    "qty": 3.0,
+                    "mode": "paper",
+                    "status": "simulated",
+                    "discord_notified": True,
+                    "created_at": "2026-04-22 09:31:00",
+                },
+            },
+        },
+    )
+
+    status = bot.status()
+
+    assert status["successful_ibkr_paper_trade_count"] == 1
+    assert status["first_successful_ibkr_paper_trade"]["recognized"] is True
+    assert status["latest_trade"]["ticker"] == "GD"

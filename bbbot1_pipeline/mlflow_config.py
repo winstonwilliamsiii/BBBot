@@ -8,6 +8,13 @@ import os
 from typing import Optional
 from urllib.parse import urlparse
 
+
+def _is_disabled(value: str) -> bool:
+    """Return True when a config value explicitly disables MLflow."""
+    if not value:
+        return False
+    return value.strip().lower() in {"disabled", "off", "none", "false", "0"}
+
 def get_mlflow_config() -> dict:
     """
     Get MLFlow MySQL configuration from environment variables
@@ -62,10 +69,14 @@ def get_mlflow_server_url() -> str:
     3. Default local MLflow server URL
     """
     explicit_server = os.getenv("MLFLOW_SERVER_URL", "").strip()
+    if _is_disabled(explicit_server):
+        return "disabled"
     if _is_http_uri(explicit_server):
         return explicit_server.rstrip("/")
 
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "").strip()
+    if _is_disabled(tracking_uri):
+        return "disabled"
     if _is_http_uri(tracking_uri):
         return tracking_uri.rstrip("/")
 
@@ -97,10 +108,15 @@ def get_mlflow_tracking_uri() -> str:
     """
     tracking_uri = os.getenv('MLFLOW_TRACKING_URI', '').strip()
     if tracking_uri:
+        if _is_disabled(tracking_uri):
+            return 'disabled'
         if _is_http_uri(tracking_uri):
             return tracking_uri
 
-    return get_mlflow_server_url()
+    server_url = get_mlflow_server_url()
+    if _is_disabled(server_url):
+        return 'disabled'
+    return server_url
 
 def get_mlflow_artifact_path() -> str:
     """

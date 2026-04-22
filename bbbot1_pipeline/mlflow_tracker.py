@@ -6,6 +6,7 @@ Logs experiments, metrics, parameters, and artifacts to MLFlow
 import json
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 # Optional MLFlow imports with graceful fallback
@@ -51,26 +52,62 @@ class BentleyBotMLFlowTracker:
             tracking_uri: MLFlow tracking server URI (default: MySQL backend)
             experiment_name: Name of the MLFlow experiment
         """
-        # Initialize MLFlow with MySQL backend
-        if MLFLOW_CONFIG_AVAILABLE and tracking_uri is None:
-            # Use centralized configuration
-            initialize_mlflow(experiment_name)
-            self.client = get_mlflow_client()
-        else:
-            # Use provided tracking URI or fallback
+        if not MLFLOW_AVAILABLE:
+            raise RuntimeError("MLflow package is not installed")
+
+        self.tracking_mode = "unknown"
+        self.tracking_uri = None
+
+        try:
+            # Use explicit tracking URI when provided.
             if tracking_uri:
-                mlflow.set_tracking_uri(tracking_uri)
+                if self._is_disabled_uri(tracking_uri):
+                    self._configure_local_file_tracking(experiment_name, "explicitly disabled")
+                else:
+                    mlflow.set_tracking_uri(tracking_uri)
+                    mlflow.set_experiment(experiment_name)
+                    self.client = MlflowClient()
+                    self.tracking_mode = "configured_uri"
+                    self.tracking_uri = tracking_uri
+            # Use centralized configuration when available.
+            elif MLFLOW_CONFIG_AVAILABLE:
+                configured_uri = get_mlflow_tracking_uri()
+                if self._is_disabled_uri(configured_uri):
+                    self._configure_local_file_tracking(experiment_name, "disabled via environment")
+                else:
+                    initialize_mlflow(experiment_name)
+                    self.client = get_mlflow_client()
+                    self.tracking_mode = "configured_env"
+                    self.tracking_uri = configured_uri
             else:
-                # Fallback to local file storage
-                mlflow_dir = os.path.join(os.path.dirname(__file__), '../data/mlflow')
-                os.makedirs(mlflow_dir, exist_ok=True)
-                mlflow.set_tracking_uri(f"file://{os.path.abspath(mlflow_dir)}")
-            
-            # Set or create experiment
-            mlflow.set_experiment(experiment_name)
-            self.client = MlflowClient()
+                self._configure_local_file_tracking(experiment_name, "no MLflow config module")
+        except Exception as exc:
+            # Most commonly: HTTP connection refused to localhost:5000.
+            self._configure_local_file_tracking(experiment_name, f"primary tracker unavailable: {exc}")
         
         self.experiment_name = experiment_name
+
+    def _is_disabled_uri(self, value: Optional[str]) -> bool:
+        """Check whether a tracking URI value explicitly disables MLflow server mode."""
+        if not value:
+            return False
+        return str(value).strip().lower() in {"disabled", "off", "none", "false", "0"}
+
+    def _configure_local_file_tracking(self, experiment_name: str, reason: str) -> None:
+        """Fallback to local file-based MLflow tracking so app pages never crash."""
+        mlflow_dir = Path(
+            os.path.dirname(__file__),
+            '../data/mlflow_local_tracking'
+        ).resolve()
+        mlflow_dir.mkdir(parents=True, exist_ok=True)
+        file_uri = mlflow_dir.as_uri()
+
+        mlflow.set_tracking_uri(file_uri)
+        mlflow.set_experiment(experiment_name)
+        self.client = MlflowClient()
+        self.tracking_mode = "local_file_fallback"
+        self.tracking_uri = file_uri
+        print(f"⚠️ MLflow tracker fallback activated ({reason}). Using {file_uri}")
         
     def log_fundamental_ratios(
         self, 

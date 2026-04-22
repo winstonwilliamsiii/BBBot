@@ -45,6 +45,11 @@ except ModuleNotFoundError:
         sequence_tensor_from_frame,
     )
 
+try:
+    from scripts.noomo_ml_notify import notify_training_completion
+except ImportError:
+    from noomo_ml_notify import notify_training_completion
+
 EXPERIMENT_NAME = "Titan Models Local"
 
 
@@ -245,7 +250,9 @@ def main() -> None:
         with open(config_path, "w", encoding="utf-8") as handle:
             json.dump(config_payload, handle, indent=2)
 
+        run_id = "n/a"
         with mlflow.start_run(run_name="TitanRiskModel-cnn") as run:
+            run_id = run.info.run_id
             mlflow.log_param("model_name", "TitanRiskModel")
             mlflow.log_param("model_architecture", "cnn_1d")
             mlflow.log_param(
@@ -294,6 +301,15 @@ def main() -> None:
 
     print(f"Registered TitanRiskModel version {registered.version}")
     print("Production URI: models:/TitanRiskModel/Production")
+    notify_training_completion(
+        bot_name="Titan",
+        model_label="CNN",
+        fields={
+            "symbol": "Titan_Bot",
+            "run_id": run_id,
+            "accuracy": f"{accuracy:.4f}",
+        },
+    )
 
 
 if __name__ == "__main__":

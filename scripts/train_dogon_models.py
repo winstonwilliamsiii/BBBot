@@ -21,6 +21,11 @@ from dotenv import load_dotenv
 from sklearn.metrics import accuracy_score, f1_score
 
 try:
+    from scripts.noomo_ml_notify import notify_training_completion
+except ImportError:
+    from noomo_ml_notify import notify_training_completion
+
+try:
     import xgboost as xgb
 
     XGBOOST_AVAILABLE = True
@@ -375,8 +380,10 @@ class DogonModelTrainer:
 
         results: Dict[str, Dict[str, float]] = {}
         artifacts: Dict[str, str] = {}
+        run_id = "n/a"
 
-        with mlflow.start_run(run_name="dogon_biweekly_training"):
+        with mlflow.start_run(run_name="dogon_biweekly_training") as run:
+            run_id = run.info.run_id
             mlflow.log_param("symbols", ",".join(self.config.symbols))
             mlflow.log_param("days", self.config.days)
             mlflow.log_param("sequence_window", seq_window)
@@ -464,6 +471,15 @@ class DogonModelTrainer:
         summary_path.write_text(
             json.dumps(summary, indent=2),
             encoding="utf-8",
+        )
+        notify_training_completion(
+            bot_name="Dogon",
+            model_label=str(best_model[0]).upper(),
+            fields={
+                "symbol": "ETF_BASKET",
+                "run_id": run_id,
+                "accuracy": f"{float(best_model[1]['accuracy']):.4f}",
+            },
         )
         return summary
 

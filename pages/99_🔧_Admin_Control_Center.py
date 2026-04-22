@@ -2042,6 +2042,12 @@ def main():
             ),
         )
 
+        rhea_first_success = (
+            rhea_status.get("first_successful_ibkr_paper_trade", {}) or {}
+        )
+        rhea_first_trade = rhea_first_success.get("trade") or {}
+        rhea_latest_trade = rhea_status.get("latest_trade") or {}
+
         r1, r2, r3, r4 = st.columns(4)
         with r1:
             st.metric(
@@ -2066,6 +2072,35 @@ def main():
                 str(
                     rhea_health.get("mysql", {}).get("reachable", False)
                 ).upper(),
+            )
+
+        r5, r6, r7 = st.columns(3)
+        with r5:
+            st.metric(
+                "First IBKR Paper Trade",
+                "YES" if rhea_first_success.get("recognized") else "NO",
+            )
+        with r6:
+            st.metric(
+                "IBKR Paper Success Count",
+                str(rhea_status.get("successful_ibkr_paper_trade_count", 0)),
+            )
+        with r7:
+            latest_trade_label = "N/A"
+            if rhea_latest_trade:
+                latest_trade_label = (
+                    f"{str(rhea_latest_trade.get('action', '')).upper()} "
+                    f"{str(rhea_latest_trade.get('ticker', '')).upper()} "
+                    f"({str(rhea_latest_trade.get('status', '')).lower()})"
+                ).strip()
+            st.metric("Latest Trade", latest_trade_label)
+
+        if rhea_first_success.get("recognized") and rhea_first_trade:
+            st.caption(
+                "First successful IBKR paper trade: "
+                f"{str(rhea_first_trade.get('action', '')).upper()} "
+                f"{str(rhea_first_trade.get('ticker', '')).upper()} @ "
+                f"{rhea_first_trade.get('created_at', 'unknown time')}"
             )
 
         rhea_btn1, rhea_btn2, rhea_btn3 = st.columns(3)

@@ -1533,6 +1533,10 @@ days_map = {
 }
 selected_days = days_map[date_range]
 
+# Load trade / performance data before tabs so all tabs see fresh values
+trades_df = load_recent_trades(selected_days)
+perf_df = load_performance_metrics(selected_days)
+
 # Main dashboard
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Overview", 
@@ -1545,9 +1549,6 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
 # TAB 1: Overview
 with tab1:
-    # Keep trades_df / perf_df in scope for downstream tabs
-    trades_df = load_recent_trades(selected_days)
-    perf_df = load_performance_metrics(selected_days)
 
     # ── Month / Year / Mode selectors ─────────────────────────────────────
     cal_c1, cal_c2, cal_c3, _ = st.columns([1, 1, 1, 3])
@@ -2184,7 +2185,11 @@ with tab4:
                     for item in sync_stats
                 ]
                 st.cache_data.clear()
-                st.success("Broker trade sync completed.")
+                st.session_state["_broker_sync_success"] = True
+                st.rerun()
+
+    if st.session_state.pop("_broker_sync_success", False):
+        st.success("Broker trade sync completed.")
 
     with sync_col2:
         if st.session_state.get("broker_sync_results"):

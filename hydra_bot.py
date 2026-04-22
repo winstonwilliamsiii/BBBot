@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import asyncio
 import json
 import logging
 import math
@@ -736,6 +737,16 @@ class HydraBot:
             return preview
 
         if normalized_broker == "ibkr":
+            # ib_insync expects an event loop in the current thread.
+            # FastAPI worker threads may not have one by default.
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                try:
+                    asyncio.get_event_loop()
+                except RuntimeError:
+                    asyncio.set_event_loop(asyncio.new_event_loop())
+
             ib_client = self._get_ibkr_client()
             connected_here = False
             if not ib_client.isConnected():

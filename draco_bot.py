@@ -74,6 +74,7 @@ class DracoConfig:
     ibkr_host: str
     ibkr_port: int
     ibkr_client_id: int
+    trading_mode: str
     mlflow_tracking_uri: str
     mlflow_experiment: str
     enable_trading: bool
@@ -87,15 +88,19 @@ class DracoConfig:
         if load_dotenv is not None:
             load_dotenv(override=False)
 
+        _draco_mode = str(os.getenv("DRACO_TRADING_MODE", "paper")).strip().lower()
         return cls(
             alpaca_api_key=os.getenv("ALPACA_API_KEY"),
             alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY"),
-            alpaca_base_url=os.getenv(
-                "ALPACA_BASE_URL",
-                "https://paper-api.alpaca.markets",
-            ),
+            alpaca_base_url=str(
+                os.getenv("ALPACA_BASE_URL") or (
+                    "https://api.alpaca.markets"
+                    if _draco_mode == "live"
+                    else "https://paper-api.alpaca.markets"
+                )
+            ).strip(),
             ibkr_host=os.getenv("IBKR_HOST", "127.0.0.1"),
-            ibkr_port=_as_int(os.getenv("IBKR_PORT"), 7497),
+            ibkr_port=_as_int(os.getenv("IBKR_PORT"), 7496 if _draco_mode == "live" else 7497),
             ibkr_client_id=_as_int(os.getenv("IBKR_CLIENT_ID"), 1),
             mlflow_tracking_uri=os.getenv(
                 "MLFLOW_TRACKING_URI",
@@ -105,6 +110,7 @@ class DracoConfig:
                 "DRACO_MLFLOW_EXPERIMENT",
                 "draco_bot_analysis",
             ),
+            trading_mode=_draco_mode,
             enable_trading=_as_bool(
                 os.getenv("DRACO_ENABLE_TRADING"),
                 False,

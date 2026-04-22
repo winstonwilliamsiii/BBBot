@@ -156,6 +156,17 @@ class ProcryonConfigureRequest(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
 
 
+class ProcryonTradeRequest(BaseModel):
+    broker_name: str = Field(default="ftmo")
+    symbol: str = Field(default="BTCUSD", min_length=1)
+    action: Literal["BUY", "SELL"]
+    volume: float = Field(default=0.01, gt=0)
+    sl: Optional[float] = Field(default=None, gt=0)
+    tp: Optional[float] = Field(default=None, gt=0)
+    comment: str = Field(default="Procryon-trade")
+    dry_run: Optional[bool] = None
+
+
 class HydraAnalyzeRequest(BaseModel):
     ticker: str = Field(min_length=1)
     news_headlines: list[str] = Field(default_factory=list)
@@ -721,6 +732,43 @@ async def procryon_configure(payload: ProcryonConfigureRequest):
     return get_procryon_bot().configure(payload.settings)
 
 
+@app.post("/procryon/trade")
+async def procryon_trade(payload: ProcryonTradeRequest):
+    if ProcryonBot is None:
+        raise HTTPException(status_code=503, detail=PROCRYON_IMPORT_ERROR)
+    bot = get_procryon_bot()
+    effective_dry_run = (not getattr(bot.config, "enable_trading", True)) if payload.dry_run is None else payload.dry_run
+    if effective_dry_run:
+        result = {
+            "status": "dry_run",
+            "broker": payload.broker_name,
+            "symbol": payload.symbol,
+            "action": payload.action,
+            "volume": payload.volume,
+            "mode": getattr(bot.config, "trading_platform", "mt5"),
+            "message": "Trading disabled — dry_run active",
+        }
+    else:
+        result = bot.place_trade(
+            broker_name=payload.broker_name,
+            symbol=payload.symbol,
+            action=payload.action,
+            volume=payload.volume,
+            sl=payload.sl,
+            tp=payload.tp,
+            comment=payload.comment,
+        )
+        if not result.get("success", True):
+            raise HTTPException(status_code=502, detail=result.get("error", "Trade failed"))
+        # Normalize keys so _notify_bot_trade can extract symbol/qty/status
+        result.setdefault("status", "submitted")
+        result.setdefault("ticker", result.get("symbol", payload.symbol))
+        result.setdefault("qty", result.get("volume", payload.volume))
+        result.setdefault("mode", "paper" if getattr(bot.config, "trading_mode", "paper") == "paper" else "live")
+    _notify_bot_trade("Procryon", result)
+    return result
+
+
 @app.get("/hydra/health")
 async def hydra_health():
     if HydraBot is None:
@@ -765,7 +813,7 @@ async def hydra_analyze(payload: HydraAnalyzeRequest):
 
 
 @app.post("/hydra/trade")
-async def hydra_trade(payload: dict[str, Any]):
+def hydra_trade(payload: dict[str, Any]):
     if HydraBot is None:
         raise HTTPException(status_code=503, detail=HYDRA_IMPORT_ERROR)
     try:

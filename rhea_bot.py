@@ -1013,6 +1013,25 @@ class RheaBot:
             with conn.cursor() as cursor:
                 cursor.execute(
                     f"""
+                    CREATE TABLE IF NOT EXISTS {self.config.mysql_signal_table} (
+                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                        bot_name VARCHAR(64) NOT NULL,
+                        fund_name VARCHAR(128) NOT NULL,
+                        broker VARCHAR(32) NOT NULL,
+                        ticker VARCHAR(32) NOT NULL,
+                        action VARCHAR(16) NOT NULL,
+                        qty DECIMAL(18, 6) NOT NULL,
+                        mode VARCHAR(16) NOT NULL,
+                        status VARCHAR(32) NOT NULL,
+                        discord_notified TINYINT(1) NOT NULL DEFAULT 0,
+                        trade_payload_json JSON,
+                        analysis_payload_json JSON,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """
+                )
+                cursor.execute(
+                    f"""
                     SELECT id, broker, ticker, action, qty, mode, status, discord_notified, created_at
                     FROM {self.config.mysql_signal_table}
                     WHERE bot_name = %s

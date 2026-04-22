@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir fastapi[standard]>=0.115.0 uvicorn[standard]>=0.3
 COPY scripts/mt5_rest.py ./scripts/
 COPY pages/api/mt5_bridge.py ./pages/api/
 COPY frontend/ ./frontend/
-COPY .env.example ./  # or use Railway secrets
+# Use Railway environment variables/secrets instead of shipping .env files
 
 # Create logs directory
 RUN mkdir -p /app/logs

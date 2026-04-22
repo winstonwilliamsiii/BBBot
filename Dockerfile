@@ -45,7 +45,7 @@ RUN Xvfb :0 -screen 0 1024x768x24 -nolisten tcp &>/dev/null & \
 #    The directory is excluded from git via mt5/.gitignore so binaries are
 #    never committed; Railway/Docker builds it from your local context.
 #
-COPY mt5/terminal/ /root/.wine/drive_c/Program\ Files/MetaTrader\ 5/
+COPY ["mt5/terminal/", "/root/.wine/drive_c/Program Files/MetaTrader 5/"]
 
 # Verify the terminal executable is present
 RUN test -f "/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe" \

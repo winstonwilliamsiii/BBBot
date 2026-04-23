@@ -1,0 +1,172 @@
+# Mansa Bot Strategy Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Switch between bots WITHOUT editing code — just change `active_bot` below.
+# Loader: frontend/utils/bot_config_loader.py → load_active_bot_config()
+# ─────────────────────────────────────────────────────────────────────────────
+
+active_bot: Titan_Bot   # Options: Titan_Bot | Vega_Bot | Rhea_Bot
+
+# ─────────────────────────────────────────────────────────────────────────────
+bots:
+
+  # ── Titan Bot ──────────────────────────────────────────────────────────────
+  Titan_Bot:
+    bot_id: 1
+    display_name: "Titan"
+    fund: "Mansa Tech"
+    strategy_label: "Tech_MTF_ML"
+    strategy_name: "Multi-Timeframe ML"
+    module: "titan_bot.py"
+    screener_file: "titan_tech_fundamentals.csv"
+    universe: "Mag7+Tech"
+    timeframe: "1h"
+    position_size: 5000
+
+    execution:
+      broker: "alpaca"
+      mode: "paper"               # paper | live
+      enabled: false
+      order_type: "market"
+
+    market_data:
+      provider: "alpaca"          # alpaca | ibkr | yfinance
+      ibkr_gateway_url: "https://localhost:5000"
+      intraday_bar: "5min"
+      swing_bar: "1h"
+      lookback_days: 30
+
+    risk_rules:
+      max_holding_days: 3
+      max_daily_loss_pct: 1.5
+      max_open_positions: 6
+      min_volume: 5000000
+      max_pe: 60
+      min_roe: 15
+      max_debt_to_equity: 0.8
+
+    notification:
+      discord:
+        required_indicators: ["RSI", "MACD", "MTF"]
+
+  # ── Vega Bot ───────────────────────────────────────────────────────────────
+  Vega_Bot:
+    bot_id: 2
+    display_name: "Vega"
+    fund: "Mansa Retail"
+    strategy_label: "Retail_MTF_ML"
+    strategy_name: "MTF-ML Retail"
+    module: "vega_bot.py"
+    screener_file: "vega_fundamentals.csv"
+    universe: "Retail_Fundamentals"
+    timeframe: "15m"
+    position_size: 1000
+
+    execution:
+      broker: "axi"
+      mode: "paper"
+      enabled: false
+      order_type: "market"
+
+    market_data:
+      provider: "yfinance"        # alpaca | ibkr | yfinance
+      ibkr_gateway_url: "https://localhost:5000"
+      intraday_bar: "5min"
+      swing_bar: "30min"
+      lookback_days: 20
+
+    risk_rules:
+      max_holding_days: 3
+      max_daily_loss_pct: 1.0
+      max_open_positions: 4
+      min_volume: 1000000
+      max_pe: 25
+      min_roe: 12
+      max_debt_to_equity: 0.5
+      min_dividend_yield: 2
+
+    notification:
+      discord:
+        required_indicators: ["RSI", "VWAP"]
+
+  # ── Rhea Bot ───────────────────────────────────────────────────────────────
+  Rhea_Bot:
+    bot_id: 12
+    display_name: "Rhea"
+    fund: "Mansa ADI"
+    strategy_label: "Rhea_Intraday_Swing"
+    strategy_name: "Intra-Day / Swing"
+    module: "rhea_bot.py"
+    screener_file: "rhea_adi_swing.csv"
+    universe: "Aerospace_Defense_Industrials"
+    timeframe: "30m"
+    position_size: 1800
+
+    execution:
+      broker: "ibkr"              # Primary: ibkr  (paper gateway on localhost:5000)
+      mode: "paper"
+      enabled: false
+      order_type: "market"
+
+    market_data:
+      provider: "ibkr"            # alpaca | ibkr | yfinance
+      ibkr_gateway_url: "https://localhost:5000"
+      intraday_bar: "5min"        # bar size passed to IBKR /marketdata/history
+      swing_bar: "30min"
+      lookback_days: 10
+      snapshot_fields: [31, 84, 85, 86, 88]   # Last, Bid, Ask, Volume, Change
+
+    risk_rules:
+      max_holding_days: 5
+      max_daily_loss_pct: 1.25
+      max_open_positions: 5
+      min_volume: 750000
+
+    notification:
+      discord:
+        required_indicators: ["FVFI", "ROVL", "ADI"]
+
+  # ── Triton Bot ─────────────────────────────────────────────────────────────
+  Triton_Bot:
+    bot_id: 9
+    display_name: "Triton"
+    fund: "Mansa Transportation"
+    strategy_label: "Triton_ARIMA_LSTM_Swing"
+    strategy_name: "ARIMA and LSTM Swing Trading"
+    module: "triton_bot.py"
+    screener_file: "triton_transport_universe.csv"
+    universe: "Transportation"                     # IYT, UNP, CSX, NSC, UPS, FDX, DAL, UBER
+    timeframe: "1d"
+    position_size: 2000
+
+    execution:
+      broker: "ibkr"              # TWS socket — host:port below
+      mode: "paper"               # paper | live
+      enabled: false
+      order_type: "market"
+
+    market_data:
+      provider: "ibkr"            # alpaca | ibkr | yfinance
+      # Gateway REST URL (Client Portal) — used for snapshot & history REST calls
+      ibkr_gateway_url: "https://localhost:5000"
+      # TWS socket coordinates — used for ib_insync / ibapi direct connection
+      ibkr_host: "127.0.0.1"
+      ibkr_port: 7497             # 7497 = TWS paper, 7496 = TWS live
+      ibkr_client_id: 7
+      # Triton is swing-only — intraday bars intentionally match swing granularity
+      intraday_bar: "1h"          # used when intraday endpoint is called
+      swing_bar: "1d"             # primary bar size for ARIMA/LSTM swing model
+      swing_period: "1y"          # 1-year lookback for ARIMA training
+      lookback_days: 252
+      snapshot_fields: [31, 84, 85, 86, 88]
+
+    risk_rules:
+      max_holding_days: 7
+      max_daily_loss_pct: 1.5
+      max_open_positions: 5
+      min_volume: 500000
+      buy_threshold: 0.18         # mirrors TRITON_BUY_THRESHOLD env default
+      sell_threshold: -0.18
+
+    notification:
+      discord:
+        required_indicators: ["ARIMA", "LSTM", "RSI"]

@@ -582,22 +582,32 @@ def _mode_case_sql(alias: str = "") -> str:
     )
 
 
+@st.cache_data(ttl=120)
+def _existing_trade_tables() -> list[str]:
+    if not DB_AVAILABLE:
+        return []
+
+    try:
+        q = text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_name IN ('trades_history', 'titan_trades')
+            ORDER BY table_name
+        """)
+        with engine.connect() as conn:
+            return [str(row[0]) for row in conn.execute(q).fetchall()]
+    except Exception:
+        return []
+
+
 def _trade_events_union_sql() -> str:
-    return f"""
-        SELECT
-            row_id,
-            ticker,
-            action,
-            shares,
-            price,
-            value,
-            timestamp,
-            status,
-            strategy,
-            order_id,
-            source_table,
-            trade_mode
-        FROM (
+    parts = []
+    existing = set(_existing_trade_tables())
+
+    if "trades_history" in existing:
+        parts.append(
+            f"""
             SELECT
                 id AS row_id,
                 ticker,
@@ -612,9 +622,12 @@ def _trade_events_union_sql() -> str:
                 'trades_history' AS source_table,
                 {_mode_case_sql()} AS trade_mode
             FROM trades_history
+            """
+        )
 
-            UNION ALL
-
+    if "titan_trades" in existing:
+        parts.append(
+            f"""
             SELECT
                 id AS row_id,
                 symbol AS ticker,
@@ -629,8 +642,28 @@ def _trade_events_union_sql() -> str:
                 'titan_trades' AS source_table,
                 {_mode_case_sql()} AS trade_mode
             FROM titan_trades
-        ) AS unified_trades
-    """
+            """
+        )
+
+    if not parts:
+        return """
+            SELECT
+                NULL AS row_id,
+                NULL AS ticker,
+                NULL AS action,
+                NULL AS shares,
+                NULL AS price,
+                NULL AS value,
+                NULL AS timestamp,
+                NULL AS status,
+                NULL AS strategy,
+                NULL AS order_id,
+                NULL AS source_table,
+                NULL AS trade_mode
+            WHERE 1 = 0
+        """
+
+    return "\nUNION ALL\n".join(parts)
 
 
 # Load data functions

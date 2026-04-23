@@ -46,6 +46,19 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _persist_trade_preview(preview: dict[str, Any], analysis: Optional[dict[str, Any]]) -> dict[str, Any]:
+    try:
+        from backend.api.hydra_persistence import persist_hydra_trade_decision
+
+        return persist_hydra_trade_decision(preview, analysis=analysis)
+    except Exception as exc:
+        logger.warning("Hydra trade persistence failed: %s", exc)
+        return {
+            "persisted": False,
+            "detail": str(exc),
+        }
+
+
 def _notify_discord_trade(
     side: str,
     symbol: str,
@@ -715,11 +728,13 @@ class HydraBot:
             "qty": float(qty),
             "price": self.last_analysis.get("latest_price"),
             "dry_run": effective_dry_run,
+            "mode": "paper" if effective_dry_run else "live",
         }
 
         if effective_dry_run:
             preview["status"] = "simulated"
             preview["reason"] = "Trading disabled; no live order submitted"
+            preview["persistence"] = _persist_trade_preview(preview, self.last_analysis)
             return preview
 
         if normalized_broker == "alpaca":
@@ -733,6 +748,7 @@ class HydraBot:
             )
             preview["status"] = "submitted"
             preview["order_id"] = getattr(order, "id", None)
+            preview["persistence"] = _persist_trade_preview(preview, self.last_analysis)
             _notify_discord_trade(normalized_action, normalized_ticker, qty, "alpaca", preview["order_id"])
             return preview
 
@@ -770,6 +786,7 @@ class HydraBot:
             if connected_here:
                 ib_client.disconnect()
 
+            preview["persistence"] = _persist_trade_preview(preview, self.last_analysis)
             _notify_discord_trade(normalized_action, normalized_ticker, qty, "ibkr", preview["order_id"])
             return preview
 

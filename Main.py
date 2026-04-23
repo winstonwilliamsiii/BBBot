@@ -15,6 +15,7 @@ from backend.api.hydra_persistence import (
     persist_hydra_analysis,
     persist_hydra_trade_decision,
 )
+from backend.api.mansa_ai_router import router as mansa_ai_router
 
 try:
     import pymysql
@@ -838,11 +839,12 @@ def hydra_trade(payload: dict[str, Any]):
             )
             analysis_id = persistence.get("analysis_id")
             trade["analysis_persistence"] = persistence
-        trade["persistence"] = persist_hydra_trade_decision(
-            trade,
-            analysis=last_analysis,
-            analysis_id=analysis_id,
-        )
+        if not trade.get("persistence"):
+            trade["persistence"] = persist_hydra_trade_decision(
+                trade,
+                analysis=last_analysis,
+                analysis_id=analysis_id,
+            )
         _notify_bot_trade("Hydra", trade)
         return trade
     except (RuntimeError, ValueError) as exc:
@@ -1005,6 +1007,7 @@ async def rhea_airbyte_config():
 
 
 app.include_router(sentiment_router)
+app.include_router(mansa_ai_router)
 app.mount("/draco", draco_app)
 app.mount("/vega", vega_app)
 if altair_app is not None:

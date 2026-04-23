@@ -190,10 +190,10 @@ def seed_broker_data(connection):
     brokers = [
         ('alpaca', 'Alpaca Markets', 'equities', 'https://paper-api.alpaca.markets'),
         ('ibkr', 'Interactive Brokers', 'equities', 'https://api.ibkr.com'),
-        ('schwab', 'Charles Schwab', 'equities', 'https://api.schwab.com'),
-        ('binance', 'Binance', 'crypto', 'https://api.binance.com'),
-        ('tradestation', 'TradeStation', 'equities', 'https://api.tradestation.com'),
-        ('mt5', 'MetaTrader 5', 'forex', 'http://localhost:8000')
+        ('mt5', 'MetaTrader 5', 'forex', 'http://localhost:8000'),
+        ('ftmo', 'FTMO', 'prop_firm', 'http://localhost:8000/broker/prop'),
+        ('axi', 'Axi Select', 'prop_firm', 'http://localhost:8000/broker/prop'),
+        ('zenit', 'Zenit', 'prop_firm', 'http://localhost:8000/broker/prop')
     ]
     
     for name, display_name, broker_type, api_url in brokers:

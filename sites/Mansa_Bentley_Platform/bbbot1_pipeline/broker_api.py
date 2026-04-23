@@ -1,13 +1,16 @@
 """
 Broker API Integration Module
-Unified interface for trading across multiple brokers:
+Unified interface for the supported direct broker integrations.
+
+Supported here:
 - Interactive Brokers (forex, futures, commodities)
-- Binance (crypto)
+
+Route Alpaca, MT5, and prop-firm execution through the FastAPI broker router.
 """
 
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from datetime import datetime
 
 # Configure logging
@@ -124,112 +127,13 @@ class IBKRClient:
             return []
 
 
-# ============================================
-# BINANCE API - Cryptocurrency
-# ============================================
-
-class BinanceClient:
-    """
-    Binance API client for cryptocurrency trading
-    Docs: https://python-binance.readthedocs.io/
-    """
-    
-    def __init__(self):
-        self.api_key = os.getenv("BINANCE_API_KEY")
-        self.api_secret = os.getenv("BINANCE_API_SECRET")
-        self.testnet = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
-        self.client = None
-        
-    def connect(self):
-        """Initialize Binance connection"""
-        try:
-            from binance.client import Client
-            
-            if self.testnet:
-                # Use testnet for testing
-                self.client = Client(
-                    self.api_key, 
-                    self.api_secret,
-                    testnet=True
-                )
-                logger.info("✅ Binance TESTNET connected successfully")
-            else:
-                self.client = Client(self.api_key, self.api_secret)
-                logger.info("✅ Binance LIVE connected successfully")
-            
-            return True
-        
-        except ImportError:
-            logger.error("❌ python-binance package not installed. Run: pip install python-binance")
-            return False
-        except Exception as e:
-            logger.error(f"❌ Binance connection failed: {e}")
-            return False
-    
-    def place_order(self, symbol: str, side: str, quantity: float, order_type: str = "MARKET") -> Dict[str, Any]:
-        """
-        Place order on Binance
-        
-        Args:
-            symbol: Trading pair (e.g., 'BTCUSDT', 'ETHUSDT')
-            side: 'BUY' or 'SELL'
-            quantity: Crypto quantity (check symbol lot size)
-            order_type: 'MARKET' or 'LIMIT'
-        
-        Returns:
-            Order confirmation dict with order_id and status
-        """
-        if not self.client:
-            self.connect()
-        
-        try:
-            # Place market order
-            if side.upper() == "BUY":
-                result = self.client.order_market_buy(
-                    symbol=symbol,
-                    quantity=quantity
-                )
-            elif side.upper() == "SELL":
-                result = self.client.order_market_sell(
-                    symbol=symbol,
-                    quantity=quantity
-                )
-            else:
-                raise ValueError(f"Invalid side: {side}. Must be 'BUY' or 'SELL'")
-            
-            logger.info(f"✅ Binance {side} order placed: {symbol} x{quantity}")
-            return {
-                "broker": "binance",
-                "symbol": symbol,
-                "side": side,
-                "quantity": quantity,
-                "order_type": order_type,
-                "order_id": result.get("orderId"),
-                "status": result.get("status"),
-                "fills": result.get("fills", []),
-                "timestamp": datetime.now().isoformat()
-            }
-        
-        except Exception as e:
-            logger.error(f"❌ Binance order failed: {e}")
-            return {"error": str(e), "broker": "binance"}
-    
-    def get_positions(self):
-        """Get current Binance account balances"""
-        if not self.client:
-            self.connect()
-        
-        try:
-            account = self.client.get_account()
-            balances = [
-                b for b in account['balances'] 
-                if float(b['free']) > 0 or float(b['locked']) > 0
-            ]
-            logger.info(f"✅ Retrieved {len(balances)} Binance balances")
-            return balances
-        except Exception as e:
-            logger.error(f"❌ Failed to get Binance balances: {e}")
-            return []
+def _unsupported_broker_message(broker: str) -> dict[str, str]:
+    return {
+        "error": (
+            f"Broker '{broker}' is no longer supported in bbbot1_pipeline.broker_api. "
+            "Use backend.api.mansa_ai_router for Alpaca, MT5, and prop-firm execution."
+        )
+    }
 
 
 # ============================================
@@ -238,10 +142,10 @@ class BinanceClient:
 
 def execute_trade(broker: str, symbol: str, side: str, quantity: float, **kwargs) -> Dict[str, Any]:
     """
-    Unified trade execution across all brokers
+    Unified trade execution across supported direct brokers.
     
     Args:
-        broker: 'ibkr' or 'binance'
+        broker: 'ibkr'
         symbol: Ticker/contract symbol
         side: 'BUY' or 'SELL'
         quantity: Amount to trade
@@ -254,28 +158,21 @@ def execute_trade(broker: str, symbol: str, side: str, quantity: float, **kwargs
         # Futures on IBKR
         execute_trade('ibkr', 'ES', 'BUY', 1, sec_type='FUT', exchange='CME')
         
-        # Crypto on Binance
-        execute_trade('binance', 'BTCUSDT', 'BUY', 0.01)
     """
     broker = broker.lower()
     
     if broker == "ibkr":
         client = IBKRClient()
         return client.place_order(symbol, side, quantity, **kwargs)
-    
-    elif broker == "binance":
-        client = BinanceClient()
-        return client.place_order(symbol, side, quantity, **kwargs)
-    
-    else:
-        error_msg = f"Unknown broker: {broker}. Supported: ibkr, binance"
-        logger.error(f"❌ {error_msg}")
-        return {"error": error_msg}
+
+    unsupported = _unsupported_broker_message(broker)
+    logger.error(f"❌ {unsupported['error']}")
+    return unsupported
 
 
 def get_all_positions() -> Dict[str, list]:
     """
-    Get positions from all brokers
+    Get positions from supported direct brokers.
     
     Returns:
         Dict with broker names as keys and position lists as values
@@ -289,14 +186,6 @@ def get_all_positions() -> Dict[str, list]:
     except Exception as e:
         logger.error(f"Failed to get IBKR positions: {e}")
         positions['ibkr'] = []
-    
-    # Binance positions
-    try:
-        binance_client = BinanceClient()
-        positions['binance'] = binance_client.get_positions()
-    except Exception as e:
-        logger.error(f"Failed to get Binance positions: {e}")
-        positions['binance'] = []
     
     return positions
 
@@ -316,16 +205,13 @@ if __name__ == "__main__":
     ibkr_test = execute_trade("ibkr", "ES", "BUY", 1, sec_type="FUT", exchange="CME")
     print(f"Result: {ibkr_test}")
     
-    # Test Binance
-    print("\n2️⃣  Testing Binance (Crypto)...")
-    binance_test = execute_trade("binance", "BTCUSDT", "BUY", 0.001)
-    print(f"Result: {binance_test}")
-    
     # Get all positions
-    print("\n3️⃣  Getting all positions...")
+    print("\n2️⃣  Getting all positions...")
     all_positions = get_all_positions()
     for broker, positions in all_positions.items():
         print(f"{broker.upper()}: {len(positions)} positions")
+
+    print("\n3️⃣  Unsupported brokers are routed through backend.api.mansa_ai_router")
     
     print("\n" + "=" * 70)
     print("✅ Broker API testing complete")

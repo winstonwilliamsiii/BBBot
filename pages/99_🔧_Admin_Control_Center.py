@@ -2291,7 +2291,7 @@ def main():
             with st.expander("Deploy New Bot", expanded=True):
                 _catalog = get_bot_catalog_rows()
                 bot_select = st.selectbox("Select Bot", [row["bot"] for row in _catalog])
-                broker_select = st.selectbox("Select Broker", ["Alpaca", "IBKR", "Binance", "MT5 (FTMO)", "MT5 (Axi)"])
+                broker_select = st.selectbox("Select Broker", ["Alpaca", "IBKR", "MT5 (FTMO)", "MT5 (Axi)", "Prop Connector (Zenit)"])
                 environment = st.radio("Environment", ["Sandbox", "Live"], horizontal=True)
 
                 col1, col2 = st.columns(2)
@@ -2322,10 +2322,9 @@ def main():
             # Sample broker data
             brokers = [
                 {"name": "Alpaca", "status": "healthy", "latency": "45ms", "orders_today": 12, "last_sync": "2 min ago"},
-                {"name": "Schwab", "status": "warning", "latency": "120ms", "orders_today": 0, "last_sync": "15 min ago"},
-                {"name": "IBKR", "status": "error", "latency": "N/A", "orders_today": 0, "last_sync": "Never"},
-                {"name": "Binance", "status": "healthy", "latency": "35ms", "orders_today": 8, "last_sync": "1 min ago"},
-                {"name": "Coinbase", "status": "idle", "latency": "N/A", "orders_today": 0, "last_sync": "Never"},
+                {"name": "IBKR", "status": "warning", "latency": "120ms", "orders_today": 3, "last_sync": "6 min ago"},
+                {"name": "MT5", "status": "healthy", "latency": "35ms", "orders_today": 8, "last_sync": "1 min ago"},
+                {"name": "Prop Connectors", "status": "idle", "latency": "N/A", "orders_today": 0, "last_sync": "10 min ago"},
             ]
         else:
             brokers = brokers_data.get("brokers", [])
@@ -2395,7 +2394,7 @@ def main():
         prop_firms = [
             {"name": "FTMO", "platform": "MT5", "accounts": 2, "status": "active", "daily_pnl": "$234.56"},
             {"name": "Axi Select", "platform": "MT5", "accounts": 1, "status": "active", "daily_pnl": "$89.12"},
-            {"name": "Zenit", "platform": "NinjaTrader", "accounts": 0, "status": "planned", "daily_pnl": "$0.00"},
+            {"name": "Zenit", "platform": "Prop Connector", "accounts": 0, "status": "planned", "daily_pnl": "$0.00"},
         ]
         
         for firm in prop_firms:
@@ -2820,7 +2819,7 @@ BACKEND_STORE_URI: {get_mlflow_backend_store_uri()}
 [2026-02-15 15:23:45] [INFO] [Bot3] Successfully deployed to Alpaca (sandbox)
 [2026-02-15 14:45:12] [INFO] [Alpaca] Session token refreshed successfully
 [2026-02-15 13:12:34] [INFO] [FTMO-MT5] Trade executed: EURUSD BUY 0.1 lots @ 1.0945
-[2026-02-15 11:30:22] [WARNING] [Schwab] High latency detected: 180ms
+[2026-02-15 11:30:22] [WARNING] [IBKR] High latency detected: 180ms
 [2026-02-15 09:15:11] [INFO] [System] Daily reconciliation completed successfully
 [2026-02-15 08:00:05] [INFO] [Risk] All systems within risk parameters
         """, height=400)

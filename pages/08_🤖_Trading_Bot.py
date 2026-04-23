@@ -570,20 +570,83 @@ def fetch_triton_api_snapshot() -> dict:
     }
 
 
+def _mode_case_sql(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return (
+        "CASE "
+        f"WHEN LOWER(COALESCE({prefix}strategy, '')) LIKE '%live%' "
+        f"OR LOWER(COALESCE({prefix}status, '')) LIKE '%live%' "
+        "THEN 'live' "
+        "ELSE 'paper' "
+        "END"
+    )
+
+
+def _trade_events_union_sql() -> str:
+    return f"""
+        SELECT
+            row_id,
+            ticker,
+            action,
+            shares,
+            price,
+            value,
+            timestamp,
+            status,
+            strategy,
+            order_id,
+            source_table,
+            trade_mode
+        FROM (
+            SELECT
+                id AS row_id,
+                ticker,
+                UPPER(COALESCE(action, '')) AS action,
+                shares,
+                price,
+                value,
+                timestamp,
+                status,
+                strategy,
+                order_id,
+                'trades_history' AS source_table,
+                {_mode_case_sql()} AS trade_mode
+            FROM trades_history
+
+            UNION ALL
+
+            SELECT
+                id AS row_id,
+                symbol AS ticker,
+                UPPER(COALESCE(side, '')) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                NULL AS price,
+                NULL AS value,
+                timestamp,
+                status,
+                strategy,
+                order_id,
+                'titan_trades' AS source_table,
+                {_mode_case_sql()} AS trade_mode
+            FROM titan_trades
+        ) AS unified_trades
+    """
+
+
 # Load data functions
 @st.cache_data(ttl=60)
 def load_recent_trades(days=7):
     """Load recent trade history"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
-    
+
     query = f"""
-        SELECT ticker, action, shares, price, value, timestamp, status, strategy
-        FROM trades_history
+        SELECT ticker, action, shares, price, value, timestamp, status, strategy, trade_mode, source_table
+        FROM ({_trade_events_union_sql()}) unified
         WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         ORDER BY timestamp DESC
     """
-    
+
     try:
         return pd.read_sql(query, engine, parse_dates=['timestamp'])
     except:
@@ -645,16 +708,7 @@ def load_daily_pnl(year: int, month: int, mode: str = "All") -> dict:
         mode_clause = ""
         params: dict = {"start": start_d, "end": end_d}
         if mode and mode.lower() in ("live", "paper"):
-            mode_clause = """
-                AND (
-                    CASE
-                        WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%'
-                          OR LOWER(COALESCE(status, '')) LIKE '%live%'
-                        THEN 'live'
-                        ELSE 'paper'
-                    END
-                ) = :mode
-            """
+            mode_clause = "AND trade_mode = :mode"
             params["mode"] = mode.lower()
 
         q = text(f"""
@@ -666,8 +720,9 @@ def load_daily_pnl(year: int, month: int, mode: str = "All") -> dict:
                            ELSE 0
                        END
                    ), 2) AS net_flow
-            FROM trades_history
+            FROM ({_trade_events_union_sql()}) unified
             WHERE DATE(timestamp) BETWEEN :start AND :end
+              AND value IS NOT NULL
               {mode_clause}
             GROUP BY DATE(timestamp)
             ORDER BY DATE(timestamp)
@@ -723,16 +778,7 @@ def load_overview_metrics(year: int, month: int, daily_pnl: dict, mode: str = "A
             mode_clause = ""
             params: dict = {"start": start_d, "end": end_d}
             if mode and mode.lower() in ("live", "paper"):
-                mode_clause = """
-                    AND (
-                        CASE
-                            WHEN LOWER(COALESCE(t1.strategy, '')) LIKE '%live%'
-                              OR LOWER(COALESCE(t1.status, '')) LIKE '%live%'
-                            THEN 'live'
-                            ELSE 'paper'
-                        END
-                    ) = :mode
-                """
+                mode_clause = "AND t1.trade_mode = :mode"
                 params["mode"] = mode.lower()
 
             hold_q = text(f"""
@@ -744,15 +790,17 @@ def load_overview_metrics(year: int, month: int, daily_pnl: dict, mode: str = "A
                         t1.ticker,
                         TIMESTAMPDIFF(MINUTE, t1.timestamp, MIN(t2.timestamp)) AS hold_min,
                         (MIN(t2.value) - t1.value) AS pnl_proxy
-                    FROM trades_history t1
-                    JOIN trades_history t2
+                    FROM ({_trade_events_union_sql()}) t1
+                    JOIN ({_trade_events_union_sql()}) t2
                         ON  t2.ticker    = t1.ticker
                         AND UPPER(t2.action) = 'SELL'
+                        AND t2.value IS NOT NULL
                         AND t2.timestamp > t1.timestamp
                     WHERE UPPER(t1.action) = 'BUY'
+                      AND t1.value IS NOT NULL
                       AND DATE(t1.timestamp) BETWEEN :start AND :end
                       {mode_clause}
-                    GROUP BY t1.id, t1.ticker, t1.timestamp, t1.value
+                    GROUP BY t1.row_id, t1.ticker, t1.timestamp, t1.value
                 ) AS pairs
                 WHERE hold_min IS NOT NULL
             """)
@@ -877,16 +925,7 @@ def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
     mode_clause = ""
     mode_params: dict = {}
     if mode and mode.lower() in ("live", "paper"):
-        mode_clause = """
-            AND (
-                CASE
-                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%'
-                      OR LOWER(COALESCE(status, '')) LIKE '%live%'
-                    THEN 'live'
-                    ELSE 'paper'
-                END
-            ) = :mode_val
-        """
+        mode_clause = "AND trade_mode = :mode_val"
         mode_params["mode_val"] = mode.lower()
 
     def _metric_shell(label: str) -> dict:
@@ -953,7 +992,7 @@ def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
                     END) AS worst_flow,
                 AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN HOUR(timestamp) * 60 + MINUTE(timestamp) END) AS avg_buy_minute,
                 AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN HOUR(timestamp) * 60 + MINUTE(timestamp) END) AS avg_sell_minute
-            FROM trades_history
+            FROM ({_trade_events_union_sql()}) unified
             WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
               {filter_clause}
               {mode_clause}
@@ -2281,8 +2320,12 @@ with tab4:
         # Format dataframe
         display_df = trades_df.copy()
         display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        display_df['value'] = display_df['value'].apply(lambda x: f"${x:,.2f}")
-        display_df['price'] = display_df['price'].apply(lambda x: f"${x:.2f}")
+        display_df['value'] = display_df['value'].apply(
+            lambda x: f"${x:,.2f}" if pd.notna(x) else "N/A"
+        )
+        display_df['price'] = display_df['price'].apply(
+            lambda x: f"${x:.2f}" if pd.notna(x) else "N/A"
+        )
         
         # Color code actions
         def color_action(val):
@@ -2295,7 +2338,10 @@ with tab4:
         )
         
         st.dataframe(
-            display_df[['timestamp', 'ticker', 'action', 'shares', 'price', 'value', 'status', 'strategy']],
+            display_df[[
+                'timestamp', 'ticker', 'action', 'shares', 'price', 'value',
+                'status', 'strategy', 'trade_mode', 'source_table'
+            ]],
             use_container_width=True,
             hide_index=True
         )

@@ -57,6 +57,7 @@ class PlaidLinkManager:
     
     def __init__(self):
         """Initialize Plaid API client"""
+<<<<<<< Updated upstream
         # Reload environment one more time to be sure (local only)
         load_dotenv(str(project_root / '.env'), override=True)
 
@@ -83,6 +84,25 @@ class PlaidLinkManager:
             self.secret = (
                 os.getenv('PLAID_SECRET_PRODUCTION', '').strip()
                 or os.getenv('PLAID_SECRET', '').strip()
+=======
+        # Reload environment one more time to be sure
+        load_dotenv(override=True)
+        
+        # Try Streamlit secrets (with nested format support) then env vars
+        self.client_id = self._get_secret('PLAID_CLIENT_ID', '').strip()
+        self.secret = self._get_secret('PLAID_SECRET', '').strip()
+        self.env = self._get_secret('PLAID_ENV', 'sandbox').strip()
+        
+        # Debug: Print what we got (masked)
+        if not self.client_id or self.client_id == 'your_plaid_client_id_here':
+            # Show debug info
+            all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
+            print(f"DEBUG: Plaid env vars found: {list(all_env.keys())}")
+            raise ValueError(
+                f"PLAID_CLIENT_ID not configured in .env\n"
+                f"Found value: '{self.client_id}'\n"
+                f"Please ensure .env file has: PLAID_CLIENT_ID=your_actual_client_id"
+>>>>>>> Stashed changes
             )
             self.env = (
                 os.getenv('PLAID_ENV', '').strip()
@@ -132,6 +152,35 @@ class PlaidLinkManager:
         
         api_client = ApiClient(configuration)
         self.client = plaid_api.PlaidApi(api_client)
+    
+    def _get_secret(self, key: str, default: str = None) -> str:
+        """
+        Get a secret value from Streamlit secrets or environment variables.
+        Handles both flat and nested secrets.toml formats.
+        """
+        # Try Streamlit secrets first
+        try:
+            if hasattr(st, 'secrets'):
+                # Try flat format: PLAID_CLIENT_ID
+                if key in st.secrets:
+                    return str(st.secrets[key])
+                
+                # Try nested format: [plaid] section with PLAID_CLIENT_ID inside
+                section_map = {
+                    'PLAID_CLIENT_ID': 'plaid',
+                    'PLAID_SECRET': 'plaid',
+                    'PLAID_ENV': 'plaid',
+                }
+                
+                section = section_map.get(key)
+                if section and section in st.secrets:
+                    if key in st.secrets[section]:
+                        return str(st.secrets[section][key])
+        except Exception:
+            pass
+        
+        # Fall back to environment variables (for local development)
+        return os.getenv(key, default)
     
     def _get_plaid_host(self):
         """Get Plaid API host based on environment"""

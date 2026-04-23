@@ -1,4 +1,4 @@
-#Update to Vega FastAPI Endpoint 
+#Update to Vega FastAPI Endpoint
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel

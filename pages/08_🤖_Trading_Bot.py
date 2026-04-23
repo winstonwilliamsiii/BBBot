@@ -137,32 +137,38 @@ except Exception:
 RBACManager.init_session_state()
 show_user_info()
 
-# Pre-auth repair: restore admin User object inline — no st.rerun() needed.
-# Runs every page load; harmless when user is already valid.
-# Path 1: current_user_data dict is present — rebuild the User object from it.
-if (
-    st.session_state.get("authenticated", False)
-    and st.session_state.get("current_user") is None
-    and isinstance(st.session_state.get("current_user_data"), dict)
-):
-    try:
-        from frontend.utils.rbac import User as _User
-        _restored = _User.from_dict(st.session_state["current_user_data"])
-        st.session_state.current_user = _restored
-    except Exception:
-        pass
 
-# Path 2: admin marker present but User object missing — rebuild from DEMO_USERS.
-if st.session_state.get("admin_authenticated", False) and st.session_state.get("current_user") is None:
-    try:
-        _admin_data = RBACManager.DEMO_USERS.get("admin")
-        if _admin_data is not None:
-            _restored = RBACManager._build_demo_user("admin", _admin_data)
+def _restore_admin_session_if_possible() -> None:
+    """Best-effort RBAC repair when Streamlit drops user objects on reruns."""
+    if st.session_state.get("current_user") is not None:
+        return
+
+    if isinstance(st.session_state.get("current_user_data"), dict):
+        try:
+            from frontend.utils.rbac import User as _User
+            restored = _User.from_dict(st.session_state["current_user_data"])
+            st.session_state.current_user = restored
             st.session_state.authenticated = True
-            st.session_state.current_user = _restored
-            st.session_state.current_user_data = _restored.to_dict()
-    except Exception:
-        pass
+            if getattr(restored, "role", None) is not None and str(restored.role.value).lower() == "admin":
+                st.session_state.admin_authenticated = True
+                st.session_state.admin_user = restored.username
+            return
+        except Exception:
+            pass
+
+    legacy_admin = st.session_state.get("admin_user") or "admin"
+    if st.session_state.get("admin_authenticated", False):
+        try:
+            admin_data = RBACManager.DEMO_USERS.get(legacy_admin) or RBACManager.DEMO_USERS.get("admin")
+            if admin_data is not None:
+                restored = RBACManager._build_demo_user(legacy_admin if legacy_admin in RBACManager.DEMO_USERS else "admin", admin_data)
+                st.session_state.authenticated = True
+                st.session_state.current_user = restored
+                st.session_state.current_user_data = restored.to_dict()
+        except Exception:
+            pass
+
+_restore_admin_session_if_possible()
 
 if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
     st.error("🚫 ADMIN access required")
@@ -626,60 +632,61 @@ def load_active_signals():
 
 @st.cache_data(ttl=300)
 def load_daily_pnl(year: int, month: int, mode: str = "All") -> dict:
-    """Load daily P&L for calendar. Real data from DB when available; seeded demo otherwise."""
-    if DB_AVAILABLE:
-        try:
-            import calendar as _c
-            _, last_day = _c.monthrange(year, month)
-            start_d = f"{year}-{month:02d}-01"
-            end_d = f"{year}-{month:02d}-{last_day:02d}"
-            mode_clause = ""
-            params: dict = {"start": start_d, "end": end_d}
-            if mode and mode.lower() in ("live", "paper"):
-                mode_clause = "AND LOWER(COALESCE(mode,'paper')) = :mode"
-                params["mode"] = mode.lower()
-            q = text(f"""
-                SELECT DATE(timestamp) AS day,
-                       ROUND(SUM(
-                           CASE WHEN side = 'sell'
-                                THEN  (prediction_probability - 0.5) * qty * 50
-                                ELSE -(prediction_probability - 0.5) * qty * 50
-                           END
-                       ), 2) AS est_pnl
-                FROM titan_trades
-                WHERE DATE(timestamp) BETWEEN :start AND :end
-                  AND status IN ('filled', 'submitted')
-                  {mode_clause}
-                GROUP BY DATE(timestamp)
-            """)
-            with engine.connect() as conn:
-                rows = conn.execute(q, params).fetchall()
-            if rows:
-                return {str(r[0]): float(r[1]) for r in rows}
-        except Exception:
-            pass
-    import random
-    import calendar as _c
-    rng = random.Random(year * 100 + month + 7)
-    _, last_day = _c.monthrange(year, month)
-    result = {}
-    for d in range(1, last_day + 1):
-        if datetime(year, month, d).weekday() < 5:
-            result[f"{year}-{month:02d}-{d:02d}"] = round(rng.normalvariate(200, 620), 2)
-    return result
+    """Load daily net flow from real trade history. Positive = net sells, negative = net buys."""
+    if not DB_AVAILABLE:
+        return {}
+
+    try:
+        import calendar as _c
+        _, last_day = _c.monthrange(year, month)
+        start_d = f"{year}-{month:02d}-01"
+        end_d = f"{year}-{month:02d}-{last_day:02d}"
+
+        mode_clause = ""
+        params: dict = {"start": start_d, "end": end_d}
+        if mode and mode.lower() in ("live", "paper"):
+            mode_clause = """
+                AND (
+                    CASE
+                        WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%'
+                          OR LOWER(COALESCE(status, '')) LIKE '%live%'
+                        THEN 'live'
+                        ELSE 'paper'
+                    END
+                ) = :mode
+            """
+            params["mode"] = mode.lower()
+
+        q = text(f"""
+            SELECT DATE(timestamp) AS day,
+                   ROUND(SUM(
+                       CASE
+                           WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                           WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                           ELSE 0
+                       END
+                   ), 2) AS net_flow
+            FROM trades_history
+            WHERE DATE(timestamp) BETWEEN :start AND :end
+              {mode_clause}
+            GROUP BY DATE(timestamp)
+            ORDER BY DATE(timestamp)
+        """)
+        with engine.connect() as conn:
+            rows = conn.execute(q, params).fetchall()
+        return {str(r[0]): float(r[1]) for r in rows} if rows else {}
+    except Exception:
+        return {}
 
 
 @st.cache_data(ttl=300)
-def load_overview_metrics(year: int, month: int, daily_pnl: dict) -> dict:
+def load_overview_metrics(year: int, month: int, daily_pnl: dict, mode: str = "All") -> dict:
     """
     Compute 9 aggregate overview metrics across all broker bot trades.
     Derives calendar-based stats from daily_pnl (real DB or demo).
     Queries DB for buy/sell hold-time pairing; falls back to seeded demo.
     """
-    import random
     import calendar as _c
-
-    rng = random.Random(year * 100 + month + 42)
 
     # ── Stats from daily P&L dict ────────────────────────────────────────
     trading_days = sorted(daily_pnl.keys())
@@ -713,30 +720,44 @@ def load_overview_metrics(year: int, month: int, daily_pnl: dict) -> dict:
             _, last_day = _c.monthrange(year, month)
             start_d = f"{year}-{month:02d}-01"
             end_d = f"{year}-{month:02d}-{last_day:02d}"
-            # Pair each buy with the next sell on the same symbol (approximate hold time)
-            hold_q = text("""
+            mode_clause = ""
+            params: dict = {"start": start_d, "end": end_d}
+            if mode and mode.lower() in ("live", "paper"):
+                mode_clause = """
+                    AND (
+                        CASE
+                            WHEN LOWER(COALESCE(t1.strategy, '')) LIKE '%live%'
+                              OR LOWER(COALESCE(t1.status, '')) LIKE '%live%'
+                            THEN 'live'
+                            ELSE 'paper'
+                        END
+                    ) = :mode
+                """
+                params["mode"] = mode.lower()
+
+            hold_q = text(f"""
                 SELECT
-                    AVG(CASE WHEN est_pnl > 0 THEN hold_min END) AS avg_win_hold,
-                    AVG(CASE WHEN est_pnl <= 0 THEN hold_min END) AS avg_loss_hold
+                    AVG(CASE WHEN pnl_proxy > 0 THEN hold_min END) AS avg_win_hold,
+                    AVG(CASE WHEN pnl_proxy <= 0 THEN hold_min END) AS avg_loss_hold
                 FROM (
                     SELECT
-                        t1.symbol,
+                        t1.ticker,
                         TIMESTAMPDIFF(MINUTE, t1.timestamp, MIN(t2.timestamp)) AS hold_min,
-                        (t1.prediction_probability - 0.5) * t1.qty * 50         AS est_pnl
-                    FROM titan_trades t1
-                    JOIN titan_trades t2
-                        ON  t2.symbol    = t1.symbol
-                        AND t2.side      = 'sell'
+                        (MIN(t2.value) - t1.value) AS pnl_proxy
+                    FROM trades_history t1
+                    JOIN trades_history t2
+                        ON  t2.ticker    = t1.ticker
+                        AND UPPER(t2.action) = 'SELL'
                         AND t2.timestamp > t1.timestamp
-                    WHERE t1.side = 'buy'
+                    WHERE UPPER(t1.action) = 'BUY'
                       AND DATE(t1.timestamp) BETWEEN :start AND :end
-                      AND t1.status IN ('filled', 'submitted')
-                    GROUP BY t1.id, t1.symbol, t1.timestamp,
-                             t1.prediction_probability, t1.qty
+                      {mode_clause}
+                    GROUP BY t1.id, t1.ticker, t1.timestamp, t1.value
                 ) AS pairs
+                WHERE hold_min IS NOT NULL
             """)
             with engine.connect() as conn:
-                row = conn.execute(hold_q, {"start": start_d, "end": end_d}).fetchone()
+                row = conn.execute(hold_q, params).fetchone()
             if row:
                 if row[0] is not None:
                     avg_win_hold_min = float(row[0])
@@ -745,12 +766,9 @@ def load_overview_metrics(year: int, month: int, daily_pnl: dict) -> dict:
         except Exception:
             pass
 
-    if avg_win_hold_min is None:
-        avg_win_hold_min = rng.uniform(35, 180)
-    if avg_loss_hold_min is None:
-        avg_loss_hold_min = rng.uniform(55, 240)
-
-    def _fmt_mins(m: float) -> str:
+    def _fmt_mins(m: float | None) -> str:
+        if m is None:
+            return "N/A"
         m = max(0, int(m))
         return f"{m}m" if m < 60 else f"{m // 60}h {m % 60:02d}m"
 
@@ -846,8 +864,7 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
 
 @st.cache_data(ttl=60)
 def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
-    """Load per-bot analytics. Merges real titan_trades data with estimated demo values."""
-    import random
+    """Load per-bot analytics from real trades_history rows (no seeded demo data)."""
     _VALID_BOTS = [
         "Titan", "Dogon", "Orion", "Rigel", "Vega",
         "Draco", "Altair", "Procryon", "Hydra", "Triton",
@@ -860,116 +877,181 @@ def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
     mode_clause = ""
     mode_params: dict = {}
     if mode and mode.lower() in ("live", "paper"):
-        mode_clause = "AND LOWER(COALESCE(mode,'paper')) = :mode_val"
+        mode_clause = """
+            AND (
+                CASE
+                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%'
+                      OR LOWER(COALESCE(status, '')) LIKE '%live%'
+                    THEN 'live'
+                    ELSE 'paper'
+                END
+            ) = :mode_val
+        """
         mode_params["mode_val"] = mode.lower()
 
-    real_strategies = []
-    if DB_AVAILABLE:
-        try:
-            if bot_name == "All Bots":
-                q = text(f"""
-                    SELECT COALESCE(strategy,'unknown') AS strategy,
-                           COUNT(*)                          AS total_trades,
-                           SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END) AS buy_cnt,
-                           SUM(CASE WHEN side='sell' THEN 1 ELSE 0 END) AS sell_cnt,
-                           AVG(prediction_probability)       AS avg_prob,
-                           AVG(qty)                          AS avg_qty
-                    FROM titan_trades
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
-                    {mode_clause}
-                    GROUP BY COALESCE(strategy,'unknown')
-                """)
-                params = {"days": days, **mode_params}
-            else:
-                q = text(f"""
-                    SELECT COALESCE(strategy,'unknown') AS strategy,
-                           COUNT(*)                          AS total_trades,
-                           SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END) AS buy_cnt,
-                           SUM(CASE WHEN side='sell' THEN 1 ELSE 0 END) AS sell_cnt,
-                           AVG(prediction_probability)       AS avg_prob,
-                           AVG(qty)                          AS avg_qty
-                    FROM titan_trades
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
-                      AND LOWER(strategy) LIKE :pat
-                    {mode_clause}
-                    GROUP BY COALESCE(strategy,'unknown')
-                """)
-                params = {"days": days, "pat": f"%{bot_name.lower()}%", **mode_params}
-            with engine.connect() as conn:
-                rows = conn.execute(q, params).fetchall()
-            real_strategies = [
-                dict(zip(["strategy", "total_trades", "buy_cnt", "sell_cnt", "avg_prob", "avg_qty"], r))
-                for r in rows
-            ]
-        except Exception:
-            pass
+    def _metric_shell(label: str) -> dict:
+        return {
+            "bot": label,
+            "total_trades": 0,
+            "win_trades": 0,
+            "loss_trades": 0,
+            "win_rate": 0.0,
+            "avg_entry_price": 0.0,
+            "avg_exit_price": 0.0,
+            "avg_qty": 0.0,
+            "entry_slippage_bps": 0.0,
+            "exit_slippage_bps": 0.0,
+            "total_slippage_bps": 0.0,
+            "entry_fill_price": 0.0,
+            "exit_fill_price": 0.0,
+            "exit_limit_price": 0.0,
+            "total_pnl": 0.0,
+            "roi_pct": 0.0,
+            "sharpe_ratio": 0.0,
+            "best_trade": 0.0,
+            "worst_trade": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "avg_entry_time": "N/A",
+            "avg_exit_time": "N/A",
+            "avg_hold_time": "N/A",
+        }
 
-    def _demo(name: str) -> dict:
-        rng = random.Random(hash(name) % 99991 + days)
-        trades = rng.randint(45, 230)
-        wr = rng.uniform(0.53, 0.68)
-        ep = rng.uniform(28, 380)
-        xp = ep * (1 + rng.uniform(0.005, 0.048))
-        qty = rng.uniform(5, 60)
-        es = rng.uniform(-0.07, -0.01)
-        xs = rng.uniform(-0.08, -0.01)
-        pnl = (xp - ep) * qty * trades * wr - (ep - xp) * qty * trades * (1 - wr) * 0.55
-        roi = pnl / max(ep * qty * trades, 1) * 100
-        en_s = rng.randint(8 * 3600, 11 * 3600)
-        ex_s = rng.randint(12 * 3600, 15 * 3600 + 3000)
-        hd_s = abs(ex_s - en_s) + rng.randint(-1800, 1800)
-        # Simulate per-trade daily returns for Sharpe Ratio calculation
-        daily_ret_mean = (roi / 100) / max(trades, 1)
-        daily_ret_std = abs(daily_ret_mean) * rng.uniform(1.5, 3.5) if daily_ret_mean != 0 else 0.01
-        sharpe = round((daily_ret_mean - 0.045 / 252) / max(daily_ret_std, 1e-9) * (252 ** 0.5), 2)
-        return dict(
-            bot=name, total_trades=trades,
-            win_trades=int(trades * wr), loss_trades=int(trades * (1 - wr)),
-            win_rate=round(wr * 100, 1),
-            avg_entry_price=round(ep, 2), avg_exit_price=round(xp, 2), avg_qty=round(qty, 2),
-            entry_slippage_bps=round(es, 3), exit_slippage_bps=round(xs, 3),
-            total_slippage_bps=round(es + xs, 3),
-            entry_fill_price=round(ep * (1 + es / 100), 2),
-            exit_fill_price=round(xp * (1 + xs / 100), 2),
-            exit_limit_price=round(xp * 1.004, 2),
-            total_pnl=round(pnl, 2), roi_pct=round(roi, 2),
-            sharpe_ratio=sharpe,
-            best_trade=round(abs((xp - ep) * qty) * rng.uniform(2.2, 3.8), 2),
-            worst_trade=round(-abs((xp - ep) * qty) * rng.uniform(0.7, 1.4), 2),
-            avg_pnl_per_trade=round(pnl / max(trades, 1), 2),
-            avg_entry_time=f"{en_s // 3600:02d}:{(en_s % 3600) // 60:02d}",
-            avg_exit_time=f"{ex_s // 3600:02d}:{(ex_s % 3600) // 60:02d}",
-            avg_hold_time=f"{hd_s // 3600}h {(hd_s % 3600) // 60:02d}m",
-        )
+    if not DB_AVAILABLE:
+        fallback_name = bot_name if bot_name != "All Bots" else "No Data"
+        return {"bots": [_metric_shell(fallback_name)], "has_real_data": False}
 
-    bot_list = _VALID_BOTS if bot_name == "All Bots" else [bot_name]
-    bots_data = [_demo(b) for b in bot_list]
-    # Overlay real trade counts from DB where matched
-    for rs in real_strategies:
-        for bd in bots_data:
-            strat = rs.get("strategy") or ""
-            if bd["bot"].lower() in strat.lower():
-                bd["total_trades"] = int(rs["total_trades"])
-    return {"bots": bots_data, "has_real_data": bool(real_strategies)}
+    try:
+        filter_clause = ""
+        params = {"days": days, **mode_params}
+        if bot_name != "All Bots":
+            filter_clause = "AND LOWER(COALESCE(strategy, '')) LIKE :pat"
+            params["pat"] = f"%{bot_name.lower()}%"
+
+        q = text(f"""
+            SELECT
+                COALESCE(strategy, 'unknown') AS strategy,
+                COUNT(*) AS total_trades,
+                SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN 1 ELSE 0 END) AS buy_cnt,
+                SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_cnt,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN price END) AS avg_entry_price,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN price END) AS avg_exit_price,
+                AVG(shares) AS avg_qty,
+                SUM(CASE
+                        WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                        WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                        ELSE 0
+                    END) AS net_flow,
+                MAX(CASE
+                        WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                        WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                        ELSE NULL
+                    END) AS best_flow,
+                MIN(CASE
+                        WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                        WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                        ELSE NULL
+                    END) AS worst_flow,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN HOUR(timestamp) * 60 + MINUTE(timestamp) END) AS avg_buy_minute,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN HOUR(timestamp) * 60 + MINUTE(timestamp) END) AS avg_sell_minute
+            FROM trades_history
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
+              {filter_clause}
+              {mode_clause}
+            GROUP BY COALESCE(strategy, 'unknown')
+            ORDER BY total_trades DESC
+        """)
+        with engine.connect() as conn:
+            rows = conn.execute(q, params).fetchall()
+
+        if not rows:
+            fallback_name = bot_name if bot_name != "All Bots" else "No Data"
+            return {"bots": [_metric_shell(fallback_name)], "has_real_data": False}
+
+        def _fmt_minutes(v: float | None) -> str:
+            if v is None:
+                return "N/A"
+            total = int(max(v, 0))
+            return f"{total // 60:02d}:{total % 60:02d}"
+
+        def _canonical_label(strategy: str) -> str:
+            s = str(strategy or "").strip()
+            low = s.lower()
+            for b in _VALID_BOTS:
+                if b.lower() in low:
+                    return b
+            if low == "alpaca":
+                return "Alpaca"
+            if low == "ibkr":
+                return "IBKR"
+            if low == "mt5":
+                return "FTMO MT5"
+            if low == "axi_mt5":
+                return "AXI MT5"
+            return s if s else "Unknown"
+
+        bots_data = []
+        for row in rows:
+            strategy = row[0]
+            total_trades = int(row[1] or 0)
+            buy_cnt = int(row[2] or 0)
+            sell_cnt = int(row[3] or 0)
+            avg_entry_price = float(row[4] or 0.0)
+            avg_exit_price = float(row[5] or 0.0)
+            avg_qty = float(row[6] or 0.0)
+            net_flow = float(row[7] or 0.0)
+            best_flow = float(row[8] or 0.0)
+            worst_flow = float(row[9] or 0.0)
+            avg_buy_minute = row[10]
+            avg_sell_minute = row[11]
+
+            base_notional = abs(avg_entry_price) * max(avg_qty, 0.0) * max(total_trades, 1)
+            roi_pct = (net_flow / base_notional * 100.0) if base_notional > 0 else 0.0
+            win_proxy = sell_cnt
+            loss_proxy = buy_cnt
+            win_rate = (win_proxy / max(total_trades, 1)) * 100.0
+
+            record = _metric_shell(_canonical_label(strategy))
+            record.update(
+                {
+                    "total_trades": total_trades,
+                    "win_trades": win_proxy,
+                    "loss_trades": loss_proxy,
+                    "win_rate": round(win_rate, 1),
+                    "avg_entry_price": round(avg_entry_price, 2),
+                    "avg_exit_price": round(avg_exit_price, 2),
+                    "avg_qty": round(avg_qty, 2),
+                    "entry_fill_price": round(avg_entry_price, 2),
+                    "exit_fill_price": round(avg_exit_price if avg_exit_price else avg_entry_price, 2),
+                    "exit_limit_price": round((avg_exit_price if avg_exit_price else avg_entry_price), 2),
+                    "total_pnl": round(net_flow, 2),
+                    "roi_pct": round(roi_pct, 2),
+                    "best_trade": round(best_flow, 2),
+                    "worst_trade": round(worst_flow, 2),
+                    "avg_pnl_per_trade": round(net_flow / max(total_trades, 1), 2),
+                    "avg_entry_time": _fmt_minutes(avg_buy_minute),
+                    "avg_exit_time": _fmt_minutes(avg_sell_minute),
+                }
+            )
+            bots_data.append(record)
+
+        return {"bots": bots_data, "has_real_data": True}
+    except Exception:
+        fallback_name = bot_name if bot_name != "All Bots" else "No Data"
+        return {"bots": [_metric_shell(fallback_name)], "has_real_data": False}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 def _build_titan_status_rows() -> pd.DataFrame:
     rows = []
-    all_events = _latest_bot_mode_events_all()
     for bot_name, fund_name in BOT_FUND_ALLOCATIONS.items():
         display_name = "Mansa Star Bots" if bot_name == "Titan" else bot_name
-        ev = all_events.get(bot_name.lower(), {})
-        mode_raw = str(ev.get("mode", "")).lower()
-        status_raw = str(ev.get("status", "")).lower()
-        if mode_raw == "on" and status_raw in ("ready", "warning", "placeholder", "active"):
+        resolved = str(get_bot_status(bot_name).get("status", "unknown")).lower()
+        if resolved == "active":
             live_status = "🟢 running"
-        elif mode_raw == "off":
+        elif resolved == "inactive":
             live_status = "🔴 off"
-        elif ev:
-            live_status = f"🟡 {status_raw or 'unknown'}"
         else:
-            live_status = "⚪ not started"
+            live_status = "🟡 unknown"
         rows.append(
             {
                 "Bot": display_name,
@@ -1234,7 +1316,6 @@ def _render_quick_launch_buttons() -> None:
                 _record_bot_action(bot_name, "on", selected_mode, execution)
                 # Clear cached bot events so the status indicator updates immediately.
                 _latest_bot_mode_events_all.clear()
-                st.rerun()
         with c6:
             if st.button("Run OFF", key=f"exec_off_{bot_name}"):
                 _set_bot_launch_preferences(bot_name, selected_mode, False)
@@ -1244,7 +1325,6 @@ def _render_quick_launch_buttons() -> None:
                 _record_bot_action(bot_name, "off", selected_mode, execution)
                 # Clear cached bot events so the status indicator updates immediately.
                 _latest_bot_mode_events_all.clear()
-                st.rerun()
 
     selected_cmd = st.session_state.get("selected_bot_launch_command")
     if selected_cmd:
@@ -1443,7 +1523,6 @@ with col1:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "on", titan_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
-        st.rerun()
 
 with col2:
     if st.button("⏸️ Titan OFF", use_container_width=True):
@@ -1453,7 +1532,6 @@ with col2:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "off", titan_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
-        st.rerun()
 
 hydra_sidebar_status = get_bot_status("Hydra")
 hydra_snapshot = fetch_hydra_api_snapshot()
@@ -1482,7 +1560,6 @@ with hcol1:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "on", hydra_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
-        st.rerun()
 
 with hcol2:
     if st.button("⏸️ Hydra OFF", use_container_width=True):
@@ -1492,7 +1569,6 @@ with hcol2:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "off", hydra_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
-        st.rerun()
 
 st.sidebar.caption(
     "Hydra API reachable: "
@@ -1574,7 +1650,7 @@ with tab1:
 
     # ── Load data ──────────────────────────────────────────────────────────
     _daily_pnl = load_daily_pnl(cal_year, cal_month, _ov_trade_mode)
-    _ov = load_overview_metrics(cal_year, cal_month, _daily_pnl)
+    _ov = load_overview_metrics(cal_year, cal_month, _daily_pnl, _ov_trade_mode)
 
     _ov_mode_tag = (
         f"🔴 Live only"   if _ov_trade_mode == "live"
@@ -1585,8 +1661,8 @@ with tab1:
     # ── 9 Aggregate Metric Cards ───────────────────────────────────────────
     st.markdown(
         f"<p style='font-size:0.75rem;color:#FFFFFF;margin-bottom:6px;opacity:0.92;'>"
-        f"Aggregate across all broker bot trades — "
-        + ("live DB" if DB_AVAILABLE else "estimated demo")
+        f"Aggregate across all broker bot trades (net flow proxy) — "
+        + ("live DB" if DB_AVAILABLE else "DB unavailable")
         + f" · {_ov_mode_tag}</p>",
         unsafe_allow_html=True,
     )
@@ -1782,8 +1858,10 @@ with tab2:
     _bots = _analytics["bots"]
     if not _analytics.get("has_real_data"):
         st.caption(
-            "💡 Estimated analytics — live data activates when trade history tables are populated."
+            "ℹ️ No matching real trade rows found for this filter yet."
         )
+    else:
+        st.caption("ℹ️ Metrics are derived from trades_history using real broker/bot rows (P/L shown as net trade flow proxy).")
 
     # ── Row 1: Execution  |  Entry & Exit Slippage ────────────────────────
     blk1, blk2 = st.columns(2)

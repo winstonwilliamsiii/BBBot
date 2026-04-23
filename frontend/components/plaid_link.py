@@ -32,11 +32,31 @@ from datetime import datetime
 def get_secret(key: str, default: str = None) -> str:
     """
     Get a secret value from Streamlit secrets (cloud) or environment variables (local).
+    Handles both flat and nested secrets.toml formats.
     """
     # Try Streamlit secrets first (for Streamlit Cloud)
     try:
+        # Try flat format: PLAID_CLIENT_ID
         if hasattr(st, 'secrets') and key in st.secrets:
             return str(st.secrets[key])
+        
+        # Try nested format: [plaid] section with PLAID_CLIENT_ID inside
+        if hasattr(st, 'secrets'):
+            # Map keys to their sections
+            section_map = {
+                'PLAID_CLIENT_ID': 'plaid',
+                'PLAID_SECRET': 'plaid',
+                'PLAID_ENV': 'plaid',
+                'PLAID_SANDBOX_SECRET': 'plaid',
+                'ALPACA_API_KEY': 'alpaca',
+                'ALPACA_SECRET_KEY': 'alpaca',
+                'ALPACA_PAPER': 'alpaca',
+            }
+            
+            section = section_map.get(key)
+            if section and section in st.secrets:
+                if key in st.secrets[section]:
+                    return str(st.secrets[section][key])
     except Exception:
         pass
     

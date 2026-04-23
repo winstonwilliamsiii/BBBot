@@ -12,7 +12,7 @@ Asset Classes Supported by MT5:
 ✅ Commodities (XAUUSD - Gold, XAGUSD - Silver, etc.)
 ✅ Futures (ES, NQ, YM, etc.)
 ❌ US Equities (use Alpaca instead - ALPACA_KEY_ID)
-❌ Crypto (use Binance instead)
+❌ Crypto (not routed through the MT5 bridge)
 
 Usage:
     python mt5_bridge.py connect

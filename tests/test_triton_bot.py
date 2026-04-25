@@ -31,6 +31,34 @@ class _FakeYFinance:
         )
 
 
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _EmptyYFinance:
+    @staticmethod
+    def download(*_args, **_kwargs):
+        return pd.DataFrame()
+
+    @staticmethod
+    def Ticker(_ticker):
+        class _Ticker:
+            info = {}
+
+            @staticmethod
+            def history(*_args, **_kwargs):
+                return pd.DataFrame()
+
+        return _Ticker()
+
+
 class _FakeSentiment:
     def __init__(self, polarity):
         self.polarity = polarity
@@ -133,3 +161,47 @@ def test_triton_fastapi_routes(monkeypatch):
     )
     assert trade_response.status_code == 200
     assert trade_response.json()["status"] == "simulated"
+
+
+def test_triton_alpha_vantage_price_fallback(monkeypatch):
+    monkeypatch.setattr(triton_bot, "yf", _EmptyYFinance)
+    monkeypatch.setattr(triton_bot, "TextBlob", _FakeTextBlob)
+    monkeypatch.setenv("ALPHA_VANTAGE_API_KEY", "test-key")
+
+    daily_payload = {
+        "Time Series (Daily)": {
+            f"2026-01-{day:02d}": {
+                "1. open": str(100 + day),
+                "2. high": str(101 + day),
+                "3. low": str(99 + day),
+                "4. close": str(100.5 + day),
+                "5. adjusted close": str(100.5 + day),
+                "6. volume": str(100000 + day),
+            }
+            for day in range(1, 40)
+        }
+    }
+    overview_payload = {
+        "Symbol": "IYT",
+        "Sector": "Industrials",
+        "Industry": "Transportation",
+        "MarketCapitalization": "1000000000",
+        "ForwardPE": "18.3",
+        "QuarterlyRevenueGrowthYOY": "0.11",
+        "ProfitMargin": "0.09",
+        "Beta": "1.02",
+    }
+
+    def _fake_get(_url, params=None, timeout=10):
+        if params and params.get("function") == "OVERVIEW":
+            return _FakeResponse(overview_payload)
+        return _FakeResponse(daily_payload)
+
+    monkeypatch.setattr(triton_bot.requests, "get", _fake_get)
+
+    bot = _build_triton_bot()
+    analysis = bot.analyze_ticker("IYT", headlines=["Freight demand improved"])
+
+    assert analysis["ticker"] == "IYT"
+    assert analysis["technical"]["close"] is not None
+    assert analysis["fundamental"]["forward_pe"] == 18.3

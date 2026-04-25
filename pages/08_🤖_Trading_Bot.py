@@ -1113,6 +1113,20 @@ def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+def _get_bot_trading_mode(bot_name: str) -> str:
+    if get_broker_mode_config is None:
+        return "paper"
+
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if not broker_name:
+            return "paper"
+        return config.get_broker_mode(broker_name)
+    except Exception:
+        return "paper"
+
+
 def _build_titan_status_rows() -> pd.DataFrame:
     rows = []
     for bot_name, fund_name in BOT_FUND_ALLOCATIONS.items():
@@ -1128,31 +1142,11 @@ def _build_titan_status_rows() -> pd.DataFrame:
             {
                 "Bot": display_name,
                 "Fund": fund_name,
+                "Mode": str(_get_bot_trading_mode(bot_name)).upper(),
                 "Status": live_status,
             }
         )
     return pd.DataFrame(rows)
-
-
-def _build_quick_start_command(bot_name: str, mode: str) -> str:
-    return (
-        "powershell -ExecutionPolicy Bypass -File "
-        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
-    )
-
-
-def _get_bot_trading_mode(bot_name: str) -> str:
-    if get_broker_mode_config is None:
-        return "paper"
-
-    try:
-        config = get_broker_mode_config()
-        broker_name = config.get_bot_broker(bot_name)
-        if not broker_name:
-            return "paper"
-        return config.get_broker_mode(broker_name)
-    except Exception:
-        return "paper"
 
 
 def _set_bot_launch_preferences(

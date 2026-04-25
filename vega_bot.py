@@ -28,6 +28,7 @@ from typing import Any, Literal, Optional
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -288,6 +289,34 @@ def _is_finite(value: Any) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(float(value))
 
 
+def _alpha_vantage_api_key() -> str:
+    raw = (
+        os.getenv("VEGA_ALPHA_VANTAGE_API_KEY", "").strip()
+        or os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
+    )
+    if raw.lower() in {"your_alpha_vantage_key_here", "demo"}:
+        return ""
+    return raw
+
+
+def _to_float(value: Any) -> Optional[float]:
+    try:
+        if value in (None, "", "None", "-"):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int(value: Any) -> Optional[int]:
+    try:
+        if value in (None, "", "None", "-"):
+            return None
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def _mlflow_reachable(tracking_uri: str) -> bool:
     if mlflow is None:
         return False
@@ -309,6 +338,193 @@ def _probe_ibkr_socket() -> bool:
             return True
     except OSError:
         return False
+
+
+def _ibkr_duration_for_period(period: str) -> str:
+    mapping = {
+        "1mo": "1 M",
+        "3mo": "3 M",
+        "6mo": "6 M",
+        "1y": "1 Y",
+        "2y": "2 Y",
+    }
+    return mapping.get(str(period or "").lower(), "1 Y")
+
+
+def _ibkr_bar_size_for_interval(interval: str) -> str:
+    mapping = {
+        "1m": "1 min",
+        "5m": "5 mins",
+        "15m": "15 mins",
+        "30m": "30 mins",
+        "60m": "1 hour",
+        "1h": "1 hour",
+        "1d": "1 day",
+        "1wk": "1 week",
+    }
+    return mapping.get(str(interval or "").lower(), "1 day")
+
+
+def _fetch_ibkr_history(symbol: str, period: str, interval: str) -> Any:
+    if ib_insync is None or pd is None:
+        return None
+
+    ib = ib_insync.IB()
+    connected = False
+    try:
+        ib.connect(CONFIG.ibkr_host, CONFIG.ibkr_port, clientId=CONFIG.ibkr_client_id, timeout=5)
+        connected = True
+        contract = ib_insync.Stock(symbol, "SMART", "USD")
+        ib.qualifyContracts(contract)
+        bars = ib.reqHistoricalData(
+            contract,
+            endDateTime="",
+            durationStr=_ibkr_duration_for_period(period),
+            barSizeSetting=_ibkr_bar_size_for_interval(interval),
+            whatToShow="TRADES",
+            useRTH=True,
+            formatDate=1,
+            keepUpToDate=False,
+        )
+        if not bars:
+            return None
+
+        pandas_module = _require_package("pandas", pd)
+        rows: list[dict[str, Any]] = []
+        for bar in bars:
+            rows.append(
+                {
+                    "Date": bar.date,
+                    "Open": float(bar.open),
+                    "High": float(bar.high),
+                    "Low": float(bar.low),
+                    "Close": float(bar.close),
+                    "Volume": float(bar.volume),
+                }
+            )
+        history = pandas_module.DataFrame(rows)
+        history["Date"] = pandas_module.to_datetime(history["Date"], errors="coerce")
+        history = history.dropna(subset=["Date"]).set_index("Date").sort_index()
+        return history if not history.empty else None
+    except Exception as exc:
+        logger.warning("IBKR history fallback failed %s: %s", symbol, exc)
+        return None
+    finally:
+        if connected and ib.isConnected():
+            ib.disconnect()
+
+
+def _last_numeric(value: Any) -> Optional[float]:
+    if pd is None:
+        return float(value) if _is_finite(value) else None
+    pandas_module = _require_package("pandas", pd)
+    if isinstance(value, pandas_module.DataFrame):
+        if value.empty:
+            return None
+        series = pandas_module.to_numeric(value.iloc[:, 0], errors="coerce").dropna()
+        return float(series.iloc[-1]) if not series.empty else None
+    if isinstance(value, pandas_module.Series):
+        series = pandas_module.to_numeric(value, errors="coerce").dropna()
+        return float(series.iloc[-1]) if not series.empty else None
+    return float(value) if _is_finite(value) else None
+
+
+def _fetch_alpha_vantage_daily(symbol: str) -> Any:
+    api_key = _alpha_vantage_api_key()
+    if not api_key or pd is None:
+        return None
+
+    try:
+        response = requests.get(
+            "https://www.alphavantage.co/query",
+            params={
+                "function": "TIME_SERIES_DAILY_ADJUSTED",
+                "symbol": symbol,
+                "outputsize": "compact",
+                "apikey": api_key,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        logger.warning("Alpha Vantage daily fetch failed %s: %s", symbol, exc)
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if "Note" in payload or "Error Message" in payload:
+        logger.warning("Alpha Vantage daily warning for %s: %s", symbol, payload)
+        return None
+
+    series = payload.get("Time Series (Daily)")
+    if not isinstance(series, dict) or not series:
+        return None
+
+    rows: list[dict[str, Any]] = []
+    for date_str, values in series.items():
+        if not isinstance(values, dict):
+            continue
+        try:
+            rows.append(
+                {
+                    "Date": date_str,
+                    "Open": float(values.get("1. open", 0.0)),
+                    "High": float(values.get("2. high", 0.0)),
+                    "Low": float(values.get("3. low", 0.0)),
+                    "Close": float(values.get("4. close", 0.0)),
+                    "Adj Close": float(values.get("5. adjusted close", 0.0)),
+                    "Volume": float(values.get("6. volume", 0.0)),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+
+    if not rows:
+        return None
+
+    pandas_module = _require_package("pandas", pd)
+    history = pandas_module.DataFrame(rows)
+    history["Date"] = pandas_module.to_datetime(history["Date"], errors="coerce")
+    history = history.dropna(subset=["Date"]).set_index("Date").sort_index()
+    return history if not history.empty else None
+
+
+def _fetch_alpha_vantage_overview(symbol: str) -> dict[str, Any]:
+    api_key = _alpha_vantage_api_key()
+    if not api_key:
+        return {}
+
+    try:
+        response = requests.get(
+            "https://www.alphavantage.co/query",
+            params={"function": "OVERVIEW", "symbol": symbol, "apikey": api_key},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        logger.warning("Alpha Vantage overview failed %s: %s", symbol, exc)
+        return {}
+
+    if not isinstance(payload, dict):
+        return {}
+    if "Note" in payload or "Error Message" in payload or "Symbol" not in payload:
+        return {}
+
+    return {
+        "ticker": symbol,
+        "short_name": payload.get("Name") or symbol,
+        "sector": payload.get("Sector"),
+        "industry": payload.get("Industry"),
+        "currency": payload.get("Currency"),
+        "market_cap": _to_int(payload.get("MarketCapitalization")),
+        "forward_pe": _to_float(payload.get("ForwardPE")) or _to_float(payload.get("PERatio")),
+        "profit_margins": _to_float(payload.get("ProfitMargin")),
+        "return_on_equity": _to_float(payload.get("ReturnOnEquityTTM")),
+        "beta": _to_float(payload.get("Beta")),
+        "data_source": "alpha_vantage_overview",
+    }
 
 # ---------------------------------------------------------------------------
 # Market data
@@ -366,7 +582,18 @@ def get_price_history(
     if ticker_hist is not None and not ticker_hist.empty:
         return ticker_hist
 
-    raise HTTPException(status_code=404, detail=f"No market data for {symbol}")
+    av_hist = _fetch_alpha_vantage_daily(symbol)
+    if av_hist is not None and not av_hist.empty:
+        return av_hist
+
+    ibkr_hist = _fetch_ibkr_history(symbol, req_period, req_interval)
+    if ibkr_hist is not None and not ibkr_hist.empty:
+        return ibkr_hist
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"No market data for {symbol} (yfinance and Alpha Vantage unavailable)",
+    )
 
 
 def _quote_fallback(ticker: str) -> dict[str, Any]:
@@ -434,8 +661,7 @@ def _compute_average_volume(history: Any, window: int = 20) -> Optional[float]:
         return None
     series = history[vol_col].astype(float)
     avg = series.rolling(window).mean()
-    valid = avg.dropna()
-    return float(valid.iloc[-1]) if not valid.empty else None
+    return _last_numeric(avg.dropna())
 
 
 def _compute_atr(history: Any, period: int = 14) -> Optional[float]:
@@ -653,7 +879,7 @@ def fundamental_analysis(ticker: str) -> dict[str, Any]:
     except Exception:
         fast_info = {}
 
-    return {
+    result = {
         "ticker": symbol,
         "short_name": info.get("shortName") or info.get("longName") or symbol,
         "sector": info.get("sector"),
@@ -666,6 +892,17 @@ def fundamental_analysis(ticker: str) -> dict[str, Any]:
         "beta": info.get("beta"),
         "data_source": "ticker_info" if info else "fast_info_fallback",
     }
+    has_meaningful_data = any(
+        result.get(key) is not None
+        for key in ("sector", "industry", "market_cap", "forward_pe", "beta")
+    )
+    if has_meaningful_data:
+        return result
+
+    av_result = _fetch_alpha_vantage_overview(symbol)
+    if av_result:
+        return av_result
+    return result
 
 
 def _log_mlflow(*, ticker: str, technicals: dict, fundamentals: dict) -> dict[str, Any]:
@@ -906,7 +1143,7 @@ def post_signal(request: SignalRequest) -> dict[str, Any]:
                 (c for c in ["Volume", ("Volume", "")] if c in history.columns), None
             )
             if vol_col is not None:
-                current_volume = float(history[vol_col].dropna().iloc[-1])
+                current_volume = _last_numeric(history[vol_col].dropna())
         except Exception:
             pass
     # Allow caller override

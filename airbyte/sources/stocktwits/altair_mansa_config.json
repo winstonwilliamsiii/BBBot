@@ -5,7 +5,8 @@
     "QSI",
     "QS",
     "SOUN",
-    "NBIS"
+    "NBIS",
+    "IONQ"
   ],
   "user_agent": "Mozilla/5.0 (compatible; AltairBot/1.0)"
 }

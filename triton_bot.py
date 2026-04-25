@@ -270,19 +270,226 @@ class TritonBot:
             raise ValueError("Ticker is required")
         return normalized
 
-    def _fetch_price_history(self, ticker: str) -> Any:
-        if yf is None:
-            raise RuntimeError("yfinance is not installed")
-        history = yf.download(
-            ticker,
-            period=self.config.default_history_period,
-            interval=self.config.default_history_interval,
-            progress=False,
-            auto_adjust=False,
+    def _alpha_vantage_api_key(self) -> str:
+        raw = (
+            os.getenv("TRITON_ALPHA_VANTAGE_API_KEY", "").strip()
+            or os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
         )
-        if history is None or history.empty:
-            raise RuntimeError(f"No market data returned for {ticker}")
+        if raw.lower() in {"your_alpha_vantage_key_here", "demo"}:
+            return ""
+        return raw
+
+    def _fetch_price_history_from_alpha_vantage(self, ticker: str) -> Any:
+        if pd is None:
+            return None
+
+        api_key = self._alpha_vantage_api_key()
+        if not api_key:
+            return None
+
+        interval = str(self.config.default_history_interval or "1d").lower()
+        if interval not in {"1d", "1day", "daily"}:
+            return None
+
+        try:
+            response = requests.get(
+                "https://www.alphavantage.co/query",
+                params={
+                    "function": "TIME_SERIES_DAILY_ADJUSTED",
+                    "symbol": ticker,
+                    "outputsize": "compact",
+                    "apikey": api_key,
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            logger.warning("Alpha Vantage price fallback failed for %s: %s", ticker, exc)
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+        if "Note" in payload or "Error Message" in payload:
+            logger.warning("Alpha Vantage returned API warning for %s: %s", ticker, payload)
+            return None
+
+        series = payload.get("Time Series (Daily)")
+        if not isinstance(series, dict) or not series:
+            return None
+
+        rows: list[dict[str, Any]] = []
+        for date_str, values in series.items():
+            if not isinstance(values, dict):
+                continue
+            try:
+                rows.append(
+                    {
+                        "Date": date_str,
+                        "Open": float(values.get("1. open", 0.0)),
+                        "High": float(values.get("2. high", 0.0)),
+                        "Low": float(values.get("3. low", 0.0)),
+                        "Close": float(values.get("4. close", 0.0)),
+                        "Adj Close": float(values.get("5. adjusted close", 0.0)),
+                        "Volume": float(values.get("6. volume", 0.0)),
+                    }
+                )
+            except (TypeError, ValueError):
+                continue
+
+        if not rows:
+            return None
+
+        history = pd.DataFrame(rows)
+        history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+        history = history.dropna(subset=["Date"]).set_index("Date").sort_index()
+        if history.empty:
+            return None
         return history
+
+    def _fetch_price_history_from_ibkr(self, ticker: str) -> Any:
+        if ib_insync is None or pd is None:
+            return None
+
+        ib_client = ib_insync.IB()
+        connected = False
+        try:
+            ib_client.connect(
+                self.config.ibkr_host,
+                self.config.ibkr_port,
+                clientId=self.config.ibkr_client_id,
+                timeout=5,
+            )
+            connected = True
+            contract = ib_insync.Stock(ticker, "SMART", "USD")
+            ib_client.qualifyContracts(contract)
+            bars = ib_client.reqHistoricalData(
+                contract,
+                endDateTime="",
+                durationStr="1 Y",
+                barSizeSetting="1 day",
+                whatToShow="TRADES",
+                useRTH=True,
+                formatDate=1,
+                keepUpToDate=False,
+            )
+            if not bars:
+                return None
+
+            rows: list[dict[str, Any]] = []
+            for bar in bars:
+                rows.append(
+                    {
+                        "Date": bar.date,
+                        "Open": float(bar.open),
+                        "High": float(bar.high),
+                        "Low": float(bar.low),
+                        "Close": float(bar.close),
+                        "Volume": float(bar.volume),
+                    }
+                )
+
+            history = pd.DataFrame(rows)
+            history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+            history = history.dropna(subset=["Date"]).set_index("Date").sort_index()
+            return history if not history.empty else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("IBKR price fallback failed for %s: %s", ticker, exc)
+            return None
+        finally:
+            if connected and ib_client.isConnected():
+                ib_client.disconnect()
+
+    def _fetch_fundamentals_from_alpha_vantage(self, ticker: str) -> dict[str, Any]:
+        api_key = self._alpha_vantage_api_key()
+        if not api_key:
+            return {}
+
+        try:
+            response = requests.get(
+                "https://www.alphavantage.co/query",
+                params={
+                    "function": "OVERVIEW",
+                    "symbol": ticker,
+                    "apikey": api_key,
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            logger.warning("Alpha Vantage fundamentals fallback failed for %s: %s", ticker, exc)
+            return {}
+
+        if not isinstance(payload, dict):
+            return {}
+        if "Note" in payload or "Error Message" in payload or "Symbol" not in payload:
+            return {}
+
+        def _to_float(raw: Any) -> Optional[float]:
+            try:
+                if raw in (None, "", "None", "-"):
+                    return None
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
+        def _to_int(raw: Any) -> Optional[int]:
+            try:
+                if raw in (None, "", "None", "-"):
+                    return None
+                return int(float(raw))
+            except (TypeError, ValueError):
+                return None
+
+        return {
+            "sector": payload.get("Sector"),
+            "industry": payload.get("Industry"),
+            "marketCap": _to_int(payload.get("MarketCapitalization")),
+            "forwardPE": _to_float(payload.get("ForwardPE")) or _to_float(payload.get("PERatio")),
+            "profitMargins": _to_float(payload.get("ProfitMargin")),
+            "revenueGrowth": _to_float(payload.get("QuarterlyRevenueGrowthYOY")),
+            "beta": _to_float(payload.get("Beta")),
+        }
+
+    def _fetch_price_history(self, ticker: str) -> Any:
+        history = None
+        if yf is not None:
+            try:
+                history = yf.download(
+                    ticker,
+                    period=self.config.default_history_period,
+                    interval=self.config.default_history_interval,
+                    progress=False,
+                    auto_adjust=False,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("yfinance download failed for %s: %s", ticker, exc)
+
+            if history is None or history.empty:
+                try:
+                    history = yf.Ticker(ticker).history(
+                        period=self.config.default_history_period,
+                        interval=self.config.default_history_interval,
+                        auto_adjust=False,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("yfinance Ticker.history failed for %s: %s", ticker, exc)
+
+        if history is not None and not history.empty:
+            return history
+
+        av_history = self._fetch_price_history_from_alpha_vantage(ticker)
+        if av_history is not None and not av_history.empty:
+            return av_history
+
+        ibkr_history = self._fetch_price_history_from_ibkr(ticker)
+        if ibkr_history is not None and not ibkr_history.empty:
+            return ibkr_history
+
+        raise RuntimeError(
+            f"No market data returned for {ticker} from yfinance, Alpha Vantage, or IBKR"
+        )
 
     def _extract_close_series(self, history: Any) -> Any:
         if pd is None:
@@ -313,9 +520,15 @@ class TritonBot:
         return close_series.astype(float)
 
     def _fetch_fundamentals(self, ticker: str) -> dict[str, Any]:
-        if yf is None:
-            return {}
-        return dict(getattr(yf.Ticker(ticker), "info", {}) or {})
+        info: dict[str, Any] = {}
+        if yf is not None:
+            try:
+                info = dict(getattr(yf.Ticker(ticker), "info", {}) or {})
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("yfinance fundamentals failed for %s: %s", ticker, exc)
+        if info:
+            return info
+        return self._fetch_fundamentals_from_alpha_vantage(ticker)
 
     def fundamental_analysis(
         self,
@@ -452,11 +665,38 @@ class TritonBot:
         log_to_mlflow: Optional[bool] = None,
     ) -> dict[str, Any]:
         symbol = self._sanitize_ticker(ticker)
-        shared_history = (
-            history
-            if history is not None
-            else self._fetch_price_history(symbol)
-        )
+        shared_history = history
+        data_error: Optional[str] = None
+        if shared_history is None:
+            try:
+                shared_history = self._fetch_price_history(symbol)
+            except Exception as exc:  # noqa: BLE001
+                data_error = str(exc)
+                shared_history = None
+
+        if shared_history is None:
+            payload = {
+                "ticker": symbol,
+                "fund": self.config.fund,
+                "strategy": self.config.strategy,
+                "fundamental": self.fundamental_analysis(symbol, fundamentals),
+                "technical": {},
+                "sentiment": self.sentiment_analysis(headlines or []),
+                "forecast": {
+                    "available": False,
+                    "reason": "market_data_unavailable",
+                },
+                "technical_score": 0.0,
+                "fundamental_score": 0.0,
+                "forecast_score": 0.0,
+                "composite_score": 0.0,
+                "action": "HOLD",
+                "degraded": True,
+                "degraded_reason": data_error or "market_data_unavailable",
+            }
+            self.last_analysis = payload
+            return payload
+
         shared_fundamentals = (
             fundamentals
             if fundamentals is not None

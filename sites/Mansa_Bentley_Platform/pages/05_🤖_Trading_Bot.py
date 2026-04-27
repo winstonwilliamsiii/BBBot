@@ -42,27 +42,42 @@ except ImportError:
 
 # Database connection
 try:
-    from sqlalchemy import create_engine
-    import os
-    
+    from sqlalchemy import create_engine, text
+    from frontend.utils.secrets_helper import get_mysql_url
+
     # Reload env vars to ensure fresh database credentials
     if ENV_RELOAD_AVAILABLE:
         reload_env(force=False)
-    
-    MYSQL_CONFIG = {
-        'host': 'localhost',
-        'port': 3307,
-        'user': 'root',
-        'password': os.getenv('MYSQL_PASSWORD', ''),
-        'database': 'bentleybot'
-    }
-    
-    connection_string = (
-        f"mysql+pymysql://{MYSQL_CONFIG['user']}:{MYSQL_CONFIG['password']}@"
-        f"{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']}"
-    )
-    engine = create_engine(connection_string)
-    DB_AVAILABLE = True
+
+    candidates = [
+        "mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot",
+        "mysql+pymysql://root:root@127.0.0.1:3307/bentleybot",
+    ]
+    try:
+        secret_url = get_mysql_url()
+        if secret_url and secret_url not in candidates:
+            candidates.append(secret_url)
+    except Exception:
+        pass
+
+    last_db_error = None
+    DB_AVAILABLE = False
+    engine = None
+    connection_string = ""
+    for candidate in candidates:
+        try:
+            trial_engine = create_engine(candidate)
+            with trial_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            engine = trial_engine
+            connection_string = candidate
+            DB_AVAILABLE = True
+            break
+        except Exception as _db_exc:
+            last_db_error = _db_exc
+
+    if not DB_AVAILABLE:
+        raise RuntimeError(f"DB connect failed for all candidates: {last_db_error}")
 except Exception as e:
     DB_AVAILABLE = False
     st.error(f"Database connection failed: {e}")
@@ -369,6 +384,99 @@ def _legacy_db_bot_status():
         return {'status': 'unknown', 'strategy': 'N/A', 'timestamp': None}
 
 
+def _mode_case_sql(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return (
+        "CASE "
+        f"WHEN LOWER(CONVERT(COALESCE({prefix}strategy, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) LIKE '%live%' "
+        f"OR LOWER(CONVERT(COALESCE({prefix}status, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) LIKE '%live%' "
+        "THEN 'live' "
+        "ELSE 'paper' "
+        "END"
+    )
+
+
+@st.cache_data(ttl=120)
+def _existing_trade_tables() -> list[str]:
+    if not DB_AVAILABLE:
+        return []
+
+    try:
+        q = text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_name IN ('trades_history', 'titan_trades')
+            ORDER BY table_name
+        """)
+        with engine.connect() as conn:
+            return [str(row[0]) for row in conn.execute(q).fetchall()]
+    except Exception:
+        return []
+
+
+def _trade_events_union_sql() -> str:
+    parts = []
+    existing = set(_existing_trade_tables())
+
+    if "trades_history" in existing:
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                shares,
+                price,
+                value,
+                timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                'trades_history' COLLATE utf8mb4_unicode_ci AS source_table,
+                {_mode_case_sql()} COLLATE utf8mb4_unicode_ci AS trade_mode
+            FROM trades_history
+            """
+        )
+
+    if "titan_trades" in existing:
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(symbol USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(side, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                NULL AS price,
+                NULL AS value,
+                timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                'titan_trades' COLLATE utf8mb4_unicode_ci AS source_table,
+                {_mode_case_sql()} COLLATE utf8mb4_unicode_ci AS trade_mode
+            FROM titan_trades
+            """
+        )
+
+    if not parts:
+        return """
+            SELECT
+                NULL AS row_id,
+                NULL AS ticker,
+                NULL AS action,
+                NULL AS shares,
+                NULL AS price,
+                NULL AS value,
+                NULL AS timestamp,
+                NULL AS status,
+                NULL AS strategy,
+                NULL AS source_table,
+                NULL AS trade_mode
+            WHERE 1 = 0
+        """
+
+    return "\nUNION ALL\n".join(parts)
+
+
 # Load data functions
 @st.cache_data(ttl=60)
 def load_recent_trades(days=7):
@@ -377,8 +485,8 @@ def load_recent_trades(days=7):
         return pd.DataFrame()
     
     query = f"""
-        SELECT ticker, action, shares, price, value, timestamp, status, strategy
-        FROM trades_history
+        SELECT ticker, action, shares, price, value, timestamp, status, strategy, trade_mode, source_table
+        FROM ({_trade_events_union_sql()}) unified
         WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         ORDER BY timestamp DESC
     """
@@ -396,9 +504,16 @@ def load_performance_metrics(days=30):
         return pd.DataFrame()
     
     query = f"""
-        SELECT date, total_trades, buy_trades, sell_trades, total_value, strategy
-        FROM performance_metrics
-        WHERE date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+        SELECT
+            DATE(timestamp) AS date,
+            strategy,
+            COUNT(*) AS total_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY' THEN 1 ELSE 0 END) AS buy_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_trades,
+            SUM(COALESCE(value, 0)) AS total_value
+        FROM ({_trade_events_union_sql()}) unified
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+        GROUP BY DATE(timestamp), strategy
         ORDER BY date DESC
     """
     
@@ -707,13 +822,22 @@ with tab3:
 # TAB 4: Trade History
 with tab4:
     st.subheader("Recent Trade History")
+
+    sync_col, _ = st.columns([1, 3])
+    with sync_col:
+        if st.button("🔄 Sync Broker Trades Now", key="sync_broker_trades_history_btn", use_container_width=True):
+            st.info("Broker sync is available in the Unified Broker workflow for this environment.")
     
     if not trades_df.empty:
         # Format dataframe
         display_df = trades_df.copy()
         display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        display_df['value'] = display_df['value'].apply(lambda x: f"${x:,.2f}")
-        display_df['price'] = display_df['price'].apply(lambda x: f"${x:.2f}")
+        display_df['value'] = display_df['value'].apply(
+            lambda x: f"${x:,.2f}" if pd.notna(x) else "N/A"
+        )
+        display_df['price'] = display_df['price'].apply(
+            lambda x: f"${x:.2f}" if pd.notna(x) else "N/A"
+        )
         
         # Color code actions
         def color_action(val):
@@ -726,7 +850,7 @@ with tab4:
         )
         
         st.dataframe(
-            display_df[['timestamp', 'ticker', 'action', 'shares', 'price', 'value', 'status', 'strategy']],
+            display_df[['timestamp', 'ticker', 'action', 'shares', 'price', 'value', 'status', 'strategy', 'trade_mode', 'source_table']],
             use_container_width=True,
             hide_index=True
         )

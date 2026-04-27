@@ -586,9 +586,10 @@ def get_price_history(
     if av_hist is not None and not av_hist.empty:
         return av_hist
 
-    ibkr_hist = _fetch_ibkr_history(symbol, req_period, req_interval)
-    if ibkr_hist is not None and not ibkr_hist.empty:
-        return ibkr_hist
+    if _as_bool(os.getenv("VEGA_ENABLE_IBKR_MARKETDATA_FALLBACK"), False):
+        ibkr_hist = _fetch_ibkr_history(symbol, req_period, req_interval)
+        if ibkr_hist is not None and not ibkr_hist.empty:
+            return ibkr_hist
 
     raise HTTPException(
         status_code=404,
@@ -1115,8 +1116,23 @@ def post_signal(request: SignalRequest) -> dict[str, Any]:
     interval = _tf_map.get(request.timeframe, "1d")
     period = "1mo" if interval in {"1m", "5m", "15m", "30m"} else "6mo"
 
-    history = get_price_history(symbol, period=period, interval=interval)
-    tech = technical_analysis(history, ticker=symbol)
+    history: Any = None
+    data_error: Optional[str] = None
+    try:
+        history = get_price_history(symbol, period=period, interval=interval)
+        tech = technical_analysis(history, ticker=symbol)
+    except HTTPException as exc:
+        data_error = str(exc.detail)
+        tech = {
+            "ticker": symbol,
+            "timestamp": None,
+            "close": None,
+            "sma_20": None,
+            "sma_50": None,
+            "rsi_14": None,
+            "signal": "neutral",
+            "data_source": "unavailable",
+        }
     fund = fundamental_analysis(symbol)
 
     # Determine direction
@@ -1130,8 +1146,8 @@ def post_signal(request: SignalRequest) -> dict[str, Any]:
     close = tech.get("close")
     rsi = tech.get("rsi_14")
     sma_20 = tech.get("sma_20")
-    avg_volume = _compute_average_volume(history)
-    live_atr = _compute_atr(history)
+    avg_volume = _compute_average_volume(history) if history is not None else None
+    live_atr = _compute_atr(history) if history is not None else None
     atr = request.atr if request.atr is not None else live_atr
 
     # Last bar volume
@@ -1163,6 +1179,23 @@ def post_signal(request: SignalRequest) -> dict[str, Any]:
     )
 
     mlflow_result = _log_mlflow(ticker=symbol, technicals=tech, fundamentals=fund)
+    if data_error:
+        return {
+            "ticker": symbol,
+            "direction": "neutral",
+            "timeframe": request.timeframe,
+            "signal": "neutral",
+            "decision": {
+                "execute": False,
+                "reason": f"market_data_unavailable: {data_error}",
+                "filters": {},
+            },
+            "technicals": tech,
+            "fundamentals": fund,
+            "mlflow": mlflow_result,
+            "degraded": True,
+        }
+
     return {
         "ticker": symbol,
         "direction": direction,

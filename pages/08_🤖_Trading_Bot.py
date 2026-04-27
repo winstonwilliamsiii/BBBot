@@ -203,14 +203,15 @@ try:
 
     MYSQL_CONFIG = get_mysql_config()
 
-    candidates = []
+    # Prefer explicit local DB first for desktop/dev operation where broker/bot
+    # writes are expected to land.
+    candidates = ["mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot"]
     try:
-        candidates.append(get_mysql_url())
+        secret_url = get_mysql_url()
+        if secret_url and secret_url not in candidates:
+            candidates.append(secret_url)
     except Exception:
         pass
-
-    # Always include explicit local fallback for desktop/dev operation.
-    candidates.append("mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot")
 
     last_db_error = None
     DB_AVAILABLE = False

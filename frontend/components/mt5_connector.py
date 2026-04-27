@@ -98,15 +98,10 @@ class MT5Connector:
         if host in {"localhost", "127.0.0.1"}:
             scheme = parsed.scheme or "http"
             aliases = ["localhost", "127.0.0.1"]
-            common_ports = [8002, 8000, 8080]
             selected_port = parsed.port
-            ordered_ports: List[int] = []
-
-            if selected_port is not None:
-                ordered_ports.append(selected_port)
-            for candidate_port in common_ports:
-                if candidate_port not in ordered_ports:
-                    ordered_ports.append(candidate_port)
+            # Keep fallback on the same port to avoid routing trading calls to
+            # unrelated local services (for example UI apps on :8000/:8080).
+            ordered_ports: List[int] = [selected_port or 8002]
 
             for alias in aliases:
                 for port in ordered_ports:

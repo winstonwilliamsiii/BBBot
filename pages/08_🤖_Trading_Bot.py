@@ -202,12 +202,34 @@ try:
         reload_env()
 
     MYSQL_CONFIG = get_mysql_config()
-    connection_string = get_mysql_url()
-    engine = create_engine(connection_string)
-    # Test connection (SQLAlchemy 2.x requires text() for raw SQL)
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1"))
-    DB_AVAILABLE = True
+
+    candidates = []
+    try:
+        candidates.append(get_mysql_url())
+    except Exception:
+        pass
+
+    # Always include explicit local fallback for desktop/dev operation.
+    candidates.append("mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot")
+
+    last_db_error = None
+    DB_AVAILABLE = False
+    engine = None
+    connection_string = ""
+    for candidate in candidates:
+        try:
+            trial_engine = create_engine(candidate)
+            with trial_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            engine = trial_engine
+            connection_string = candidate
+            DB_AVAILABLE = True
+            break
+        except Exception as _db_exc:
+            last_db_error = _db_exc
+
+    if not DB_AVAILABLE:
+        raise RuntimeError(f"DB connect failed for all candidates: {last_db_error}")
 except Exception as e:
     DB_AVAILABLE = False
     # Show helpful setup message instead of raw error
@@ -610,15 +632,15 @@ def _trade_events_union_sql() -> str:
             f"""
             SELECT
                 id AS row_id,
-                ticker,
-                UPPER(COALESCE(action, '')) AS action,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
                 shares,
                 price,
                 value,
                 timestamp,
-                status,
-                strategy,
-                order_id,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(order_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
                 'trades_history' AS source_table,
                 {_mode_case_sql()} AS trade_mode
             FROM trades_history
@@ -630,15 +652,15 @@ def _trade_events_union_sql() -> str:
             f"""
             SELECT
                 id AS row_id,
-                symbol AS ticker,
-                UPPER(COALESCE(side, '')) AS action,
+                CONVERT(symbol USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(side, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
                 CAST(qty AS SIGNED) AS shares,
                 NULL AS price,
                 NULL AS value,
                 timestamp,
-                status,
-                strategy,
-                order_id,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(order_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
                 'titan_trades' AS source_table,
                 {_mode_case_sql()} AS trade_mode
             FROM titan_trades
@@ -1125,6 +1147,13 @@ def _get_bot_trading_mode(bot_name: str) -> str:
         return config.get_broker_mode(broker_name)
     except Exception:
         return "paper"
+
+
+def _build_quick_start_command(bot_name: str, mode: str) -> str:
+    return (
+        "powershell -ExecutionPolicy Bypass -File "
+        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
+    )
 
 
 def _build_titan_status_rows() -> pd.DataFrame:

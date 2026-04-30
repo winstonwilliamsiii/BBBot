@@ -507,6 +507,31 @@ class RBACManager:
                 st.session_state.current_user_data = restored.to_dict()
                 return restored.has_permission(permission)
 
+        # Final fallback: if authenticated flag is set, try to recover the user
+        # from admin_user key. Only recover if we can confirm admin role.
+        if st.session_state.get('authenticated', False):
+            username = st.session_state.get('admin_user', '')
+            # Only promote if username explicitly resolves to admin in DEMO_USERS
+            if username and username in RBACManager.DEMO_USERS:
+                candidate_data = RBACManager.DEMO_USERS[username]
+                if candidate_data.get('role') == UserRole.ADMIN:
+                    restored = RBACManager._build_demo_user(username, candidate_data)
+                    st.session_state.current_user = restored
+                    st.session_state.current_user_data = restored.to_dict()
+                    st.session_state.admin_authenticated = True
+                    return restored.has_permission(permission)
+            # If admin_user not set but current_user_data has username=admin, recover
+            _ud = st.session_state.get('current_user_data')
+            if isinstance(_ud, dict) and _ud.get('username') == 'admin':
+                admin_data = RBACManager.DEMO_USERS.get('admin')
+                if admin_data is not None:
+                    restored = RBACManager._build_demo_user('admin', admin_data)
+                    st.session_state.current_user = restored
+                    st.session_state.current_user_data = restored.to_dict()
+                    st.session_state.admin_authenticated = True
+                    st.session_state.admin_user = 'admin'
+                    return restored.has_permission(permission)
+
         return False
     
     @staticmethod

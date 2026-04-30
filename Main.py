@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from typing import Literal, Optional, Any
 
@@ -373,6 +374,25 @@ def _bentley_ui_health() -> dict[str, Any]:
 
 
 def _build_platform_health() -> dict[str, Any]:
+    # Run all probes concurrently so the health endpoint responds in ~2s
+    # instead of accumulating sequential timeouts.
+    probe_fns = {
+        "mysql": _mysql_health,
+        "mlflow": _mlflow_health,
+        "appwrite": _appwrite_health,
+        "bentley_ui": _bentley_ui_health,
+    }
+
+    results: dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        future_to_key = {executor.submit(fn): key for key, fn in probe_fns.items()}
+        for future in as_completed(future_to_key):
+            key = future_to_key[future]
+            try:
+                results[key] = future.result()
+            except Exception as exc:
+                results[key] = _service_status("unhealthy", str(exc))
+
     services = {
         "fastapi": _service_status(
             "healthy",
@@ -380,10 +400,7 @@ def _build_platform_health() -> dict[str, Any]:
             docs_url="/docs",
             openapi_url="/openapi.json",
         ),
-        "mysql": _mysql_health(),
-        "mlflow": _mlflow_health(),
-        "appwrite": _appwrite_health(),
-        "bentley_ui": _bentley_ui_health(),
+        **results,
     }
 
     statuses = [service["status"] for service in services.values()]

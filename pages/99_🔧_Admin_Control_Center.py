@@ -536,8 +536,9 @@ def resolve_control_center_api_url():
     cached_url = st.session_state.get("resolved_control_center_api_url")
     if cached_url:
         # Re-validate: only reuse if the endpoint is actually still reachable.
+        # Use a short timeout here since we already know the URL.
         try:
-            r = requests.get(f"{cached_url}/health", timeout=1.5)
+            r = requests.get(f"{cached_url}/health", timeout=3.0)
             if r.status_code == 200:
                 return cached_url
         except requests.exceptions.RequestException:
@@ -547,6 +548,8 @@ def resolve_control_center_api_url():
 
     # Note: port 5000 is intentionally excluded — it is reserved for MLflow.
     # The Control Center API always runs on port 5001.
+    # Use a generous timeout on initial probe to handle slow startup (Vega sub-app
+    # can take several seconds to initialize on first request).
     candidate_urls = [DEFAULT_CONTROL_CENTER_URL]
     if DEFAULT_CONTROL_CENTER_URL != "http://localhost:5001":
         candidate_urls.append("http://localhost:5001")
@@ -555,7 +558,7 @@ def resolve_control_center_api_url():
 
     for base_url in candidate_urls:
         try:
-            response = requests.get(f"{base_url}/health", timeout=1.5)
+            response = requests.get(f"{base_url}/health", timeout=10.0)
             if response.status_code == 200:
                 st.session_state.resolved_control_center_api_url = base_url
                 return base_url
@@ -723,11 +726,11 @@ def api_request(endpoint, method="GET", data=None, show_notice=False):
         for path in endpoint_variants:
             url = f"{control_center_api_url}{path}"
             if method == "GET":
-                response = requests.get(url, timeout=5)
+                response = requests.get(url, timeout=10)
             elif method == "POST":
-                response = requests.post(url, json=data, timeout=5)
+                response = requests.post(url, json=data, timeout=10)
             elif method == "DELETE":
-                response = requests.delete(url, timeout=5)
+                response = requests.delete(url, timeout=10)
             else:
                 return None
 

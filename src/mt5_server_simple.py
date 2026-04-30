@@ -107,6 +107,6 @@ def positions():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8002"))
-    print(f"\n🚀 MT5 REST API Server starting on http://localhost:{port}")
-    print("📡 Endpoints: /Health, /Connect, /AccountInfo, /Positions\n")
+    print(f"\nMT5 REST API Server starting on http://localhost:{port}")
+    print("Endpoints: /Health, /Connect, /AccountInfo, /Positions\n")
     uvicorn.run(app, host="0.0.0.0", port=port)

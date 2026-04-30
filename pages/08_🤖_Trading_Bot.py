@@ -170,27 +170,26 @@ def _restore_admin_session_if_possible() -> None:
 
 _restore_admin_session_if_possible()
 
-if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
-    st.error("🚫 ADMIN access required")
-    show_login_form()
-    st.stop()
-
-# ── Temporary auth debug panel (session booleans only — no credentials) ───────
-# Remove this block once the RBAC log-out issue is confirmed resolved.
-with st.sidebar.expander("🔑 Auth Debug (temp)", expanded=False):
+# ── Auth debug panel — rendered BEFORE the guard so it's visible on failure ───
+with st.sidebar.expander("🔑 Auth Debug", expanded=False):
     _ss = st.session_state
-    st.write("authenticated:", _ss.get("authenticated"))
+    _is_authed = RBACManager.is_authenticated()
+    _has_perm = RBACManager.has_permission(Permission.VIEW_TRADING_BOT)
+    st.write("is_authenticated():", _is_authed)
+    st.write("has_permission(VIEW_TRADING_BOT):", _has_perm)
+    st.write("authenticated flag:", _ss.get("authenticated"))
     st.write("admin_authenticated:", _ss.get("admin_authenticated"))
     st.write("current_user present:", _ss.get("current_user") is not None)
-    st.write(
-        "current_user_data present:",
-        isinstance(_ss.get("current_user_data"), dict),
-    )
+    st.write("current_user_data present:", isinstance(_ss.get("current_user_data"), dict))
     _cu = _ss.get("current_user")
     if _cu is not None:
         st.write("user role:", str(getattr(_cu, "role", "n/a")))
-    all_keys = list(_ss.keys())
-    st.caption("All session keys: " + ", ".join(sorted(all_keys)))
+    st.caption("Session keys: " + ", ".join(sorted(_ss.keys())))
+
+if not _is_authed or not _has_perm:
+    st.error("🚫 ADMIN access required")
+    show_login_form()
+    st.stop()
 
 # Database connection
 try:

@@ -6,7 +6,31 @@ import os
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
+import socket
+
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.connection import allowed_gai_family
+
+
+def _ipv4_requests_session() -> requests.Session:
+    """Return a requests.Session that prefers IPv4 to avoid IPv6 DNS failures."""
+
+    class _IPv4Adapter(HTTPAdapter):
+        def send(self, request, *args, **kwargs):  # type: ignore[override]
+            _orig = allowed_gai_family
+            try:
+                import urllib3.util.connection as _c
+                _c.allowed_gai_family = lambda: socket.AF_INET
+                return super().send(request, *args, **kwargs)
+            finally:
+                import urllib3.util.connection as _c
+                _c.allowed_gai_family = _orig
+
+    session = requests.Session()
+    session.mount("https://", _IPv4Adapter())
+    session.mount("http://", _IPv4Adapter())
+    return session
 
 
 def _optional_import(module_name: str) -> Any:
@@ -292,7 +316,7 @@ class TritonBot:
             return None
 
         try:
-            response = requests.get(
+            response = _ipv4_requests_session().get(
                 "https://www.alphavantage.co/query",
                 params={
                     "function": "TIME_SERIES_DAILY_ADJUSTED",
@@ -406,7 +430,7 @@ class TritonBot:
             return {}
 
         try:
-            response = requests.get(
+            response = _ipv4_requests_session().get(
                 "https://www.alphavantage.co/query",
                 params={
                     "function": "OVERVIEW",

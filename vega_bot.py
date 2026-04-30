@@ -28,9 +28,37 @@ from typing import Any, Literal, Optional
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import socket
+
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.connection import allowed_gai_family
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# IPv4-first requests session (avoids IPv6 DNS failures for AV / Yahoo)
+# ---------------------------------------------------------------------------
+
+def _ipv4_requests_session() -> requests.Session:
+    """Return a requests.Session that prefers IPv4 to avoid IPv6 DNS failures."""
+
+    class _IPv4Adapter(HTTPAdapter):
+        def send(self, request, *args, **kwargs):  # type: ignore[override]
+            _orig = allowed_gai_family
+            try:
+                import urllib3.util.connection as _c
+                _c.allowed_gai_family = lambda: socket.AF_INET
+                return super().send(request, *args, **kwargs)
+            finally:
+                import urllib3.util.connection as _c
+                _c.allowed_gai_family = _orig
+
+    session = requests.Session()
+    session.mount("https://", _IPv4Adapter())
+    session.mount("http://", _IPv4Adapter())
+    return session
+
 
 # ---------------------------------------------------------------------------
 # Optional-import helpers
@@ -435,7 +463,7 @@ def _fetch_alpha_vantage_daily(symbol: str) -> Any:
         return None
 
     try:
-        response = requests.get(
+        response = _ipv4_requests_session().get(
             "https://www.alphavantage.co/query",
             params={
                 "function": "TIME_SERIES_DAILY_ADJUSTED",
@@ -496,7 +524,7 @@ def _fetch_alpha_vantage_overview(symbol: str) -> dict[str, Any]:
         return {}
 
     try:
-        response = requests.get(
+        response = _ipv4_requests_session().get(
             "https://www.alphavantage.co/query",
             params={"function": "OVERVIEW", "symbol": symbol, "apikey": api_key},
             timeout=10,

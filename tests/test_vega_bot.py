@@ -88,3 +88,21 @@ def test_vega_signal_alpha_vantage_fallback(monkeypatch):
         "ticker_info",
         "fast_info_fallback",
     }
+
+
+def test_vega_signal_degraded_when_all_market_data_unavailable(monkeypatch):
+    monkeypatch.setattr(vega_bot, "yf", _EmptyYFinance)
+    monkeypatch.delenv("ALPHA_VANTAGE_API_KEY", raising=False)
+    monkeypatch.delenv("VEGA_ALPHA_VANTAGE_API_KEY", raising=False)
+    monkeypatch.setenv("VEGA_ENABLE_IBKR_MARKETDATA_FALLBACK", "false")
+
+    client = TestClient(vega_bot.app)
+    response = client.post(
+        "/signal",
+        json={"ticker": "WMT", "timeframe": "1d", "direction": "auto", "news_headlines": []},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("degraded") is True
+    assert body["decision"]["execute"] is False

@@ -9,7 +9,11 @@ const mysql = require('mysql2/promise');
 const path = require('path');
 const yaml = require('js-yaml');
 
-const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
+const DISCORD_WEBHOOK =
+  process.env.DISCORD_WEBHOOK ||
+  process.env.DISCORD_BOT_TALK_WEBHOOK ||
+  process.env.DISCORD_WEBHOOK_URL ||
+  process.env.DISCORD_WEBHOOK_PROD;
 const TIINGO_API_KEY = process.env.TIINGO_API_KEY || process.env.TIINGO_TOKEN;
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.ALPHAVANTAGE_API_KEY;
 const RUN_ONCE = process.argv.includes('--run-once');

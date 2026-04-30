@@ -148,6 +148,23 @@ Each run logs: ticker, action, composite_score, technical_score, fundamental_sco
 
 ---
 
+## Data Schemas and Databases
+
+Use the following database names and schemas for Triton and Vega operations:
+
+| Layer | Database | Schema / Tables | Purpose |
+|------|----------|------------------|---------|
+| Operational market data (MySQL) | `bbbot1` | `stock_prices_yf`, `stock_prices_tiingo`, `fundamentals_raw` | Raw ingest and pipeline staging for market/fundamental feeds |
+| Bot runtime and trading ops (MySQL) | `mansa_bot` | bot runtime tables, trade/audit tables (for example `vega_trades`) | FastAPI bot execution, paper/live trading logs, control-center operations |
+| ML experiment tracking (MySQL backend) | `mlflow_db` | MLflow system tables (`experiments`, `runs`, `metrics`, `params`, `tags`) | Triton/Vega signal scoring and model experiment metadata |
+| Analytics warehouse (Snowflake) | `MARKET_DATA` | `YFINANCE`, `TIINGO`, `STOCKTWITS`, `BARCHART`, `ANALYTICS` | Airbyte-synced analytics and consolidated reporting layer |
+
+Notes:
+- `MLFLOW_TRACKING_URI` should point to the MLflow server endpoint (for example `http://localhost:5000`) or the configured SQL backend URI for hosted environments.
+- Keep raw ingest in `bbbot1`; avoid using Google Sheets as the system-of-record for fundamentals.
+
+---
+
 ## Risk Parameters
 
 | Parameter | Value |

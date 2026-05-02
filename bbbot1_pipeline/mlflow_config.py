@@ -80,7 +80,7 @@ def get_mlflow_server_url() -> str:
     if _is_http_uri(tracking_uri):
         return tracking_uri.rstrip("/")
 
-    return "http://localhost:5000"
+    return "http://127.0.0.1:5000"
 
 
 def get_mlflow_backend_store_uri() -> str:

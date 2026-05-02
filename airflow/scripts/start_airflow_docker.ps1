@@ -43,9 +43,9 @@ docker compose -f $composeFile ps
 
 Write-Host ""
 Write-Host "🎉 Setup Complete! Access your applications:" -ForegroundColor Green
-Write-Host "   🌐 Airflow UI:     http://localhost:8080" -ForegroundColor Yellow
-Write-Host "   📊 Streamlit App:  http://localhost:8501" -ForegroundColor Yellow
-Write-Host "   🗄️  MySQL:         localhost:3306" -ForegroundColor Yellow
+Write-Host "   🌐 Airflow UI:     http://127.0.0.1:8080" -ForegroundColor Yellow
+Write-Host "   📊 Streamlit App:  http://127.0.0.1:8501" -ForegroundColor Yellow
+Write-Host "   🗄️  MySQL:         127.0.0.1:3306" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "🔐 Airflow Login:" -ForegroundColor Cyan
 Write-Host "   Username: admin" -ForegroundColor White

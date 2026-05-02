@@ -20,7 +20,7 @@ $env:AIRFLOW__CORE__EXECUTOR = "LocalExecutor"
 
 Write-Host "🚀 Starting Airflow Webserver with Windows compatibility..." -ForegroundColor Green
 Write-Host "📍 AIRFLOW_HOME: $env:AIRFLOW_HOME" -ForegroundColor Cyan
-Write-Host "🌐 Webserver will be available at: http://localhost:8080" -ForegroundColor Yellow
+Write-Host "🌐 Webserver will be available at: http://127.0.0.1:8080" -ForegroundColor Yellow
 
 Push-Location $repoRoot
 & $pythonExe $wrapper webserver

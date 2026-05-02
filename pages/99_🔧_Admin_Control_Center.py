@@ -15,7 +15,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-from typing import Literal, Tuple
+from typing import Any, Literal, Tuple
 import json
 import subprocess
 import sys
@@ -34,10 +34,10 @@ try:
     )
 except Exception:
     def get_mlflow_tracking_uri():
-        return os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        return os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
 
     def get_mlflow_server_url():
-        return os.getenv("MLFLOW_SERVER_URL", "http://localhost:5000")
+        return os.getenv("MLFLOW_SERVER_URL", "http://127.0.0.1:5000")
 
     def get_mlflow_backend_store_uri():
         return os.getenv("MLFLOW_BACKEND_STORE_URI", "not-configured")
@@ -94,9 +94,10 @@ except Exception:
     RBAC_AVAILABLE = False
 
 # Configuration
-DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
+DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://127.0.0.1:5001")
 DEFAULT_MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
 DEFAULT_MLFLOW_URL = get_mlflow_server_url()
+REPO_ROOT = Path(__file__).resolve().parents[1]
 MLFLOW_BENCHMARK_BOTS = ["Titan", "Orion", "Rigel", "Dogon"]
 TITAN_MLFLOW_SCHEMA_ROWS = [
     {
@@ -250,6 +251,87 @@ def start_mlflow_server(backend_store_uri: str, port: int = 5000) -> Tuple[bool,
         return True, f"MLflow server start command issued on port {port}. Allow a few seconds to start."
     except Exception as exc:
         return False, f"Failed to launch MLflow server: {exc}"
+
+
+def _run_shell_command(command: list[str], cwd: Path | None = None, timeout: int = 240) -> Tuple[bool, str]:
+    """Run a shell command and return a compact status message."""
+    try:
+        startupinfo = None
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+        result = subprocess.run(
+            command,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            startupinfo=startupinfo,
+        )
+        if result.returncode == 0:
+            output = (result.stdout or result.stderr or "Command completed successfully.").strip()
+            return True, output[:800]
+
+        error_output = (result.stderr or result.stdout or "Command failed without output.").strip()
+        return False, error_output[:800]
+    except FileNotFoundError:
+        return False, "Required command not found. Ensure Docker Desktop and docker CLI are installed."
+    except subprocess.TimeoutExpired:
+        return False, "Command timed out while starting services. Check Docker engine health and retry."
+    except Exception as exc:
+        return False, f"Command execution failed: {exc}"
+
+
+def start_docker_compose_services(compose_rel_path: str, services: list[str] | None = None) -> Tuple[bool, str]:
+    """Start a docker-compose stack (or selected services) from repo root."""
+    compose_file = REPO_ROOT / compose_rel_path
+    if not compose_file.exists():
+        return False, f"Compose file not found: {compose_file}"
+
+    cmd = ["docker", "compose", "-f", str(compose_file), "up", "-d"]
+    if services:
+        cmd.extend(services)
+
+    return _run_shell_command(cmd, cwd=REPO_ROOT)
+
+
+def probe_local_service(urls: list[str]) -> Tuple[bool, str]:
+    """Probe local service URLs and return status and detail."""
+    last_error = "Service is unreachable."
+    for url in urls:
+        try:
+            response = requests.get(url, timeout=2)
+            if response.status_code < 500:
+                return True, f"Reachable at {url} (HTTP {response.status_code})"
+            last_error = f"{url} returned HTTP {response.status_code}"
+        except requests.exceptions.RequestException as exc:
+            last_error = f"{url}: {exc}"
+    return False, last_error
+
+
+def format_run_payload(row: pd.Series, prefix: str, max_items: int = 6) -> str:
+    """Create a compact JSON summary for metrics/params columns."""
+    payload: dict[str, Any] = {}
+    for column in row.index:
+        if not str(column).startswith(prefix):
+            continue
+        value = row.get(column)
+        if pd.isna(value):
+            continue
+
+        key = str(column)[len(prefix):]
+        if isinstance(value, float):
+            payload[key] = round(value, 6)
+        else:
+            payload[key] = value
+
+        if len(payload) >= max_items:
+            break
+
+    if not payload:
+        return "{}"
+    return json.dumps(payload, default=str)
 
 
 def _first_present(row, candidates):
@@ -862,7 +944,7 @@ def get_service_dashboard_entries(
         {
             "name": "Airflow",
             "icon": "📊",
-            "url": "http://localhost:8080",
+            "url": "http://127.0.0.1:8080",
             "button": "Open Airflow UI",
             "description": "Workflow orchestration and scheduled DAG runs.",
             "details": "DAGs: /workflows/airflow/dags/",
@@ -1678,6 +1760,41 @@ def main():
             "strategy": "Proposed Strategy",
         })
         st.dataframe(catalog_df, use_container_width=True, hide_index=True)
+        st.markdown("---")
+
+        # ── One-click All Bots panel ──────────────────────────────────────────
+        st.subheader("⚡ One-Click Bot Controls")
+        _all_bots = [r["bot"] for r in catalog_rows]
+        _btn_all_on, _btn_all_off = st.columns(2)
+        with _btn_all_on:
+            if st.button("🚀 Start All Bots", type="primary", use_container_width=True, key="start_all_bots"):
+                _all_results = []
+                with st.spinner("Starting all bots…"):
+                    for _bn in _all_bots:
+                        _res = run_bot_mode(_bn, "ON")
+                        _all_results.append((_bn, _res["ok"], _res["output"]))
+                refresh_bot_mode_views()
+                for _bn, _ok, _out in _all_results:
+                    if _ok:
+                        st.success(f"✅ {_bn} ON")
+                    else:
+                        st.error(f"❌ {_bn} ON failed: {_out[:120]}")
+                st.rerun()
+        with _btn_all_off:
+            if st.button("🛑 Stop All Bots", use_container_width=True, key="stop_all_bots"):
+                _all_results = []
+                with st.spinner("Stopping all bots…"):
+                    for _bn in _all_bots:
+                        _res = run_bot_mode(_bn, "OFF")
+                        _all_results.append((_bn, _res["ok"], _res["output"]))
+                refresh_bot_mode_views()
+                for _bn, _ok, _out in _all_results:
+                    if _ok:
+                        st.success(f"✅ {_bn} OFF")
+                    else:
+                        st.error(f"❌ {_bn} OFF failed: {_out[:120]}")
+                st.rerun()
+
         st.markdown("---")
 
         st.subheader("Vega Automation")
@@ -2635,7 +2752,39 @@ def main():
 
         with col2:
             st.subheader("🔗 Quick Actions")
-            if st.button("🔄 Refresh MLflow Status", type="primary", use_container_width=True):
+            airflow_ok, airflow_note = probe_local_service([
+                "http://127.0.0.1:8080/health",
+                "http://127.0.0.1:8080/",
+            ])
+            airbyte_ok, airbyte_note = probe_local_service([
+                "http://127.0.0.1:8001/api/v1/health",
+                "http://127.0.0.1:8000/",
+            ])
+
+            st.caption(("✅" if airflow_ok else "❌") + f" Airflow: {airflow_note}")
+            st.caption(("✅" if airbyte_ok else "❌") + f" Airbyte: {airbyte_note}")
+
+            if st.button("� Start All Local Services", type="primary", use_container_width=True, key="start_all_services"):
+                results = []
+                with st.spinner("Starting MLflow…"):
+                    _bsu = get_mlflow_backend_store_uri()
+                    _ok, _msg = start_mlflow_server(_bsu)
+                    results.append(("MLflow", _ok, _msg))
+                with st.spinner("Starting Airflow stack…"):
+                    _ok, _msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
+                    results.append(("Airflow", _ok, _msg))
+                with st.spinner("Starting Airbyte stack…"):
+                    _ok, _msg = start_docker_compose_services("docker/docker-compose-airbyte.yml")
+                    results.append(("Airbyte", _ok, _msg))
+                for _svc, _ok, _msg in results:
+                    if _ok:
+                        st.success(f"✅ {_svc}: {_msg}")
+                    else:
+                        st.error(f"❌ {_svc}: {_msg}")
+                st.session_state.pop("resolved_mlflow_server_url", None)
+                st.session_state.pop("resolved_mlflow_server_note", None)
+
+            if st.button("🔄 Refresh MLflow Status", use_container_width=True, key="refresh_mlflow_status"):
                 st.session_state.pop("resolved_mlflow_server_url", None)
                 st.session_state.pop("resolved_mlflow_server_note", None)
                 st.rerun()
@@ -2648,6 +2797,20 @@ def main():
                     st.session_state.pop("resolved_mlflow_server_note", None)
                 else:
                     st.error(msg)
+            if st.button("▶️ Start Airflow Stack", use_container_width=True, key="start_airflow_stack"):
+                ok, msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
+                if ok:
+                    st.success("Airflow stack start command completed.")
+                    st.caption(msg)
+                else:
+                    st.error(f"Failed to start Airflow stack: {msg}")
+            if st.button("▶️ Start Airbyte Stack", use_container_width=True, key="start_airbyte_stack"):
+                ok, msg = start_docker_compose_services("docker/docker-compose-airbyte.yml")
+                if ok:
+                    st.success("Airbyte stack start command completed.")
+                    st.caption(msg)
+                else:
+                    st.error(f"Failed to start Airbyte stack: {msg}")
             if st.button("🌐 Open MLflow UI", use_container_width=True):
                 st.markdown(f"[Open MLflow UI]({resolved_mlflow_url})")
 
@@ -2718,6 +2881,59 @@ def main():
                 if run_frames
                 else pd.DataFrame()
             )
+
+            st.markdown("---")
+            st.subheader("📈 Recent Runs (Model, Metrics, Parameters, Timestamp)")
+            if not all_runs_df.empty:
+                runs_view = all_runs_df.copy()
+                if "start_time" in runs_view.columns:
+                    runs_view["start_time"] = pd.to_datetime(
+                        runs_view["start_time"], errors="coerce"
+                    )
+                    runs_view = runs_view.sort_values("start_time", ascending=False)
+
+                display_rows = []
+                for _, row in runs_view.head(100).iterrows():
+                    timestamp_value = _first_present(row, ["end_time", "start_time"])
+                    timestamp_dt = pd.to_datetime(timestamp_value, errors="coerce")
+                    timestamp_text = (
+                        timestamp_dt.strftime("%Y-%m-%d %H:%M:%S")
+                        if pd.notna(timestamp_dt)
+                        else "N/A"
+                    )
+
+                    model_name = _first_present(
+                        row,
+                        [
+                            "tags.model_name",
+                            "params.model_name",
+                            "tags.registered_model_name",
+                            "params.model",
+                            "tags.mlflow.runName",
+                        ],
+                    ) or "N/A"
+
+                    run_name = _first_present(row, ["tags.mlflow.runName", "run_name"]) or "N/A"
+
+                    display_rows.append(
+                        {
+                            "Experiment": row.get("experiment_name", "N/A"),
+                            "Run Name": run_name,
+                            "Model": str(model_name),
+                            "Status": row.get("status", "N/A"),
+                            "Timestamp": timestamp_text,
+                            "Metrics": format_run_payload(row, "metrics."),
+                            "Parameters": format_run_payload(row, "params."),
+                        }
+                    )
+
+                st.dataframe(
+                    pd.DataFrame(display_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No run records found yet. Start a bot cycle to populate metrics and parameters.")
 
             st.markdown("---")
             st.subheader("🧭 Titan MLflow Blueprint")

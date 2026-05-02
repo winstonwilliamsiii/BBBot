@@ -1693,14 +1693,14 @@ if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
 st.sidebar.markdown("---")
 date_range = st.sidebar.selectbox(
     "Time Period",
-    ["Today", "Last 7 Days", "Last 30 Days", "All Time"]
+    ["Today", "5 Days", "1 Month", "3 Months"]
 )
 
 days_map = {
     "Today": 1,
-    "Last 7 Days": 7,
-    "Last 30 Days": 30,
-    "All Time": 365
+    "5 Days": 5,
+    "1 Month": 30,
+    "3 Months": 90,
 }
 selected_days = days_map[date_range]
 

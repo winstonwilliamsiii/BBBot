@@ -331,7 +331,7 @@ def _mysql_health() -> dict[str, Any]:
 def _mlflow_health() -> dict[str, Any]:
     tracking_uri = os.getenv(
         "MLFLOW_TRACKING_URI",
-        "http://localhost:5000",
+        "http://127.0.0.1:5000",
     ).strip()
     return _http_probe(
         [
@@ -366,7 +366,7 @@ def _appwrite_health() -> dict[str, Any]:
 def _bentley_ui_health() -> dict[str, Any]:
     base_url = os.getenv(
         "BENTLEY_UI_URL",
-        os.getenv("STREAMLIT_PUBLIC_URL", "http://localhost:8501"),
+        os.getenv("STREAMLIT_PUBLIC_URL", "http://127.0.0.1:8501"),
     ).strip()
     return _http_probe([f"{base_url.rstrip('/')}/_stcore/health"]) | {
         "base_url": base_url,
@@ -588,11 +588,11 @@ async def platform_architecture():
     mysql_database = os.getenv("MYSQL_DATABASE", "mansa_bot")
     mlflow_tracking_uri = os.getenv(
         "MLFLOW_TRACKING_URI",
-        "http://localhost:5000",
+        "http://127.0.0.1:5000",
     )
     bentley_ui_url = os.getenv(
         "BENTLEY_UI_URL",
-        os.getenv("STREAMLIT_PUBLIC_URL", "http://localhost:8501"),
+        os.getenv("STREAMLIT_PUBLIC_URL", "http://127.0.0.1:8501"),
     ).strip()
     appwrite_endpoint = os.getenv("APPWRITE_ENDPOINT", "").strip()
 
@@ -604,7 +604,7 @@ async def platform_architecture():
         },
         "backend": {
             "fastapi_entrypoint": "Main.py",
-            "control_center_default_url": "http://localhost:5001",
+            "control_center_default_url": "http://127.0.0.1:5001",
             "vercel_handler": "api/index.py",
         },
         "data": {

@@ -1,6 +1,6 @@
 """
-Draco endpoint smoke test — runs against http://127.0.0.1:5001
-Execute with: .venv\Scripts\python.exe scripts\_draco_smoke_test.py
+Draco endpoint smoke test - runs against http://127.0.0.1:5001
+Execute with: .venv\\Scripts\\python.exe scripts\\_draco_smoke_test.py
 """
 
 import json
@@ -73,6 +73,20 @@ def check(label, body, status, expect_status=200, required_keys=None):
     results.append((label, ok))
 
 
+def check_statuses(label, body, status, expect_statuses, required_keys=None):
+    ok = status in expect_statuses
+    if required_keys:
+        for k in required_keys:
+            if k not in body:
+                ok = False
+    tag = PASS if ok else FAIL
+    expected = ",".join(str(v) for v in sorted(expect_statuses))
+    print(f"  [{tag}] {label} (expected one of: {expected})")
+    if not ok:
+        print(f"        status={status}, keys={list(body.keys())}")
+    results.append((label, ok))
+
+
 print("\n=== Draco Smoke Test ===\n")
 
 # 1. Main health
@@ -122,7 +136,7 @@ check(
 )
 
 # 7. Trade (dry run — DRACO_ENABLE_TRADING not set)
-print("\n[7] Trade (dry run expected)")
+print("\n[7] Trade endpoint")
 trade_payload = {
     "ticker": TICKER,
     "side": "buy",
@@ -130,10 +144,35 @@ trade_payload = {
     "broker": "alpaca",
 }
 body, status = post("/draco/trade", trade_payload, timeout=15)
-check("POST /draco/trade → dry_run status", body, status,
-      required_keys=["status"])
-if "status" in body:
+check_statuses(
+    "POST /draco/trade → accepted or broker/unreachable failure",
+    body,
+    status,
+    expect_statuses={200, 502},
+)
+if status == 200 and "status" in body:
     print(f"        status={body['status']}")
+if status == 502 and "detail" in body:
+    print(f"        detail={body['detail']}")
+
+# 8. DQN decision
+print(f"\n[8] DQN decision — ticker={TICKER}")
+dqn_payload = {
+    "ticker": TICKER,
+    "news_headlines": [
+        "Apple reports stronger than expected iPhone demand",
+        "Analysts maintain bullish outlook on Apple services growth",
+    ],
+    "steps": 3,
+    "include_analysis": False,
+}
+body, status = post("/draco/dqn_decision", dqn_payload, timeout=120)
+check(
+    "POST /draco/dqn_decision → decision payload present",
+    body,
+    status,
+    required_keys=["ticker", "action", "confidence", "source", "policy", "q_values"],
+)
 
 # Summary
 print("\n=== Results ===")

@@ -137,6 +137,13 @@ class AnalysisRequest(BaseModel):
     steps: int = Field(default=CONFIG.forecast_steps, ge=1, le=30)
 
 
+class DqnDecisionRequest(BaseModel):
+    ticker: str = Field(min_length=1)
+    news_headlines: list[str] = Field(default_factory=list)
+    steps: int = Field(default=CONFIG.forecast_steps, ge=1, le=30)
+    include_analysis: bool = True
+
+
 class TradeRequest(BaseModel):
     ticker: str = Field(min_length=1)
     qty: float = Field(gt=0)
@@ -230,7 +237,7 @@ def _mlflow_tracking_is_reachable(tracking_uri: str) -> bool:
         try:
             with urlopen(health_url, timeout=2) as response:
                 return 200 <= getattr(response, "status", 200) < 300
-        except (URLError, TimeoutError, ValueError):
+        except (URLError, TimeoutError, ValueError, OSError, ConnectionError):
             logger.info("MLflow health check failed for %s", health_url)
             return False
 
@@ -755,6 +762,160 @@ def build_analysis(
     }
 
 
+def _external_dqn_decision(
+    *,
+    ticker: str,
+    analysis: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    module_name = str(os.getenv("DRACO_DQN_MODULE", "")).strip()
+    function_name = str(os.getenv("DRACO_DQN_FUNCTION", "predict",)).strip() or "predict"
+    if not module_name:
+        return None
+
+    try:
+        module = importlib.import_module(module_name)
+    except (ImportError, AttributeError, RuntimeError, OSError, ValueError, TypeError) as exc:
+        logger.warning("DQN module import failed (%s): %s", module_name, exc)
+        return {
+            "available": False,
+            "reason": f"module_import_failed: {exc}",
+        }
+
+    fn = getattr(module, function_name, None)
+    if fn is None:
+        return {
+            "available": False,
+            "reason": f"function_not_found: {function_name}",
+        }
+
+    try:
+        raw = fn(ticker=ticker, analysis=analysis)
+        if not isinstance(raw, dict):
+            return {
+                "available": False,
+                "reason": "agent_returned_non_dict",
+            }
+
+        action = str(raw.get("action", "hold")).strip().lower()
+        if action not in {"buy", "sell", "hold"}:
+            action = "hold"
+
+        confidence = raw.get("confidence", 0.5)
+        if not _is_finite_number(confidence):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, float(confidence)))
+
+        q_values = raw.get("q_values")
+        if not isinstance(q_values, dict):
+            q_values = {}
+
+        return {
+            "available": True,
+            "action": action,
+            "confidence": confidence,
+            "q_values": {
+                key: float(value)
+                for key, value in q_values.items()
+                if _is_finite_number(value)
+            },
+            "policy": str(raw.get("policy", f"external:{module_name}.{function_name}")),
+            "agent_raw": raw,
+        }
+    except (AttributeError, RuntimeError, OSError, ValueError, TypeError) as exc:
+        logger.warning("DQN function invocation failed: %s", exc)
+        return {
+            "available": False,
+            "reason": f"agent_invocation_failed: {exc}",
+        }
+
+
+def _fallback_dqn_decision(analysis: dict[str, Any]) -> dict[str, Any]:
+    technicals = analysis.get("technicals", {}) or {}
+    sentiment = analysis.get("sentiment", {}) or {}
+    forecast = analysis.get("forecast", {}) or {}
+
+    sentiment_score = float(sentiment.get("sentiment_score", 0.0) or 0.0)
+    rsi_14 = technicals.get("rsi_14")
+    sma_20 = technicals.get("sma_20")
+    sma_50 = technicals.get("sma_50")
+    last_close = forecast.get("last_close")
+    forecast_series = forecast.get("forecast") or []
+    forecast_last = forecast_series[-1] if forecast_series else last_close
+
+    signal = 0.0
+    if sentiment_score > 0.15:
+        signal += 0.35
+    elif sentiment_score < -0.15:
+        signal -= 0.35
+
+    if _is_finite_number(rsi_14):
+        if float(rsi_14) < 35:
+            signal += 0.3
+        elif float(rsi_14) > 70:
+            signal -= 0.3
+
+    if _is_finite_number(sma_20) and _is_finite_number(sma_50):
+        if float(sma_20) > float(sma_50):
+            signal += 0.2
+        elif float(sma_20) < float(sma_50):
+            signal -= 0.2
+
+    if _is_finite_number(last_close) and _is_finite_number(forecast_last) and float(last_close) != 0:
+        expected_return = (float(forecast_last) - float(last_close)) / float(last_close)
+        if expected_return > 0.01:
+            signal += 0.25
+        elif expected_return < -0.01:
+            signal -= 0.25
+
+    confidence = min(1.0, max(0.05, abs(signal)))
+    if signal >= 0.25:
+        action = "buy"
+    elif signal <= -0.25:
+        action = "sell"
+    else:
+        action = "hold"
+
+    return {
+        "available": True,
+        "action": action,
+        "confidence": float(confidence),
+        "q_values": {
+            "buy": float(signal),
+            "hold": float(1.0 - abs(signal)),
+            "sell": float(-signal),
+        },
+        "policy": "rule_based_dqn_proxy_v1",
+    }
+
+
+def dqn_decision(
+    ticker: str,
+    news_headlines: list[str],
+    steps: int,
+) -> dict[str, Any]:
+    symbol = _sanitize_ticker(ticker)
+    analysis = build_analysis(symbol, news_headlines, steps)
+
+    external = _external_dqn_decision(ticker=symbol, analysis=analysis)
+    if external and external.get("available"):
+        decision = external
+        source = "external"
+    else:
+        decision = _fallback_dqn_decision(analysis)
+        source = "fallback"
+
+    return {
+        "ticker": symbol,
+        "source": source,
+        "action": decision.get("action", "hold"),
+        "confidence": float(decision.get("confidence", 0.5)),
+        "q_values": decision.get("q_values", {}),
+        "policy": decision.get("policy", "unknown"),
+        "agent_status": external if external is not None and not external.get("available") else {"available": True},
+        "analysis": analysis,
+    }
+
+
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": "Draco Bot API online"}
@@ -815,6 +976,18 @@ def post_analysis(request: AnalysisRequest) -> dict[str, Any]:
         request.news_headlines,
         request.steps,
     )
+
+
+@app.post("/dqn_decision")
+def post_dqn_decision(request: DqnDecisionRequest) -> dict[str, Any]:
+    result = dqn_decision(
+        request.ticker,
+        request.news_headlines,
+        request.steps,
+    )
+    if not request.include_analysis:
+        result.pop("analysis", None)
+    return result
 
 
 @app.post("/trade")

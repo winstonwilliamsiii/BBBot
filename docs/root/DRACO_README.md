@@ -90,6 +90,7 @@ Served via `Main.py` on port **5001**.
 | GET | `/draco/health` | Dependency and broker health check |
 | GET | `/draco/status` | Current config and last analysis |
 | POST | `/draco/analyze` | Run full multi-factor analysis for a ticker |
+| POST | `/draco/dqn_decision` | Query Draco RL decision endpoint (external DQN or fallback policy) |
 | POST | `/draco/trade` | Submit a buy/sell order |
 
 ### Example: Analyze a ticker

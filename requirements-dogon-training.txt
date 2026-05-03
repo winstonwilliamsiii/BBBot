@@ -11,6 +11,7 @@ yfinance>=0.2.66,<1.0
 websockets>=11
 
 mlflow>=2.8.0
+optuna>=4.3.0
 
 xgboost>=2.0.0
 tensorflow>=2.15.0

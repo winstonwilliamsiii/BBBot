@@ -1,0 +1,33 @@
+service:
+  name: cephei-bot
+  runtime: docker
+
+build:
+  dockerfilePath: Dockerfile.cephei
+
+deploy:
+  startCommand: uvicorn cephei_bot:app --host 0.0.0.0 --port $PORT
+  healthcheckPath: /health
+  healthcheckTimeout: 60
+  restartPolicyType: ON_FAILURE
+  restartPolicyMaxRetries: 5
+
+env:
+  PORT: "8080"
+  LOG_LEVEL: "INFO"
+  REQUEST_TIMEOUT_SECONDS: "10"
+  ENABLE_DB_LOGGING: "true"
+  VOL_REGIME_MODEL_PATH: "models/vol_regime.txt"
+  SIAMESE_WEIGHTS_PATH: "models/siamese_volnet.pt"
+  IBKR_API_URL: "https://api.ibkr.com/v1/cfd/options"
+  FOREXVPS_ENDPOINT: "https://forexvps.net/execution"
+  MYSQL_HOST: "${{MYSQL_HOST}}"
+  MYSQL_PORT: "${{MYSQL_PORT}}"
+  MYSQL_USER: "${{MYSQL_USER}}"
+  MYSQL_PASSWORD: "${{MYSQL_PASSWORD}}"
+  MYSQL_DATABASE: "${{MYSQL_DATABASE}}"
+
+notes:
+  - Set all MYSQL_* values in Railway Variables before first deploy.
+  - IBKR and FOREXVPS URLs can be switched per environment.
+  - Keep SIAMESE_WEIGHTS_PATH and VOL_REGIME_MODEL_PATH aligned with mounted model artifacts.

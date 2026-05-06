@@ -52,6 +52,7 @@ BOT_BROKER_MAPPING = {
     "Orion": "mt5",
     "Rhea": "alpaca",
     "Jupicita": "alpaca",
+    "Cygnus": "ibkr",
 }
 
 # Supported brokers

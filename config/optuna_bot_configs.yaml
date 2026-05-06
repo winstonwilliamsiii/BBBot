@@ -1,9 +1,223 @@
 # Shared Optuna hyperparameter schema for Bentley bot training.
 #
-# Use this file to keep each bot's training/search space consistent while still
-# allowing the algorithm block to vary per strategy.
+# Loader  : frontend/utils/optuna_config_loader.py → load_optuna_bot_config()
+# Training: bentley-bot/mlflow/train.py → train_model() / suggest_optuna_params_for_bot()
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ALGORITHM TYPE → FIXED PARAMETERS / TUNABLE HYPERPARAMETERS
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# xgboost         Fixed : objective, eval_metric, booster
+#                 Tunable: eta, max_depth, subsample, colsample_bytree,
+#                          lambda (L2), alpha (L1), n_estimators, min_child_weight
+#
+# random_forest   Fixed : objective, eval_metric, criterion, bootstrap
+#                 Tunable: n_estimators, max_depth, min_samples_split,
+#                          min_samples_leaf, max_features, max_samples
+#
+# neural_network  Fixed : architecture, objective, eval_metric, loss_function
+#                 Tunable: hidden_layers | filters, neurons_per_layer | dense_units,
+#                          activation (categorical), optimizer (categorical),
+#                          learning_rate, batch_size, epochs, dropout_rate, weight_decay
+#
+# sentiment_nlp   Fixed : objective, eval_metric, loss_function
+#                 Tunable: learning_rate, batch_size, epochs, dropout_rate,
+#                          max_seq_length, num_attention_heads
+#
+# technical_strategy
+#                 Fixed : objective, eval_metric, indicator_window, fixed thresholds
+#                 Tunable: rsi_period, rsi_overbought/oversold_threshold,
+#                          atr_multiplier_sl/tp, volume_filter_ratio, scan_top_n
+#
+# optimizer       Fixed : objective, eval_metric
+#                 Tunable: zscore_entry/exit, lookback_days, hedge_ratio,
+#                          mutation_rate, crossover_rate (GA), population_size
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# BOT CONSTELLATION (14 bots)
+# ─────────────────────────────────────────────────────────────────────────────
+# Bot             Algorithm            Fund               Strategy
+# ─────────────── ──────────────────── ────────────────── ─────────────────────
+# Titan_Bot       neural_network (CNN) Mansa Tech         CNN Deep Learning
+# Vega_Bot        xgboost              Mansa Retail       MTF-ML Breakout
+# Rhea_Bot        random_forest        Mansa ADI          Intra-Day / Swing
+# Triton_Bot      neural_network (LSTM)Mansa Transport    ARIMA + LSTM Swing
+# Altair_Bot      sentiment_nlp        Mansa AI Fund      News Trading
+# Hydra_Bot       neural_network       Mansa Health       Healthcare Momentum
+# Dogon_Bot       xgboost              Mansa ETF          Portfolio Optimizer
+# Rigel_Bot       neural_network (LSTM)Mansa FOREX        FX Mean Reversion
+# Draco_Bot       sentiment_nlp        Mansa Money Bag    Sentiment Analyzer
+# Procryon_Bot    neural_network       Prop Trading       KNN + FNN Arb
+# Orion_Bot       technical_strategy   Mansa Minerals     GoldRSI
+# Dione_Bot       optimizer            Mansa Options      Put-Call Parity
+# Cephei_Bot      optimizer (Planned)  Mansa Cephei       Volatility Arbitrage
+# Jupicita_Bot    optimizer            Mansa Smalls       Pairs Trading
+# ─────────────────────────────────────────────────────────────────────────────
 
 bot_configs:
+
+  # ── Titan Bot ─ neural_network ─────────────────────────────────────────────
+  Titan_Bot:
+    name: "Titan_Bot"
+    domain: "Mag7 + Tech Equities"
+    algorithm:
+      type: "neural_network"
+      parameters:
+        architecture: "CNN"
+        objective: "classification"
+        eval_metric: "auc"
+        loss_function: "cross_entropy"
+        indicator_window: 20
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 1.5
+          sector_weights: "tech_overweight"
+      hyperparameters:
+        filters: [32, 256]
+        kernel_size: [3, 7]
+        dense_units: [64, 512]
+        learning_rate: [0.0001, 0.01]
+        batch_size: [32, 256]
+        epochs: [50, 300]
+        dropout_rate: [0.1, 0.5]
+        weight_decay: [0.0, 0.01]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "kelly"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "finbert"
+      indicators: ["RSI", "MACD", "ATR", "EMA"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Vega Bot ─ xgboost ────────────────────────────────────────────────────
+  Vega_Bot:
+    name: "Vega_Bot"
+    domain: "Retail Breakout / MTF-ML"
+    algorithm:
+      type: "xgboost"
+      parameters:
+        objective: "classification"
+        eval_metric: "auc"
+        booster: "gbtree"
+        indicator_window: 20
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 1.5
+          sector_weights: "balanced"
+      hyperparameters:
+        eta: [0.01, 0.3]
+        max_depth: [3, 8]
+        subsample: [0.5, 1.0]
+        colsample_bytree: [0.5, 1.0]
+        lambda: [0.0, 10.0]
+        alpha: [0.0, 10.0]
+        n_estimators: [100, 500]
+        min_child_weight: [1, 10]
+    risk_management:
+      stop_loss: "1.5_ATR"
+      take_profit: "3_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "volatility_based"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["RSI", "VWAP", "ATR", "Breakout_Level"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Rhea Bot ─ random_forest ──────────────────────────────────────────────
+  Rhea_Bot:
+    name: "Rhea_Bot"
+    domain: "Aerospace, Defense & Industrials"
+    algorithm:
+      type: "random_forest"
+      parameters:
+        objective: "classification"
+        eval_metric: "auc"
+        criterion: "gini"
+        bootstrap: true
+        indicator_window: 20
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 1.5
+          sector_weights: "adi_weighted"
+      hyperparameters:
+        n_estimators: [100, 1000]
+        max_depth: [10, 100]
+        min_samples_split: [2, 20]
+        min_samples_leaf: [1, 10]
+        max_features: ["sqrt", "log2"]
+        max_samples: [0.5, 1.0]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "volatility_based"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["FVFI", "ROVL", "ADI", "RSI"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Triton Bot ─ neural_network ───────────────────────────────────────────
+  Triton_Bot:
+    name: "Triton_Bot"
+    domain: "Transportation Swing Trading"
+    algorithm:
+      type: "neural_network"
+      parameters:
+        architecture: "ARIMA_LSTM"
+        objective: "regression"
+        eval_metric: "rmse"
+        loss_function: "mse"
+        indicator_window: 252
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 1.5
+          sector_weights: "transport_sector"
+      hyperparameters:
+        arima_p: [0, 5]
+        arima_d: [0, 2]
+        arima_q: [0, 5]
+        lstm_units: [32, 256]
+        learning_rate: [0.0001, 0.01]
+        batch_size: [32, 128]
+        epochs: [50, 300]
+        dropout_rate: [0.1, 0.5]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "volatility_based"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["ARIMA", "LSTM", "RSI", "ATR"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Altair Bot ─ sentiment_nlp ────────────────────────────────────────────
   Altair_Bot:
     name: "Altair_Bot"
     domain: "News Trading"
@@ -22,14 +236,11 @@ bot_configs:
           sector_weights: "balanced"
       hyperparameters:
         learning_rate: [0.0001, 0.01]
-        max_depth: [3, 10]
-        n_estimators: [100, 1000]
-        subsample: [0.5, 1.0]
-        colsample_bytree: [0.5, 1.0]
-        min_child_weight: [1, 10]
         batch_size: [32, 256]
         epochs: [50, 500]
         dropout_rate: [0.1, 0.5]
+        max_seq_length: [64, 512]
+        num_attention_heads: [2, 16]
     risk_management:
       stop_loss: "2_ATR"
       take_profit: "4_ATR"
@@ -44,6 +255,368 @@ bot_configs:
       destination: "mysql"
       notify: "slack"
 
+  # ── Hydra Bot ─ neural_network ────────────────────────────────────────────
+  Hydra_Bot:
+    name: "Hydra_Bot"
+    domain: "Healthcare Momentum"
+    algorithm:
+      type: "neural_network"
+      parameters:
+        architecture: "Dense_Momentum"
+        objective: "classification"
+        eval_metric: "auc"
+        loss_function: "cross_entropy"
+        indicator_window: 14
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 1.5
+          sector_weights: "health_overweight"
+      hyperparameters:
+        hidden_layers: [2, 5]
+        neurons_per_layer: [64, 512]
+        activation: ["relu", "tanh"]
+        optimizer: ["Adam", "RMSprop"]
+        learning_rate: [0.0001, 0.01]
+        batch_size: [32, 256]
+        epochs: [50, 500]
+        dropout_rate: [0.1, 0.5]
+        weight_decay: [0.0, 0.01]
+        momentum_lookback: [5, 30]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "volatility_based"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "finbert"
+      indicators: ["RSI", "MACD", "ATR", "VWAP"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Dogon Bot ─ xgboost ───────────────────────────────────────────────────
+  Dogon_Bot:
+    name: "Dogon_Bot"
+    domain: "ETF Portfolio Optimizer"
+    algorithm:
+      type: "xgboost"
+      parameters:
+        objective: "regression"
+        eval_metric: "rmse"
+        booster: "gbtree"
+        indicator_window: 20
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 2.0
+          sector_weights: "etf_diversified"
+      hyperparameters:
+        eta: [0.01, 0.3]
+        max_depth: [3, 10]
+        subsample: [0.5, 1.0]
+        colsample_bytree: [0.5, 1.0]
+        lambda: [0.0, 10.0]      # L2 regularization (reg_lambda in sklearn API)
+        alpha: [0.0, 10.0]       # L1 regularization (reg_alpha in sklearn API)
+        n_estimators: [100, 1000]
+        min_child_weight: [1, 10]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "kelly"
+    data_sources:
+      market_data: "csv"
+      sentiment_feed: "finbert"
+      indicators: ["RSI", "MACD", "ATR"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Rigel Bot ─ neural_network ────────────────────────────────────────────
+  Rigel_Bot:
+    name: "Rigel_Bot"
+    domain: "FX Mean Reversion"
+    algorithm:
+      type: "neural_network"
+      parameters:
+        architecture: "LSTM"
+        objective: "regression"
+        eval_metric: "sharpe"
+        loss_function: "mse"
+        indicator_window: 14
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 2.0
+          sector_weights: "fx_macro_balanced"
+      hyperparameters:
+        hidden_layers: [2, 5]
+        neurons_per_layer: [64, 512]
+        activation: ["relu", "tanh"]
+        optimizer: ["Adam", "RMSprop"]
+        learning_rate: [0.0001, 0.01]
+        batch_size: [32, 256]
+        epochs: [50, 500]
+        dropout_rate: [0.1, 0.5]
+        weight_decay: [0.0, 0.01]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "fixed"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "finbert"
+      indicators: ["RSI", "MACD", "ATR", "Bollinger"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Draco Bot ─ sentiment_nlp ─────────────────────────────────────────────
+  Draco_Bot:
+    name: "Draco_Bot"
+    domain: "Multi-Factor Sentiment"
+    algorithm:
+      type: "sentiment_nlp"
+      parameters:
+        objective: "classification"
+        eval_metric: "auc"
+        loss_function: "cross_entropy"
+        indicator_window: 14
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 2.0
+          sector_weights: "balanced"
+      hyperparameters:
+        learning_rate: [0.0001, 0.01]
+        batch_size: [32, 256]
+        epochs: [50, 500]
+        dropout_rate: [0.1, 0.5]
+        max_seq_length: [64, 512]
+        num_attention_heads: [2, 16]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "volatility_based"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "finbert"
+      indicators: ["RSI", "MACD", "ATR", "Sentiment_Score"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "telegram"
+
+  # ── Procryon Bot ─ neural_network ─────────────────────────────────────────
+  Procryon_Bot:
+    name: "Procryon_Bot"
+    domain: "MT5 Spread Arbitrage"
+    algorithm:
+      type: "neural_network"
+      parameters:
+        architecture: "KNN_FNN"
+        objective: "classification"
+        eval_metric: "sharpe"
+        loss_function: "cross_entropy"
+        indicator_window: 5
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 1.0
+          sector_weights: "balanced"
+      hyperparameters:
+        knn_k: [3, 15]
+        hidden_layers: [2, 4]
+        neurons_per_layer: [32, 256]
+        activation: ["relu", "tanh"]
+        learning_rate: [0.0001, 0.01]
+        batch_size: [32, 128]
+        epochs: [50, 300]
+        dropout_rate: [0.1, 0.4]
+    risk_management:
+      stop_loss: "1_ATR"
+      take_profit: "2_ATR"
+      risk_per_trade: "0.5%"
+      position_sizing: "fixed"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["Spread_bps", "Slippage_bps", "Venue_Confidence"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Orion Bot ─ technical_strategy ───────────────────────────────────────
+  Orion_Bot:
+    name: "Orion_Bot"
+    domain: "Minerals & Commodities"
+    algorithm:
+      type: "technical_strategy"
+      parameters:
+        objective: "classification"
+        eval_metric: "sharpe"
+        loss_function: "cross_entropy"
+        indicator_window: 14
+        thresholds:
+          rsi_overbought: 65
+          rsi_oversold: 35
+        constraints:
+          leverage_limit: 2.0
+          sector_weights: "commodities_overweight"
+      hyperparameters:
+        rsi_period: [10, 21]
+        rsi_overbought_threshold: [60, 75]
+        rsi_oversold_threshold: [25, 40]
+        atr_multiplier_sl: [1.0, 3.0]
+        atr_multiplier_tp: [2.0, 5.0]
+        volume_filter_ratio: [1.0, 3.0]
+        scan_top_n: [2, 6]
+    risk_management:
+      stop_loss: "1.5_ATR"
+      take_profit: "3_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "fixed"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["RSI", "ATR", "Volume"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Dione Bot ─ optimizer ─────────────────────────────────────────────────
+  Dione_Bot:
+    name: "Dione_Bot"
+    domain: "Options Mispricing"
+    algorithm:
+      type: "optimizer"
+      parameters:
+        objective: "custom"
+        eval_metric: "sharpe"
+        loss_function: "custom"
+        indicator_window: 15
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 2.5
+          sector_weights: "balanced"
+      hyperparameters:
+        zscore_entry: [1.5, 3.0]
+        zscore_exit: [0.0, 1.0]
+        lookback_days: [10, 60]
+        min_spread_pct: [0.5, 3.0]
+        max_contracts: [1, 10]
+        mutation_rate: [0.01, 0.1]
+        crossover_rate: [0.5, 0.9]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "fixed"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["FVFI", "ROVL", "IV_Surface", "Put_Call_Ratio"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Cephei Bot ─ optimizer (Planned) ─────────────────────────────────────
+  Cephei_Bot:
+    name: "Cephei_Bot"
+    domain: "Volatility Arbitrage"
+    algorithm:
+      type: "optimizer"
+      parameters:
+        objective: "custom"
+        eval_metric: "sharpe"
+        loss_function: "custom"
+        indicator_window: 20
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 2.0
+          sector_weights: "balanced"
+      hyperparameters:
+        iv_rv_spread_threshold: [0.01, 0.10]
+        vol_lookback: [10, 60]
+        hedge_ratio: [0.5, 1.5]
+        rebalance_period: [1, 10]
+        mutation_rate: [0.01, 0.1]
+        crossover_rate: [0.5, 0.9]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "volatility_based"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["IV", "RV", "VIX", "Term_Structure"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ── Jupicita Bot ─ optimizer ──────────────────────────────────────────────
+  Jupicita_Bot:
+    name: "Jupicita_Bot"
+    domain: "Small Cap Pairs Trading"
+    algorithm:
+      type: "optimizer"
+      parameters:
+        objective: "custom"
+        eval_metric: "sharpe"
+        loss_function: "custom"
+        indicator_window: 20
+        thresholds:
+          rsi_overbought: 70
+          rsi_oversold: 30
+        constraints:
+          leverage_limit: 2.0
+          sector_weights: "pairs_neutral"
+      hyperparameters:
+        zscore_entry: [1.5, 3.0]
+        zscore_exit: [0.0, 0.5]
+        lookback_days: [20, 120]
+        hedge_ratio: [0.5, 2.0]
+        max_pair_divergence: [2.0, 4.0]
+        mutation_rate: [0.01, 0.1]
+        crossover_rate: [0.5, 0.9]
+    risk_management:
+      stop_loss: "2_ATR"
+      take_profit: "4_ATR"
+      risk_per_trade: "1%"
+      position_sizing: "kelly"
+    data_sources:
+      market_data: "broker_api"
+      sentiment_feed: "news_api"
+      indicators: ["RSI", "Cointegration_Score", "Spread_ZScore"]
+    logging:
+      format: "json"
+      destination: "mysql"
+      notify: "slack"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # TEMPLATE — copy this block when adding a new bot, fill in all placeholders
+  # ─────────────────────────────────────────────────────────────────────────
   Bot_Template:
     name: "<Bot_Name>"
     domain: "<Asset_Class_or_Strategy>"

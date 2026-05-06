@@ -63,6 +63,14 @@ except (ImportError, OSError, RuntimeError, ValueError) as exc:
 else:
     ALTAIR_IMPORT_ERROR = None
 
+try:
+    from cygnus_bot import app as cygnus_app
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    cygnus_app = None
+    CYGNUS_IMPORT_ERROR = str(exc)
+else:
+    CYGNUS_IMPORT_ERROR = None
+
 from draco_bot import app as draco_app
 from vega_bot import app as vega_app
 from frontend.components.ibkr_gateway_client import (
@@ -1029,6 +1037,8 @@ app.mount("/draco", draco_app)
 app.mount("/vega", vega_app)
 if altair_app is not None:
     app.mount("/altair", altair_app)
+if cygnus_app is not None:
+    app.mount("/cygnus", cygnus_app)
 
 # ── Cosmic Signal Router ──────────────────────────────────────────────────────
 try:
@@ -1060,6 +1070,7 @@ _BOT_SIGNAL_META: dict[str, dict] = {
     "Cephei":   {"fund": "Mansa Cephei",        "strategy": "Volatility Arb"},
     "Rhea":     {"fund": "Mansa ADI",           "strategy": "Intra-Day / Swing"},
     "Jupicita": {"fund": "Mansa Smalls",        "strategy": "Pairs Trading"},
+    "Cygnus":   {"fund": "Mansa Short Fund",    "strategy": "Relative Value Arbitrage"},
 }
 
 _VALID_BOTS = sorted(_BOT_SIGNAL_META.keys())

@@ -3,7 +3,7 @@ param(
     [ValidateSet(
         "Titan", "Vega", "Rigel", "Dogon", "Orion",
         "Draco", "Altair", "Procryon", "Hydra", "Triton",
-        "Dione", "Cephei", "Rhea", "Jupicita"
+        "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus"
     )]
     [string]$Bot,
 
@@ -130,6 +130,8 @@ if ($resolvedBroker -eq "AUTO") {
         $resolvedBroker = "AXI"
     } elseif ($Bot -eq "Rigel") {
         $resolvedBroker = "FTMO"
+    } elseif ($Bot -eq "Cygnus") {
+        $resolvedBroker = "IBKR"
     } else {
         $resolvedBroker = "ALPACA"
     }

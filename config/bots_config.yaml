@@ -170,3 +170,41 @@ bots:
     notification:
       discord:
         required_indicators: ["ARIMA", "LSTM", "RSI"]
+
+  # ── Cygnus Bot ─────────────────────────────────────────────────────────────
+  Cygnus_Bot:
+    bot_id: 15
+    display_name: "Cygnus"
+    fund: "Mansa Short Fund"
+    strategy_label: "Cygnus_Relative_Value_Arb"
+    strategy_name: "Relative Value Arbitrage"
+    module: "cygnus_bot.py"
+    screener_file: "cygnus_pairs.csv"
+    universe: "Pairs_Relative_Value"
+    timeframe: "1h"
+    position_size: 2500
+
+    execution:
+      broker: "ibkr"
+      mode: "paper"
+      enabled: false
+      order_type: "market"
+
+    market_data:
+      provider: "yfinance"
+      ibkr_gateway_url: "https://localhost:5000"
+      intraday_bar: "15min"
+      swing_bar: "1h"
+      lookback_days: 90
+
+    risk_rules:
+      min_samples: 60
+      cointegration_pvalue_max: 0.10
+      zscore_entry_short: 1.5
+      zscore_entry_long: -1.5
+      max_daily_loss_pct: 1.5
+      max_open_positions: 6
+
+    notification:
+      discord:
+        required_indicators: ["Bollinger", "SMI", "Cointegration", "RSI"]

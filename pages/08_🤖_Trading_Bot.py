@@ -65,6 +65,7 @@ DEFAULT_LAUNCH_BOTS = [
     "Cephei",
     "Rhea",
     "Jupicita",
+    "Cygnus",
 ]
 
 try:
@@ -971,7 +972,7 @@ def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
     _VALID_BOTS = [
         "Titan", "Dogon", "Orion", "Rigel", "Vega",
         "Draco", "Altair", "Procryon", "Hydra", "Triton",
-        "Dione", "Cephei", "Rhea", "Jupicita",
+        "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus",
     ]
     _SAFE = set(_VALID_BOTS) | {"All Bots"}
     if bot_name not in _SAFE:
@@ -1932,7 +1933,7 @@ with tab2:
             "🤖 Bot", [
                 "All Bots", "Titan", "Dogon", "Orion", "Rigel", "Vega",
                 "Draco", "Altair", "Procryon", "Hydra", "Triton",
-                "Dione", "Cephei", "Rhea", "Jupicita",
+                "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus",
             ],
             key="perf_bot_filter",
         )
@@ -2116,7 +2117,7 @@ with tab3:
         _sig_bot = st.selectbox(
             "🤖 Bot",
             ["Titan", "Vega", "Rigel", "Dogon", "Orion", "Draco", "Altair",
-             "Procryon", "Hydra", "Triton", "Dione", "Cephei", "Rhea", "Jupicita"],
+             "Procryon", "Hydra", "Triton", "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus"],
             key="sig_bot_select",
         )
     with _sig_c2:

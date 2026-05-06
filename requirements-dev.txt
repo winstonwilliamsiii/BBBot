@@ -35,6 +35,7 @@ watchdog>=3.0.0  # File watching for auto-reload
 # Dogon ETF ML training
 mlflow==3.11.1
 numpy==2.4.4
+optuna>=4.3.0
 pyarrow==23.0.1
 scipy==1.17.1
 xgboost>=2.0.0

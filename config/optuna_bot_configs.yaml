@@ -50,7 +50,7 @@
 # Procryon_Bot    neural_network       Prop Trading       KNN + FNN Arb
 # Orion_Bot       technical_strategy   Mansa Minerals     GoldRSI
 # Dione_Bot       optimizer            Mansa Options      Put-Call Parity
-# Cephei_Bot      optimizer (Planned)  Mansa Cephei       Volatility Arbitrage
+# Cephei_Bot      optimizer (Planned)  Mansa Functions Options  Options CFD Trading
 # Jupicita_Bot    optimizer            Mansa Smalls       Pairs Trading
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -540,7 +540,7 @@ bot_configs:
   # ── Cephei Bot ─ optimizer (Planned) ─────────────────────────────────────
   Cephei_Bot:
     name: "Cephei_Bot"
-    domain: "Volatility Arbitrage"
+    domain: "Options CFD Trading"
     algorithm:
       type: "optimizer"
       parameters:

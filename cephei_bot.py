@@ -1,6 +1,6 @@
 """Cephei Bot FastAPI service.
 
-Volatility arbitrage API with ML signal generation, regime filtering,
+Options and CFD API with ML signal generation, regime filtering,
 and execution hooks for broker integration.
 """
 

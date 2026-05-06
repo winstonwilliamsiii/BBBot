@@ -71,6 +71,14 @@ except (ImportError, OSError, RuntimeError, ValueError) as exc:
 else:
     CYGNUS_IMPORT_ERROR = None
 
+try:
+    from cephei_bot import app as cephei_app
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    cephei_app = None
+    CEPHEI_IMPORT_ERROR = str(exc)
+else:
+    CEPHEI_IMPORT_ERROR = None
+
 from draco_bot import app as draco_app
 from vega_bot import app as vega_app
 from frontend.components.ibkr_gateway_client import (
@@ -1039,6 +1047,8 @@ if altair_app is not None:
     app.mount("/altair", altair_app)
 if cygnus_app is not None:
     app.mount("/cygnus", cygnus_app)
+if cephei_app is not None:
+    app.mount("/cephei", cephei_app)
 
 # ── Cosmic Signal Router ──────────────────────────────────────────────────────
 try:
@@ -1067,10 +1077,10 @@ _BOT_SIGNAL_META: dict[str, dict] = {
     "Hydra":    {"fund": "Mansa Health",        "strategy": "Momentum Strategy"},
     "Triton":   {"fund": "Mansa Transportation", "strategy": "Pending"},
     "Dione":    {"fund": "Mansa Options",       "strategy": "Put Call Parity"},
-    "Cephei":   {"fund": "Mansa Cephei",        "strategy": "Volatility Arb"},
+    "Cephei":   {"fund": "Mansa Functions Options", "strategy": "Options CFD"},
     "Rhea":     {"fund": "Mansa ADI",           "strategy": "Intra-Day / Swing"},
     "Jupicita": {"fund": "Mansa Smalls",        "strategy": "Pairs Trading"},
-    "Cygnus":   {"fund": "Mansa Short Fund",    "strategy": "Relative Value Arbitrage"},
+    "Cygnus":   {"fund": "Mansa Shorts Fund",   "strategy": "Relative Value Arbitrage"},
 }
 
 _VALID_BOTS = sorted(_BOT_SIGNAL_META.keys())

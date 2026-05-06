@@ -59,7 +59,7 @@ NEGATIVE_TERMS = {
 class CygnusConfig:
     name: str = "Cygnus"
     runtime_name: str = "Cygnus_Bot"
-    fund: str = "Mansa Short Fund"
+    fund: str = "Mansa Shorts Fund"
     strategy: str = "Relative Value Arbitrage with Short Bias and Long Bias"
     ml_model: str = "Siamese Neural Network"
     fastapi_route_prefix: str = "/cygnus"
@@ -550,7 +550,7 @@ cygnus_bot = CygnusBot()
 app = FastAPI(
     title="Cygnus Bot API",
     description=(
-        "Relative value arbitrage service surface for Mansa Short Fund with "
+        "Relative value arbitrage service surface for Mansa Shorts Fund with "
         "Bollinger/SMI/cointegration/RSI divergence analytics, NLP scoring, "
         "Discord notifications, MySQL persistence, and MLflow logging."
     ),

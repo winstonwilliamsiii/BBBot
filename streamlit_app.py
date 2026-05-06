@@ -871,7 +871,7 @@ def main():
         "Triton": "IYT",
         "Dione": "VT",
         "Dogon": "VTI",
-        "Cephei": "SH",
+        "Cephei": "SPY",
         "Rigel": "UUP",
         "Orion": "GLD",
         "Rhea": "GD",

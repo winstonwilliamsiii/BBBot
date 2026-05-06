@@ -175,7 +175,7 @@ bots:
   Cygnus_Bot:
     bot_id: 15
     display_name: "Cygnus"
-    fund: "Mansa Short Fund"
+    fund: "Mansa Shorts Fund"
     strategy_label: "Cygnus_Relative_Value_Arb"
     strategy_name: "Relative Value Arbitrage"
     module: "cygnus_bot.py"

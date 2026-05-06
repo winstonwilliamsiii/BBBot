@@ -21,7 +21,7 @@ Complete reference for all trading bots in the Bentley platform.
 | [Rigel](#rigel) | ~11 | Mansa Forex | Mean Reversion (EMA + RSI + BB) | Forex (7 pairs) | Active |
 | [Rhea](#rhea) | 12 | Mansa ADI | ADI Intra-Day / Swing | US Equities | Scaffold |
 | [Jupicita](#jupicita) | 13 | Mansa Smalls | Pairs Trading (Z-score) | Small-cap Equities | Scaffold |
-| [Cephei](#cephei) | — | Mansa Cephei | Volatility Arbitrage | Options / Vol Products | Planned |
+| [Cephei](#cephei) | — | Mansa Functions Options | Options CFD | Options / CFD | Active |
 
 ---
 
@@ -179,9 +179,9 @@ Complete reference for all trading bots in the Bentley platform.
 
 ## Cephei
 
-- **Fund**: Mansa Cephei | **Strategy**: Volatility Arbitrage (Planned)
-- **Algorithm**: IV vs. RV edge (IV - RV); short vol when IV > RV, long vol when IV < RV; Black-Scholes IV inversion + GARCH/EWMA realized vol
-- **Status**: Planned — no bot file or YAML config exists yet; registered in `Main.py` only
+- **Fund**: Mansa Functions Options | **Strategy**: Options CFD
+- **Algorithm**: IV vs. RV edge (IV - RV); GARCH/EWMA realized vol; Siamese NN mispricing score; LightGBM regime classifier; multi-leg IBKR CFD options execution
+- **Status**: Active — `cephei_bot.py` operational with Optuna tuning, FastAPI endpoints, and IBKR CFD integration
 - **Docs**: [CEPHEI_README.md](root/CEPHEI_README.md)
 
 ---

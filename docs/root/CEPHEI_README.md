@@ -1,15 +1,15 @@
-# Cephei Bot — Strategy Reference (Planned)
+# Cephei Bot — Strategy Reference
 
 ## Overview
 
 | Field | Value |
 |-------|-------|
-| **Fund** | Mansa Cephei |
-| **Strategy** | Volatility Arbitrage |
-| **Asset Class** | Options / Volatility products |
-| **Status** | **Planned — Not yet implemented** |
+| **Fund** | Mansa Functions Options |
+| **Strategy** | Options CFD Trading |
+| **Asset Class** | Options / CFD |
+| **Status** | **Active — `cephei_bot.py` operational** |
 
-> **Note**: Cephei is registered in the bot registry (`Main.py`) but has no implementation file or config YAML yet. This document records the planned strategy for reference.
+> **Note**: Cephei_Bot (`cephei_bot.py`) is operational. It provides FastAPI endpoints (`/analyze`, `/optuna_tune`, `/health`) with Siamese NN signal generation, LightGBM regime classification, GARCH vol forecasting, and IBKR CFD options execution hooks. IBKR API URL: `https://api.ibkr.com/v1/cfd/options`.
 
 ---
 

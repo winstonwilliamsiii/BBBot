@@ -696,7 +696,7 @@ class ProcryonBot:
             }
 
         ticket = result.get("ticket") or result.get("order") or result.get("retcode")
-        return {
+        trade_result = {
             "success": bool(result.get("success", result.get("retcode") == 10009)),
             "ticket": ticket,
             "broker": broker_name,
@@ -705,6 +705,21 @@ class ProcryonBot:
             "volume": volume,
             "raw": result,
         }
+        try:
+            from frontend.utils.discord_notify import notify_trade
+            notify_trade(
+                bot_name="Procryon",
+                symbol=symbol,
+                side=action.lower(),
+                qty=volume,
+                status="filled" if trade_result["success"] else "failed",
+                mode=self.config.trading_platform,
+                broker=broker_name,
+                fund_name=getattr(self.config, "fund_name", "Prop Trading Fund"),
+            )
+        except Exception:
+            pass
+        return trade_result
 
     def log_training_run(self, metrics: dict[str, float]) -> dict[str, Any]:
         if not MLFLOW_AVAILABLE or get_mlflow_tracking_uri is None:

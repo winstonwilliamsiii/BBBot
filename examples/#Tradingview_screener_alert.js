@@ -1,141 +1,140 @@
-#Tradingview_screener_alert
-# This script listens for TradingView webhook alerts and processes them.
-# It extracts relevant information from the alert payload and prints it to the console.
-#Node.js service that posts combined alerts (top gainers/losers + your portfolio moves >5%) to a Discord channel via a webhook. 
+// Tradingview_screener_alert.js
+// Node.js service — posts combined alerts (top gainers/losers + per-bot universe moves >=5%)
+// to the Discord #general channel via DISCORD_BOT_TALK_WEBHOOK for all 15 Bentley Bots.
 
-// index.js
 require('dotenv').config();
 const axios = require('axios');
 const cron = require('node-cron');
 
-const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
+// Webhook resolution: DISCORD_BOT_TALK_WEBHOOK -> DISCORD_WEBHOOK_URL -> DISCORD_WEBHOOK
+const DISCORD_WEBHOOK = (
+  process.env.DISCORD_BOT_TALK_WEBHOOK ||
+  process.env.DISCORD_WEBHOOK_URL ||
+  process.env.DISCORD_WEBHOOK ||
+  process.env.DISCORD_WEBHOOK_PROD ||
+  ''
+).trim();
 
-// ---------- Data sources (replace with your preferred APIs) ----------
+// --- Bot Universe Definitions (sourced from bentley-bot/config/*.csv) -----------
+const BOT_UNIVERSES = {
+  'Titan'    : { fund: 'Mansa Tech',             universe: 'Mag7+Tech',                     tickers: ['AAPL','MSFT','NVDA','AVGO','AMD','AMZN','GOOGL','META'] },
+  'Vega'     : { fund: 'Mansa Retail',            universe: 'Retail_Breakouts',              tickers: ['WMT','COST','TGT','TJX','ROST','BURL','ULTA','ANF'] },
+  'Draco'    : { fund: 'Mansa Money Bag',         universe: 'Sentiment_Leaders',             tickers: ['KLAR','HOOD','AFFM','COIN','OPFI','JPM','BAC'] },
+  'Altair'   : { fund: 'Mansa AI Fund',           universe: 'AI_News_Momentum',              tickers: ['QBTS','RGTI','QSI','QS','SOUN','NBIS','IONQ'] },
+  'Procryon' : { fund: 'Prop Trading Fund',       universe: 'MT5_FX_CFD_Crypto_CFD',        tickers: ['COIN','MSTR','MARA','RIOT','CLSK','IREN','CIFR','HUT'] },
+  'Hydra'    : { fund: 'Mansa Health',            universe: 'Healthcare_Momentum',           tickers: ['LLY','ABBV','BSX','ISRG','VRTX','DXCM','HCA','GILD'] },
+  'Triton'   : { fund: 'Mansa Transportation',    universe: 'Transportation_Watchlist',      tickers: ['UBER','FDX','UPS','UNP','CSX','NSC','JBHT','DAL'] },
+  'Dione'    : { fund: 'Mansa Options',           universe: 'Options_Mispricing',            tickers: ['SPY','QQQ','IWM','TSLA','NVDA','AAPL','AMZN','META'] },
+  'Dogon'    : { fund: 'Mansa ETF',               universe: 'Core_ETF_Basket',               tickers: ['SPY','VTI','QQQ','DIA','IWM','XLK','XLF','XLV'] },
+  'Rigel'    : { fund: 'Mansa FOREX',             universe: 'Forex_Macro',                   tickers: ['UUP','FXE','FXY','FXB','FXA','FXC','CYB','BZF'] },
+  'Orion'    : { fund: 'Mansa Minerals',          universe: 'Minerals_Commodities',          tickers: ['GLD','GDX','NEM','FCX','SCCO','TECK','AA','RIO'] },
+  'Rhea'     : { fund: 'Mansa ADI',               universe: 'Aerospace_Defense_Industrials', tickers: ['SIDU','AXON','NNE','GD','NOC','KTOS','HON','FLY','IR','XTIA'] },
+  'Jupicita' : { fund: 'Mansa Smalls',            universe: 'Small_Cap_Pairs',               tickers: ['SOFI','HOOD','UPST','AFRM','IONQ','QBTS','RUN','ARRY'] },
+  'Cephei'   : { fund: 'Mansa Functions Options', universe: 'Options_CFD',                   tickers: ['SPY','QQQ','IWM','AAPL','TSLA','NVDA','AMZN','META'] },
+  'Cygnus'   : { fund: 'Mansa Shorts Fund',       universe: 'Pairs_Relative_Value',          tickers: ['XLF','XLK','XLE','SMH','XLI','IWM'] },
+};
 
-// Simple Yahoo Finance quote fetch
-async function fetchQuote(symbol) {
-  try {
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
-    const { data } = await axios.get(url, { timeout: 10000 });
-    const q = data.quoteResponse.result[0];
-    if (!q) return null;
-    return {
-      symbol: q.symbol,
-      price: q.regularMarketPrice,
-      changePercent: q.regularMarketChangePercent,
-      currency: q.currency
-    };
-  } catch (err) {
-    console.error(`Quote error ${symbol}:`, err.message);
-    return null;
-  }
-}
+// All unique tickers across every bot -- used for top-gainers/losers scan
+const ALL_TICKERS = [...new Set(Object.values(BOT_UNIVERSES).flatMap(b => b.tickers))];
 
-// Example “gainers/losers” via Yahoo Finance screener endpoints or your provider.
-// Replace stubs with your authenticated API if needed.
-async function fetchTopGainers(limit = 5) {
-  try {
-    // Placeholder: Replace with your provider’s gainers endpoint
-    // For demo, pick a static list then sort by daily change.
-    const symbols = ['AAPL', 'MSFT', 'TSLA', 'NVDA', 'AMD', 'META', 'AMZN'];
-    const quotes = await Promise.all(symbols.map(fetchQuote));
-    return quotes
-      .filter(q => q)
-      .sort((a, b) => b.changePercent - a.changePercent)
-      .slice(0, limit);
-  } catch (err) {
-    console.error('Gainers error:', err.message);
-    return [];
-  }
-}
-
-async function fetchTopLosers(limit = 5) {
-  try {
-    const symbols = ['AAPL', 'MSFT', 'TSLA', 'NVDA', 'AMD', 'META', 'AMZN'];
-    const quotes = await Promise.all(symbols.map(fetchQuote));
-    return quotes
-      .filter(q => q)
-      .sort((a, b) => a.changePercent - b.changePercent)
-      .slice(0, limit);
-  } catch (err) {
-    console.error('Losers error:', err.message);
-    return [];
-  }
-}
-
-// ---------- Portfolio alerts (>5% move) ----------
-async function portfolioAlerts(portfolioSymbols, thresholdPct = 5) {
-  const alerts = [];
-  for (const s of portfolioSymbols) {
-    const q = await fetchQuote(s);
-    if (q && Math.abs(q.changePercent) >= thresholdPct) {
-      alerts.push(q);
+// --- Yahoo Finance batched quote helper ------------------------------------------
+async function fetchQuotes(symbols) {
+  const results = {};
+  const chunkSize = 20;
+  for (let i = 0; i < symbols.length; i += chunkSize) {
+    const chunk = symbols.slice(i, i + chunkSize);
+    try {
+      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(chunk.join(','))}`;
+      const { data } = await axios.get(url, { timeout: 12000 });
+      for (const q of (data.quoteResponse?.result || [])) {
+        results[q.symbol] = {
+          symbol: q.symbol,
+          price: q.regularMarketPrice,
+          changePercent: q.regularMarketChangePercent,
+          currency: q.currency || 'USD',
+        };
+      }
+    } catch (err) {
+      console.error(`Quote batch error [${chunk.join(',')}]:`, err.message);
     }
   }
-  return alerts;
+  return results;
 }
 
-// ---------- Discord posting ----------
+// --- Formatting helper ----------------------------------------------------------
+const fmt = q => `\`${q.symbol}\` ${q.changePercent >= 0 ? '+' : ''}${q.changePercent.toFixed(2)}% | $${q.price.toFixed(2)}`;
+
+// --- Discord posting (handles >10 embed limit by splitting) --------------------
 async function postToDiscord(content, embeds = []) {
-  try {
-    await axios.post(DISCORD_WEBHOOK, { content, embeds });
-    console.log('Posted to Discord.');
-  } catch (err) {
-    console.error('Discord post error:', err.message);
+  if (!DISCORD_WEBHOOK) {
+    console.warn('Discord webhook not configured -- set DISCORD_BOT_TALK_WEBHOOK');
+    return;
+  }
+  const chunks = [];
+  for (let i = 0; i < embeds.length; i += 10) chunks.push(embeds.slice(i, i + 10));
+  for (const chunk of chunks) {
+    try {
+      await axios.post(DISCORD_WEBHOOK, { content, embeds: chunk });
+      console.log(`Posted ${chunk.length} embed(s) to Discord.`);
+    } catch (err) {
+      console.error('Discord post error:', err.message);
+    }
   }
 }
 
-// ---------- Compose and send combined alert ----------
+// --- Main combined alert -------------------------------------------------------
 async function runCombinedAlert() {
-  const portfolio = ['AAPL', 'MSFT', 'TSLA']; // replace with your holdings
-  const [gainers, losers, portfolioMoves] = await Promise.all([
-    fetchTopGainers(5),
-    fetchTopLosers(5),
-    portfolioAlerts(portfolio, 5)
-  ]);
+  console.log(`[${new Date().toISOString()}] Running combined alert for all 15 bots...`);
 
-  const fmt = q =>
-    `${q.symbol} ${q.changePercent.toFixed(2)}% | ${q.currency} ${q.price}`;
+  // Single batched fetch for all tickers across all bot universes
+  const quotes = await fetchQuotes(ALL_TICKERS);
 
-  const content = 'Daily Market & Portfolio Alerts';
+  // Top Gainers & Losers across the full combined universe
+  const allQuotes = Object.values(quotes).filter(q => q.changePercent != null);
+  const gainers = [...allQuotes].sort((a, b) => b.changePercent - a.changePercent).slice(0, 5);
+  const losers  = [...allQuotes].sort((a, b) => a.changePercent - b.changePercent).slice(0, 5);
+
   const embeds = [
     {
-      title: 'Top Gainers',
-      description:
-        gainers.length
-          ? gainers.map(fmt).join('\n')
-          : 'No data',
-      color: 3066993 // green
+      title: '🚀 Top Gainers — All Bot Universes',
+      description: gainers.length ? gainers.map(fmt).join('\n') : 'No data',
+      color: 3066993,  // green
     },
     {
-      title: 'Top Losers',
-      description:
-        losers.length
-          ? losers.map(fmt).join('\n')
-          : 'No data',
-      color: 15158332 // red
+      title: '🔻 Top Losers — All Bot Universes',
+      description: losers.length ? losers.map(fmt).join('\n') : 'No data',
+      color: 15158332, // red
     },
-    {
-      title: 'Portfolio Moves ≥ 5%',
-      description:
-        portfolioMoves.length
-          ? portfolioMoves.map(fmt).join('\n')
-          : 'No holdings exceeded threshold',
-      color: 3447003 // blue
-    }
   ];
 
-  await postToDiscord(content, embeds);
+  // Per-bot universe moves >= 5%
+  for (const [botName, botInfo] of Object.entries(BOT_UNIVERSES)) {
+    const moves = botInfo.tickers
+      .map(t => quotes[t])
+      .filter(q => q && Math.abs(q.changePercent) >= 5)
+      .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+
+    embeds.push({
+      title: `🤖 ${botName} (${botInfo.fund}) — ${botInfo.universe}`,
+      description: moves.length
+        ? moves.map(q => `${fmt(q)} ${q.changePercent >= 5 ? '🔥' : '⚠️'}`).join('\n')
+        : '✅ No holdings moved >= 5%',
+      color: moves.length ? 15105570 : 5592575, // orange if alerts, teal if quiet
+      footer: { text: `Universe: ${botInfo.tickers.join(', ')}` },
+    });
+  }
+
+  await postToDiscord('📊 **Bentley Bot — Daily Market & Universe Alerts**', embeds);
 }
 
-// ---------- Schedule (e.g., weekdays 9:30, 12:00, 15:30 ET) ----------
-cron.schedule('30 14 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' }); // 9:30 ET
-cron.schedule('0 17 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' });  // 12:00 ET
-cron.schedule('30 20 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' }); // 15:30 ET
+// --- Schedule: weekdays 9:30, 12:00, 15:30 ET ----------------------------------
+cron.schedule('30 9 * * 1-5',  runCombinedAlert, { timezone: 'America/New_York' }); // 9:30 ET
+cron.schedule('0 12 * * 1-5',  runCombinedAlert, { timezone: 'America/New_York' }); // 12:00 ET
+cron.schedule('30 15 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' }); // 15:30 ET
+
+console.log('Bot_Talk screener alert service started. Scheduled for 9:30, 12:00, 15:30 ET weekdays.');
 
 // Manual run for testing:
 if (require.main === module) {
   runCombinedAlert();
 }
-
-

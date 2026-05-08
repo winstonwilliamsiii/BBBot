@@ -179,10 +179,25 @@ def execute_delta_neutral(ticker: str, signal: str) -> dict:
     try:
         response = requests.post(IBKR_API_URL, json=payload, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        return response.json()
+        result = response.json()
     except requests.RequestException as exc:
         logger.error("Execution request failed: %s", exc)
         return {"status": "error", "detail": str(exc)}
+    try:
+        from frontend.utils.discord_notify import notify_trade
+        notify_trade(
+            bot_name="Cephei",
+            symbol=ticker,
+            side="buy" if signal.lower() in ("buy", "long") else "sell",
+            qty=1,
+            status=result.get("status", "submitted"),
+            mode="live",
+            broker="ibkr",
+            fund_name="Mansa Functions Options",
+        )
+    except Exception:
+        pass
+    return result
 
 
 def monitor_greeks(ticker: str) -> dict:

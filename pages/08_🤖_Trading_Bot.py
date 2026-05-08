@@ -615,13 +615,31 @@ def _existing_trade_tables() -> list[str]:
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = DATABASE()
-              AND table_name IN ('trades_history', 'titan_trades')
+              AND table_name IN (
+                  'trades_history',
+                  'titan_trades',
+                  'bot_signal_events',
+                  'rhea_trade_events',
+                  'vega_trades'
+              )
             ORDER BY table_name
         """)
         with engine.connect() as conn:
             return [str(row[0]) for row in conn.execute(q).fetchall()]
     except Exception:
         return []
+
+
+def _json_price_sql(json_col: str) -> str:
+    return (
+        "COALESCE("
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.filled_avg_price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.limit_price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.entry_price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.exit_price')) AS DECIMAL(18,6))"
+        ")"
+    )
 
 
 def _trade_events_union_sql() -> str:
@@ -665,6 +683,74 @@ def _trade_events_union_sql() -> str:
                 'titan_trades' AS source_table,
                 {_mode_case_sql()} AS trade_mode
             FROM titan_trades
+            """
+        )
+
+    if "bot_signal_events" in existing:
+        _json_price = _json_price_sql("trade_payload_json")
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                {_json_price} AS price,
+                CASE
+                    WHEN {_json_price} IS NOT NULL THEN ROUND(CAST(qty AS DECIMAL(18,6)) * {_json_price}, 6)
+                    ELSE NULL
+                END AS value,
+                created_at AS timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(bot_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(JSON_UNQUOTE(JSON_EXTRACT(trade_payload_json, '$.order_id')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'bot_signal_events' AS source_table,
+                LOWER(COALESCE(mode, 'paper')) AS trade_mode
+            FROM bot_signal_events
+            """
+        )
+
+    if "rhea_trade_events" in existing:
+        _json_price = _json_price_sql("trade_payload_json")
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                {_json_price} AS price,
+                CASE
+                    WHEN {_json_price} IS NOT NULL THEN ROUND(CAST(qty AS DECIMAL(18,6)) * {_json_price}, 6)
+                    ELSE NULL
+                END AS value,
+                created_at AS timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(bot_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(JSON_UNQUOTE(JSON_EXTRACT(trade_payload_json, '$.order_id')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'rhea_trade_events' AS source_table,
+                LOWER(COALESCE(mode, 'paper')) AS trade_mode
+            FROM rhea_trade_events
+            """
+        )
+
+    if "vega_trades" in existing:
+        parts.append(
+            f"""
+            SELECT
+                trade_id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                'SELL' AS action,
+                1 AS shares,
+                exit_price AS price,
+                pnl AS value,
+                timestamp,
+                'CLOSED' AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(trade_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'vega_trades' AS source_table,
+                {_mode_case_sql()} AS trade_mode
+            FROM vega_trades
             """
         )
 

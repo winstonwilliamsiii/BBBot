@@ -20,6 +20,7 @@ import json
 import subprocess
 import sys
 import os
+import shutil
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -221,8 +222,6 @@ def probe_mlflow_server(base_url: str):
 
 def start_mlflow_server(backend_store_uri: str, port: int = 5000) -> Tuple[bool, str]:
     """Launch MLflow server as a background process. Returns (success, message)."""
-    import shutil
-
     python_exe = sys.executable
     mlflow_cmd = shutil.which("mlflow")
 
@@ -285,6 +284,9 @@ def _run_shell_command(command: list[str], cwd: Path | None = None, timeout: int
 
 def start_docker_compose_services(compose_rel_path: str, services: list[str] | None = None) -> Tuple[bool, str]:
     """Start a docker-compose stack (or selected services) from repo root."""
+    if not shutil.which("docker"):
+        return False, "Docker CLI was not found in PATH. Start Docker Desktop and ensure `docker` is installed."
+
     compose_file = REPO_ROOT / compose_rel_path
     if not compose_file.exists():
         return False, f"Compose file not found: {compose_file}"
@@ -743,6 +745,17 @@ st.markdown("""
         margin: 20px 0 10px 0;
         border: 1px solid #374151;
     }
+    .stButton > button,
+    .stDownloadButton > button,
+    [data-testid="stLinkButton"] {
+        color: #f9fafb !important;
+        font-weight: 600 !important;
+    }
+    .stButton > button:disabled,
+    .stDownloadButton > button:disabled {
+        color: #d1d5db !important;
+        opacity: 1 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -863,6 +876,43 @@ BOT_DEFAULT_BROKERS = {
 
 def get_bot_default_broker(bot_name: str) -> str:
     return BOT_DEFAULT_BROKERS.get(str(bot_name or "").strip(), "AUTO")
+
+
+def resolve_mysql_provider(platform_architecture: dict, platform_health: dict) -> str:
+    """Resolve MySQL provider using both architecture and health payloads."""
+    from_architecture = (
+        platform_architecture.get("data", {})
+        .get("mysql", {})
+        .get("provider")
+    )
+    if from_architecture and str(from_architecture).strip().lower() != "unknown":
+        return str(from_architecture)
+
+    mysql_health = platform_health.get("services", {}).get("mysql", {})
+    from_health = mysql_health.get("provider")
+    if from_health and str(from_health).strip().lower() != "unknown":
+        return str(from_health)
+
+    host = (
+        mysql_health.get("host")
+        or platform_architecture.get("data", {}).get("mysql", {}).get("host")
+        or ""
+    )
+    normalized = str(host).strip().lower()
+    if "railway" in normalized or "rlwy" in normalized:
+        return "railway"
+    if normalized:
+        return "local"
+    return "unknown"
+
+
+def _resolve_powershell_executable() -> str | None:
+    """Resolve an available PowerShell executable on Windows/macOS/Linux."""
+    for candidate in ("powershell.exe", "pwsh.exe", "powershell", "pwsh"):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    return None
 
 
 def get_hydra_control_snapshot() -> dict:
@@ -1182,15 +1232,28 @@ def _admin_broker_action(broker_name: str, action: str) -> dict:
             connector = _admin_get_alpaca_connector()
             if action == "test":
                 account = connector.get_account()
+                message = "Alpaca authenticated" if account else (connector.last_error or "Alpaca test failed")
+                if not account and ("401" in message or "unauthorized" in message.lower()):
+                    message = (
+                        "Alpaca authentication failed (401 Unauthorized). "
+                        "Rotate ALPACA_PAPER_* / ALPACA_LIVE_* keys in .env and Streamlit secrets, "
+                        "then restart Streamlit and FastAPI."
+                    )
                 return {
                     "ok": bool(account),
-                    "message": "Alpaca authenticated" if account else (connector.last_error or "Alpaca test failed"),
+                    "message": message,
                 }
             if action == "refresh":
                 account = connector.get_account()
+                message = "Alpaca session refreshed" if account else (connector.last_error or "Refresh failed")
+                if not account and ("401" in message or "unauthorized" in message.lower()):
+                    message = (
+                        "Alpaca refresh failed (401 Unauthorized). "
+                        "Apply rotated keys and restart bot services."
+                    )
                 return {
                     "ok": bool(account),
-                    "message": "Alpaca session refreshed" if account else (connector.last_error or "Refresh failed"),
+                    "message": message,
                 }
             if action == "orders":
                 open_orders = connector.get_orders(status="open") or []
@@ -1501,10 +1564,13 @@ def build_deployed_bots_df() -> pd.DataFrame:
             except Exception:
                 active_flag = None
 
-        if mode_raw == "on" and status_raw in ("ready", "warning", "placeholder", "active"):
-            status_label = "🟢 RUNNING"
-        elif mode_raw == "off":
+        if mode_raw == "off":
             status_label = "🔴 OFF"
+        elif mode_raw == "on":
+            if status_raw in ("failed", "failure", "error"):
+                status_label = "🔴 ERROR"
+            else:
+                status_label = "🟢 RUNNING"
         elif active_flag is True:
             status_label = "🟢 RUNNING"
         elif active_flag is False:
@@ -1575,8 +1641,18 @@ def run_bot_mode(
             "output": f"Launcher not found: {launcher}",
         }
 
+    shell_exe = _resolve_powershell_executable()
+    if not shell_exe:
+        return {
+            "ok": False,
+            "output": (
+                "No PowerShell executable found in PATH. "
+                "Install PowerShell or add `powershell.exe` / `pwsh.exe` to PATH."
+            ),
+        }
+
     cmd = [
-        "powershell",
+        shell_exe,
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -1665,6 +1741,12 @@ def main():
             if service.get("status") == "healthy"
         )
         catalog_rows = get_bot_catalog_rows()
+        overview_deployed_df = build_deployed_bots_df()
+        active_bots = len(
+            overview_deployed_df[
+                overview_deployed_df["Status"].astype(str).str.startswith("🟢")
+            ]
+        )
         
         # Health metrics
         col1, col2, col3, col4 = st.columns(4)
@@ -1672,19 +1754,15 @@ def main():
         with col1:
             st.metric("Configured Bots", str(len(catalog_rows)))
         with col2:
-            st.metric("Healthy Services", str(healthy_services))
+            st.metric("Active Bots", str(active_bots))
         with col3:
-            mysql_provider = (
-                platform_architecture.get("data", {})
-                .get("mysql", {})
-                .get("provider", "unknown")
+            mysql_provider = resolve_mysql_provider(
+                platform_architecture,
+                platform_health,
             )
             st.metric("MySQL Provider", str(mysql_provider).upper())
         with col4:
-            st.metric(
-                "API Health",
-                str(platform_health.get("status", "unknown")).upper(),
-            )
+            st.metric("Healthy Services", str(healthy_services))
         
         st.markdown("---")
         
@@ -1746,12 +1824,17 @@ def main():
         )
 
         c1, c2, c3 = st.columns(3)
+        unique_funds = {
+            str(row.get("fund", "")).strip()
+            for row in catalog_rows
+            if str(row.get("fund", "")).strip()
+        }
         with c1:
-            st.metric("Mansa Funds", str(len(catalog_rows)))
+            st.metric("Mansa Funds", str(len(unique_funds)))
         with c2:
-            st.metric("Configured Bots", str(len(catalog_rows)))
+            st.metric("Mansa Bots", str(len(catalog_rows)))
         with c3:
-            st.metric("Orchestration Scope", "Forecast + Rebalance")
+            st.metric("Orchestration Scope", "Unified Start/Stop")
 
         st.markdown("**Mansa Capital Fund/Bot Strategy Catalog**")
         catalog_df = pd.DataFrame(catalog_rows).rename(columns={
@@ -1797,556 +1880,10 @@ def main():
 
         st.markdown("---")
 
-        st.subheader("Vega Automation")
-        schedule = get_vega_ibkr_schedule_status()
-        last_event = get_last_bot_mode_event()
-        vega_launch_mode = st.radio(
-            "Vega trading mode",
-            options=["paper", "live"],
-            horizontal=True,
-            key="vega_trading_mode",
-            index=0 if get_bot_launch_mode("Vega", "ibkr") == "paper" else 1,
+        st.info(
+            "Bot-specific automation panels were removed from this page to avoid redundant controls. "
+            "Use unified One-Click controls and the Deployed Bots table below."
         )
-
-        col_a, col_b, col_c, col_d = st.columns(4)
-        with col_a:
-            st.metric("Task", "Configured" if schedule.get("exists") else "Missing")
-        with col_b:
-            st.metric("Next Run", schedule.get("next_run", "Unknown"))
-        with col_c:
-            st.metric("Last Result", schedule.get("last_result", "Unknown"))
-        with col_d:
-            event_status = (last_event or {}).get("status", "n/a")
-            st.metric("Last Vega Status", str(event_status))
-
-        st.caption(f"Selected Vega mode: {vega_launch_mode.upper()}")
-
-        btn_on, btn_off = st.columns(2)
-        with btn_on:
-            if st.button("Vega ON", type="primary", use_container_width=True):
-                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", True)
-                with st.spinner("Running Vega ON..."):
-                    execution = run_bot_mode(
-                        "Vega",
-                        "ON",
-                        vega_launch_mode,
-                        broker="IBKR",
-                    )
-                st.session_state["vega_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Vega ON completed.")
-                else:
-                    st.error("Vega ON failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-        with btn_off:
-            if st.button("Vega OFF", use_container_width=True):
-                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", False)
-                with st.spinner("Running Vega OFF..."):
-                    execution = run_bot_mode(
-                        "Vega",
-                        "OFF",
-                        vega_launch_mode,
-                        broker="IBKR",
-                    )
-                st.session_state["vega_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Vega OFF completed.")
-                else:
-                    st.error("Vega OFF failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-
-        if schedule.get("exists"):
-            st.caption(
-                f"Task {schedule.get('task_name')} status: {schedule.get('status', 'Unknown')}"
-            )
-        else:
-            st.warning(
-                "Vega task is not configured yet. "
-                "Run setup from terminal to register Bentley-Vega."
-            )
-
-        if last_event:
-            st.caption("Latest launcher event (from logs/last_bot_mode_event.json)")
-            st.json(last_event)
-
-        vega_output = st.session_state.get("vega_mode_output")
-        if vega_output:
-            with st.expander("Last Vega Command Output", expanded=False):
-                st.code(vega_output, language="text")
-
-        st.markdown("---")
-        st.subheader("Hydra Operations")
-        hydra_snapshot = get_hydra_control_snapshot()
-        hydra_status = hydra_snapshot.get("status") or {}
-        hydra_health = hydra_snapshot.get("health") or {}
-        hydra_launch_mode = st.radio(
-            "Hydra trading mode",
-            options=["paper", "live"],
-            horizontal=True,
-            key="hydra_trading_mode",
-            index=(
-                0 if get_bot_launch_mode("Hydra", "alpaca") == "paper" else 1
-            ),
-        )
-
-        h1, h2, h3, h4 = st.columns(4)
-        with h1:
-            st.metric(
-                "Hydra Execution",
-                "ON" if hydra_status.get("execution_enabled") else "OFF",
-            )
-        with h2:
-            st.metric(
-                "Latest Hydra Action",
-                str(hydra_status.get("last_analysis", {}).get("action", "N/A")),
-            )
-        with h3:
-            st.metric(
-                "Hydra FastAPI",
-                str(
-                    hydra_health.get("fastapi", {}).get("reachable", False)
-                ).upper(),
-            )
-        with h4:
-            st.metric(
-                "Hydra Airbyte",
-                str(
-                    hydra_health.get("airbyte", {}).get("reachable", False)
-                ).upper(),
-            )
-
-        hydra_btn1, hydra_btn2, hydra_btn3 = st.columns(3)
-        with hydra_btn1:
-            if st.button("Hydra ON", type="primary", use_container_width=True):
-                persist_bot_launch_mode("Hydra", hydra_launch_mode, "alpaca", True)
-                with st.spinner("Running Hydra ON..."):
-                    execution = run_bot_mode(
-                        "Hydra",
-                        "ON",
-                        hydra_launch_mode,
-                        broker="ALPACA",
-                    )
-                st.session_state["hydra_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Hydra ON completed.")
-                else:
-                    st.error("Hydra ON failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-        with hydra_btn2:
-            if st.button("Hydra OFF", use_container_width=True):
-                persist_bot_launch_mode("Hydra", hydra_launch_mode, "alpaca", False)
-                with st.spinner("Running Hydra OFF..."):
-                    execution = run_bot_mode(
-                        "Hydra",
-                        "OFF",
-                        hydra_launch_mode,
-                        broker="ALPACA",
-                    )
-                st.session_state["hydra_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Hydra OFF completed.")
-                else:
-                    st.error("Hydra OFF failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-        with hydra_btn3:
-            if st.button("Bootstrap Hydra", use_container_width=True):
-                result = api_request(
-                    "/hydra/bootstrap",
-                    method="POST",
-                    show_notice=True,
-                )
-                if result:
-                    st.success("Hydra bootstrap completed.")
-                    st.session_state["hydra_bootstrap_result"] = result
-                else:
-                    st.error("Hydra bootstrap failed.")
-
-        hydra_bootstrap_result = st.session_state.get("hydra_bootstrap_result")
-        if hydra_bootstrap_result:
-            with st.expander("Hydra Bootstrap Result", expanded=False):
-                st.json(hydra_bootstrap_result)
-
-        hydra_output = st.session_state.get("hydra_mode_output")
-        if hydra_output:
-            with st.expander("Last Hydra Command Output", expanded=False):
-                st.code(hydra_output, language="text")
-
-        with st.expander("Hydra Health Details", expanded=False):
-            st.json(hydra_snapshot)
-
-        st.markdown("---")
-        st.subheader("Triton Operations")
-        triton_snapshot = get_triton_control_snapshot()
-        triton_status = triton_snapshot.get("status") or {}
-        triton_health = triton_snapshot.get("health") or {}
-        triton_launch_mode = st.radio(
-            "Triton trading mode",
-            options=["paper", "live"],
-            horizontal=True,
-            key="triton_trading_mode",
-            index=(
-                0 if get_bot_launch_mode("Triton", "alpaca") == "paper" else 1
-            ),
-        )
-
-        t1, t2, t3, t4 = st.columns(4)
-        with t1:
-            st.metric(
-                "Triton Execution",
-                "ON" if triton_status.get("execution_enabled") else "OFF",
-            )
-        with t2:
-            st.metric(
-                "Latest Triton Action",
-                str(triton_status.get("last_analysis", {}).get("action", "N/A")),
-            )
-        with t3:
-            st.metric(
-                "Triton FastAPI",
-                str(
-                    triton_health.get("fastapi", {}).get("reachable", False)
-                ).upper(),
-            )
-        with t4:
-            st.metric(
-                "Triton MLflow",
-                str(
-                    triton_health.get("mlflow", {}).get("reachable", False)
-                ).upper(),
-            )
-
-        triton_btn1, triton_btn2, triton_btn3 = st.columns(3)
-        with triton_btn1:
-            if st.button("Triton ON", type="primary", use_container_width=True):
-                persist_bot_launch_mode(
-                    "Triton",
-                    triton_launch_mode,
-                    "alpaca",
-                    True,
-                )
-                with st.spinner("Running Triton ON..."):
-                    execution = run_bot_mode(
-                        "Triton",
-                        "ON",
-                        triton_launch_mode,
-                        broker="ALPACA",
-                    )
-                st.session_state["triton_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Triton ON completed.")
-                else:
-                    st.error("Triton ON failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-
-        with triton_btn2:
-            if st.button("Triton OFF", use_container_width=True):
-                persist_bot_launch_mode(
-                    "Triton",
-                    triton_launch_mode,
-                    "alpaca",
-                    False,
-                )
-                with st.spinner("Running Triton OFF..."):
-                    execution = run_bot_mode(
-                        "Triton",
-                        "OFF",
-                        triton_launch_mode,
-                        broker="ALPACA",
-                    )
-                st.session_state["triton_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Triton OFF completed.")
-                else:
-                    st.error("Triton OFF failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-
-        with triton_btn3:
-            if st.button("Bootstrap Triton", use_container_width=True):
-                result = api_request(
-                    "/triton/bootstrap",
-                    method="POST",
-                    show_notice=True,
-                )
-                if result:
-                    st.success("Triton bootstrap completed.")
-                    st.session_state["triton_bootstrap_result"] = result
-                else:
-                    st.error("Triton bootstrap failed.")
-
-        triton_trade_col1, triton_trade_col2, triton_trade_col3, triton_trade_col4 = st.columns(
-            4
-        )
-        with triton_trade_col1:
-            triton_trade_ticker = st.text_input(
-                "Triton ticker",
-                value="IYT",
-                key="triton_trade_ticker",
-            ).strip().upper()
-        with triton_trade_col2:
-            triton_trade_action = st.selectbox(
-                "Triton action",
-                ["BUY", "SELL"],
-                key="triton_trade_action",
-            )
-        with triton_trade_col3:
-            triton_trade_qty = st.number_input(
-                "Triton quantity",
-                min_value=1.0,
-                value=5.0,
-                step=1.0,
-                key="triton_trade_qty",
-            )
-        with triton_trade_col4:
-            triton_trade_dry_run = st.toggle(
-                "Dry Run",
-                value=True,
-                key="triton_trade_dry_run",
-            )
-
-        if st.button("Execute Triton Trade", use_container_width=True):
-            trade_result = api_request(
-                "/triton/trade",
-                method="POST",
-                data={
-                    "broker": "alpaca",
-                    "ticker": triton_trade_ticker or "IYT",
-                    "action": triton_trade_action,
-                    "qty": float(triton_trade_qty),
-                    "dry_run": bool(triton_trade_dry_run),
-                },
-                show_notice=True,
-            )
-            if trade_result:
-                st.success("Triton trade request completed.")
-                st.session_state["triton_trade_result"] = trade_result
-            else:
-                st.error("Triton trade request failed.")
-
-        triton_bootstrap_result = st.session_state.get("triton_bootstrap_result")
-        if triton_bootstrap_result:
-            with st.expander("Triton Bootstrap Result", expanded=False):
-                st.json(triton_bootstrap_result)
-
-        triton_trade_result = st.session_state.get("triton_trade_result")
-        if triton_trade_result:
-            with st.expander("Last Triton Trade Result", expanded=False):
-                st.json(triton_trade_result)
-
-        triton_output = st.session_state.get("triton_mode_output")
-        if triton_output:
-            with st.expander("Last Triton Command Output", expanded=False):
-                st.code(triton_output, language="text")
-
-        with st.expander("Triton Health Details", expanded=False):
-            st.json(triton_snapshot)
-
-        st.markdown("---")
-
-        st.subheader("Rhea Operations")
-        rhea_snapshot = get_rhea_control_snapshot()
-        rhea_status = rhea_snapshot.get("status") or {}
-        rhea_health = rhea_snapshot.get("health") or {}
-        rhea_launch_mode = st.radio(
-            "Rhea trading mode",
-            options=["paper", "live"],
-            horizontal=True,
-            key="rhea_trading_mode",
-            index=(
-                0 if get_bot_launch_mode("Rhea", "ibkr") == "paper" else 1
-            ),
-        )
-
-        rhea_first_success = (
-            rhea_status.get("first_successful_ibkr_paper_trade", {}) or {}
-        )
-        rhea_first_trade = rhea_first_success.get("trade") or {}
-        rhea_latest_trade = rhea_status.get("latest_trade") or {}
-
-        r1, r2, r3, r4 = st.columns(4)
-        with r1:
-            st.metric(
-                "Rhea Execution",
-                "ON" if rhea_status.get("execution_enabled") else "OFF",
-            )
-        with r2:
-            st.metric(
-                "Latest Rhea Action",
-                str(rhea_status.get("last_analysis", {}).get("action", "N/A")),
-            )
-        with r3:
-            st.metric(
-                "Rhea FastAPI",
-                str(
-                    rhea_health.get("fastapi", {}).get("reachable", False)
-                ).upper(),
-            )
-        with r4:
-            st.metric(
-                "Rhea MySQL",
-                str(
-                    rhea_health.get("mysql", {}).get("reachable", False)
-                ).upper(),
-            )
-
-        r5, r6, r7 = st.columns(3)
-        with r5:
-            st.metric(
-                "First IBKR Paper Trade",
-                "YES" if rhea_first_success.get("recognized") else "NO",
-            )
-        with r6:
-            st.metric(
-                "IBKR Paper Success Count",
-                str(rhea_status.get("successful_ibkr_paper_trade_count", 0)),
-            )
-        with r7:
-            latest_trade_label = "N/A"
-            if rhea_latest_trade:
-                latest_trade_label = (
-                    f"{str(rhea_latest_trade.get('action', '')).upper()} "
-                    f"{str(rhea_latest_trade.get('ticker', '')).upper()} "
-                    f"({str(rhea_latest_trade.get('status', '')).lower()})"
-                ).strip()
-            st.metric("Latest Trade", latest_trade_label)
-
-        if rhea_first_success.get("recognized") and rhea_first_trade:
-            st.caption(
-                "First successful IBKR paper trade: "
-                f"{str(rhea_first_trade.get('action', '')).upper()} "
-                f"{str(rhea_first_trade.get('ticker', '')).upper()} @ "
-                f"{rhea_first_trade.get('created_at', 'unknown time')}"
-            )
-
-        rhea_btn1, rhea_btn2, rhea_btn3 = st.columns(3)
-        with rhea_btn1:
-            if st.button("Rhea ON", type="primary", use_container_width=True):
-                persist_bot_launch_mode(
-                    "Rhea",
-                    rhea_launch_mode,
-                    "ibkr",
-                    True,
-                )
-                with st.spinner("Running Rhea ON..."):
-                    execution = run_bot_mode(
-                        "Rhea",
-                        "ON",
-                        rhea_launch_mode,
-                        broker="IBKR",
-                    )
-                st.session_state["rhea_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Rhea ON completed.")
-                else:
-                    st.error("Rhea ON failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-
-        with rhea_btn2:
-            if st.button("Rhea OFF", use_container_width=True):
-                persist_bot_launch_mode(
-                    "Rhea",
-                    rhea_launch_mode,
-                    "ibkr",
-                    False,
-                )
-                with st.spinner("Running Rhea OFF..."):
-                    execution = run_bot_mode(
-                        "Rhea",
-                        "OFF",
-                        rhea_launch_mode,
-                        broker="IBKR",
-                    )
-                st.session_state["rhea_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Rhea OFF completed.")
-                else:
-                    st.error("Rhea OFF failed.")
-                refresh_bot_mode_views()
-                st.rerun()
-
-        with rhea_btn3:
-            if st.button("Bootstrap Rhea", use_container_width=True):
-                result = api_request(
-                    "/rhea/bootstrap",
-                    method="POST",
-                    show_notice=True,
-                )
-                if result:
-                    st.success("Rhea bootstrap completed.")
-                    st.session_state["rhea_bootstrap_result"] = result
-                else:
-                    st.error("Rhea bootstrap failed.")
-
-        rhea_trade_col1, rhea_trade_col2, rhea_trade_col3, rhea_trade_col4 = st.columns(4)
-        with rhea_trade_col1:
-            rhea_trade_ticker = st.text_input(
-                "Rhea ticker",
-                value="GD",
-                key="rhea_trade_ticker",
-            ).strip().upper()
-        with rhea_trade_col2:
-            rhea_trade_action = st.selectbox(
-                "Rhea action",
-                ["BUY", "SELL"],
-                key="rhea_trade_action",
-            )
-        with rhea_trade_col3:
-            rhea_trade_qty = st.number_input(
-                "Rhea quantity",
-                min_value=1.0,
-                value=5.0,
-                step=1.0,
-                key="rhea_trade_qty",
-            )
-        with rhea_trade_col4:
-            rhea_trade_dry_run = st.toggle(
-                "Dry Run",
-                value=True,
-                key="rhea_trade_dry_run",
-            )
-
-        if st.button("Execute Rhea Trade", use_container_width=True):
-            trade_result = api_request(
-                "/rhea/trade",
-                method="POST",
-                data={
-                    "broker": "ibkr",
-                    "ticker": rhea_trade_ticker or "GD",
-                    "action": rhea_trade_action,
-                    "qty": float(rhea_trade_qty),
-                    "dry_run": bool(rhea_trade_dry_run),
-                },
-                show_notice=True,
-            )
-            if trade_result:
-                st.success("Rhea trade request completed.")
-                st.session_state["rhea_trade_result"] = trade_result
-            else:
-                st.error("Rhea trade request failed.")
-
-        rhea_bootstrap_result = st.session_state.get("rhea_bootstrap_result")
-        if rhea_bootstrap_result:
-            with st.expander("Rhea Bootstrap Result", expanded=False):
-                st.json(rhea_bootstrap_result)
-
-        rhea_trade_result = st.session_state.get("rhea_trade_result")
-        if rhea_trade_result:
-            with st.expander("Last Rhea Trade Result", expanded=False):
-                st.json(rhea_trade_result)
-
-        rhea_output = st.session_state.get("rhea_mode_output")
-        if rhea_output:
-            with st.expander("Last Rhea Command Output", expanded=False):
-                st.code(rhea_output, language="text")
-
-        with st.expander("Rhea Health Details", expanded=False):
-            st.json(rhea_snapshot)
 
         st.markdown("---")
 
@@ -2392,6 +1929,8 @@ def main():
                     return row.get("bot_name", "")
 
                 bots_df["bot_name"] = bots_df.apply(normalize_bot_name, axis=1)
+                if "display_bot" in bots_df.columns:
+                    bots_df = bots_df.drop(columns=["display_bot"])
 
                 display_cols = ["bot_name", "mansa_fund", "status", "broker", "uptime"]
                 available_cols = [col for col in display_cols if col in bots_df.columns]
@@ -2428,6 +1967,10 @@ def main():
     # TAB 4: Broker Health
     with tab4:
         st.markdown('<div class="section-header"><h2>Multi-Broker Orchestration</h2></div>', unsafe_allow_html=True)
+
+        st.warning(
+            "Alpaca credentials were reported as compromised. Rotate keys now and update both local `.env` and Streamlit secrets."
+        )
         
         # Refresh button
         if st.button("🔄 Refresh All Sessions"):
@@ -2761,21 +2304,29 @@ def main():
                 "http://127.0.0.1:8000/",
             ])
 
+            docker_ready = bool(shutil.which("docker"))
+            if not docker_ready:
+                st.warning("Docker CLI not detected in PATH. Airflow/Airbyte stack start buttons are disabled.")
+
             st.caption(("✅" if airflow_ok else "❌") + f" Airflow: {airflow_note}")
             st.caption(("✅" if airbyte_ok else "❌") + f" Airbyte: {airbyte_note}")
 
-            if st.button("� Start All Local Services", type="primary", use_container_width=True, key="start_all_services"):
+            if st.button("🚀 Start All Local Services", type="primary", use_container_width=True, key="start_all_services"):
                 results = []
                 with st.spinner("Starting MLflow…"):
                     _bsu = get_mlflow_backend_store_uri()
                     _ok, _msg = start_mlflow_server(_bsu)
                     results.append(("MLflow", _ok, _msg))
-                with st.spinner("Starting Airflow stack…"):
-                    _ok, _msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
-                    results.append(("Airflow", _ok, _msg))
-                with st.spinner("Starting Airbyte stack…"):
-                    _ok, _msg = start_docker_compose_services("docker/docker-compose-airbyte.yml")
-                    results.append(("Airbyte", _ok, _msg))
+                if docker_ready:
+                    with st.spinner("Starting Airflow stack…"):
+                        _ok, _msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
+                        results.append(("Airflow", _ok, _msg))
+                    with st.spinner("Starting Airbyte stack…"):
+                        _ok, _msg = start_docker_compose_services("docker/docker-compose-airbyte.yml")
+                        results.append(("Airbyte", _ok, _msg))
+                else:
+                    results.append(("Airflow", False, "Skipped: Docker CLI unavailable."))
+                    results.append(("Airbyte", False, "Skipped: Docker CLI unavailable."))
                 for _svc, _ok, _msg in results:
                     if _ok:
                         st.success(f"✅ {_svc}: {_msg}")
@@ -2797,14 +2348,24 @@ def main():
                     st.session_state.pop("resolved_mlflow_server_note", None)
                 else:
                     st.error(msg)
-            if st.button("▶️ Start Airflow Stack", use_container_width=True, key="start_airflow_stack"):
+            if st.button(
+                "▶️ Start Airflow Stack",
+                use_container_width=True,
+                key="start_airflow_stack",
+                disabled=not docker_ready,
+            ):
                 ok, msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
                 if ok:
                     st.success("Airflow stack start command completed.")
                     st.caption(msg)
                 else:
                     st.error(f"Failed to start Airflow stack: {msg}")
-            if st.button("▶️ Start Airbyte Stack", use_container_width=True, key="start_airbyte_stack"):
+            if st.button(
+                "▶️ Start Airbyte Stack",
+                use_container_width=True,
+                key="start_airbyte_stack",
+                disabled=not docker_ready,
+            ):
                 ok, msg = start_docker_compose_services("docker/docker-compose-airbyte.yml")
                 if ok:
                     st.success("Airbyte stack start command completed.")

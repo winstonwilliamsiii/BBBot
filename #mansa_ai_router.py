@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import optuna
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
@@ -479,39 +480,33 @@ def _predict(model_name: str, payload: PredictionRequest) -> dict[str, Any]:
         ),
         "timestamp": _utc_now(),
     }
-# --- Gradio Demo Endpoint ---
-@app.get("/ui/gradio/altair")
-def gradio_altair():
-    def predict_fn(rsi, sentiment, macro):
-        features = [rsi, sentiment, macro]
-        prediction = xgb_model.predict(np.array(features).reshape(1, -1))
-        return f"Predicted Trade Signal: {prediction[0]}"
 
-    demo = gr.Interface(
-        fn=predict_fn,
-        inputs=["number", "number", "number"],
-        outputs="text",
-        title="Altair (Mansa AI) News Trading Demo"
-    )
-    demo.launch(share=True)
-    return {"status": "Gradio Altair demo launched"}
-# --- Optuna Tuning Endpoint ---
+
 @app.post("/ml/optuna/tune")
-def optuna_tune(n_trials: int = 50):
+def optuna_tune(n_trials: int = 50) -> dict[str, Any]:
+    """Tune XGBoost hyperparameters using Optuna.
+
+    Developers/analysts call this endpoint from Gradio UI for interactive tuning.
+    Returns best_params and best_value for use in production training.
+    """
     def objective(trial):
         max_depth = trial.suggest_int("max_depth", 3, 10)
         learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
         subsample = trial.suggest_float("subsample", 0.5, 1.0)
-        # Example: use XGBoost trial here
-        # Replace with actual training/validation loop
-        score = (max_depth * learning_rate * subsample)  # dummy score
+        # Dummy score: replace with actual training loop
+        score = max_depth * learning_rate * subsample
         return score
 
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials)
-    return {"best_params": study.best_params, "best_value": study.best_value}
-def health() -> dict[str, Any]:
+    return {
+        "best_params": study.best_params,
+        "best_value": study.best_value,
+    }
+
+
 @app.get("/health")
+def health() -> dict[str, Any]:
     return {
         "status": "operational",
         "timestamp": _utc_now(),

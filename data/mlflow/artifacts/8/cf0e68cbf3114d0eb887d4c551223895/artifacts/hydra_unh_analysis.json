@@ -1,0 +1,40 @@
+{
+  "ticker": "UNH",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": 1.0,
+    "average_return": 0.010079964979575645,
+    "lookback": 20,
+    "latest_price": 381.30499267578125,
+    "signal": true
+  },
+  "fundamental": {
+    "score": 0.3136,
+    "forward_pe": 18.372894,
+    "return_on_equity": 0.121759996,
+    "revenue_growth": 0.02,
+    "operating_margin": 0.080469996,
+    "roe_component": 0.487039984,
+    "growth_component": 0.09999999999999999,
+    "margin_component": 0.40234998,
+    "pe_component": 0.26508424
+  },
+  "technical": {
+    "score": -0.39403160831985806,
+    "short_sma": 311.7036987304688,
+    "long_sma": 317.96817428588867,
+    "signal": false,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 381.30499267578125,
+  "composite_score": 0.3299,
+  "buy_threshold": 0.15,
+  "action": "BUY"
+}

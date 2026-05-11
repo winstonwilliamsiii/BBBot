@@ -1,0 +1,40 @@
+{
+  "ticker": "XLV",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": -0.12283864418822676,
+    "average_return": -0.0012283864418822677,
+    "lookback": 20,
+    "latest_price": 144.27000427246094,
+    "signal": false
+  },
+  "fundamental": {
+    "score": -0.0159,
+    "forward_pe": 26.59084,
+    "return_on_equity": null,
+    "revenue_growth": null,
+    "operating_margin": null,
+    "roe_component": 0.0,
+    "growth_component": 0.0,
+    "margin_component": 0.0,
+    "pe_component": -0.0636336
+  },
+  "technical": {
+    "score": 0.059543708311067256,
+    "short_sma": 147.74240051269533,
+    "long_sma": 147.30384963989258,
+    "signal": true,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 144.27000427246094,
+  "composite_score": -0.0321,
+  "buy_threshold": 0.15,
+  "action": "HOLD"
+}

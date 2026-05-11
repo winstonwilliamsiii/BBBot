@@ -1,0 +1,40 @@
+{
+  "ticker": "HCA",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": -0.7011396113081969,
+    "average_return": -0.007011396113081969,
+    "lookback": 20,
+    "latest_price": 429.7449951171875,
+    "signal": false
+  },
+  "fundamental": {
+    "score": 0.3614,
+    "forward_pe": 12.962833,
+    "return_on_equity": null,
+    "revenue_growth": 0.043,
+    "operating_margin": 0.14982,
+    "roe_component": 0.0,
+    "growth_component": 0.21499999999999997,
+    "margin_component": 0.7491,
+    "pe_component": 0.48148668
+  },
+  "technical": {
+    "score": 1.0,
+    "short_sma": 484.60469787597657,
+    "long_sma": 459.57627395629885,
+    "signal": true,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 429.7449951171875,
+  "composite_score": 0.095,
+  "buy_threshold": 0.15,
+  "action": "HOLD"
+}

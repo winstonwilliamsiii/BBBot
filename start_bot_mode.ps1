@@ -1,10 +1,5 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet(
-        "Titan", "Vega", "Rigel", "Dogon", "Orion",
-        "Draco", "Altair", "Procryon", "Hydra", "Triton",
-        "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus"
-    )]
     [string]$Bot,
 
     [Parameter(Mandatory = $true)]
@@ -17,6 +12,64 @@ param(
     [ValidateSet("AUTO", "paper", "live")]
     [string]$TradingMode = "AUTO"
 )
+
+$validBots = @(
+    "Titan", "Vega", "Rigel", "Dogon", "Orion",
+    "Draco", "Altair", "Procryon", "Hydra", "Triton",
+    "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus"
+)
+
+function Resolve-BotName {
+    param(
+        [string]$RawBotName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RawBotName)) {
+        return $null
+    }
+
+    $trimmed = $RawBotName.Trim()
+    $upper = $trimmed.ToUpper()
+    $compact = ($upper -replace '[\s_\-]', '')
+    if ($compact.EndsWith("BOT")) {
+        $compact = $compact.Substring(0, $compact.Length - 3)
+    }
+
+    $aliasMap = @{
+        "TITAN" = "Titan"
+        "VEGA" = "Vega"
+        "RIGEL" = "Rigel"
+        "DOGON" = "Dogon"
+        "ORION" = "Orion"
+        "DRACO" = "Draco"
+        "ALTAIR" = "Altair"
+        "PROCRYON" = "Procryon"
+        "HYDRA" = "Hydra"
+        "TRITON" = "Triton"
+        "DIONE" = "Dione"
+        "CEPHEI" = "Cephei"
+        "RHEA" = "Rhea"
+        "JUPICITA" = "Jupicita"
+        "CYGNUS" = "Cygnus"
+    }
+
+    if ($aliasMap.ContainsKey($compact)) {
+        return $aliasMap[$compact]
+    }
+
+    return $null
+}
+
+$resolvedBot = Resolve-BotName -RawBotName $Bot
+if (-not $resolvedBot) {
+    Write-Error (
+        "Unsupported bot '$Bot'. Allowed values: " + ($validBots -join ", ") +
+        ". Aliases ending with '_Bot' are accepted for known bots."
+    )
+    exit 1
+}
+
+$Bot = $resolvedBot
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot

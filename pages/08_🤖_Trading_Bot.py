@@ -661,7 +661,10 @@ def _trade_events_union_sql() -> str:
                 CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
                 CONVERT(order_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
                 'trades_history' AS source_table,
-                {_mode_case_sql()} AS trade_mode
+                CASE
+                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%' THEN 'live'
+                    ELSE 'paper'
+                END AS trade_mode
             FROM trades_history
             """
         )
@@ -681,7 +684,10 @@ def _trade_events_union_sql() -> str:
                 CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
                 CONVERT(order_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
                 'titan_trades' AS source_table,
-                {_mode_case_sql()} AS trade_mode
+                CASE
+                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%' THEN 'live'
+                    ELSE 'paper'
+                END AS trade_mode
             FROM titan_trades
             """
         )
@@ -749,7 +755,10 @@ def _trade_events_union_sql() -> str:
                 CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
                 CONVERT(trade_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
                 'vega_trades' AS source_table,
-                {_mode_case_sql()} AS trade_mode
+                CASE
+                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%' THEN 'live'
+                    ELSE 'paper'
+                END AS trade_mode
             FROM vega_trades
             """
         )
@@ -777,7 +786,7 @@ def _trade_events_union_sql() -> str:
 
 # Load data functions
 @st.cache_data(ttl=60)
-def load_recent_trades(days=7):
+def load_recent_trades(days=7, refresh_token=None):
     """Load recent trade history"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
@@ -791,20 +800,29 @@ def load_recent_trades(days=7):
 
     try:
         return pd.read_sql(query, engine, parse_dates=['timestamp'])
-    except:
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).error("load_active_signals failed: %s", _e)
         return pd.DataFrame()
 
 
 @st.cache_data(ttl=60)
-def load_performance_metrics(days=30):
+def load_performance_metrics(days=30, refresh_token=None):
     """Load performance metrics"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
     
     query = f"""
-        SELECT date, total_trades, buy_trades, sell_trades, total_value, strategy
-        FROM performance_metrics
-        WHERE date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+        SELECT
+            DATE(timestamp) AS date,
+            strategy,
+            COUNT(*) AS total_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY' THEN 1 ELSE 0 END) AS buy_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_trades,
+            SUM(COALESCE(value, 0)) AS total_value
+        FROM ({_trade_events_union_sql()}) unified
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+        GROUP BY DATE(timestamp), strategy
         ORDER BY date DESC
     """
     
@@ -829,14 +847,16 @@ def load_active_signals():
     
     try:
         return pd.read_sql(query, engine, parse_dates=['timestamp'])
-    except:
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).error("load_recent_trades failed: %s", _e)
         return pd.DataFrame()
 
 
 # ── Calendar & Analytics Helpers ─────────────────────────────────────────────
 
 @st.cache_data(ttl=300)
-def load_daily_pnl(year: int, month: int, mode: str = "All") -> dict:
+def load_daily_pnl(year: int, month: int, mode: str = "All", refresh_token=None) -> dict:
     """Load daily net flow from real trade history. Positive = net sells, negative = net buys."""
     if not DB_AVAILABLE:
         return {}
@@ -877,7 +897,7 @@ def load_daily_pnl(year: int, month: int, mode: str = "All") -> dict:
 
 
 @st.cache_data(ttl=300)
-def load_overview_metrics(year: int, month: int, daily_pnl: dict, mode: str = "All") -> dict:
+def load_overview_metrics(year: int, month: int, daily_pnl: dict, mode: str = "All", refresh_token=None) -> dict:
     """
     Compute 9 aggregate overview metrics across all broker bot trades.
     Derives calendar-based stats from daily_pnl (real DB or demo).
@@ -1053,7 +1073,7 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
 
 
 @st.cache_data(ttl=60)
-def load_bot_analytics(bot_name: str, days: int, mode: str = "All") -> dict:
+def load_bot_analytics(bot_name: str, days: int, mode: str = "All", refresh_token=None) -> dict:
     """Load per-bot analytics from real trades_history rows (no seeded demo data)."""
     _VALID_BOTS = [
         "Titan", "Dogon", "Orion", "Rigel", "Vega",
@@ -1350,6 +1370,35 @@ def _build_quick_start_rows() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _normalize_bot_name(bot_name: str) -> str:
+    raw = str(bot_name or "").strip()
+    if not raw:
+        return raw
+
+    compact = raw.replace("_", "").replace("-", "").replace(" ", "").upper()
+    if compact.endswith("BOT"):
+        compact = compact[:-3]
+
+    alias_map = {
+        "TITAN": "Titan",
+        "VEGA": "Vega",
+        "RIGEL": "Rigel",
+        "DOGON": "Dogon",
+        "ORION": "Orion",
+        "DRACO": "Draco",
+        "ALTAIR": "Altair",
+        "PROCRYON": "Procryon",
+        "HYDRA": "Hydra",
+        "TRITON": "Triton",
+        "DIONE": "Dione",
+        "CEPHEI": "Cephei",
+        "RHEA": "Rhea",
+        "JUPICITA": "Jupicita",
+        "CYGNUS": "Cygnus",
+    }
+    return alias_map.get(compact, raw)
+
+
 def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
     repo_root = Path(__file__).resolve().parents[1]
     launcher = repo_root / "start_bot_mode.ps1"
@@ -1368,7 +1417,7 @@ def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> 
         "-File",
         str(launcher),
         "-Bot",
-        bot_name,
+        _normalize_bot_name(bot_name),
         "-Mode",
         mode.upper(),
         "-TradingMode",
@@ -1773,27 +1822,39 @@ if hydra_snapshot.get("status"):
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    st.session_state["trading_data_refresh_nonce"] = st.session_state.get(
+        "trading_data_refresh_nonce", 0
+    ) + 1
     st.cache_data.clear()
     st.rerun()
+
+# Use a short rolling refresh token so Overview/Performance tabs keep updating
+# even without manually clicking refresh.
+_manual_refresh_nonce = st.session_state.get("trading_data_refresh_nonce", 0)
+_auto_refresh_bucket = int(datetime.now().timestamp() // 15)
+_data_refresh_token = f"{_manual_refresh_nonce}:{_auto_refresh_bucket}"
 
 # Date range selector
 st.sidebar.markdown("---")
 date_range = st.sidebar.selectbox(
     "Time Period",
-    ["Today", "5 Days", "1 Month", "3 Months"]
+    ["Today", "5 Days", "1 Month", "3 Months", "6 Months", "YTD"]
 )
 
+ytd_days = max((datetime.now().date() - datetime(datetime.now().year, 1, 1).date()).days + 1, 1)
 days_map = {
     "Today": 1,
     "5 Days": 5,
     "1 Month": 30,
     "3 Months": 90,
+    "6 Months": 180,
+    "YTD": ytd_days,
 }
 selected_days = days_map[date_range]
 
 # Load trade / performance data before tabs so all tabs see fresh values
-trades_df = load_recent_trades(selected_days)
-perf_df = load_performance_metrics(selected_days)
+trades_df = load_recent_trades(selected_days, refresh_token=_data_refresh_token)
+perf_df = load_performance_metrics(selected_days, refresh_token=_data_refresh_token)
 
 # Main dashboard
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -1831,8 +1892,19 @@ with tab1:
         )
 
     # ── Load data ──────────────────────────────────────────────────────────
-    _daily_pnl = load_daily_pnl(cal_year, cal_month, _ov_trade_mode)
-    _ov = load_overview_metrics(cal_year, cal_month, _daily_pnl, _ov_trade_mode)
+    _daily_pnl = load_daily_pnl(
+        cal_year,
+        cal_month,
+        _ov_trade_mode,
+        refresh_token=_data_refresh_token,
+    )
+    _ov = load_overview_metrics(
+        cal_year,
+        cal_month,
+        _daily_pnl,
+        _ov_trade_mode,
+        refresh_token=_data_refresh_token,
+    )
 
     _ov_mode_tag = (
         f"🔴 Live only"   if _ov_trade_mode == "live"
@@ -2036,7 +2108,12 @@ with tab2:
             unsafe_allow_html=True,
         )
 
-    _analytics = load_bot_analytics(bot_filter, selected_days, _perf_mode)
+    _analytics = load_bot_analytics(
+        bot_filter,
+        selected_days,
+        _perf_mode,
+        refresh_token=_data_refresh_token,
+    )
     _bots = _analytics["bots"]
     if not _analytics.get("has_real_data"):
         st.caption(

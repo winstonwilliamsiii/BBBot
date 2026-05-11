@@ -1547,7 +1547,8 @@ def build_deployed_bots_df() -> pd.DataFrame:
 
     rows = []
     for entry in catalog:
-        bot_name = str(entry.get("bot", ""))
+        display_bot_name = str(entry.get("bot", ""))
+        bot_name = _normalize_bot_name(display_bot_name)
         bot_key = bot_name.lower()
         ev = all_events.get(bot_key, {})
         mode_raw = str(ev.get("mode", "")).lower()
@@ -1558,7 +1559,7 @@ def build_deployed_bots_df() -> pd.DataFrame:
         broker_name = ""
         if config is not None:
             try:
-                active_flag = config.get_bot_active(bot_name)
+                active_flag = config.is_bot_active(bot_name)
                 trading_mode = config.get_bot_mode(bot_name)
                 broker_name = str(config.get_bot_broker(bot_name) or "")
             except Exception:
@@ -1625,6 +1626,35 @@ def refresh_bot_mode_views() -> None:
     get_all_bot_mode_events.clear()
 
 
+def _normalize_bot_name(bot_name: str) -> str:
+    raw = str(bot_name or "").strip()
+    if not raw:
+        return raw
+
+    compact = raw.replace("_", "").replace("-", "").replace(" ", "").upper()
+    if compact.endswith("BOT"):
+        compact = compact[:-3]
+
+    alias_map = {
+        "TITAN": "Titan",
+        "VEGA": "Vega",
+        "RIGEL": "Rigel",
+        "DOGON": "Dogon",
+        "ORION": "Orion",
+        "DRACO": "Draco",
+        "ALTAIR": "Altair",
+        "PROCRYON": "Procryon",
+        "HYDRA": "Hydra",
+        "TRITON": "Triton",
+        "DIONE": "Dione",
+        "CEPHEI": "Cephei",
+        "RHEA": "Rhea",
+        "JUPICITA": "Jupicita",
+        "CYGNUS": "Cygnus",
+    }
+    return alias_map.get(compact, raw)
+
+
 def run_bot_mode(
     bot_name: str,
     mode: str,
@@ -1632,6 +1662,7 @@ def run_bot_mode(
     broker: str | None = None,
 ) -> dict:
     """Run start_bot_mode.ps1 and return execution result."""
+    canonical_bot = _normalize_bot_name(bot_name)
     repo_root = Path(__file__).resolve().parents[1]
     launcher = repo_root / "start_bot_mode.ps1"
 
@@ -1659,11 +1690,11 @@ def run_bot_mode(
         "-File",
         str(launcher),
         "-Bot",
-        bot_name,
+        canonical_bot,
         "-Mode",
         mode,
         "-Broker",
-        broker or get_bot_default_broker(bot_name),
+        broker or get_bot_default_broker(canonical_bot),
         "-TradingMode",
         trading_mode,
     ]

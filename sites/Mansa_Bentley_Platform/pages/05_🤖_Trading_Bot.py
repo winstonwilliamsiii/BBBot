@@ -237,6 +237,34 @@ def _execute_bot_mode(
     mode: str,
     trading_mode: str = "paper",
 ) -> dict:
+    def _normalize_bot_name(raw_bot_name: str) -> str:
+        raw = str(raw_bot_name or "").strip()
+        if not raw:
+            return raw
+
+        compact = raw.replace("_", "").replace("-", "").replace(" ", "").upper()
+        if compact.endswith("BOT"):
+            compact = compact[:-3]
+
+        alias_map = {
+            "TITAN": "Titan",
+            "VEGA": "Vega",
+            "RIGEL": "Rigel",
+            "DOGON": "Dogon",
+            "ORION": "Orion",
+            "DRACO": "Draco",
+            "ALTAIR": "Altair",
+            "PROCRYON": "Procryon",
+            "HYDRA": "Hydra",
+            "TRITON": "Triton",
+            "DIONE": "Dione",
+            "CEPHEI": "Cephei",
+            "RHEA": "Rhea",
+            "JUPICITA": "Jupicita",
+            "CYGNUS": "Cygnus",
+        }
+        return alias_map.get(compact, raw)
+
     repo_root = Path(__file__).resolve().parents[2]
     launcher = repo_root / "start_bot_mode.ps1"
 
@@ -251,7 +279,7 @@ def _execute_bot_mode(
         "-File",
         str(launcher),
         "-Bot",
-        bot_name,
+        _normalize_bot_name(bot_name),
         "-Mode",
         mode.upper(),
         "-TradingMode",
@@ -479,7 +507,7 @@ def _trade_events_union_sql() -> str:
 
 # Load data functions
 @st.cache_data(ttl=60)
-def load_recent_trades(days=7):
+def load_recent_trades(days=7, refresh_token=None):
     """Load recent trade history"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
@@ -498,7 +526,7 @@ def load_recent_trades(days=7):
 
 
 @st.cache_data(ttl=60)
-def load_performance_metrics(days=30):
+def load_performance_metrics(days=30, refresh_token=None):
     """Load performance metrics"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
@@ -605,23 +633,37 @@ _render_sidebar_launch_output()
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    st.session_state["legacy_trading_data_refresh_nonce"] = st.session_state.get(
+        "legacy_trading_data_refresh_nonce", 0
+    ) + 1
     st.cache_data.clear()
     st.rerun()
+
+_manual_refresh_nonce = st.session_state.get("legacy_trading_data_refresh_nonce", 0)
+_auto_refresh_bucket = int(datetime.now().timestamp() // 15)
+_data_refresh_token = f"{_manual_refresh_nonce}:{_auto_refresh_bucket}"
 
 # Date range selector
 st.sidebar.markdown("---")
 date_range = st.sidebar.selectbox(
     "Time Period",
-    ["Today", "Last 7 Days", "Last 30 Days", "All Time"]
+    ["Today", "5 Days", "1 Month", "3 Months", "6 Months", "YTD", "All Time"]
 )
 
+ytd_days = max((datetime.now().date() - datetime(datetime.now().year, 1, 1).date()).days + 1, 1)
 days_map = {
     "Today": 1,
-    "Last 7 Days": 7,
-    "Last 30 Days": 30,
+    "5 Days": 5,
+    "1 Month": 30,
+    "3 Months": 90,
+    "6 Months": 180,
+    "YTD": ytd_days,
     "All Time": 365
 }
 selected_days = days_map[date_range]
+
+trades_df = load_recent_trades(selected_days, refresh_token=_data_refresh_token)
+perf_df = load_performance_metrics(selected_days, refresh_token=_data_refresh_token)
 
 # Main dashboard
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -634,9 +676,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # TAB 1: Overview
 with tab1:
     # Key metrics
-    trades_df = load_recent_trades(selected_days)
-    perf_df = load_performance_metrics(selected_days)
-    
     if not trades_df.empty:
         total_trades = len(trades_df)
         buy_trades = len(trades_df[trades_df['action'] == 'BUY'])

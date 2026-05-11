@@ -1,0 +1,40 @@
+{
+  "ticker": "LLY",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": 0.3720880870956683,
+    "average_return": 0.0037208808709566833,
+    "lookback": 20,
+    "latest_price": 992.5150146484375,
+    "signal": true
+  },
+  "fundamental": {
+    "score": 0.7758,
+    "forward_pe": 22.421463,
+    "return_on_equity": 1.07459,
+    "revenue_growth": 0.555,
+    "operating_margin": 0.49386,
+    "roe_component": 1.0,
+    "growth_component": 1.0,
+    "margin_component": 1.0,
+    "pe_component": 0.10314148000000004
+  },
+  "technical": {
+    "score": 0.5087597564388213,
+    "short_sma": 940.5903039550781,
+    "long_sma": 917.2571282958984,
+    "signal": true,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 992.5150146484375,
+  "composite_score": 0.4514,
+  "buy_threshold": 0.15,
+  "action": "BUY"
+}

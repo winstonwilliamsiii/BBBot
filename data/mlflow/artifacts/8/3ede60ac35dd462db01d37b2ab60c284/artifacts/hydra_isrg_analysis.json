@@ -1,0 +1,40 @@
+{
+  "ticker": "ISRG",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": -0.367633648458659,
+    "average_return": -0.0036763364845865897,
+    "lookback": 20,
+    "latest_price": 423.7200012207031,
+    "signal": false
+  },
+  "fundamental": {
+    "score": 0.5627,
+    "forward_pe": 35.962456,
+    "return_on_equity": 0.17232999,
+    "revenue_growth": 0.23,
+    "operating_margin": 0.30868,
+    "roe_component": 0.68931996,
+    "growth_component": 1.0,
+    "margin_component": 1.0,
+    "pe_component": -0.43849824000000015
+  },
+  "technical": {
+    "score": -1.0,
+    "short_sma": 468.50059997558594,
+    "long_sma": 498.3116011047363,
+    "signal": false,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 423.7200012207031,
+  "composite_score": -0.238,
+  "buy_threshold": 0.15,
+  "action": "SELL"
+}

@@ -294,6 +294,17 @@ def _record_bot_action(bot_name: str, mode: str, trading_mode: str, execution: d
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
+    # Keep an immediate UI override so the sidebar status reflects successful
+    # ON/OFF actions even before launcher logs are re-read.
+    if bool(execution.get("ok")):
+        overrides = st.session_state.get("bot_status_overrides", {})
+        overrides[str(bot_name).lower()] = {
+            "status": "active" if str(mode).lower() == "on" else "inactive",
+            "trading_mode": str(trading_mode).lower(),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        st.session_state["bot_status_overrides"] = overrides
+
 
 def _render_last_bot_action() -> None:
     action = st.session_state.get("last_bot_action")
@@ -519,6 +530,8 @@ def get_bot_status(bot_name: str = "Titan"):
     trading_mode = _get_bot_trading_mode(bot_name)
     all_events = _latest_bot_mode_events_all()
     latest_event = all_events.get(bot_name.lower())
+    overrides = st.session_state.get("bot_status_overrides", {})
+    override = overrides.get(bot_name.lower())
 
     if (
         latest_event
@@ -526,22 +539,35 @@ def get_bot_status(bot_name: str = "Titan"):
     ):
         last_mode = str(latest_event.get("mode", "")).lower()
         launcher_status = str(latest_event.get("status", "unknown")).lower()
+        active_statuses = {"active", "ready", "placeholder", "warning", "running", "started", "success", "online"}
+        inactive_statuses = {"inactive", "off", "stopped", "disabled", "shutdown", "terminated"}
         if (
             last_mode == "on"
-            and launcher_status in {"ready", "placeholder", "warning"}
+            and launcher_status in active_statuses
         ):
             status = "active"
-        elif last_mode == "off":
+        elif last_mode == "off" and (
+            launcher_status in inactive_statuses
+            or launcher_status in {"placeholder", "ready", "warning", "success"}
+        ):
             status = "inactive"
         else:
             status = launcher_status or "unknown"
+
+        if status not in {"active", "inactive"} and isinstance(override, dict):
+            override_status = str(override.get("status", "")).lower()
+            if override_status in {"active", "inactive"}:
+                status = override_status
 
         return {
             "status": status,
             "strategy": strategy,
             "timestamp": latest_event.get("timestamp"),
             "note": latest_event.get("note", ""),
-            "trading_mode": latest_event.get("trading_mode", trading_mode),
+            "trading_mode": latest_event.get(
+                "trading_mode",
+                (override or {}).get("trading_mode", trading_mode),
+            ),
         }
 
     active_flag = None
@@ -553,7 +579,10 @@ def get_bot_status(bot_name: str = "Titan"):
             active_flag = None
 
     if active_flag is None:
-        status = "unknown"
+        if isinstance(override, dict) and str(override.get("status", "")).lower() in {"active", "inactive"}:
+            status = str(override.get("status", "unknown")).lower()
+        else:
+            status = "unknown"
     else:
         status = "active" if active_flag else "inactive"
 
@@ -802,7 +831,7 @@ def load_recent_trades(days=7, refresh_token=None):
         return pd.read_sql(query, engine, parse_dates=['timestamp'])
     except Exception as _e:
         import logging as _logging
-        _logging.getLogger(__name__).error("load_active_signals failed: %s", _e)
+        _logging.getLogger(__name__).error("load_recent_trades failed: %s", _e)
         return pd.DataFrame()
 
 
@@ -1357,19 +1386,6 @@ def _build_launch_status_rows() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _build_quick_start_rows() -> pd.DataFrame:
-    rows = []
-    for bot_name in _get_configured_launch_bots():
-        rows.append(
-            {
-                "Bot": bot_name,
-                "ON Command": _build_quick_start_command(bot_name, "on"),
-                "OFF Command": _build_quick_start_command(bot_name, "off"),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
 def _normalize_bot_name(bot_name: str) -> str:
     raw = str(bot_name or "").strip()
     if not raw:
@@ -1497,78 +1513,7 @@ def _vega_automation_status() -> dict:
 
 
 def _render_quick_launch_buttons() -> None:
-    launch_bots = _get_configured_launch_bots()
-
-    st.markdown("**Configured Bot Status**")
-    st.dataframe(
-        _build_launch_status_rows(),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.markdown("**Quick Launch Commands (ON/OFF)**")
-    st.dataframe(
-        _build_quick_start_rows(),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    for bot_name in launch_bots:
-        current_mode = _get_bot_trading_mode(bot_name)
-        c1, c2, c3, c4, c5, c6 = st.columns([2, 1.4, 1, 1, 1, 1])
-        with c1:
-            st.markdown(f"**{bot_name}**")
-        with c2:
-            selected_mode = st.selectbox(
-                "Mode",
-                options=["paper", "live"],
-                index=0 if current_mode == "paper" else 1,
-                key=f"trading_mode_{bot_name}",
-                label_visibility="collapsed",
-            )
-        with c3:
-            if st.button("ON Cmd", key=f"quick_on_{bot_name}"):
-                st.session_state["selected_bot_launch_command"] = (
-                    _build_quick_start_command(bot_name, "on")
-                    + f" -TradingMode {selected_mode}"
-                )
-        with c4:
-            if st.button("OFF Cmd", key=f"quick_off_{bot_name}"):
-                st.session_state["selected_bot_launch_command"] = (
-                    _build_quick_start_command(bot_name, "off")
-                    + f" -TradingMode {selected_mode}"
-                )
-        with c5:
-            if st.button("Run ON", key=f"exec_on_{bot_name}"):
-                _set_bot_launch_preferences(bot_name, selected_mode, True)
-                with st.spinner(f"Running {bot_name} ON..."):
-                    execution = _execute_bot_mode(bot_name, "on", selected_mode)
-                st.session_state["selected_bot_launch_output"] = execution["output"]
-                _record_bot_action(bot_name, "on", selected_mode, execution)
-                # Clear cached bot events so the status indicator updates immediately.
-                _latest_bot_mode_events_all.clear()
-        with c6:
-            if st.button("Run OFF", key=f"exec_off_{bot_name}"):
-                _set_bot_launch_preferences(bot_name, selected_mode, False)
-                with st.spinner(f"Running {bot_name} OFF..."):
-                    execution = _execute_bot_mode(bot_name, "off", selected_mode)
-                st.session_state["selected_bot_launch_output"] = execution["output"]
-                _record_bot_action(bot_name, "off", selected_mode, execution)
-                # Clear cached bot events so the status indicator updates immediately.
-                _latest_bot_mode_events_all.clear()
-
-    selected_cmd = st.session_state.get("selected_bot_launch_command")
-    if selected_cmd:
-        st.code(selected_cmd, language="powershell")
-        st.caption(
-            "Run this command in a PowerShell terminal "
-            "from the repository root."
-        )
-
-    selected_output = st.session_state.get("selected_bot_launch_output")
-    if selected_output:
-        with st.expander("Last Command Output", expanded=False):
-            st.code(selected_output, language="text")
+    st.caption("Bot control actions are available in the left sidebar.")
 
     automation = _vega_automation_status()
     schedule = automation["schedule"]
@@ -1638,41 +1583,6 @@ def _render_quick_launch_buttons() -> None:
                 triton_health.get("fastapi", {}).get("reachable", False)
             ).upper(),
         )
-
-    api_client = get_api_client()
-    st.markdown("**Direct API Run Actions**")
-    a1, a2 = st.columns(2)
-    with a1:
-        if st.button("Run Hydra Bootstrap API", key="run_hydra_bootstrap_api"):
-            response = api_client.bootstrap_hydra()
-            st.session_state["selected_bot_api_output"] = {
-                "bot": "Hydra",
-                "action": "bootstrap",
-                "response": response,
-            }
-            if response is None:
-                st.error("Hydra bootstrap API call failed.")
-            else:
-                fetch_hydra_api_snapshot.clear()
-                st.success("Hydra bootstrap API completed.")
-    with a2:
-        if st.button("Run Triton Bootstrap API", key="run_triton_bootstrap_api"):
-            response = api_client.bootstrap_triton()
-            st.session_state["selected_bot_api_output"] = {
-                "bot": "Triton",
-                "action": "bootstrap",
-                "response": response,
-            }
-            if response is None:
-                st.error("Triton bootstrap API call failed.")
-            else:
-                fetch_triton_api_snapshot.clear()
-                st.success("Triton bootstrap API completed.")
-
-    selected_api_output = st.session_state.get("selected_bot_api_output")
-    if selected_api_output:
-        with st.expander("Last Direct API Output", expanded=False):
-            st.json(selected_api_output)
 
     if triton_health:
         with st.expander("Triton Health Details", expanded=False):
@@ -1754,6 +1664,7 @@ with col1:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "on", titan_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
+        st.rerun()
 
 with col2:
     if st.button("⏸️ Titan OFF", use_container_width=True):
@@ -1763,6 +1674,7 @@ with col2:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Titan", "off", titan_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
+        st.rerun()
 
 hydra_sidebar_status = get_bot_status("Hydra")
 hydra_snapshot = fetch_hydra_api_snapshot()
@@ -1791,6 +1703,7 @@ with hcol1:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "on", hydra_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
+        st.rerun()
 
 with hcol2:
     if st.button("⏸️ Hydra OFF", use_container_width=True):
@@ -1800,6 +1713,7 @@ with hcol2:
         st.session_state["selected_bot_launch_output"] = execution["output"]
         _record_bot_action("Hydra", "off", hydra_sidebar_mode, execution)
         _latest_bot_mode_events_all.clear()
+        st.rerun()
 
 st.sidebar.caption(
     "Hydra API reachable: "

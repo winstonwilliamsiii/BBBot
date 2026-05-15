@@ -14,9 +14,6 @@ def _resolve_noomo_webhook() -> str:
     return (
         os.getenv("DISCORD_WEBHOOK_NOOMO", "").strip()
         or os.getenv("DISCORD_AI_ML_WEBHOOK", "").strip()
-        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-        or os.getenv("DISCORD_WEBHOOK", "").strip()
-        or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
     )
 
 
@@ -42,6 +39,10 @@ def notify_ml_event(
 ) -> bool:
     webhook_url = _resolve_noomo_webhook()
     if not webhook_url:
+        logger.warning(
+            "Noomo webhook not configured. "
+            "Set DISCORD_WEBHOOK_NOOMO or DISCORD_AI_ML_WEBHOOK."
+        )
         return False
 
     message_parts = [f"Noomo | {bot_name} {event_label}"]

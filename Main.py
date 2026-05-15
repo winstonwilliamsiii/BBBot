@@ -85,6 +85,14 @@ from frontend.components.ibkr_gateway_client import (
     GatewayConfig,
     IBKRGatewayClient,
 )
+try:
+    from frontend.utils.ibkr_market_data import for_bot as get_ibkr_strategy_provider
+
+    IBKR_MARKET_DATA_IMPORT_ERROR = None
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    get_ibkr_strategy_provider = None
+    IBKR_MARKET_DATA_IMPORT_ERROR = str(exc)
+
 # discord_alpaca kept for backwards-compat with any direct callers in scripts/
 # _discord_trade alias removed; _notify_bot_trade now uses discord_notify
 from scripts.webhook_ws import router as sentiment_router
@@ -234,6 +242,20 @@ class ProfitBenchmarkRequest(BaseModel):
     position_profit_pct: float
 
 
+class GenericBotAnalyzeRequest(BaseModel):
+    ticker: str = Field(min_length=1)
+    news_headlines: list[str] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class GenericBotTradeRequest(BaseModel):
+    broker: str = Field(default="paper", min_length=1)
+    ticker: str = Field(min_length=1)
+    action: Literal["BUY", "SELL"]
+    qty: float = Field(gt=0)
+    dry_run: bool = True
+
+
 def _is_truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
@@ -256,6 +278,124 @@ def _service_status(status: str, detail: str, **extra: Any) -> dict[str, Any]:
     payload = {"status": status, "detail": detail}
     payload.update(extra)
     return payload
+
+
+_BOT_NAMESPACE_ENDPOINTS: dict[str, bool] = {
+    "Titan": False,
+    "Vega": True,
+    "Rigel": False,
+    "Dogon": False,
+    "Orion": False,
+    "Draco": True,
+    "Altair": altair_app is not None,
+    "Procryon": True,
+    "Hydra": True,
+    "Triton": True,
+    "Dione": False,
+    "Cephei": cephei_app is not None,
+    "Rhea": True,
+    "Jupicita": False,
+    "Cygnus": cygnus_app is not None,
+}
+
+
+def _generic_bot_health_payload(bot_name: str) -> dict[str, Any]:
+    return {
+        "bot": bot_name,
+        "status": "healthy",
+        "execution_enabled": _is_bot_active(bot_name),
+        "endpoint_mode": "generic-fastapi-wrapper",
+        "note": (
+            "Generic namespace enabled for dashboard/gradio interoperability. "
+            "Use /signals/{bot_name} for the full cosmic-signal payload."
+        ),
+    }
+
+
+def _generic_bot_status_payload(bot_name: str) -> dict[str, Any]:
+    return {
+        "bot": bot_name,
+        "execution_enabled": _is_bot_active(bot_name),
+        "mode": "active" if _is_bot_active(bot_name) else "inactive",
+        "namespace": f"/{bot_name.lower()}",
+        "supports_live_trade": False,
+        "status": "ok",
+    }
+
+
+def _generic_bot_analyze_payload(
+    bot_name: str,
+    payload: GenericBotAnalyzeRequest,
+) -> dict[str, Any]:
+    symbol = str(payload.ticker).strip().upper()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="ticker is required")
+
+    context: dict[str, Any] = dict(payload.context or {})
+    if payload.news_headlines and "sentiment_score" not in context:
+        positive_tokens = {"beat", "growth", "strong", "bull", "upgrade"}
+        negative_tokens = {"miss", "weak", "bear", "downgrade", "risk"}
+        pos = 0
+        neg = 0
+        for headline in payload.news_headlines:
+            text = str(headline or "").lower()
+            pos += sum(token in text for token in positive_tokens)
+            neg += sum(token in text for token in negative_tokens)
+        total = max(pos + neg, 1)
+        context["sentiment_score"] = (pos - neg) / total
+
+    if COSMIC_AVAILABLE:
+        snap = compute_cosmic_score(
+            context,
+            symbol=symbol,
+            bot_name=bot_name,
+            mode="paper",
+        )
+        result = snap.to_dict()
+    else:
+        result = {
+            "decision": "HOLD",
+            "cosmic_score": 0.0,
+            "cosmic_symbol": "⚖️",
+            "mode": "paper",
+            "reason": "cosmic_signal_engine_unavailable",
+        }
+
+    result.update(
+        {
+            "bot": bot_name,
+            "ticker": symbol,
+            "endpoint_mode": "generic-fastapi-wrapper",
+        }
+    )
+    return result
+
+
+def _generic_bot_trade_payload(
+    bot_name: str,
+    payload: GenericBotTradeRequest,
+) -> dict[str, Any]:
+    if not payload.dry_run:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"/{bot_name.lower()}/trade currently supports dry_run only. "
+                "Use bot-specific execution service for live routing."
+            ),
+        )
+
+    trade_result = {
+        "status": "dry_run",
+        "broker": payload.broker,
+        "ticker": str(payload.ticker).strip().upper(),
+        "action": payload.action,
+        "qty": payload.qty,
+        "mode": "paper",
+        "message": "Simulated trade from generic namespace",
+        "endpoint_mode": "generic-fastapi-wrapper",
+    }
+    _notify_bot_trade(bot_name, trade_result)
+    return trade_result
 
 
 def _http_probe(
@@ -479,6 +619,70 @@ def get_rhea_bot() -> Any:
     bot = RheaBot()
     bot.bootstrap_demo_state()
     return bot
+
+
+@lru_cache(maxsize=4)
+def get_strategy_provider(bot_key: str) -> Any:
+    if get_ibkr_strategy_provider is None:
+        raise RuntimeError(
+            IBKR_MARKET_DATA_IMPORT_ERROR
+            or "Shared IBKR market data provider unavailable"
+        )
+    return get_ibkr_strategy_provider(bot_key)
+
+
+def _strategy_payload(
+    *,
+    bot_name: str,
+    bot_key: str,
+    mode: str,
+    symbol: str,
+) -> dict[str, Any]:
+    normalized = str(symbol or "").strip().upper()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    if bot_name == "Rhea":
+        if RheaBot is None:
+            raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
+        analysis = get_rhea_bot().analyze_ticker(normalized)
+    elif bot_name == "Triton":
+        if TritonBot is None:
+            raise HTTPException(status_code=503, detail=TRITON_IMPORT_ERROR)
+        analysis = get_triton_bot().analyze_ticker(normalized)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported bot: {bot_name}")
+
+    try:
+        provider = get_strategy_provider(bot_key)
+        market_data = (
+            provider.strategy_intraday_payload(normalized)
+            if mode == "intraday"
+            else provider.strategy_swing_payload(normalized)
+        )
+        provider_status = "ok"
+    except RuntimeError as exc:
+        market_data = {
+            "symbol": normalized,
+            "mode": mode,
+            "source": "unavailable",
+            "detail": str(exc),
+        }
+        provider_status = "unavailable"
+
+    return {
+        "bot": bot_name,
+        "symbol": normalized,
+        "mode": mode,
+        "signal": analysis.get("action"),
+        "analysis": analysis,
+        "market_data": market_data,
+        "shared_provider": {
+            "name": "IBKRMarketDataStub",
+            "status": provider_status,
+            "bot_key": bot_key,
+        },
+    }
 
 
 @lru_cache(maxsize=1)
@@ -950,6 +1154,32 @@ async def triton_forecast(payload: TritonAnalyzeRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/triton/strategy/intraday")
+async def triton_strategy_intraday(symbol: str):
+    try:
+        return _strategy_payload(
+            bot_name="Triton",
+            bot_key="Triton_Bot",
+            mode="intraday",
+            symbol=symbol,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/triton/strategy/swing")
+async def triton_strategy_swing(symbol: str):
+    try:
+        return _strategy_payload(
+            bot_name="Triton",
+            bot_key="Triton_Bot",
+            mode="swing",
+            symbol=symbol,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/triton/trade")
 async def triton_trade(payload: TritonTradeRequest):
     if TritonBot is None:
@@ -1032,11 +1262,210 @@ async def rhea_trade(payload: RheaTradeRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/rhea/strategy/intraday")
+async def rhea_strategy_intraday(symbol: str):
+    try:
+        return _strategy_payload(
+            bot_name="Rhea",
+            bot_key="Rhea_Bot",
+            mode="intraday",
+            symbol=symbol,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/rhea/strategy/swing")
+async def rhea_strategy_swing(symbol: str):
+    try:
+        return _strategy_payload(
+            bot_name="Rhea",
+            bot_key="Rhea_Bot",
+            mode="swing",
+            symbol=symbol,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/strategy/intraday")
+async def strategy_intraday(symbol: str, bot: str = Query(default="Rhea")):
+    bot_clean = str(bot or "").strip().lower()
+    if bot_clean == "rhea":
+        return await rhea_strategy_intraday(symbol)
+    if bot_clean == "triton":
+        return await triton_strategy_intraday(symbol)
+    raise HTTPException(
+        status_code=400,
+        detail="Unsupported bot for intraday strategy. Use Rhea or Triton.",
+    )
+
+
+@app.get("/strategy/swing")
+async def strategy_swing(symbol: str, bot: str = Query(default="Rhea")):
+    bot_clean = str(bot or "").strip().lower()
+    if bot_clean == "rhea":
+        return await rhea_strategy_swing(symbol)
+    if bot_clean == "triton":
+        return await triton_strategy_swing(symbol)
+    raise HTTPException(
+        status_code=400,
+        detail="Unsupported bot for swing strategy. Use Rhea or Triton.",
+    )
+
+
 @app.get("/rhea/airbyte-config")
 async def rhea_airbyte_config():
     if RheaBot is None:
         raise HTTPException(status_code=503, detail=RHEA_IMPORT_ERROR)
     return get_rhea_bot().airbyte_source_config()
+
+
+@app.get("/titan/health")
+async def titan_health():
+    return _generic_bot_health_payload("Titan")
+
+
+@app.get("/titan/status")
+async def titan_status():
+    return _generic_bot_status_payload("Titan")
+
+
+@app.post("/titan/analyze")
+async def titan_analyze(payload: GenericBotAnalyzeRequest):
+    return _generic_bot_analyze_payload("Titan", payload)
+
+
+@app.post("/titan/trade")
+async def titan_trade(payload: GenericBotTradeRequest):
+    return _generic_bot_trade_payload("Titan", payload)
+
+
+@app.get("/orion/health")
+async def orion_health():
+    return _generic_bot_health_payload("Orion")
+
+
+@app.get("/orion/status")
+async def orion_status():
+    return _generic_bot_status_payload("Orion")
+
+
+@app.post("/orion/analyze")
+async def orion_analyze(payload: GenericBotAnalyzeRequest):
+    return _generic_bot_analyze_payload("Orion", payload)
+
+
+@app.post("/orion/trade")
+async def orion_trade(payload: GenericBotTradeRequest):
+    return _generic_bot_trade_payload("Orion", payload)
+
+
+@app.get("/rigel/health")
+async def rigel_health():
+    return _generic_bot_health_payload("Rigel")
+
+
+@app.get("/rigel/status")
+async def rigel_status():
+    return _generic_bot_status_payload("Rigel")
+
+
+@app.post("/rigel/analyze")
+async def rigel_analyze(payload: GenericBotAnalyzeRequest):
+    return _generic_bot_analyze_payload("Rigel", payload)
+
+
+@app.post("/rigel/trade")
+async def rigel_trade(payload: GenericBotTradeRequest):
+    return _generic_bot_trade_payload("Rigel", payload)
+
+
+@app.get("/dogon/health")
+async def dogon_health():
+    return _generic_bot_health_payload("Dogon")
+
+
+@app.get("/dogon/status")
+async def dogon_status():
+    return _generic_bot_status_payload("Dogon")
+
+
+@app.post("/dogon/analyze")
+async def dogon_analyze(payload: GenericBotAnalyzeRequest):
+    return _generic_bot_analyze_payload("Dogon", payload)
+
+
+@app.post("/dogon/trade")
+async def dogon_trade(payload: GenericBotTradeRequest):
+    return _generic_bot_trade_payload("Dogon", payload)
+
+
+@app.get("/dione/health")
+async def dione_health():
+    return _generic_bot_health_payload("Dione")
+
+
+@app.get("/dione/status")
+async def dione_status():
+    return _generic_bot_status_payload("Dione")
+
+
+@app.post("/dione/analyze")
+async def dione_analyze(payload: GenericBotAnalyzeRequest):
+    return _generic_bot_analyze_payload("Dione", payload)
+
+
+@app.post("/dione/trade")
+async def dione_trade(payload: GenericBotTradeRequest):
+    return _generic_bot_trade_payload("Dione", payload)
+
+
+@app.get("/jupicita/health")
+async def jupicita_health():
+    return _generic_bot_health_payload("Jupicita")
+
+
+@app.get("/jupicita/status")
+async def jupicita_status():
+    return _generic_bot_status_payload("Jupicita")
+
+
+@app.post("/jupicita/analyze")
+async def jupicita_analyze(payload: GenericBotAnalyzeRequest):
+    return _generic_bot_analyze_payload("Jupicita", payload)
+
+
+@app.post("/jupicita/trade")
+async def jupicita_trade(payload: GenericBotTradeRequest):
+    return _generic_bot_trade_payload("Jupicita", payload)
+
+
+@app.get("/bots/endpoints/coverage")
+@app.get("/api/bots/endpoints/coverage")
+async def bot_endpoint_coverage():
+    rows = []
+    for bot_name in _VALID_BOTS:
+        rows.append(
+            {
+                "bot": bot_name,
+                "namespace": f"/{bot_name.lower()}",
+                "has_bot_namespace": bool(_BOT_NAMESPACE_ENDPOINTS.get(bot_name, False)),
+                "has_signal_namespace": True,
+            }
+        )
+
+    covered = sum(1 for row in rows if row["has_bot_namespace"])
+    return {
+        "total_bots": len(rows),
+        "bot_namespaces": covered,
+        "signal_namespaces": len(rows),
+        "coverage": rows,
+        "note": (
+            "All bots have /signals coverage. Bots without dedicated runtime service "
+            "use generic FastAPI wrappers for dashboard and Gradio interoperability."
+        ),
+    }
 
 
 app.include_router(sentiment_router)

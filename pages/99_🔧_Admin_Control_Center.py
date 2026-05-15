@@ -475,6 +475,167 @@ def build_mlflow_benchmark_frame(runs_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _extract_optuna_objective(row: pd.Series) -> float | None:
+    candidates = [
+        "metrics.optuna_best_value",
+        "metrics.optuna_objective",
+        "metrics.objective",
+        "metrics.validation_score",
+        "metrics.accuracy",
+        "metrics.val_accuracy",
+        "metrics.f1_score",
+        "metrics.sharpe_ratio",
+    ]
+    for column in candidates:
+        if column in row and pd.notna(row[column]):
+            try:
+                return float(row[column])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _extract_optuna_params(row: pd.Series, max_items: int = 20) -> dict[str, Any]:
+    selected: dict[str, Any] = {}
+    for column in row.index:
+        column_name = str(column)
+        if not column_name.startswith("params."):
+            continue
+
+        key = column_name[len("params."):]
+        lower_key = key.lower()
+        is_optuna_like = (
+            lower_key.startswith("algorithm.hyperparameters.")
+            or "optuna" in lower_key
+            or key in {
+                "max_depth",
+                "learning_rate",
+                "subsample",
+                "n_estimators",
+                "threshold",
+                "gru_units",
+                "discount",
+                "exploration",
+                "sector_param",
+                "lr",
+                "hidden",
+            }
+        )
+        if not is_optuna_like:
+            continue
+
+        value = row.get(column)
+        if pd.isna(value):
+            continue
+        selected[key] = value
+        if len(selected) >= max_items:
+            break
+
+    return selected
+
+
+def build_optuna_benchmark_frames(
+    runs_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if runs_df.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    working = runs_df.copy()
+    working["benchmark_bot"] = working.apply(_infer_bot_name_from_run, axis=1)
+    working["optuna_objective"] = working.apply(_extract_optuna_objective, axis=1)
+    working["optuna_params"] = working.apply(_extract_optuna_params, axis=1)
+
+    if "start_time" in working.columns:
+        working["start_time"] = pd.to_datetime(working["start_time"], errors="coerce")
+    if "end_time" in working.columns:
+        working["end_time"] = pd.to_datetime(working["end_time"], errors="coerce")
+
+    summary_rows: list[dict[str, Any]] = []
+    param_rows: list[dict[str, Any]] = []
+    performance_rows: list[dict[str, Any]] = []
+
+    for bot_name in MLFLOW_BENCHMARK_BOTS:
+        bot_runs = working[working["benchmark_bot"] == bot_name].copy()
+        bot_runs = bot_runs[
+            bot_runs["optuna_objective"].notna()
+            | bot_runs["optuna_params"].apply(lambda x: isinstance(x, dict) and len(x) > 0)
+        ]
+
+        if bot_runs.empty:
+            summary_rows.append(
+                {
+                    "Bot": bot_name,
+                    "Optuna Runs": 0,
+                    "Best Objective": None,
+                    "Best Run": "N/A",
+                    "Last Updated": "N/A",
+                }
+            )
+            continue
+
+        best_objective_idx = pd.to_numeric(
+            bot_runs["optuna_objective"],
+            errors="coerce",
+        ).idxmax()
+        if pd.isna(best_objective_idx):
+            best_row = bot_runs.iloc[0]
+        else:
+            best_row = bot_runs.loc[best_objective_idx]
+
+        best_time = best_row.get("end_time")
+        if pd.isna(best_time):
+            best_time = best_row.get("start_time")
+
+        summary_rows.append(
+            {
+                "Bot": bot_name,
+                "Optuna Runs": int(len(bot_runs)),
+                "Best Objective": (
+                    round(float(best_row.get("optuna_objective")), 6)
+                    if pd.notna(best_row.get("optuna_objective"))
+                    else None
+                ),
+                "Best Run": str(_first_present(best_row, ["run_id", "tags.mlflow.runName"]) or "N/A"),
+                "Last Updated": (
+                    best_time.strftime("%Y-%m-%d %H:%M:%S")
+                    if pd.notna(best_time)
+                    else "N/A"
+                ),
+            }
+        )
+
+        best_params = best_row.get("optuna_params")
+        if isinstance(best_params, dict):
+            for key, value in best_params.items():
+                param_rows.append(
+                    {
+                        "Bot": bot_name,
+                        "Parameter": key,
+                        "Best Value": value,
+                    }
+                )
+
+        for _, run_row in bot_runs.iterrows():
+            run_time = run_row.get("end_time")
+            if pd.isna(run_time):
+                run_time = run_row.get("start_time")
+            objective = run_row.get("optuna_objective")
+            if pd.isna(run_time) or pd.isna(objective):
+                continue
+            performance_rows.append(
+                {
+                    "Bot": bot_name,
+                    "Timestamp": run_time,
+                    "Objective": float(objective),
+                }
+            )
+
+    summary_df = pd.DataFrame(summary_rows)
+    params_df = pd.DataFrame(param_rows)
+    performance_df = pd.DataFrame(performance_rows)
+    return summary_df, params_df, performance_df
+
+
 def build_titan_forensic_frame(runs_df: pd.DataFrame) -> pd.DataFrame:
     if runs_df.empty:
         return pd.DataFrame()
@@ -2568,6 +2729,51 @@ def main():
                     )
             else:
                 st.info("No MLflow run data available for Titan/Orion/Rigel/Dogon benchmarking.")
+
+            st.markdown("---")
+            st.subheader("🧠 Optuna Benchmark Surface")
+            st.caption(
+                "Interactive tuning stays in Gradio. This tab is the polished reporting layer "
+                "for Streamlit/Vercel visibility across Titan, Orion, Rigel, and Dogon."
+            )
+
+            (
+                optuna_summary_df,
+                optuna_best_params_df,
+                optuna_performance_df,
+            ) = build_optuna_benchmark_frames(all_runs_df)
+
+            if not optuna_summary_df.empty:
+                st.dataframe(
+                    optuna_summary_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No Optuna benchmark summary is available yet.")
+
+            if not optuna_performance_df.empty:
+                trend_df = (
+                    optuna_performance_df.pivot_table(
+                        index="Timestamp",
+                        columns="Bot",
+                        values="Objective",
+                        aggfunc="last",
+                    )
+                    .sort_index()
+                )
+                st.line_chart(trend_df, use_container_width=True)
+            else:
+                st.info("No Optuna performance points found yet.")
+
+            if not optuna_best_params_df.empty:
+                st.dataframe(
+                    optuna_best_params_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No Optuna best-trial parameter payloads found in MLflow runs.")
 
             st.markdown("---")
             st.subheader("🧪 Titan Forensic Runs")

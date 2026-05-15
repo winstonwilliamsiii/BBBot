@@ -4,10 +4,21 @@ import argparse
 import json
 import logging
 from pathlib import Path
+import sys
+from datetime import datetime
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from frontend.utils.cosmic_signal import compute_cosmic_score
 from frontend.utils.discord_notify import notify_signal, notify_status
+from scripts.load_screener_csv import (
+    load_bot_config,
+    load_screener_csv,
+    resolve_screener_path,
+)
 
 logger = logging.getLogger("broadcast_all_bot_signals")
 
@@ -28,6 +39,8 @@ ALL_BOTS = [
     "Jupicita",
     "Cygnus",
 ]
+
+BOT_CONFIG_PATH = REPO_ROOT / "bentley-bot" / "config" / "bots"
 
 
 def _load_active_bots(repo_root: Path) -> set[str]:
@@ -61,8 +74,39 @@ def _base_context() -> dict[str, Any]:
     }
 
 
+def _load_bot_symbols(bot_name: str) -> list[str]:
+    try:
+        config = load_bot_config(bot_name, config_path=BOT_CONFIG_PATH)
+        screener_path = resolve_screener_path(config, config_path=BOT_CONFIG_PATH)
+        symbols = [s for s in load_screener_csv(screener_path) if s]
+        return symbols
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        logger.warning("Universe load failed for %s: %s", bot_name, exc)
+        return []
+
+
+def _time_slot_index(now_local: datetime) -> int:
+    hour = now_local.hour
+    if hour < 11:
+        return 0
+    if hour < 14:
+        return 1
+    return 2
+
+
+def _pick_symbol(bot_name: str, symbols: list[str], fallback_symbol: str) -> tuple[str, int, str]:
+    if not symbols:
+        symbol = fallback_symbol or "SPY"
+        return symbol, 0, "fallback"
+
+    now_local = datetime.now()
+    slot = _time_slot_index(now_local)
+    index = (now_local.toordinal() + slot + sum(ord(c) for c in bot_name)) % len(symbols)
+    return symbols[index], len(symbols), "universe"
+
+
 def broadcast(mode: str, symbol: str, active_only: bool) -> int:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = REPO_ROOT
     selected_bots = list(ALL_BOTS)
 
     if active_only:
@@ -87,22 +131,35 @@ def broadcast(mode: str, symbol: str, active_only: bool) -> int:
         bot_name="ControlCenter",
         message=(
             f"Starting scheduled all-bot signal pulse for {len(selected_bots)} bots "
-            f"(mode={mode}, symbol={symbol})."
+            f"(mode={mode})."
         ),
         mode=mode,
     )
 
     for bot in selected_bots:
         try:
+            bot_symbols = _load_bot_symbols(bot)
+            chosen_symbol, universe_size, symbol_source = _pick_symbol(
+                bot,
+                bot_symbols,
+                symbol,
+            )
+            logger.info(
+                "Bot %s selected symbol %s (source=%s, universe_size=%s)",
+                bot,
+                chosen_symbol,
+                symbol_source,
+                universe_size,
+            )
             snap = compute_cosmic_score(
                 _base_context(),
-                symbol=symbol,
+                symbol=chosen_symbol,
                 bot_name=bot,
                 mode=mode,
             )
             notify_signal(
                 bot_name=bot,
-                symbol=symbol,
+                symbol=chosen_symbol,
                 decision=snap.decision,
                 cosmic_score=snap.cosmic_score,
                 heads=snap.to_dict().get("heads"),
@@ -112,6 +169,11 @@ def broadcast(mode: str, symbol: str, active_only: bool) -> int:
                     {
                         "name": "Schedule",
                         "value": "All-bot pulse (3x/day)",
+                        "inline": True,
+                    },
+                    {
+                        "name": "Universe",
+                        "value": f"{symbol_source} | size={universe_size}",
                         "inline": True,
                     }
                 ],
@@ -125,7 +187,7 @@ def broadcast(mode: str, symbol: str, active_only: bool) -> int:
         bot_name="ControlCenter",
         message=(
             f"Scheduled all-bot signal pulse complete. sent={sent}, failed={failed}, "
-            f"mode={mode}, symbol={symbol}."
+            f"mode={mode}."
         ),
         mode=mode,
     )
@@ -146,7 +208,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--symbol",
         default="SPY",
-        help="Symbol shown in scheduled signal notifications.",
+        help="Fallback symbol when a bot universe cannot be loaded.",
     )
     parser.add_argument(
         "--active-only",

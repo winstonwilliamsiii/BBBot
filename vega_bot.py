@@ -999,16 +999,19 @@ def _log_mlflow(*, ticker: str, technicals: dict, fundamentals: dict) -> dict[st
 def _notify_discord_trade(bot_name: str, side: str, qty: float, result: dict[str, Any], order_type: str = "market", limit_price: Any = None) -> None:
     """Fire a Discord Bot_Talk notification. Never raises."""
     try:
-        from frontend.utils.discord_alpaca import send_discord_trade_notification
-        order_id = result.get("order_id")
-        id_suffix = f" | order_id: {order_id}" if order_id else ""
-        send_discord_trade_notification(
+        from frontend.utils.discord_notify import notify_trade
+
+        notify_trade(
+            bot_name=bot_name,
             symbol=str(result.get("ticker", "")),
             side=side,
             qty=qty,
+            status=str(result.get("status", "submitted")),
+            mode=str(result.get("mode", "paper")),
+            ticket=str(result.get("order_id", "")) or None,
+            broker=str(result.get("broker", "")),
             order_type=order_type,
-            limit_price=limit_price,
-            status=f"[{bot_name}] {result.get('status', 'submitted')}{id_suffix}",
+            limit_price=float(limit_price) if limit_price is not None else None,
         )
     except Exception:
         pass

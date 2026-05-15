@@ -258,11 +258,11 @@ class IBKRMarketDataStub:
         conid = self._resolve_conid(symbol)
         if conid is None:
             logger.info("Using stub intraday bars for %s (no conid)", symbol)
-            return self._stub_bars(count=78)  # ~6.5h / 5min
+            return IBKRMarketDataStub._stub_bars(78)  # ~6.5h / 5min
 
         conn = self._connector_instance()
         if conn is None:
-            return self._stub_bars(count=78)
+            return IBKRMarketDataStub._stub_bars(78)
 
         try:
             raw = conn.get_historical_data(conid, period=_period, bar=_bar)
@@ -271,7 +271,7 @@ class IBKRMarketDataStub:
         except Exception as exc:
             logger.warning("Intraday bar fetch failed for %s: %s", symbol, exc)
 
-        return self._stub_bars(count=78)
+        return IBKRMarketDataStub._stub_bars(78)
 
     def get_swing_bars(
         self,
@@ -299,11 +299,11 @@ class IBKRMarketDataStub:
         conid = self._resolve_conid(symbol)
         if conid is None:
             logger.info("Using stub swing bars for %s (no conid)", symbol)
-            return self._stub_bars(count=50)
+            return IBKRMarketDataStub._stub_bars(50)
 
         conn = self._connector_instance()
         if conn is None:
-            return self._stub_bars(count=50)
+            return IBKRMarketDataStub._stub_bars(50)
 
         try:
             raw = conn.get_historical_data(conid, period=_period, bar=_bar)
@@ -312,7 +312,7 @@ class IBKRMarketDataStub:
         except Exception as exc:
             logger.warning("Swing bar fetch failed for %s: %s", symbol, exc)
 
-        return self._stub_bars(count=50)
+        return IBKRMarketDataStub._stub_bars(50)
 
     def get_snapshot(self, symbol: str) -> MarketSnapshot:
         """

@@ -104,12 +104,14 @@ def notify_signal(
     heads: Optional[List[Dict[str, Any]]] = None,
     mode: str = "paper",
     extra_fields: Optional[List[dict]] = None,
+    post_to_bot_talk_on_hold: bool = False,
 ) -> None:
     """Fire-and-forget signal notification.
 
     Posted to:
     • ``DISCORD_WEBHOOK_NOOMO``   (ai/ml channel)
-    • ``DISCORD_BOT_TALK_WEBHOOK`` (bot_talk channel) when decision ≠ HOLD
+        • ``DISCORD_BOT_TALK_WEBHOOK`` (bot_talk channel) for BUY/SELL
+            and optionally HOLD when ``post_to_bot_talk_on_hold=True``
     """
     decision = decision.upper()
     color = _DECISION_COLORS.get(decision, COLOR_INFO)
@@ -161,8 +163,8 @@ def notify_signal(
     if wh := _noomo_webhook():
         _post(wh, payload)
 
-    # bot_talk only on actionable decisions
-    if decision in ("BUY", "SELL"):
+    # bot_talk on actionable decisions, optionally also HOLD.
+    if decision in ("BUY", "SELL") or post_to_bot_talk_on_hold:
         if wh := _bot_talk_webhook():
             _post(wh, payload)
 

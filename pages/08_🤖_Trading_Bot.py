@@ -1749,10 +1749,12 @@ _auto_refresh_bucket = int(datetime.now().timestamp() // 15)
 _data_refresh_token = f"{_manual_refresh_nonce}:{_auto_refresh_bucket}"
 
 # Date range selector
+
+# --- Patch: Ensure period dropdown always visible and extended ---
 st.sidebar.markdown("---")
 date_range = st.sidebar.selectbox(
     "Time Period",
-    ["Today", "5 Days", "1 Month", "3 Months", "6 Months", "YTD"]
+    ["Today", "5 Days", "1 Month", "3 Months", "6 Months", "YTD", "All Time"]
 )
 
 ytd_days = max((datetime.now().date() - datetime(datetime.now().year, 1, 1).date()).days + 1, 1)
@@ -1763,6 +1765,7 @@ days_map = {
     "3 Months": 90,
     "6 Months": 180,
     "YTD": ytd_days,
+    "All Time": 365
 }
 selected_days = days_map[date_range]
 

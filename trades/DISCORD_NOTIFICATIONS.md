@@ -1,4 +1,4 @@
-# Discord Trade Notifications
+ Discord Trade Notifications
 
 **Status**: ⚠️ **NOT YET INTEGRATED** - Code exists but not active in production  
 **Priority**: HIGH - Recommended for real-time trade monitoring  

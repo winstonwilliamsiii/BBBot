@@ -13,15 +13,15 @@ Webhook resolution order (same as Procryon):
   DISCORD_BOT_TALK_WEBHOOK  →  DISCORD_WEBHOOK_URL  →  DISCORD_WEBHOOK
   →  DISCORD_WEBHOOK_PROD
 
-Signal embeds also go to DISCORD_WEBHOOK_NOOMO (ai/ml channel) when set.
+Signal embeds go to DISCORD_WEBHOOK_NOOMO (ai/ml channel).
 
 Environment variables
 ---------------------
 DISCORD_BOT_TALK_WEBHOOK   Trade execution channel
 DISCORD_WEBHOOK_NOOMO      AI / ML signals channel
-DISCORD_WEBHOOK_URL        Fallback general webhook
-DISCORD_WEBHOOK            Fallback #2
-DISCORD_WEBHOOK_PROD       Fallback #3
+DISCORD_WEBHOOK_URL        Fallback general webhook for bot-talk
+DISCORD_WEBHOOK            Fallback #2 for bot-talk
+DISCORD_WEBHOOK_PROD       Fallback #3 for bot-talk
 """
 
 from __future__ import annotations
@@ -72,7 +72,6 @@ def _noomo_webhook() -> Optional[str]:
     return (
         os.getenv("DISCORD_WEBHOOK_NOOMO", "").strip()
         or os.getenv("DISCORD_AI_ML_WEBHOOK", "").strip()
-        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
         or None
     )
 

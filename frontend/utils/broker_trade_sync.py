@@ -211,7 +211,7 @@ def sync_alpaca_orders(alpaca_connector) -> SyncStats:
 def _iter_ibkr_trades(raw: Any) -> Iterable[dict[str, Any]]:
     if isinstance(raw, dict):
         # Some responses return {'trades': [...]} or {'orders': [...]}.
-        for key in ("trades", "orders"):
+        for key in ("trades", "orders", "data"):
             value = raw.get(key)
             if isinstance(value, list):
                 for item in value:
@@ -235,6 +235,11 @@ def sync_ibkr_trades(ibkr_connector) -> SyncStats:
         stats.errors += 1
         return stats
 
+    if isinstance(raw, dict):
+        logger.info("IBKR raw payload keys: %s", list(raw.keys()))
+    elif isinstance(raw, list):
+        logger.info("IBKR raw payload list length: %s", len(raw))
+
     engine = _get_engine()
     with engine.begin() as conn:
         for trade in _iter_ibkr_trades(raw):
@@ -242,22 +247,48 @@ def sync_ibkr_trades(ibkr_connector) -> SyncStats:
                 symbol = str(
                     trade.get("symbol")
                     or trade.get("contractDesc")
+                    or trade.get("ticker")
                     or trade.get("conidEx")
                     or ""
                 ).strip().upper()
-                side = str(trade.get("side") or trade.get("action") or "").strip().upper()
+                side = str(
+                    trade.get("side")
+                    or trade.get("action")
+                    or trade.get("buySell")
+                    or trade.get("direction")
+                    or ""
+                ).strip().upper()
                 side = "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else ""
 
                 order_id = str(
                     trade.get("execution_id")
                     or trade.get("orderId")
+                    or trade.get("execId")
                     or trade.get("id")
                     or ""
                 ).strip()
 
-                qty = _to_int(trade.get("size") or trade.get("quantity") or trade.get("qty"))
-                price = _to_float(trade.get("price") or trade.get("avgPrice") or trade.get("tradePrice"))
+                qty = _to_int(
+                    trade.get("size")
+                    or trade.get("quantity")
+                    or trade.get("qty")
+                    or trade.get("filledQuantity")
+                )
+                price = _to_float(
+                    trade.get("price")
+                    or trade.get("avgPrice")
+                    or trade.get("tradePrice")
+                    or trade.get("executionPrice")
+                )
                 if not symbol or side not in {"BUY", "SELL"} or qty <= 0 or price <= 0:
+                    logger.debug(
+                        "Skipping IBKR trade due to missing required fields: symbol=%s side=%s qty=%s price=%s keys=%s",
+                        symbol,
+                        side,
+                        qty,
+                        price,
+                        list(trade.keys()) if isinstance(trade, dict) else [],
+                    )
                     stats.skipped += 1
                     continue
 
@@ -268,6 +299,7 @@ def sync_ibkr_trades(ibkr_connector) -> SyncStats:
                 ts = _parse_timestamp(
                     trade.get("trade_time")
                     or trade.get("executionTime")
+                    or trade.get("tradeDate")
                     or trade.get("time")
                 )
                 value = round(float(qty) * price, 4)

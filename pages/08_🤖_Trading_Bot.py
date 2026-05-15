@@ -1736,6 +1736,24 @@ if hydra_snapshot.get("status"):
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    brokers = st.session_state.get("brokers", {})
+    if brokers:
+        try:
+            with st.spinner("Syncing connected broker trades..."):
+                sync_stats = sync_connected_brokers(brokers)
+            st.session_state["broker_sync_results"] = [
+                {
+                    "Broker": item.broker,
+                    "Inserted": item.inserted,
+                    "Skipped": item.skipped,
+                    "Notified": item.notified,
+                    "Errors": item.errors,
+                }
+                for item in sync_stats
+            ]
+            st.session_state["_broker_sync_success"] = True
+        except Exception as _sync_exc:
+            st.session_state["_broker_sync_error"] = str(_sync_exc)
     st.session_state["trading_data_refresh_nonce"] = st.session_state.get(
         "trading_data_refresh_nonce", 0
     ) + 1
@@ -2444,6 +2462,10 @@ with tab4:
 
     if st.session_state.pop("_broker_sync_success", False):
         st.success("Broker trade sync completed.")
+
+    sync_error = st.session_state.pop("_broker_sync_error", "")
+    if sync_error:
+        st.error(f"Broker trade sync failed: {sync_error}")
 
     with sync_col2:
         if st.session_state.get("broker_sync_results"):

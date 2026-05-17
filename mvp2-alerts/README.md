@@ -1,13 +1,15 @@
 # MVP2 Alerts - Market & Portfolio Discord Notifier
 
-Node.js service that posts combined alerts to Discord using top gainers, top losers, and portfolio moves greater than 5%.
+Node.js service that posts combined alerts to Discord for all configured bots using each bot's universe symbols.
 
 ## Features
 
-- **Top Gainers/Losers**: Fetches market movers using Yahoo Finance.
-- **Portfolio Alerts**: Monitors holdings for moves greater than or equal to 5%.
+- **All Bot Signals format**: Sends top 15 movers (by absolute % move) per bot universe.
+- **Daily Market and Portfolio format**: Sends top gainers, top losers, and portfolio moves >= 5% for every bot.
 - **Discord Integration**: Posts formatted embeds to a Discord webhook.
-- **Scheduled Runs**: Runs at 7:00 AM, 9:40 AM, 11:30 AM, and 3:00 PM ET on weekdays.
+- **Scheduled Runs**:
+   - All Bot Signals at 8:30 AM ET (intended for the ML completion/startup window)
+   - Daily Market and Portfolio at 9:30 AM, 12:00 PM, and 3:30 PM ET
 - **Bot Universe Guard**: Filters all alert symbols to the configured bot screener universe before Discord delivery.
 
 ## Setup
@@ -35,12 +37,14 @@ Node.js service that posts combined alerts to Discord using top gainers, top los
    3. MySQL `portfolios` table for `PORTFOLIO_USER_ID` (default `demo_user`)
    4. Built-in Mansa Tech fallback: `IONQ,QBTS,SOUN,RGTI,AMZN,NVDA`
 
-4. **Select the bot universe to enforce**
+4. **Select bots and universe enforcement**
 
-   - `ALERT_BOT=Titan_Bot` or `ALERT_BOT=Vega_Bot`
+   - `ALERT_BOTS=Titan_Bot,Vega_Bot,...` (optional; defaults to all bot configs)
+   - `ALERT_SIGNALS_PER_BOT=15` (default)
+   - `ALERT_MODE=daily|signals|both` (for `--run-once`)
    - `ENFORCE_BOT_UNIVERSE=true` (default)
 
-   The service reads `../bentley-bot/config/bots/<bot>.yml`, loads the configured screener CSV, and filters gainers, losers, and portfolio symbols to that allowed universe. If the screener CSV is empty, the service fails closed and skips sending alerts.
+   The service reads `../bentley-bot/config/bots/<bot>.yml`, loads the configured screener CSV, and filters all symbols to that allowed universe. If the screener CSV is empty, the service fails closed and skips sending alerts for that bot.
 
 5. **Configure rate limits**
 

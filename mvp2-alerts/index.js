@@ -19,6 +19,12 @@ const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.A
 const RUN_ONCE = process.argv.includes('--run-once');
 const DEFAULT_MANSA_TECH_SYMBOLS = ['IONQ', 'QBTS', 'SOUN', 'RGTI', 'AMZN', 'NVDA'];
 const ALERT_BOT = process.env.ALERT_BOT || process.env.BOT_NAME || 'Titan_Bot';
+const ALERT_MODE = String(process.env.ALERT_MODE || 'daily').trim().toLowerCase();
+const ALERT_SIGNALS_PER_BOT = Math.max(
+  1,
+  Number.parseInt(process.env.ALERT_SIGNALS_PER_BOT || '15', 10) || 15
+);
+const TITAN_RUNTIME_NAME = 'Titan_Bot';
 const ENFORCE_BOT_UNIVERSE = !['0', 'false', 'no', 'off'].includes(
   String(process.env.ENFORCE_BOT_UNIVERSE || 'true').trim().toLowerCase()
 );
@@ -36,6 +42,80 @@ let tiingoAccessChecked = false;
 let tiingoAccessAvailable = false;
 let alphaVantageRateLimited = false;
 const botUniverseCache = new Map();
+
+function getSignalIndicator(changePercent) {
+  const value = Number(changePercent);
+  if (!Number.isFinite(value)) {
+    return 'HOLD';
+  }
+  if (value > 0) {
+    return 'BUY';
+  }
+  if (value < 0) {
+    return 'SELL';
+  }
+  return 'HOLD';
+}
+
+function isRetryableDbError(err) {
+  const code = String(err?.code || '').toUpperCase();
+  const message = String(err?.message || '').toLowerCase();
+  return (
+    code === 'PROTOCOL_CONNECTION_LOST' ||
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
+    message.includes('connection lost') ||
+    message.includes('server has gone away') ||
+    message.includes('closed the connection')
+  );
+}
+
+function normalizeBotRuntimeName(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.endsWith('_Bot') ? trimmed : `${trimmed}_Bot`;
+}
+
+function resolveConfiguredAlertBots() {
+  const explicit = String(process.env.ALERT_BOTS || '').trim();
+  if (explicit) {
+    return [...new Set(
+      explicit
+        .split(',')
+        .map(normalizeBotRuntimeName)
+        .filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b));
+  }
+
+  try {
+    const files = fs.readdirSync(BOT_CONFIG_DIR).filter((fileName) => fileName.endsWith('.yml'));
+    const runtimes = files
+      .map((fileName) => {
+        try {
+          const profilePath = path.join(BOT_CONFIG_DIR, fileName);
+          const yamlText = fs.readFileSync(profilePath, 'utf8');
+          const profile = yaml.load(yamlText) || {};
+          const botMeta = typeof profile.bot === 'object' && profile.bot ? profile.bot : {};
+          return normalizeBotRuntimeName(botMeta.runtime_name || botMeta.name || '');
+        } catch (err) {
+          console.warn(`Failed to parse bot config ${fileName}: ${err.message}`);
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    if (runtimes.length > 0) {
+      return [...new Set(runtimes)].sort((a, b) => a.localeCompare(b));
+    }
+  } catch (err) {
+    console.warn(`Failed to enumerate bot configs in ${BOT_CONFIG_DIR}: ${err.message}`);
+  }
+
+  return [normalizeBotRuntimeName(ALERT_BOT) || TITAN_RUNTIME_NAME].sort((a, b) => a.localeCompare(b));
+}
 
 function normalizeTradingViewSymbol(value) {
   const token = String(value || '').trim().toUpperCase();
@@ -208,6 +288,18 @@ async function getDbConnection() {
   return dbPool;
 }
 
+async function resetDbConnection() {
+  if (dbPool) {
+    try {
+      await dbPool.end();
+    } catch (err) {
+      // ignore close errors while resetting the pool
+    }
+  }
+  dbPool = null;
+  alertsLogInsertConfigPromise = null;
+}
+
 function parseSymbols(raw) {
   if (!raw || typeof raw !== 'string') {
     return [];
@@ -310,16 +402,173 @@ function selectPortfolioSymbolsForRun(symbols) {
 }
 
 // ---------- Alert Logging ----------
-async function logAlert(symbol, changePercent, price, currency, alertType, discordDelivered, discordError = null) {
+let alertsLogInsertConfigPromise = null;
+
+async function getAlertsLogInsertConfig() {
+  if (alertsLogInsertConfigPromise) {
+    return alertsLogInsertConfigPromise;
+  }
+
+  alertsLogInsertConfigPromise = (async () => {
+    const pool = await getDbConnection();
+
+    // Ensure the logging table exists, then adapt inserts to the live schema.
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS alerts_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        change_percent DECIMAL(6,2) NOT NULL,
+        price DECIMAL(12,2),
+        currency VARCHAR(10) DEFAULT 'USD',
+        alert_type VARCHAR(50) NOT NULL,
+        discord_delivered BOOLEAN DEFAULT FALSE,
+        discord_error TEXT,
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_symbol (symbol),
+        INDEX idx_sent_at (sent_at),
+        INDEX idx_alert_type (alert_type)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    const [rows] = await pool.query('SHOW COLUMNS FROM alerts_log');
+    const normalizedRows = (rows || []).map((r) => ({
+      name: String(r.Field || '').toLowerCase(),
+      type: String(r.Type || '').toLowerCase(),
+      nullable: String(r.Null || '').toUpperCase() === 'YES',
+      hasDefault: r.Default !== null && r.Default !== undefined,
+      extra: String(r.Extra || '').toLowerCase()
+    }));
+    const columns = new Set(normalizedRows.map((r) => r.name));
+
+    const pick = (...candidates) => candidates.find((name) => columns.has(name)) || null;
+
+    const mapped = {
+      botName: pick('bot_name', 'bot', 'runtime_name'),
+      symbol: pick('symbol', 'ticker'),
+      changePercent: pick('change_percent', 'pct_change', 'percent_change', 'change_pct'),
+      price: pick('price', 'last_price', 'market_price'),
+      currency: pick('currency', 'ccy'),
+      alertType: pick('alert_type', 'type', 'event_type'),
+      message: pick('message', 'content', 'summary'),
+      payload: pick('payload', 'payload_json', 'data'),
+      channel: pick('channel', 'destination', 'target_channel'),
+      status: pick('status', 'delivery_status'),
+      discordDelivered: pick('discord_delivered', 'delivered', 'is_delivered'),
+      discordError: pick('discord_error', 'error', 'error_message')
+    };
+
+    const insertColumns = [];
+    const valueGetters = [];
+
+    const add = (columnName, getter) => {
+      if (!columnName) {
+        return;
+      }
+      insertColumns.push(columnName);
+      valueGetters.push(getter);
+    };
+
+    add(mapped.botName, (payload) => payload.botName);
+    add(mapped.symbol, (payload) => payload.symbol);
+    add(mapped.changePercent, (payload) => payload.changePercent);
+    add(mapped.price, (payload) => payload.price);
+    add(mapped.currency, (payload) => payload.currency);
+    add(mapped.alertType, (payload) => payload.alertType);
+    add(mapped.message, (payload) => payload.message);
+    add(mapped.payload, (payload) => payload.payload);
+    add(mapped.channel, (payload) => payload.channel);
+    add(mapped.status, (payload) => payload.status);
+    add(mapped.discordDelivered, (payload) => payload.discordDelivered);
+    add(mapped.discordError, (payload) => payload.discordError);
+
+    const inserted = new Set(insertColumns.map((name) => String(name).toLowerCase()));
+    for (const column of normalizedRows) {
+      if (inserted.has(column.name)) {
+        continue;
+      }
+      if (column.extra.includes('auto_increment')) {
+        continue;
+      }
+      if (column.nullable || column.hasDefault) {
+        continue;
+      }
+
+      add(column.name, () => {
+        if (column.type.includes('json')) {
+          return '{}';
+        }
+        if (column.type.includes('int') || column.type.includes('decimal') || column.type.includes('float') || column.type.includes('double')) {
+          return 0;
+        }
+        if (column.type.includes('date') || column.type.includes('time')) {
+          return new Date();
+        }
+        return '';
+      });
+    }
+
+    if (insertColumns.length === 0) {
+      throw new Error('alerts_log has no compatible columns for alert logging');
+    }
+
+    const placeholders = insertColumns.map(() => '?').join(', ');
+    const sql = `INSERT INTO alerts_log (${insertColumns.join(', ')}) VALUES (${placeholders})`;
+
+    console.log(`✓ alerts_log schema detected; using columns: ${insertColumns.join(', ')}`);
+    return { sql, valueGetters };
+  })().catch((err) => {
+    alertsLogInsertConfigPromise = null;
+    throw err;
+  });
+
+  return alertsLogInsertConfigPromise;
+}
+
+async function logAlert(symbol, changePercent, price, currency, alertType, discordDelivered, discordError = null, botName = '', extra = {}, attempt = 1) {
   try {
     const pool = await getDbConnection();
-    await pool.execute(
-      `INSERT INTO alerts_log (symbol, change_percent, price, currency, alert_type, discord_delivered, discord_error) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [symbol, changePercent, price, currency, alertType, discordDelivered, discordError]
-    );
+    const insertConfig = await getAlertsLogInsertConfig();
+    const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+    const normalizedType = String(alertType || 'signal').trim().toLowerCase();
+    const normalizedBot = String(botName || ALERT_BOT || 'Unknown_Bot').trim();
+    const signalIndicator = String(extra.signalIndicator || getSignalIndicator(changePercent));
+    const alertGroup = String(extra.alertGroup || '').trim().toLowerCase();
+    const message = `${normalizedBot} | ${normalizedType} | ${normalizedSymbol} ${Number.isFinite(Number(changePercent)) ? `${Number(changePercent).toFixed(2)}%` : 'N/A'} | ${signalIndicator}`;
+    const payload = {
+      botName: normalizedBot,
+      symbol: normalizedSymbol,
+      changePercent,
+      price,
+      currency,
+      alertType: normalizedType,
+      message,
+      payload: JSON.stringify({
+        bot_name: normalizedBot,
+        symbol: normalizedSymbol,
+        change_percent: changePercent,
+        price,
+        currency,
+        alert_type: normalizedType,
+        signal_indicator: signalIndicator,
+        alert_group: alertGroup || (normalizedType === 'signal' ? 'all_bot_signals' : 'daily_market_portfolio'),
+        discord_delivered: Boolean(discordDelivered),
+        discord_error: discordError
+      }),
+      channel: 'discord',
+      status: discordDelivered ? 'sent' : 'failed',
+      discordDelivered,
+      discordError
+    };
+    const values = insertConfig.valueGetters.map((getter) => getter(payload));
+
+    await pool.execute(insertConfig.sql, values);
     console.log(`✓ Logged alert: ${symbol} ${alertType}`);
   } catch (err) {
+    if (attempt < 2 && isRetryableDbError(err)) {
+      console.warn(`MySQL log retry (${attempt}) after transient error: ${err.message}`);
+      await resetDbConnection();
+      return logAlert(symbol, changePercent, price, currency, alertType, discordDelivered, discordError, botName, extra, attempt + 1);
+    }
     console.error('MySQL log error:', err.message);
   }
 }
@@ -552,6 +801,17 @@ async function fetchUniverseGainersLosers(symbols, gainLimit = 5, lossLimit = 5)
   return { gainers, losers };
 }
 
+async function fetchUniverseSignals(symbols, signalLimit = ALERT_SIGNALS_PER_BOT) {
+  const results = await Promise.all(symbols.map(s => fetchQuote(s)));
+  const valid = results.filter(q => q && Number.isFinite(Number(q.changePercent)));
+  if (valid.length === 0) {
+    return [];
+  }
+
+  valid.sort((a, b) => Math.abs(Number(b.changePercent)) - Math.abs(Number(a.changePercent)));
+  return valid.slice(0, signalLimit);
+}
+
 // ---------- Portfolio alerts (>5% move) ----------
 async function portfolioAlerts(portfolioSymbols, thresholdPct = 5) {
   const alerts = [];
@@ -562,6 +822,65 @@ async function portfolioAlerts(portfolioSymbols, thresholdPct = 5) {
     }
   }
   return alerts;
+}
+
+function formatQuote(q) {
+  const symbol = q?.symbol || 'N/A';
+  const rawChange = Number(q?.changePercent);
+  const rawPrice = Number(q?.price);
+  const change = Number.isFinite(rawChange) ? rawChange.toFixed(2) : 'N/A';
+  const price = Number.isFinite(rawPrice) ? rawPrice : 'N/A';
+  const currency = q?.currency || 'USD';
+  return `${symbol} ${change}% | ${currency} ${price}`;
+}
+
+function formatSignalQuote(q) {
+  const indicator = getSignalIndicator(q?.changePercent);
+  return `${formatQuote(q)} | ${indicator}`;
+}
+
+async function collectBotMarketData(botName) {
+  const universeContext = loadBotUniverseContext(botName);
+  if (ENFORCE_BOT_UNIVERSE && (!universeContext.loaded || universeContext.allowedSymbols.size === 0)) {
+    console.warn(
+      `Universe enforcement blocked alerts for ${botName}: ` +
+      `${universeContext.reason || 'configured universe is empty'}`
+    );
+    return null;
+  }
+
+  const universeSymbols = universeContext.allowedSymbols.size > 0
+    ? Array.from(universeContext.allowedSymbols)
+    : [];
+
+  if (universeSymbols.length === 0) {
+    console.warn(`No configured universe symbols found for ${botName}; skipping alert.`);
+    return null;
+  }
+
+  let gainers, losers;
+  const g = await fetchUniverseGainersLosers(universeSymbols, 5, 5);
+  gainers = g.gainers;
+  losers = g.losers;
+  console.log(`✓ Universe gainers/losers: ${gainers.length} gainers, ${losers.length} losers from ${universeSymbols.length} symbols`);
+
+  const universeSignals = await fetchUniverseSignals(universeSymbols, ALERT_SIGNALS_PER_BOT);
+  const portfolioSource = selectPortfolioSymbolsForRun(universeSymbols);
+  const portfolioMovesRaw = await portfolioAlerts(portfolioSource, 5);
+  const portfolioMoves = filterQuotesByBotUniverse(
+    portfolioMovesRaw,
+    universeContext,
+    'portfolio moves'
+  );
+
+  return {
+    runtimeName: universeContext.botName || botName,
+    universeLabel: universeContext.universe || 'Configured Universe',
+    universeSignals,
+    gainers,
+    losers,
+    portfolioMoves
+  };
 }
 
 // ---------- Discord posting ----------
@@ -583,89 +902,26 @@ async function postToDiscord(content, embeds = []) {
 }
 
 // ---------- Compose and send combined alert ----------
-async function runCombinedAlert() {
+async function runAllBotSignalsForBot(botName) {
   try {
-    const universeContext = loadBotUniverseContext(ALERT_BOT);
-    if (ENFORCE_BOT_UNIVERSE && (!universeContext.loaded || universeContext.allowedSymbols.size === 0)) {
-      console.warn(
-        `Universe enforcement blocked alerts for ${ALERT_BOT}: ` +
-        `${universeContext.reason || 'configured universe is empty'}`
-      );
+    const data = await collectBotMarketData(botName);
+    if (!data) {
       return;
     }
 
-    const portfolioAll = await resolvePortfolioSymbols();
-    const universePortfolio = filterSymbolsByBotUniverse(
-      portfolioAll,
-      universeContext,
-      'portfolio source'
-    );
-    const portfolio = selectPortfolioSymbolsForRun(universePortfolio);
-    const universeSymbols = universeContext.allowedSymbols.size > 0
-      ? Array.from(universeContext.allowedSymbols)
-      : [];
-
-    let gainers, losers;
-    if (universeSymbols.length > 0) {
-      // Fetch and rank quotes directly from the bot universe (avoids empty filter on global screener)
-      const g = await fetchUniverseGainersLosers(universeSymbols, 5, 5);
-      gainers = g.gainers;
-      losers = g.losers;
-      console.log(`✓ Universe gainers/losers: ${gainers.length} gainers, ${losers.length} losers from ${universeSymbols.length} symbols`);
-    } else {
-      // Fallback to global Yahoo screener + universe filter
-      const [gainersRaw, losersRaw] = await Promise.all([fetchTopGainers(5), fetchTopLosers(5)]);
-      gainers = filterQuotesByBotUniverse(gainersRaw, universeContext, 'top gainers');
-      losers = filterQuotesByBotUniverse(losersRaw, universeContext, 'top losers');
-    }
-
-    const portfolioMovesRaw = await portfolioAlerts(portfolio, 5);
-    const portfolioMoves = filterQuotesByBotUniverse(
-      portfolioMovesRaw,
-      universeContext,
-      'portfolio moves'
-    );
-
-    const fmt = q => {
-      const symbol = q?.symbol || 'N/A';
-      const rawChange = Number(q?.changePercent);
-      const rawPrice = Number(q?.price);
-      const change = Number.isFinite(rawChange) ? rawChange.toFixed(2) : 'N/A';
-      const price = Number.isFinite(rawPrice) ? rawPrice : 'N/A';
-      const currency = q?.currency || 'USD';
-      return `${symbol} ${change}% | ${currency} ${price}`;
-    };
-
-    const universeLabel = universeContext.universe || 'Configured Universe';
-    const content = `${universeContext.botName || ALERT_BOT} | ${universeLabel} Alerts`;
-    const totalDataPoints = gainers.length + losers.length;
+    const content = `🤖 All Bot Signals | ${data.runtimeName} | ${data.universeLabel}`;
+    const totalDataPoints = data.universeSignals.length;
     const dataQualityWarning = totalDataPoints === 0
       ? [{ title: '⚠️ Data Provider Warning', description: 'All market data sources failed (Tiingo 403, AlphaVantage DNS, Yahoo fallback). Quotes unavailable — check API keys and network.', color: 16776960 }]
       : [];
     const embeds = [...dataQualityWarning,
       {
-        title: `Top Gainers | ${universeLabel}`,
+        title: `All Bot Signals | ${data.universeLabel}`,
         description:
-          gainers.length
-            ? gainers.map(fmt).join('\n')
-            : 'No data',
-        color: 3066993 // green
-      },
-      {
-        title: `Top Losers | ${universeLabel}`,
-        description:
-          losers.length
-            ? losers.map(fmt).join('\n')
-            : 'No data',
-        color: 15158332 // red
-      },
-      {
-        title: `Portfolio Moves ≥ 5% | ${universeLabel}`,
-        description:
-          portfolioMoves.length
-            ? portfolioMoves.map(fmt).join('\n')
-            : 'No holdings exceeded threshold',
-        color: 3447003 // blue
+          data.universeSignals.length
+            ? data.universeSignals.map(formatQuote).join('\n')
+            : 'No universe signal data',
+        color: 5592575 // teal
       }
     ];
 
@@ -676,9 +932,7 @@ async function runCombinedAlert() {
 
     // Log all alerts to MySQL
     const allAlerts = [
-      ...gainers.map(q => ({ ...q, type: 'gainer' })),
-      ...losers.map(q => ({ ...q, type: 'loser' })),
-      ...portfolioMoves.map(q => ({ ...q, type: 'portfolio' }))
+      ...data.universeSignals.map(q => ({ ...q, type: 'signal' }))
     ];
 
     for (const alert of allAlerts) {
@@ -689,13 +943,99 @@ async function runCombinedAlert() {
         alert.currency || 'USD',
         alert.type,
         delivered,
-        error
+        error,
+        data.runtimeName
       );
     }
 
-    console.log(`Logged ${allAlerts.length} alerts to database`);
+    console.log(`Logged ${allAlerts.length} signal alerts to database for ${data.runtimeName}`);
   } catch (err) {
-    console.error('runCombinedAlert failed:', err.message);
+    console.error(`runAllBotSignalsForBot failed (${botName}):`, err.message);
+  }
+}
+
+async function runDailyMarketAndPortfolioForBot(botName) {
+  try {
+    const data = await collectBotMarketData(botName);
+    if (!data) {
+      return;
+    }
+
+    const content = `📊 Daily Market and Portfolio | ${data.runtimeName} | ${data.universeLabel}`;
+    const totalDataPoints = data.gainers.length + data.losers.length;
+    const dataQualityWarning = totalDataPoints === 0
+      ? [{ title: '⚠️ Data Provider Warning', description: 'All market data sources failed (Tiingo 403, AlphaVantage DNS, Yahoo fallback). Quotes unavailable — check API keys and network.', color: 16776960 }]
+      : [];
+
+    const embeds = [...dataQualityWarning,
+      {
+        title: `Top Gainers | ${data.universeLabel}`,
+        description:
+          data.gainers.length
+            ? data.gainers.map(formatQuote).join('\n')
+            : 'No data',
+        color: 3066993 // green
+      },
+      {
+        title: `Top Losers | ${data.universeLabel}`,
+        description:
+          data.losers.length
+            ? data.losers.map(formatQuote).join('\n')
+            : 'No data',
+        color: 15158332 // red
+      },
+      {
+        title: `Portfolio Moves ≥ 5% | ${data.universeLabel}`,
+        description:
+          data.portfolioMoves.length
+            ? data.portfolioMoves.map(formatQuote).join('\n')
+            : 'No holdings exceeded threshold',
+        color: 3447003 // blue
+      }
+    ];
+
+    const discordResult = await postToDiscord(content, embeds);
+    const delivered = discordResult === true;
+    const error = delivered ? null : discordResult;
+
+    const allAlerts = [
+      ...data.gainers.map(q => ({ ...q, type: 'gainer' })),
+      ...data.losers.map(q => ({ ...q, type: 'loser' })),
+      ...data.portfolioMoves.map(q => ({ ...q, type: 'portfolio' }))
+    ];
+
+    for (const alert of allAlerts) {
+      await logAlert(
+        alert.symbol,
+        Number.isFinite(Number(alert.changePercent)) ? Number(alert.changePercent) : null,
+        Number.isFinite(Number(alert.price)) ? Number(alert.price) : null,
+        alert.currency || 'USD',
+        alert.type,
+        delivered,
+        error,
+        data.runtimeName
+      );
+    }
+
+    console.log(`Logged ${allAlerts.length} daily alerts to database for ${data.runtimeName}`);
+  } catch (err) {
+    console.error(`runDailyMarketAndPortfolioForBot failed (${botName}):`, err.message);
+  }
+}
+
+async function runAllBotSignals() {
+  const bots = resolveConfiguredAlertBots();
+  console.log(`Running All Bot Signals for ${bots.length} bot(s): ${bots.join(', ')}`);
+  for (const botName of bots) {
+    await runAllBotSignalsForBot(botName);
+  }
+}
+
+async function runDailyMarketAndPortfolioAlerts() {
+  const bots = resolveConfiguredAlertBots();
+  console.log(`Running Daily Market and Portfolio alerts for ${bots.length} bot(s): ${bots.join(', ')}`);
+  for (const botName of bots) {
+    await runDailyMarketAndPortfolioForBot(botName);
   }
 }
 
@@ -703,24 +1043,39 @@ async function runCombinedAlert() {
 // Format: 'minute hour * * 1-5' for weekdays (1=Mon, 5=Fri), timezone: America/New_York
 
 function startDaemonSchedule() {
-  // 7:00 AM ET
-  cron.schedule('0 7 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' });
+  // All Bot Signals: after ML pipeline, alphabetical per configured bot list.
+  // 8:30 AM ET (intended to complete in 8:30-8:40 window depending on provider latency)
+  cron.schedule('30 8 * * 1-5', runAllBotSignals, { timezone: 'America/New_York' });
 
-  // 9:40 AM ET
-  cron.schedule('40 9 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' });
+  // 9:30 AM ET
+  cron.schedule('30 9 * * 1-5', runDailyMarketAndPortfolioAlerts, { timezone: 'America/New_York' });
 
-  // 11:30 AM ET
-  cron.schedule('30 11 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' });
+  // 12:00 PM ET
+  cron.schedule('0 12 * * 1-5', runDailyMarketAndPortfolioAlerts, { timezone: 'America/New_York' });
 
-  // 3:00 PM ET
-  cron.schedule('0 15 * * 1-5', runCombinedAlert, { timezone: 'America/New_York' });
+  // 3:30 PM ET
+  cron.schedule('30 15 * * 1-5', runDailyMarketAndPortfolioAlerts, { timezone: 'America/New_York' });
 }
 
 // Manual run for testing:
 if (require.main === module) {
   if (RUN_ONCE) {
-    console.log('🚀 Running one-shot Daily Market & Portfolio Alert...');
-    runCombinedAlert().finally(async () => {
+    const mode = ['signals', 'daily', 'both'].includes(ALERT_MODE) ? ALERT_MODE : 'daily';
+    console.log(`🚀 Running one-shot alert mode: ${mode}`);
+    const runner = async () => {
+      if (mode === 'signals') {
+        await runAllBotSignals();
+        return;
+      }
+      if (mode === 'both') {
+        await runAllBotSignals();
+        await runDailyMarketAndPortfolioAlerts();
+        return;
+      }
+      await runDailyMarketAndPortfolioAlerts();
+    };
+
+    runner().finally(async () => {
       if (dbPool) {
         await dbPool.end();
       }
@@ -728,9 +1083,11 @@ if (require.main === module) {
     });
   } else {
     console.log('🚀 Starting TradingView Alerts Service...');
-    console.log('📅 Scheduled for: 7:00 AM, 9:40 AM, 11:30 AM, 3:00 PM ET (weekdays)');
-    console.log(`🧭 Alert bot universe: ${ALERT_BOT} | enforce=${ENFORCE_BOT_UNIVERSE}`);
+    console.log('📅 Scheduled for Signals: 8:30 AM ET (weekdays)');
+    console.log('📅 Scheduled for Daily Market & Portfolio: 9:30 AM, 12:00 PM, 3:30 PM ET (weekdays)');
+    console.log(`🧭 Alert bots: ${resolveConfiguredAlertBots().join(', ')} | enforce=${ENFORCE_BOT_UNIVERSE}`);
+    console.log(`📡 Signals per bot run: ${ALERT_SIGNALS_PER_BOT}`);
     startDaemonSchedule();
-    runCombinedAlert();
+    runDailyMarketAndPortfolioAlerts();
   }
 }

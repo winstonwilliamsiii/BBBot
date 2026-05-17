@@ -175,9 +175,7 @@ def _persist_snapshot(file_name: str, payload: Dict[str, Any]) -> None:
 def _get_noomo_webhook() -> str | None:
     return (
         os.getenv("DISCORD_WEBHOOK_NOOMO")
-        or os.getenv("DISCORD_WEBHOOK_URL")
-        or os.getenv("DISCORD_WEBHOOK")
-        or os.getenv("DISCORD_WEBHOOK_PROD")
+        or os.getenv("DISCORD_AI_ML_WEBHOOK")
     )
 
 

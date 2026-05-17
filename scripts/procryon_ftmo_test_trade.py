@@ -79,7 +79,6 @@ def _get_noomo_webhook() -> Optional[str]:
     return (
         os.getenv("DISCORD_WEBHOOK_NOOMO", "").strip()
         or os.getenv("DISCORD_AI_ML_WEBHOOK", "").strip()
-        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
         or None
     )
 

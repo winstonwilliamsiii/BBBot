@@ -161,4 +161,4 @@ def build_demo() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = build_demo()
-    app.launch(server_name="127.0.0.1", server_port=7860)
+    app.launch(server_name="0.0.0.0", server_port=7860, share=True)

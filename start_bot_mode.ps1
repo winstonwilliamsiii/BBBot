@@ -140,6 +140,26 @@ function Set-JsonProperty {
     }
 }
 
+function Write-Utf8NoBomFile {
+    param(
+        [string]$Path,
+        [string]$Content
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Append-Utf8NoBomLine {
+    param(
+        [string]$Path,
+        [string]$Line
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::AppendAllText($Path, ($Line + [Environment]::NewLine), $encoding)
+}
+
 function Update-BrokerModeConfig {
     param(
         [string]$BotName,
@@ -174,7 +194,8 @@ function Update-BrokerModeConfig {
     Set-JsonProperty -Container $config.bot_broker_mapping -PropertyName $BotName -Value $brokerKey
     Set-JsonProperty -Container $config.broker_modes -PropertyName $brokerKey -Value $TradingModeName
 
-    $config | ConvertTo-Json -Depth 8 | Set-Content -Path $configPath -Encoding UTF8
+    $configJson = $config | ConvertTo-Json -Depth 8
+    Write-Utf8NoBomFile -Path $configPath -Content $configJson
 }
 
 $resolvedBroker = $Broker.ToUpper()
@@ -282,7 +303,7 @@ if ($tritonProbeOutput) {
 
 $eventJson = $botEvent | ConvertTo-Json -Compress -Depth 6
 $eventsPath = Join-Path $logDir "bot_mode_events.jsonl"
-Add-Content -Path $eventsPath -Value $eventJson
+Append-Utf8NoBomLine -Path $eventsPath -Line $eventJson
 
 $webhookUrl = $env:DISCORD_WEBHOOK
 if (-not $webhookUrl) { $webhookUrl = $env:DISCORD_WEBHOOK_PROD }
@@ -330,6 +351,7 @@ if ($webhookUrl) {
 
 # Persist final event snapshot (with discord metadata) for dashboard convenience.
 $latestPath = Join-Path $logDir "last_bot_mode_event.json"
-$botEvent | ConvertTo-Json -Depth 8 | Set-Content -Path $latestPath -Encoding UTF8
+$latestJson = $botEvent | ConvertTo-Json -Depth 8
+Write-Utf8NoBomFile -Path $latestPath -Content $latestJson
 
 Write-Host (($botEvent | ConvertTo-Json -Depth 8))

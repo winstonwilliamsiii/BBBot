@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import logging
 import time
 import json
+from urllib.parse import urlparse
 
 try:
     import websocket
@@ -77,27 +78,91 @@ class IBKRConnector:
         
         logger.info(f"IBKR connector initialized: {base_url}")
         logger.info(f"WebSocket endpoint: {self.ws_url}")
+
+    def _candidate_base_urls(self) -> List[str]:
+        """Build candidate gateway URLs from configured base URL."""
+        configured = (self.base_url or "").strip()
+        if not configured:
+            configured = "https://localhost:5000"
+
+        if "://" not in configured:
+            configured = f"https://{configured}"
+
+        parsed = urlparse(configured)
+        scheme = parsed.scheme or "https"
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 5000
+
+        host_variants = [host]
+        if host == "localhost":
+            host_variants.append("127.0.0.1")
+        elif host == "127.0.0.1":
+            host_variants.append("localhost")
+
+        scheme_variants = [scheme]
+        alt_scheme = "http" if scheme == "https" else "https"
+        if alt_scheme not in scheme_variants:
+            scheme_variants.append(alt_scheme)
+
+        candidates: List[str] = []
+        for candidate_scheme in scheme_variants:
+            for candidate_host in host_variants:
+                candidate = f"{candidate_scheme}://{candidate_host}:{port}"
+                if candidate not in candidates:
+                    candidates.append(candidate)
+
+        return candidates
+
+    def get_auth_status(self) -> Dict[str, Any]:
+        """Return detailed auth status and connectivity diagnostics."""
+        last_error = None
+
+        for candidate_url in self._candidate_base_urls():
+            try:
+                response = self.session.get(
+                    f"{candidate_url}/v1/api/iserver/auth/status",
+                    timeout=5,
+                )
+                response.raise_for_status()
+                data = response.json()
+                authenticated = bool(data.get("authenticated", False))
+
+                # Pin connector to the first reachable URL for subsequent calls.
+                self.base_url = candidate_url
+                self.ws_url = self.base_url.replace("https://", "wss://").replace("http://", "ws://") + "/v1/api/ws"
+
+                return {
+                    "ok": True,
+                    "authenticated": authenticated,
+                    "url": candidate_url,
+                    "data": data,
+                    "error": None,
+                }
+            except Exception as exc:
+                last_error = str(exc)
+
+        return {
+            "ok": False,
+            "authenticated": False,
+            "url": None,
+            "data": None,
+            "error": last_error,
+        }
     
     def is_authenticated(self) -> bool:
         """Check if authenticated with IBKR"""
-        try:
-            response = self.session.get(
-                f"{self.base_url}/v1/api/iserver/auth/status",
-                timeout=5
-            )
-            response.raise_for_status()
-            data = response.json()
-            authenticated = data.get('authenticated', False)
-            
-            if authenticated:
-                logger.info("IBKR authentication successful")
-            else:
-                logger.warning("IBKR not authenticated - check Gateway connection")
-            
-            return authenticated
-        except Exception as e:
-            logger.error(f"Authentication check failed: {e}")
+        status = self.get_auth_status()
+
+        if not status["ok"]:
+            logger.error(f"Authentication check failed: {status.get('error')}")
             return False
+
+        if status["authenticated"]:
+            logger.info(f"IBKR authentication successful via {status.get('url')}")
+        else:
+            logger.warning(f"IBKR reachable but not authenticated via {status.get('url')}")
+
+        return bool(status["authenticated"])
     
     def reauthenticate(self) -> bool:
         """Trigger reauthentication"""

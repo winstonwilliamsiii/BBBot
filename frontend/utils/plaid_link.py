@@ -57,7 +57,6 @@ class PlaidLinkManager:
     
     def __init__(self):
         """Initialize Plaid API client"""
-<<<<<<< Updated upstream
         # Reload environment one more time to be sure (local only)
         load_dotenv(str(project_root / '.env'), override=True)
 
@@ -80,33 +79,18 @@ class PlaidLinkManager:
 
         # Fallback for legacy env var usage
         if not self.client_id:
-            self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
+            self.client_id = self._get_secret('PLAID_CLIENT_ID', '').strip()
+
+        if not self.secret:
             self.secret = (
-                os.getenv('PLAID_SECRET_PRODUCTION', '').strip()
-                or os.getenv('PLAID_SECRET', '').strip()
-=======
-        # Reload environment one more time to be sure
-        load_dotenv(override=True)
-        
-        # Try Streamlit secrets (with nested format support) then env vars
-        self.client_id = self._get_secret('PLAID_CLIENT_ID', '').strip()
-        self.secret = self._get_secret('PLAID_SECRET', '').strip()
-        self.env = self._get_secret('PLAID_ENV', 'sandbox').strip()
-        
-        # Debug: Print what we got (masked)
-        if not self.client_id or self.client_id == 'your_plaid_client_id_here':
-            # Show debug info
-            all_env = {k: v for k, v in os.environ.items() if 'PLAID' in k}
-            print(f"DEBUG: Plaid env vars found: {list(all_env.keys())}")
-            raise ValueError(
-                f"PLAID_CLIENT_ID not configured in .env\n"
-                f"Found value: '{self.client_id}'\n"
-                f"Please ensure .env file has: PLAID_CLIENT_ID=your_actual_client_id"
->>>>>>> Stashed changes
+                self._get_secret('PLAID_SECRET_PRODUCTION', '').strip()
+                or self._get_secret('PLAID_SECRET', '').strip()
             )
+
+        if not self.env:
             self.env = (
-                os.getenv('PLAID_ENV', '').strip()
-                or os.getenv('PLAID_ENVIRONMENT', 'sandbox').strip()
+                self._get_secret('PLAID_ENV', '').strip()
+                or self._get_secret('PLAID_ENVIRONMENT', 'sandbox').strip()
             ).lower()
         
         # Validation: Must have credentials
@@ -280,31 +264,50 @@ class PlaidLinkManager:
 
 def save_plaid_item(user_id: str, item_id: str, access_token: str, institution_name: str):
     """Save Plaid item to database"""
+    conn = None
+    cursor = None
     try:
         from frontend.utils.budget_analysis import BudgetAnalyzer
         
         analyzer = BudgetAnalyzer()
-        conn = analyzer._get_connection()
         
-        if conn:
-            cursor = conn.cursor()
-            
-            # Insert or update plaid_items
-            sql = """
-                INSERT INTO plaid_items (item_id, user_id, access_token, institution_name)
-                VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE 
-                    access_token = VALUES(access_token),
-                    institution_name = VALUES(institution_name),
-                    updated_at = CURRENT_TIMESTAMP
-            """
-            cursor.execute(sql, (item_id, user_id, access_token, institution_name))
-            conn.commit()
-            
-            cursor.close()
-            conn.close()
-            
-            return True
+        # Handle transient disconnects (e.g. 2013/2006) with one reconnect attempt.
+        for attempt in range(2):
+            conn = analyzer._get_connection()
+            if not conn:
+                continue
+
+            try:
+                conn.ping(reconnect=True, attempts=1, delay=0)
+                cursor = conn.cursor()
+
+                sql = """
+                    INSERT INTO plaid_items (item_id, user_id, access_token, institution_name)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE 
+                        access_token = VALUES(access_token),
+                        institution_name = VALUES(institution_name),
+                        updated_at = CURRENT_TIMESTAMP
+                """
+                cursor.execute(sql, (item_id, user_id, access_token, institution_name))
+                conn.commit()
+                return True
+            except mysql.connector.Error as db_err:
+                err_no = getattr(db_err, 'errno', None)
+                if err_no in (2006, 2013) and attempt == 0:
+                    continue
+                st.error(f"Failed to save Plaid item: {db_err}")
+                return False
+            finally:
+                if cursor:
+                    cursor.close()
+                    cursor = None
+                if conn:
+                    conn.close()
+                    conn = None
+
+        st.error("Failed to save Plaid item: could not establish stable MySQL connection")
+        return False
     except Exception as e:
         st.error(f"Failed to save Plaid item: {e}")
         return False

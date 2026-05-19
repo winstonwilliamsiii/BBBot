@@ -626,14 +626,22 @@ def connect_ibkr():
 
         connector = IBKRConnector(gateway_url)
 
-        if connector.is_authenticated():
+        status = connector.get_auth_status()
+
+        if status.get("ok") and status.get("authenticated"):
             st.session_state.brokers['ibkr'] = connector
             accounts = connector.get_accounts()
             accounts_str = ', '.join(accounts) if accounts else 'None'
             st.success(f"✅ IBKR Connected! Accounts: {accounts_str}")
             st.rerun()
         else:
-            st.error("❌ IBKR Gateway not authenticated. Make sure Gateway is running.")
+            if not status.get("ok"):
+                st.error("❌ Cannot reach IBKR Gateway. Start Gateway/TWS and verify IBKR_GATEWAY_URL.")
+                st.caption(f"Last error: {status.get('error')}")
+            else:
+                resolved_url = status.get("url") or gateway_url
+                st.error("❌ IBKR Gateway reachable, but not authenticated. Complete login in Gateway/TWS and retry.")
+                st.caption(f"Gateway URL: {resolved_url}")
     except Exception as e:
         st.error(f"IBKR error: {e}")
 

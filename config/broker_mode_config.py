@@ -76,7 +76,7 @@ class BrokerModeConfig:
         """Load config from file or create default if not exists."""
         if self.config_path.exists():
             try:
-                with open(self.config_path, "r") as f:
+                with open(self.config_path, "r", encoding="utf-8-sig") as f:
                     self.config = json.load(f)
                 logger.info(f"Loaded broker mode config from {self.config_path}")
             except Exception as e:
@@ -105,7 +105,7 @@ class BrokerModeConfig:
         """Persist config to file."""
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_path, "w") as f:
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=2)
             logger.info(f"Saved broker mode config to {self.config_path}")
         except Exception as e:

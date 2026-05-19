@@ -103,7 +103,18 @@ def _candidate_database_urls() -> list[str]:
             )
         )
 
-    # Local Docker-backed default for the FastAPI control center.
+    # Local non-Docker default for the FastAPI control center.
+    candidates.append(
+        _compose_database_url(
+            "127.0.0.1",
+            "3306",
+            "root",
+            "root",
+            "mansa_quant",
+        )
+    )
+
+    # Docker-backed fallback for legacy local setups.
     candidates.append(
         _compose_database_url(
             "127.0.0.1",

@@ -45,6 +45,20 @@ environment:
   AIRFLOW_CONN_MYSQL_BBBOT1: mysql://root:root@bentley-mysql:3306/bbbot1
 ```
 
+
+## Bentley No Docker Mode (Local MySQL)
+
+You can now run Bentley and Streamlit locally without Docker. This is useful if Docker Desktop or WSL is broken, or you want to use a native MySQL service.
+
+### VS Code Tasks
+
+- **🚫 No Docker Mode (Local MySQL)**: Runs Bentley (Main.py) with local MySQL. Sets all required environment variables for you.
+- **🚫 No Docker Mode (Streamlit)**: Runs the Streamlit dashboard with local MySQL. Also sets all required environment variables.
+
+Both tasks source `set_no_docker_env.ps1` to ensure the correct DB connection. Find them in the VS Code Run Task menu (Terminal → Run Task...).
+
+**Note:** `.env.local` and Docker Compose are ignored in this mode. Your local MySQL must be running on port 3306.
+
 ---
 
 ### 2. MLFlow Connection (mlflow_tracking)

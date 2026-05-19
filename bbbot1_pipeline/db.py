@@ -21,7 +21,7 @@ def get_mysql_connection():
     """
     return pymysql.connect(
         host=os.getenv('MYSQL_HOST', '127.0.0.1'),
-        port=int(os.getenv('MYSQL_PORT', 3307)),
+        port=int(os.getenv('MYSQL_PORT', 3306)),
         user=os.getenv('MYSQL_USER', 'root'),
         password=os.getenv('MYSQL_PASSWORD', 'root'),
         database=os.getenv('MYSQL_DATABASE', 'bbbot1'),
@@ -38,7 +38,7 @@ def get_mysql_engine():
         sqlalchemy.engine.Engine: SQLAlchemy engine
     """
     host = os.getenv('MYSQL_HOST', '127.0.0.1')
-    port = os.getenv('MYSQL_PORT', 3307)
+    port = os.getenv('MYSQL_PORT', 3306)
     user = os.getenv('MYSQL_USER', 'root')
     password = os.getenv('MYSQL_PASSWORD', 'root')
     database = os.getenv('MYSQL_DATABASE', 'bbbot1')

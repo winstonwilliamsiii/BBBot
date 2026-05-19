@@ -1,5 +1,4 @@
 // index.js
-require('dotenv').config();
 const axios = require('axios');
 const cron = require('node-cron');
 const YahooFinanceLib = require('yahoo-finance2').default;
@@ -8,6 +7,7 @@ const fs = require('fs');
 const mysql = require('mysql2/promise');
 const path = require('path');
 const yaml = require('js-yaml');
+require('dotenv').config({ path: path.resolve(__dirname, '.env'), override: true });
 
 const DISCORD_WEBHOOK =
   process.env.DISCORD_WEBHOOK ||
@@ -263,11 +263,11 @@ let dbPool;
 const dbConfig = process.env.MYSQL_URL 
   ? {} // Let mysql2 parse the URL
   : {
-      host: process.env.MYSQL_HOST || '127.0.0.1',
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER || 'root',
-      password: process.env.MYSQL_PASSWORD || 'root',
-      database: process.env.MYSQL_DATABASE || 'bbbot1',
+      host: process.env.BBBOT1_MYSQL_HOST || process.env.MYSQL_HOST || '127.0.0.1',
+      port: parseInt(process.env.BBBOT1_MYSQL_PORT || process.env.MYSQL_PORT || '3306', 10),
+      user: process.env.BBBOT1_MYSQL_USER || process.env.MYSQL_USER || 'root',
+      password: process.env.BBBOT1_MYSQL_PASSWORD || process.env.MYSQL_PASSWORD || 'root',
+      database: process.env.BBBOT1_MYSQL_DATABASE || process.env.MYSQL_DATABASE || 'bbbot1',
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0

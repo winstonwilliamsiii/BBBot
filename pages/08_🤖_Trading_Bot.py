@@ -480,7 +480,7 @@ def _latest_bot_mode_event() -> dict | None:
         return None
 
     try:
-        with latest_path.open("r", encoding="utf-8") as handle:
+        with latest_path.open("r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
             if isinstance(payload, dict):
                 return payload
@@ -508,7 +508,7 @@ def _latest_bot_mode_events_all() -> dict:
 
     per_bot: dict = {}
     try:
-        with events_path.open("r", encoding="utf-8") as fh:
+        with events_path.open("r", encoding="utf-8-sig") as fh:
             for raw in fh:
                 raw = raw.strip()
                 if not raw:
@@ -870,12 +870,31 @@ def load_active_signals():
     query = """
         SELECT ticker, signal, price, timestamp, strategy
         FROM trading_signals
-        WHERE DATE(timestamp) = CURDATE()
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ORDER BY timestamp DESC
+        LIMIT 200
     """
     
     try:
-        return pd.read_sql(query, engine, parse_dates=['timestamp'])
+        df = pd.read_sql(query, engine, parse_dates=['timestamp'])
+        if df.empty:
+            return df
+
+        # Normalize mixed signal formats from different pipelines.
+        def normalize_signal(value):
+            if pd.isna(value):
+                return "HOLD"
+            text_value = str(value).strip().upper()
+            if text_value in {"1", "+1", "BUY", "LONG", "BULLISH"}:
+                return "BUY"
+            if text_value in {"-1", "SELL", "SHORT", "BEARISH"}:
+                return "SELL"
+            if text_value in {"0", "HOLD", "NEUTRAL"}:
+                return "HOLD"
+            return "HOLD"
+
+        df["signal_label"] = df["signal"].apply(normalize_signal)
+        return df
     except Exception as _e:
         import logging as _logging
         _logging.getLogger(__name__).error("load_recent_trades failed: %s", _e)
@@ -1499,7 +1518,7 @@ def _vega_automation_status() -> dict:
     latest_path = repo_root / "logs" / "last_bot_mode_event.json"
     if latest_path.exists():
         try:
-            with latest_path.open("r", encoding="utf-8") as handle:
+            with latest_path.open("r", encoding="utf-8-sig") as handle:
                 payload = json.load(handle)
                 if isinstance(payload, dict):
                     latest_event = payload
@@ -2427,6 +2446,41 @@ with tab3:
 
     else:
         st.warning("Cosmic Signal Engine not available — check `frontend/utils/cosmic_signal.py`.")
+
+    st.markdown("---")
+    st.markdown("### 🤖 Recent ML Trading Signals")
+    signals_df = load_active_signals()
+
+    if not signals_df.empty:
+        latest_timestamp = signals_df["timestamp"].max()
+        if pd.notna(latest_timestamp):
+            st.caption(
+                f"Showing latest signals through {latest_timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+        buy_count = int((signals_df["signal_label"] == "BUY").sum())
+        sell_count = int((signals_df["signal_label"] == "SELL").sum())
+        hold_count = int((signals_df["signal_label"] == "HOLD").sum())
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🟢 BUY", buy_count)
+        m2.metric("🔴 SELL", sell_count)
+        m3.metric("⚪ HOLD", hold_count)
+
+        display_signals = signals_df.copy()
+        display_signals["strategy"] = display_signals["strategy"].fillna("unknown")
+        display_signals["price"] = pd.to_numeric(
+            display_signals["price"], errors="coerce"
+        ).round(2)
+        st.dataframe(
+            display_signals[
+                ["timestamp", "ticker", "signal_label", "price", "strategy"]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No recent ML trading signals found in the last 7 days.")
 
     # ── Orion Execution Snapshot (secondary context) ───────────────────────
     st.markdown("---")

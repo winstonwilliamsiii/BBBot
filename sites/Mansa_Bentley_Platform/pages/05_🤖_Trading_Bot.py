@@ -560,13 +560,32 @@ def load_active_signals():
     query = """
         SELECT ticker, signal, price, timestamp, strategy
         FROM trading_signals
-        WHERE DATE(timestamp) = CURDATE()
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ORDER BY timestamp DESC
+        LIMIT 200
     """
     
     try:
-        return pd.read_sql(query, engine, parse_dates=['timestamp'])
-    except:
+        df = pd.read_sql(query, engine, parse_dates=['timestamp'])
+        if df.empty:
+            return df
+
+        # Normalize mixed signal formats from different pipelines.
+        def normalize_signal(value):
+            if pd.isna(value):
+                return "HOLD"
+            text_value = str(value).strip().upper()
+            if text_value in {"1", "+1", "BUY", "LONG", "BULLISH"}:
+                return "BUY"
+            if text_value in {"-1", "SELL", "SHORT", "BEARISH"}:
+                return "SELL"
+            if text_value in {"0", "HOLD", "NEUTRAL"}:
+                return "HOLD"
+            return "HOLD"
+
+        df["signal_label"] = df["signal"].apply(normalize_signal)
+        return df
+    except Exception:
         return pd.DataFrame()
 
 
@@ -819,20 +838,26 @@ with tab3:
     signals_df = load_active_signals()
     
     if not signals_df.empty:
+        latest_timestamp = signals_df['timestamp'].max()
+        if pd.notna(latest_timestamp):
+            st.caption(f"Showing latest signals through {latest_timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("**🟢 Buy Signals**")
-            buy_signals = signals_df[signals_df['signal'] == 1]
+            buy_signals = signals_df[signals_df['signal_label'] == 'BUY']
             
             if not buy_signals.empty:
                 for _, signal in buy_signals.iterrows():
+                    signal_time = signal['timestamp'].strftime('%H:%M:%S') if pd.notna(signal['timestamp']) else 'N/A'
+                    strategy_name = str(signal.get('strategy') or 'unknown').replace('_', ' ').title()
                     st.markdown(f"""
                         <div class="trade-card trade-buy">
                             <strong>{signal['ticker']}</strong><br>
                             Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
+                            Time: {signal_time}<br>
+                            Strategy: {strategy_name}
                         </div>
                     """, unsafe_allow_html=True)
             else:
@@ -840,16 +865,18 @@ with tab3:
         
         with col2:
             st.markdown("**🔴 Sell Signals**")
-            sell_signals = signals_df[signals_df['signal'] == -1]
+            sell_signals = signals_df[signals_df['signal_label'] == 'SELL']
             
             if not sell_signals.empty:
                 for _, signal in sell_signals.iterrows():
+                    signal_time = signal['timestamp'].strftime('%H:%M:%S') if pd.notna(signal['timestamp']) else 'N/A'
+                    strategy_name = str(signal.get('strategy') or 'unknown').replace('_', ' ').title()
                     st.markdown(f"""
                         <div class="trade-card trade-sell">
                             <strong>{signal['ticker']}</strong><br>
                             Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
+                            Time: {signal_time}<br>
+                            Strategy: {strategy_name}
                         </div>
                     """, unsafe_allow_html=True)
             else:

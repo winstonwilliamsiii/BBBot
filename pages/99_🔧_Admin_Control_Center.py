@@ -252,6 +252,49 @@ def start_mlflow_server(backend_store_uri: str, port: int = 5000) -> Tuple[bool,
         return False, f"Failed to launch MLflow server: {exc}"
 
 
+def get_docker_cli_command() -> tuple[list[str] | None, str]:
+    """Resolve a usable Docker CLI command on all supported OSes."""
+    docker_in_path = shutil.which("docker")
+    if docker_in_path:
+        return [docker_in_path], f"Docker CLI found at {docker_in_path}"
+
+    candidates = [
+        Path(os.getenv("ProgramFiles", "")) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+        Path(os.getenv("ProgramW6432", "")) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+        Path(os.getenv("ProgramFiles(x86)", "")) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+    ]
+
+    for candidate in candidates:
+        if str(candidate).strip() and candidate.exists():
+            return [str(candidate)], f"Docker CLI found at {candidate}"
+
+    return None, "Docker CLI not detected in PATH or standard Docker Desktop locations."
+
+
+def get_docker_compose_command() -> tuple[list[str] | None, str]:
+    """Resolve compose command using Docker v2 first, then docker-compose fallback."""
+    docker_cmd, docker_note = get_docker_cli_command()
+    if docker_cmd:
+        return docker_cmd + ["compose"], docker_note
+
+    legacy_compose = shutil.which("docker-compose")
+    if legacy_compose:
+        return [legacy_compose], f"Legacy docker-compose found at {legacy_compose}"
+
+    return None, docker_note
+
+
+def probe_docker_engine(docker_cmd: list[str] | None) -> Tuple[bool, str]:
+    """Check whether Docker engine is reachable from this process."""
+    if not docker_cmd:
+        return False, "Docker CLI unavailable."
+
+    ok, message = _run_shell_command(docker_cmd + ["info"], cwd=REPO_ROOT, timeout=20)
+    if ok:
+        return True, "Docker engine is reachable."
+    return False, f"Docker engine not reachable yet: {message}"
+
+
 def _run_shell_command(command: list[str], cwd: Path | None = None, timeout: int = 240) -> Tuple[bool, str]:
     """Run a shell command and return a compact status message."""
     try:
@@ -284,22 +327,29 @@ def _run_shell_command(command: list[str], cwd: Path | None = None, timeout: int
 
 def start_docker_compose_services(compose_rel_path: str, services: list[str] | None = None) -> Tuple[bool, str]:
     """Start a docker-compose stack (or selected services) from repo root."""
-    if not shutil.which("docker"):
-        return False, "Docker CLI was not found in PATH. Start Docker Desktop and ensure `docker` is installed."
+    compose_cmd, compose_note = get_docker_compose_command()
+    if not compose_cmd:
+        return False, "Docker compose command was not found. Install Docker Desktop and ensure docker CLI is available."
 
     compose_file = REPO_ROOT / compose_rel_path
     if not compose_file.exists():
         return False, f"Compose file not found: {compose_file}"
 
-    cmd = ["docker", "compose", "-f", str(compose_file), "up", "-d"]
+    cmd = compose_cmd + ["-f", str(compose_file), "up", "-d"]
     if services:
         cmd.extend(services)
 
-    return _run_shell_command(cmd, cwd=REPO_ROOT)
+    ok, output = _run_shell_command(cmd, cwd=REPO_ROOT)
+    if ok:
+        return True, output
+    return False, f"{compose_note} | {output}"
 
 
-def probe_local_service(urls: list[str]) -> Tuple[bool, str]:
+def probe_local_service(urls: list[str] | str) -> Tuple[bool, str]:
     """Probe local service URLs and return status and detail."""
+    if isinstance(urls, str):
+        urls = [urls]
+
     last_error = "Service is unreachable."
     for url in urls:
         try:
@@ -308,7 +358,13 @@ def probe_local_service(urls: list[str]) -> Tuple[bool, str]:
                 return True, f"Reachable at {url} (HTTP {response.status_code})"
             last_error = f"{url} returned HTTP {response.status_code}"
         except requests.exceptions.RequestException as exc:
-            last_error = f"{url}: {exc}"
+            message = str(exc).lower()
+            if "connection refused" in message or "failed to establish a new connection" in message:
+                last_error = f"{url} is not reachable (connection refused)."
+            elif "timed out" in message:
+                last_error = f"{url} timed out."
+            else:
+                last_error = f"{url} request failed."
     return False, last_error
 
 
@@ -744,7 +800,14 @@ def resolve_mlflow_server_url():
     cached_url = st.session_state.get("resolved_mlflow_server_url")
     cached_note = st.session_state.get("resolved_mlflow_server_note")
     if cached_url:
-        return cached_url, cached_note or "Using cached MLflow server resolution."
+        connected, _, probe_note = probe_mlflow_server(cached_url)
+        if connected:
+            st.session_state.resolved_mlflow_server_note = probe_note
+            return cached_url, probe_note or cached_note or "Using cached MLflow server resolution."
+
+        # Cached endpoint is stale; clear it and re-probe all candidates.
+        st.session_state.pop("resolved_mlflow_server_url", None)
+        st.session_state.pop("resolved_mlflow_server_note", None)
 
     candidate_urls = []
     _append_unique_url(candidate_urls, DEFAULT_MLFLOW_URL)
@@ -762,7 +825,6 @@ def resolve_mlflow_server_url():
             return base_url, probe_note
         last_note = probe_note
 
-    st.session_state.resolved_mlflow_server_url = DEFAULT_MLFLOW_URL
     st.session_state.resolved_mlflow_server_note = last_note
     return DEFAULT_MLFLOW_URL, last_note
 
@@ -1073,6 +1135,19 @@ def _resolve_powershell_executable() -> str | None:
         resolved = shutil.which(candidate)
         if resolved:
             return resolved
+
+    if os.name == "nt":
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        win_paths = [
+            Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+            Path(system_root) / "SysWOW64" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "PowerShell" / "7" / "pwsh.exe",
+            Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "PowerShell" / "7" / "pwsh.exe",
+        ]
+        for path in win_paths:
+            if path.exists():
+                return str(path)
+
     return None
 
 
@@ -1658,7 +1733,7 @@ def get_last_bot_mode_event() -> dict | None:
         return None
 
     try:
-        with latest_path.open("r", encoding="utf-8") as handle:
+        with latest_path.open("r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
             if isinstance(payload, dict):
                 return payload
@@ -1679,7 +1754,7 @@ def get_all_bot_mode_events() -> dict:
 
     if events_path.exists():
         try:
-            with events_path.open("r", encoding="utf-8") as fh:
+            with events_path.open("r", encoding="utf-8-sig") as fh:
                 for raw in fh:
                     raw = raw.strip()
                     if not raw:
@@ -2489,19 +2564,31 @@ def main():
             st.subheader("🔗 Quick Actions")
             airflow_ok, airflow_note = probe_local_service([
                 "http://127.0.0.1:8080/health",
+                "http://localhost:8080/health",
                 "http://127.0.0.1:8080/",
+                "http://localhost:8080/",
             ])
             airbyte_ok, airbyte_note = probe_local_service([
                 "http://127.0.0.1:8001/api/v1/health",
+                "http://localhost:8001/api/v1/health",
                 "http://127.0.0.1:8000/",
+                "http://localhost:8000/",
             ])
 
-            docker_ready = bool(shutil.which("docker"))
+            docker_cmd, docker_cli_note = get_docker_cli_command()
+            docker_ready = docker_cmd is not None
+            docker_engine_ok, docker_engine_note = probe_docker_engine(docker_cmd)
             if not docker_ready:
-                st.warning("Docker CLI not detected in PATH. Airflow/Airbyte stack start buttons are disabled.")
+                st.warning(
+                    "Docker CLI not detected in PATH or default Docker Desktop locations. "
+                    "Airflow/Airbyte stack start buttons are disabled."
+                )
+            elif not docker_engine_ok:
+                st.info("Docker CLI found, but engine is not reachable yet. Start Docker Desktop and retry.")
 
             st.caption(("✅" if airflow_ok else "❌") + f" Airflow: {airflow_note}")
             st.caption(("✅" if airbyte_ok else "❌") + f" Airbyte: {airbyte_note}")
+            st.caption(("✅" if docker_engine_ok else "⚠️") + f" Docker: {docker_engine_note if docker_ready else docker_cli_note}")
 
             if st.button("🚀 Start All Local Services", type="primary", use_container_width=True, key="start_all_services"):
                 results = []
@@ -2514,7 +2601,18 @@ def main():
                         _ok, _msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
                         results.append(("Airflow", _ok, _msg))
                     with st.spinner("Starting Airbyte stack…"):
-                        _ok, _msg = start_docker_compose_services("docker/docker-compose-airbyte.yml")
+                        _airbyte_compose = next(
+                            (
+                                p for p in [
+                                    "docker/docker-compose-airbyte-fixed.yml",
+                                    "docker/docker-compose-airbyte-simple.yml",
+                                    "docker/docker-compose-airbyte.yml",
+                                ]
+                                if (REPO_ROOT / p).exists()
+                            ),
+                            "docker/docker-compose-airbyte.yml",
+                        )
+                        _ok, _msg = start_docker_compose_services(_airbyte_compose)
                         results.append(("Airbyte", _ok, _msg))
                 else:
                     results.append(("Airflow", False, "Skipped: Docker CLI unavailable."))
@@ -2558,7 +2656,18 @@ def main():
                 key="start_airbyte_stack",
                 disabled=not docker_ready,
             ):
-                ok, msg = start_docker_compose_services("docker/docker-compose-airbyte.yml")
+                _airbyte_compose = next(
+                    (
+                        p for p in [
+                            "docker/docker-compose-airbyte-fixed.yml",
+                            "docker/docker-compose-airbyte-simple.yml",
+                            "docker/docker-compose-airbyte.yml",
+                        ]
+                        if (REPO_ROOT / p).exists()
+                    ),
+                    "docker/docker-compose-airbyte.yml",
+                )
+                ok, msg = start_docker_compose_services(_airbyte_compose)
                 if ok:
                     st.success("Airbyte stack start command completed.")
                     st.caption(msg)

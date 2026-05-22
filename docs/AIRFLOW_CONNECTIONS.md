@@ -61,6 +61,58 @@ Both tasks source `set_no_docker_env.ps1` to ensure the correct DB connection. F
 
 ---
 
+## WSL2 Docker Engine Mode
+
+If you run Docker Engine directly inside WSL2 (instead of relying on Docker Desktop engine), the project now supports this mode.
+
+### Environment variables
+
+- `BENTLEY_DOCKER_MODE=wsl`
+- `BENTLEY_WSL_DISTRO=Ubuntu` (optional override if your distro name differs)
+
+### Supported scripts
+
+- `start_mysql_docker.ps1`
+- `fix_mysql_connections.ps1`
+
+Both scripts automatically route Docker and Compose commands through WSL when `BENTLEY_DOCKER_MODE=wsl` is set.
+
+### VS Code tasks
+
+- `🐧 Start MySQL (WSL Docker Engine)`
+- `🧬 Verify MySQL Architecture`
+
+---
+
+## MySQL Architecture Verification
+
+Run the verifier any time (especially before/after Docker reinstall):
+
+```bash
+python scripts/verify_mysql_architecture.py
+```
+
+This writes a snapshot to `data/mysql_schema_snapshot.json` and validates expected databases:
+
+- `bbbot1`
+- `mansa_bot`
+- `mlflow_db`
+- `mansa_quant`
+- `Bentley_Budget`
+
+If databases are missing, recreate shells quickly:
+
+```python
+import pymysql
+conn = pymysql.connect(host="127.0.0.1", port=3306, user="root", password="root", autocommit=True)
+cur = conn.cursor()
+for db in ["bbbot1", "mansa_bot", "mlflow_db", "mansa_quant", "Bentley_Budget"]:
+  cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db}`")
+conn.close()
+```
+
+---
+
 ### 2. MLFlow Connection (mlflow_tracking)
 
 **Purpose**: Connect to MLFlow tracking server for experiment logging

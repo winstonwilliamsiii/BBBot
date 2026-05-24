@@ -4,6 +4,9 @@
 $script:DockerMode = if ($env:BENTLEY_DOCKER_MODE) { $env:BENTLEY_DOCKER_MODE.ToLowerInvariant() } else { "auto" }
 $script:WslDistro = if ($env:BENTLEY_WSL_DISTRO) { $env:BENTLEY_WSL_DISTRO } else { "Ubuntu" }
 $script:UseWslDocker = $false
+$script:DockerDirWin = Join-Path $PSScriptRoot "docker"
+$script:DockerDirWsl = $null
+$script:LastDockerExitCode = 0
 
 Write-Host "`nBentley Bot - Starting Docker and MySQL Environment..." -ForegroundColor Cyan
 Write-Host "=" * 60 -ForegroundColor Gray
@@ -26,12 +29,49 @@ function Test-WslDocker {
     }
 }
 
+function Convert-WindowsPathToWsl {
+    param(
+        [string]$Path
+    )
+
+    if (-not $Path) {
+        return ""
+    }
+
+    $normalized = $Path -replace "\\", "/"
+    if ($normalized -match "^[A-Za-z]:/") {
+        $drive = $normalized.Substring(0, 1).ToLowerInvariant()
+        $rest = $normalized.Substring(3)
+        return "/mnt/$drive/$rest"
+    }
+
+    return $normalized
+}
+
+function Test-WslDirectory {
+    param(
+        [string]$Path
+    )
+
+    if (-not $Path) {
+        return $false
+    }
+
+    try {
+        & wsl.exe -d $script:WslDistro -- test -d $Path
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 function Initialize-DockerMode {
     if ($script:DockerMode -eq "wsl") {
         if (-not (Test-WslDocker)) {
             Write-Host "WSL Docker mode requested but Docker Engine is not ready inside '$($script:WslDistro)'." -ForegroundColor Red
             return $false
         }
+        $script:DockerDirWsl = Convert-WindowsPathToWsl -Path $script:DockerDirWin
         $script:UseWslDocker = $true
         return $true
     }
@@ -47,6 +87,7 @@ function Initialize-DockerMode {
     }
 
     if (Test-WslDocker) {
+        $script:DockerDirWsl = Convert-WindowsPathToWsl -Path $script:DockerDirWin
         $script:UseWslDocker = $true
         return $true
     }
@@ -56,29 +97,33 @@ function Initialize-DockerMode {
 
 function Invoke-Docker {
     param(
-        [string[]]$Args,
+        [string[]]$DockerArgs,
         [switch]$SuppressErrors
     )
 
+    $output = $null
     if ($script:UseWslDocker) {
         if ($SuppressErrors) {
-            & wsl.exe -d $script:WslDistro -- docker @Args 2>$null
+            $output = & wsl.exe -d $script:WslDistro -- docker @DockerArgs 2>$null
         } else {
-            & wsl.exe -d $script:WslDistro -- docker @Args
+            $output = & wsl.exe -d $script:WslDistro -- docker @DockerArgs
         }
-        return
+        $script:LastDockerExitCode = $LASTEXITCODE
+        return $output
     }
 
     if ($SuppressErrors) {
-        & docker @Args 2>$null
+        $output = & docker @DockerArgs 2>$null
     } else {
-        & docker @Args
+        $output = & docker @DockerArgs
     }
+    $script:LastDockerExitCode = $LASTEXITCODE
+    return $output
 }
 
 function Test-DockerRunning {
-    Invoke-Docker -Args @("version", "--format", "{{.Server.Version}}") -SuppressErrors
-    return ($LASTEXITCODE -eq 0)
+    Invoke-Docker -DockerArgs @("version", "--format", "{{.Server.Version}}") -SuppressErrors
+    return ($script:LastDockerExitCode -eq 0)
 }
 
 function Start-DockerDesktop {
@@ -153,25 +198,52 @@ function Repair-DockerEngine {
 
 function Invoke-Compose {
     param(
-        [string[]]$Args
+        [string[]]$DockerArgs
     )
 
     if ($script:UseWslDocker) {
-        & wsl.exe -d $script:WslDistro -- docker compose @Args 2>$null
+        if (-not (Test-WslDirectory -Path $script:DockerDirWsl)) {
+            Write-Host "WSL compose directory not found: $($script:DockerDirWsl)" -ForegroundColor Red
+            return $false
+        }
+        $argString = $DockerArgs -join " "
+        & wsl.exe -d $script:WslDistro -- bash -lc "cd $($script:DockerDirWsl) && docker compose $argString"
         if ($LASTEXITCODE -eq 0) {
             return $true
         }
-        & wsl.exe -d $script:WslDistro -- docker-compose @Args
+        Write-Host "docker compose failed in WSL, trying docker-compose fallback..." -ForegroundColor Yellow
+        & wsl.exe -d $script:WslDistro -- bash -lc "cd $($script:DockerDirWsl) && docker-compose $argString"
         return ($LASTEXITCODE -eq 0)
     }
 
-    & docker compose @Args 2>$null
+    & docker compose @DockerArgs 2>$null
     if ($LASTEXITCODE -eq 0) {
         return $true
     }
 
-    & docker-compose @Args
+    & docker-compose @DockerArgs
     return ($LASTEXITCODE -eq 0)
+}
+
+function Get-MySqlContainerName {
+    $all = Invoke-Docker -DockerArgs @("ps", "-a", "--format", "{{.Names}}") -SuppressErrors
+    if (-not $all) {
+        return $null
+    }
+
+    $preferred = @("bentley-mysql", "bentley_budget_mysql")
+    foreach ($name in $preferred) {
+        if ($all -contains $name) {
+            return $name
+        }
+    }
+
+    $matched = $all | Where-Object { $_ -match "mysql" } | Select-Object -First 1
+    if ($matched) {
+        return $matched
+    }
+
+    return $null
 }
 
 if (-not (Initialize-DockerMode)) {
@@ -199,27 +271,28 @@ if (Test-DockerRunning) {
     }
 }
 
-Set-Location "$PSScriptRoot\docker"
+Set-Location $script:DockerDirWin
 
 Write-Host "`nStarting MySQL containers..." -ForegroundColor White
 
-$existingContainers = Invoke-Docker -Args @("ps", "-a", "--format", "{{.Names}}") -SuppressErrors
+$mysqlContainerName = Get-MySqlContainerName
 
-if ($existingContainers -match "bentley-mysql") {
-    Write-Host "   Starting existing bentley-mysql container..." -ForegroundColor Cyan
-    Invoke-Docker -Args @("start", "bentley-mysql") | Out-Null
+if ($mysqlContainerName) {
+    Write-Host "   Starting existing $mysqlContainerName container..." -ForegroundColor Cyan
+    Invoke-Docker -DockerArgs @("start", $mysqlContainerName) | Out-Null
 } else {
     Write-Host "   Creating bentley-mysql container (Airflow + Bbbot1)..." -ForegroundColor Cyan
-    $composeOk = Invoke-Compose -Args @("-f", "docker-compose-airflow.yml", "up", "-d", "mysql")
+    $composeOk = Invoke-Compose -DockerArgs @("-f", "docker-compose-airflow.yml", "up", "-d", "mysql")
     if (-not $composeOk) {
         Write-Host "Failed to create MySQL container via Docker Compose." -ForegroundColor Red
         exit 1
     }
+    $mysqlContainerName = Get-MySqlContainerName
 }
 
-if ($existingContainers -match "bentley-mysql-mlflow") {
+if ((Invoke-Docker -DockerArgs @("ps", "-a", "--format", "{{.Names}}") -SuppressErrors) -match "bentley-mysql-mlflow") {
     Write-Host "   Starting existing bentley-mysql-mlflow container..." -ForegroundColor Cyan
-    Invoke-Docker -Args @("start", "bentley-mysql-mlflow") | Out-Null
+    Invoke-Docker -DockerArgs @("start", "bentley-mysql-mlflow") | Out-Null
 } else {
     Write-Host "   MLflow MySQL not configured (run manually if needed)" -ForegroundColor Gray
 }
@@ -228,24 +301,79 @@ Start-Sleep -Seconds 3
 
 Write-Host "`nVerifying container status..." -ForegroundColor White
 
-$runningContainers = Invoke-Docker -Args @("ps", "--filter", "name=mysql", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}") -SuppressErrors
+$runningContainers = $null
+$maxVerifyAttempts = 10
+
+for ($attempt = 1; $attempt -le $maxVerifyAttempts; $attempt++) {
+    $runningContainers = Invoke-Docker -DockerArgs @("ps", "--filter", "name=mysql", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}") -SuppressErrors
+
+    if ($env:BENTLEY_DEBUG_STARTUP -eq "1") {
+        $rcCount = @($runningContainers).Count
+        Write-Host "DEBUG: attempt $attempt filtered docker ps exit=$($script:LastDockerExitCode), rows=$rcCount" -ForegroundColor DarkYellow
+        if ($runningContainers) {
+            Write-Host "DEBUG: filtered output:" -ForegroundColor DarkYellow
+            Write-Host ($runningContainers -join "`n") -ForegroundColor DarkYellow
+        }
+    }
+
+    if ((@($runningContainers).Count -gt 0) -and ($script:LastDockerExitCode -eq 0)) {
+        break
+    }
+
+    # Fallback: get full running list and filter mysql-like names in PowerShell.
+    $allRunning = Invoke-Docker -DockerArgs @("ps", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}") -SuppressErrors
+    if ($env:BENTLEY_DEBUG_STARTUP -eq "1") {
+        $allCount = @($allRunning).Count
+        Write-Host "DEBUG: attempt $attempt fallback docker ps exit=$($script:LastDockerExitCode), rows=$allCount" -ForegroundColor DarkYellow
+        if ($allRunning) {
+            Write-Host "DEBUG: fallback output:" -ForegroundColor DarkYellow
+            Write-Host ($allRunning -join "`n") -ForegroundColor DarkYellow
+        }
+    }
+    if ($allRunning) {
+        $runningContainers = @($allRunning | Where-Object { $_ -match "NAMES|mysql" })
+    }
+
+    if (@($runningContainers).Count -gt 0) {
+        break
+    }
+
+    if ($attempt -lt $maxVerifyAttempts) {
+        Write-Host "   Waiting for MySQL containers to report running... ($attempt/$maxVerifyAttempts)" -ForegroundColor Gray
+        Start-Sleep -Seconds 3
+    }
+}
 
 if ($runningContainers) {
     Write-Host "`n$runningContainers" -ForegroundColor Green
 } else {
     Write-Host "No MySQL containers are running." -ForegroundColor Red
+    $allContainers = Invoke-Docker -DockerArgs @("ps", "-a", "--format", "table {{.Names}}\t{{.Status}}") -SuppressErrors
+    if ($allContainers) {
+        Write-Host "`nContainer snapshot:" -ForegroundColor Yellow
+        Write-Host $allContainers -ForegroundColor DarkYellow
+    }
     exit 1
 }
 
 Write-Host "`nTesting MySQL connection..." -ForegroundColor White
 
-$testResult = Invoke-Docker -Args @("exec", "bentley-mysql", "mysqladmin", "ping", "-uroot", "-proot")
+if (-not $mysqlContainerName) {
+    $mysqlContainerName = Get-MySqlContainerName
+}
+
+if (-not $mysqlContainerName) {
+    Write-Host "Could not resolve a MySQL container name to test." -ForegroundColor Red
+    exit 1
+}
+
+Invoke-Docker -DockerArgs @("exec", $mysqlContainerName, "mysqladmin", "ping", "-uroot", "-proot") | Out-Null
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "MySQL is responding to connections." -ForegroundColor Green
 
     Write-Host "`nAvailable databases:" -ForegroundColor White
-    $dbRows = Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-e", "SHOW DATABASES;") -SuppressErrors
+    $dbRows = Invoke-Docker -DockerArgs @("exec", $mysqlContainerName, "mysql", "-uroot", "-proot", "-e", "SHOW DATABASES;") -SuppressErrors
     foreach ($dbRow in $dbRows) {
         if (
             $dbRow -and
@@ -281,6 +409,7 @@ Write-Host "   View logs:      docker logs bentley-mysql" -ForegroundColor Gray
 Write-Host "   Stop MySQL:     docker stop bentley-mysql" -ForegroundColor Gray
 Write-Host "   Restart MySQL:  docker restart bentley-mysql" -ForegroundColor Gray
 Write-Host "   MySQL shell:    docker exec -it bentley-mysql mysql -uroot -proot" -ForegroundColor Gray
+Write-Host "   Active name:    $mysqlContainerName" -ForegroundColor Gray
 
 if ($script:UseWslDocker) {
     Write-Host "`nWSL mode hints:" -ForegroundColor Cyan

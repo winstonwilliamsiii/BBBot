@@ -4,6 +4,7 @@
 $script:DockerMode = if ($env:BENTLEY_DOCKER_MODE) { $env:BENTLEY_DOCKER_MODE.ToLowerInvariant() } else { "auto" }
 $script:WslDistro = if ($env:BENTLEY_WSL_DISTRO) { $env:BENTLEY_WSL_DISTRO } else { "Ubuntu" }
 $script:UseWslDocker = $false
+$script:LastDockerExitCode = 0
 
 Write-Host "`nMySQL Connection Diagnostic and Repair Tool" -ForegroundColor Cyan
 Write-Host "=" * 70 -ForegroundColor Gray
@@ -56,52 +57,77 @@ function Initialize-DockerMode {
 
 function Invoke-Docker {
     param(
-        [string[]]$Args,
+        [string[]]$DockerArgs,
         [switch]$SuppressErrors
     )
 
+    $output = $null
     if ($script:UseWslDocker) {
         if ($SuppressErrors) {
-            & wsl.exe -d $script:WslDistro -- docker @Args 2>$null
+            $output = & wsl.exe -d $script:WslDistro -- docker @DockerArgs 2>$null
         } else {
-            & wsl.exe -d $script:WslDistro -- docker @Args
+            $output = & wsl.exe -d $script:WslDistro -- docker @DockerArgs
         }
-        return
+        $script:LastDockerExitCode = $LASTEXITCODE
+        return $output
     }
 
     if ($SuppressErrors) {
-        & docker @Args 2>$null
+        $output = & docker @DockerArgs 2>$null
     } else {
-        & docker @Args
+        $output = & docker @DockerArgs
     }
+    $script:LastDockerExitCode = $LASTEXITCODE
+    return $output
 }
 
 function Test-DockerRunning {
-    Invoke-Docker -Args @("version", "--format", "{{.Server.Version}}") -SuppressErrors
-    return ($LASTEXITCODE -eq 0)
+    Invoke-Docker -DockerArgs @("version", "--format", "{{.Server.Version}}") -SuppressErrors
+    return ($script:LastDockerExitCode -eq 0)
 }
 
 function Invoke-Compose {
     param(
-        [string[]]$Args
+        [string[]]$DockerArgs
     )
 
     if ($script:UseWslDocker) {
-        & wsl.exe -d $script:WslDistro -- docker compose @Args 2>$null
+        & wsl.exe -d $script:WslDistro -- docker compose @DockerArgs 2>$null
         if ($LASTEXITCODE -eq 0) {
             return $true
         }
-        & wsl.exe -d $script:WslDistro -- docker-compose @Args
+        & wsl.exe -d $script:WslDistro -- docker-compose @DockerArgs
         return ($LASTEXITCODE -eq 0)
     }
 
-    & docker compose @Args 2>$null
+    & docker compose @DockerArgs 2>$null
     if ($LASTEXITCODE -eq 0) {
         return $true
     }
 
-    & docker-compose @Args
+    & docker-compose @DockerArgs
     return ($LASTEXITCODE -eq 0)
+}
+
+function Get-MySqlContainerName {
+    $all = Invoke-Docker -DockerArgs @("ps", "-a", "--format", "{{.Names}}") -SuppressErrors
+    if (-not $all) {
+        return $null
+    }
+
+    $preferred = @("bentley-mysql", "bentley_budget_mysql")
+    foreach ($name in $preferred) {
+        if ($all -contains $name) {
+            return $name
+        }
+    }
+
+    $matched = $all | Where-Object { $_ -match "mysql" } | Select-Object -First 1
+    if ($matched) {
+        return $matched
+    }
+
+    return $null
 }
 
 if (-not (Initialize-DockerMode)) {
@@ -127,12 +153,12 @@ Write-Host "Docker is running." -ForegroundColor Green
 
 # Step 2: Check MySQL container status
 Write-Host "`nStep 2: Checking MySQL container status..." -ForegroundColor White
-$container = Invoke-Docker -Args @("ps", "--filter", "name=bentley-mysql", "--format", "{{.Names}}") -SuppressErrors
+$container = Get-MySqlContainerName
 
 if (-not $container) {
     Write-Host "MySQL container is not running. Starting..." -ForegroundColor Red
     Set-Location "$PSScriptRoot\docker"
-    $composeOk = Invoke-Compose -Args @("-f", "docker-compose-airflow.yml", "up", "-d", "mysql")
+    $composeOk = Invoke-Compose -DockerArgs @("-f", "docker-compose-airflow.yml", "up", "-d", "mysql")
     if (-not $composeOk) {
         Write-Host "Failed to start MySQL container via Docker Compose." -ForegroundColor Red
         Set-Location $PSScriptRoot
@@ -140,35 +166,41 @@ if (-not $container) {
     }
     Start-Sleep -Seconds 5
     Set-Location $PSScriptRoot
+    $container = Get-MySqlContainerName
 } else {
-    Write-Host "Container 'bentley-mysql' is running." -ForegroundColor Green
+    Write-Host "Container '$container' is running." -ForegroundColor Green
+}
+
+if (-not $container) {
+    Write-Host "Could not resolve a MySQL container after startup attempt." -ForegroundColor Red
+    exit 1
 }
 
 # Step 3: Test MySQL connectivity
 Write-Host "`nStep 3: Testing MySQL connectivity..." -ForegroundColor White
-$pingResult = Invoke-Docker -Args @("exec", "bentley-mysql", "mysqladmin", "ping", "-uroot", "-proot") 2>&1 | Select-String "mysqld is alive"
+$pingResult = Invoke-Docker -DockerArgs @("exec", $container, "mysqladmin", "ping", "-uroot", "-proot") 2>&1 | Select-String "mysqld is alive"
 
 if ($pingResult) {
     Write-Host "MySQL is responding to connections." -ForegroundColor Green
 } else {
     Write-Host "MySQL is not responding. Restarting container..." -ForegroundColor Red
-    Invoke-Docker -Args @("restart", "bentley-mysql") | Out-Null
+    Invoke-Docker -DockerArgs @("restart", $container) | Out-Null
     Start-Sleep -Seconds 10
 }
 
 # Step 4: Check for stale connections
 Write-Host "`nStep 4: Checking for stale connections..." -ForegroundColor White
-$staleConnections = Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-e", "SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND = 'Sleep' AND TIME > 3600;") 2>&1 | Select-String -Pattern "^\d+$"
+$staleConnections = Invoke-Docker -DockerArgs @("exec", $container, "mysql", "-uroot", "-proot", "-e", "SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND = 'Sleep' AND TIME > 3600;") 2>&1 | Select-String -Pattern "^\d+$"
 
 if ($staleConnections -and [int]$staleConnections.Line -gt 0) {
     Write-Host "Found $($staleConnections.Line) stale connection(s) (idle > 1 hour)" -ForegroundColor Yellow
     Write-Host "   Killing stale connections..." -ForegroundColor Cyan
     
     # Get list of stale connection IDs
-    $staleIds = Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-N", "-e", "SELECT ID FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND = 'Sleep' AND TIME > 3600;") 2>&1 | Where-Object { $_ -match '^\d+$' }
+    $staleIds = Invoke-Docker -DockerArgs @("exec", $container, "mysql", "-uroot", "-proot", "-N", "-e", "SELECT ID FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND = 'Sleep' AND TIME > 3600;") 2>&1 | Where-Object { $_ -match '^\d+$' }
     
     foreach ($id in $staleIds) {
-        Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-e", "KILL $id;") 2>&1 | Out-Null
+        Invoke-Docker -DockerArgs @("exec", $container, "mysql", "-uroot", "-proot", "-e", "KILL $id;") 2>&1 | Out-Null
     }
     Write-Host "Stale connections killed." -ForegroundColor Green
 } else {
@@ -177,27 +209,27 @@ if ($staleConnections -and [int]$staleConnections.Line -gt 0) {
 
 # Step 5: Fix config file permissions
 Write-Host "`nStep 5: Fixing config file permissions..." -ForegroundColor White
-Invoke-Docker -Args @("exec", "bentley-mysql", "chmod", "644", "/etc/mysql/conf.d/custom.cnf") 2>&1 | Out-Null
+Invoke-Docker -DockerArgs @("exec", $container, "chmod", "644", "/etc/mysql/conf.d/custom.cnf") 2>&1 | Out-Null
 Write-Host "Config file permissions fixed." -ForegroundColor Green
 
 # Step 6: Verify all databases are accessible
 Write-Host "`nStep 6: Verifying database access..." -ForegroundColor White
-$databases = @("bbbot1", "mansa_bot", "mlflow_db", "mansa_quant", "Bentley_Budget")
-
-foreach ($db in $databases) {
-    $result = Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-e", "USE $db; SELECT 1;") 2>&1
-    
+$verifyScript = Join-Path $PSScriptRoot "scripts\verify_mysql_architecture.py"
+if (Test-Path $verifyScript) {
+    & python $verifyScript
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "   $db - accessible" -ForegroundColor Green
+        Write-Host "Architecture verification passed." -ForegroundColor Green
     } else {
-        Write-Host "   $db - ERROR" -ForegroundColor Red
+        Write-Host "Architecture verification reported issues." -ForegroundColor Yellow
     }
+} else {
+    Write-Host "Architecture verifier not found at scripts/verify_mysql_architecture.py" -ForegroundColor Yellow
 }
 
 # Step 7: Check connection limits
 Write-Host "`nStep 7: Checking connection statistics..." -ForegroundColor White
-$maxUsed = Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-N", "-e", "SHOW STATUS LIKE 'Max_used_connections';") 2>&1 | Select-String -Pattern "\d+$"
-$maxConn = Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-N", "-e", "SHOW VARIABLES LIKE 'max_connections';") 2>&1 | Select-String -Pattern "\d+$"
+$maxUsed = Invoke-Docker -DockerArgs @("exec", $container, "mysql", "-uroot", "-proot", "-N", "-e", "SHOW STATUS LIKE 'Max_used_connections';") 2>&1 | Select-String -Pattern "\d+$"
+$maxConn = Invoke-Docker -DockerArgs @("exec", $container, "mysql", "-uroot", "-proot", "-N", "-e", "SHOW VARIABLES LIKE 'max_connections';") 2>&1 | Select-String -Pattern "\d+$"
 
 if ($maxUsed -and $maxConn) {
     $usedNum = [int]($maxUsed.Line -replace '\D', '')
@@ -214,7 +246,7 @@ if ($maxUsed -and $maxConn) {
 
 # Step 8: Display current active connections
 Write-Host "`nStep 8: Current active connections..." -ForegroundColor White
-$activeConnections = Invoke-Docker -Args @("exec", "bentley-mysql", "mysql", "-uroot", "-proot", "-e", "SELECT USER, DB, COUNT(*) as COUNT FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND != 'Daemon' GROUP BY USER, DB;") 2>&1 | Select-String -NotMatch "Warning|password"
+$activeConnections = Invoke-Docker -DockerArgs @("exec", $container, "mysql", "-uroot", "-proot", "-e", "SELECT USER, DB, COUNT(*) as COUNT FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND != 'Daemon' GROUP BY USER, DB;") 2>&1 | Select-String -NotMatch "Warning|password"
 
 Write-Host $activeConnections -ForegroundColor Cyan
 
@@ -253,8 +285,8 @@ Write-Host "   - Bentley_Budget  - Budget tracking data" -ForegroundColor White
 
 Write-Host "`nReconnection Instructions:" -ForegroundColor Cyan
 Write-Host "   1. In VS Code: Click any SQL connection in the SQLTools sidebar" -ForegroundColor Gray
-Write-Host "   2. Right-click → 'Disconnect'" -ForegroundColor Gray
-Write-Host "   3. Right-click → 'Connect'" -ForegroundColor Gray
+Write-Host "   2. Right-click -> 'Disconnect'" -ForegroundColor Gray
+Write-Host "   3. Right-click -> 'Connect'" -ForegroundColor Gray
 Write-Host "   4. Or restart VS Code to refresh all connections" -ForegroundColor Gray
 
 Write-Host "`nTo run this diagnostic again:" -ForegroundColor Cyan

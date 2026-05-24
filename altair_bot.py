@@ -587,6 +587,81 @@ class AltairBot:
             "order_id": getattr(getattr(trade, "order", None), "orderId", None),
         }
 
+    def _persist_trade_event(
+        self,
+        trade_result: dict[str, Any],
+        analysis: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        try:
+            connection = get_mysql_connection()
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        CREATE TABLE IF NOT EXISTS {self.config.mysql_signal_table} (
+                            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            bot_name VARCHAR(64) NOT NULL,
+                            fund_name VARCHAR(128) NOT NULL,
+                            broker VARCHAR(32) NOT NULL,
+                            ticker VARCHAR(32) NOT NULL,
+                            action VARCHAR(16) NOT NULL,
+                            qty DECIMAL(18, 6) NOT NULL,
+                            mode VARCHAR(16) NOT NULL,
+                            status VARCHAR(32) NOT NULL,
+                            discord_notified TINYINT(1) NOT NULL DEFAULT 0,
+                            trade_payload_json JSON,
+                            analysis_payload_json JSON,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                        """
+                    )
+                    cursor.execute(
+                        f"""
+                        INSERT INTO {self.config.mysql_signal_table} (
+                            bot_name,
+                            fund_name,
+                            broker,
+                            ticker,
+                            action,
+                            qty,
+                            mode,
+                            status,
+                            discord_notified,
+                            trade_payload_json,
+                            analysis_payload_json
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            self.config.name,
+                            self.config.fund,
+                            str(trade_result.get("broker", "")),
+                            str(trade_result.get("ticker", "")),
+                            str(trade_result.get("action", "")),
+                            float(trade_result.get("qty", 0.0)),
+                            str(trade_result.get("mode", "paper")),
+                            str(trade_result.get("status", "")),
+                            1 if bool(trade_result.get("discord_notified", False)) else 0,
+                            json.dumps(trade_result),
+                            json.dumps(analysis or self.last_analysis or {}),
+                        ),
+                    )
+                    connection.commit()
+                    cursor.execute("SELECT LAST_INSERT_ID() AS trade_id")
+                    inserted = cursor.fetchone() or {}
+                    return {
+                        "persisted": True,
+                        "trade_id": int(inserted.get("trade_id") or 0),
+                        "table": self.config.mysql_signal_table,
+                    }
+            finally:
+                connection.close()
+        except Exception as exc:
+            return {
+                "persisted": False,
+                "table": self.config.mysql_signal_table,
+                "error": str(exc),
+            }
+
     def execute_trade(
         self,
         broker: str,
@@ -642,6 +717,7 @@ class AltairBot:
 
             result.update(submitted)
 
+        discord_notified = False
         try:
             from frontend.utils.discord_notify import notify_trade
 
@@ -656,8 +732,11 @@ class AltairBot:
                 ticket=str(result.get("order_id") or "") or None,
                 fund_name=self.config.fund,
             )
+            discord_notified = True
         except Exception:
             pass
+        result["discord_notified"] = discord_notified
+        result["mysql_log"] = self._persist_trade_event(result, analysis=self.last_analysis)
         return result
 
     def configure(self, overrides: dict[str, Any]) -> dict[str, Any]:

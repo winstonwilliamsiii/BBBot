@@ -404,6 +404,20 @@ Write-Host "   - mansa_bot    - Main application database (Bbbot1, Tiingo, yfina
 Write-Host "   - airflow      - Airflow metadata and DAG runs" -ForegroundColor White
 Write-Host "   - mlflow_db    - MLflow experiments (if running)" -ForegroundColor White
 
+Write-Host "`nService endpoint summary:" -ForegroundColor Cyan
+Write-Host "   - MySQL:        127.0.0.1:3307" -ForegroundColor White
+Write-Host "   - Airflow UI:    http://127.0.0.1:8080" -ForegroundColor White
+Write-Host "   - Redis:         127.0.0.1:6379" -ForegroundColor White
+Write-Host "   - MLflow UI:     http://127.0.0.1:5000" -ForegroundColor White
+Write-Host "   - Airbyte UI:    http://127.0.0.1:8000" -ForegroundColor White
+Write-Host "   - Airbyte API:   http://127.0.0.1:8001" -ForegroundColor White
+Write-Host "   - Streamlit:     http://127.0.0.1:8501" -ForegroundColor White
+
+Write-Host "`nFull-stack launch commands:" -ForegroundColor Cyan
+Write-Host "   - Core Docker stack: .\airflow\scripts\start_airflow_docker.ps1" -ForegroundColor Gray
+Write-Host "   - Airbyte stack:     .\airbyte\scripts\start_airbyte_docker.ps1" -ForegroundColor Gray
+Write-Host "   - All engines:       .\scripts\START_ALL_ENGINES.ps1" -ForegroundColor Gray
+
 Write-Host "`nQuick commands:" -ForegroundColor Cyan
 Write-Host "   View logs:      docker logs bentley-mysql" -ForegroundColor Gray
 Write-Host "   Stop MySQL:     docker stop bentley-mysql" -ForegroundColor Gray

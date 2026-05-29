@@ -325,7 +325,13 @@ def _run_shell_command(command: list[str], cwd: Path | None = None, timeout: int
         return False, f"Command execution failed: {exc}"
 
 
-def start_docker_compose_services(compose_rel_path: str, services: list[str] | None = None) -> Tuple[bool, str]:
+def start_docker_compose_services(
+    compose_rel_path: str,
+    services: list[str] | None = None,
+    *,
+    pull_before: bool = True,
+    no_build: bool = False,
+) -> Tuple[bool, str]:
     """Start a docker-compose stack (or selected services) from repo root."""
     compose_cmd, compose_note = get_docker_compose_command()
     if not compose_cmd:
@@ -335,7 +341,15 @@ def start_docker_compose_services(compose_rel_path: str, services: list[str] | N
     if not compose_file.exists():
         return False, f"Compose file not found: {compose_file}"
 
+    if pull_before:
+        pull_cmd = compose_cmd + ["-f", str(compose_file), "pull"]
+        pull_ok, pull_output = _run_shell_command(pull_cmd, cwd=REPO_ROOT)
+        if not pull_ok:
+            return False, f"{compose_note} | Pull failed: {pull_output}"
+
     cmd = compose_cmd + ["-f", str(compose_file), "up", "-d"]
+    if no_build:
+        cmd.append("--no-build")
     if services:
         cmd.extend(services)
 
@@ -1341,7 +1355,8 @@ def render_service_dashboard(local_services: list[dict] | None = None) -> None:
             "containers on each refresh."
         )
 
-    entries = get_service_dashboard_entries(local_services)
+    current_services = local_services if local_services is not None else get_local_docker_services_status()
+    entries = get_service_dashboard_entries(current_services)
     healthy_count = sum(1 for entry in entries if entry["status"] == "healthy")
     warning_count = sum(1 for entry in entries if entry["status"] == "warning")
     error_count = sum(1 for entry in entries if entry["status"] == "error")
@@ -1384,6 +1399,8 @@ def render_service_dashboard(local_services: list[dict] | None = None) -> None:
                         use_container_width=True,
                     )
                 st.caption(entry["note"])
+
+    st.caption(f"Last checked: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     st.markdown("### 🔧 Service Status & Troubleshooting")
     st.markdown(
@@ -1599,7 +1616,11 @@ def _admin_broker_action(broker_name: str, action: str) -> dict:
 
 def get_local_docker_services_status():
     """Return grouped Docker service status from local `docker ps` output."""
-    cmd = ["docker", "ps", "--format", "{{.Names}}|{{.Status}}"]
+    docker_cmd, _docker_note = get_docker_cli_command()
+    if not docker_cmd:
+        return None
+
+    cmd = docker_cmd + ["ps", "--format", "{{.Names}}|{{.Status}}"]
     try:
         result = subprocess.run(
             cmd,
@@ -2078,7 +2099,7 @@ def main():
 
     # TAB 2: Service Dashboard
     with tab2:
-        render_service_dashboard(local_services)
+        render_service_dashboard()
     
     # TAB 3: Bot Manager
     with tab3:
@@ -2590,6 +2611,16 @@ def main():
             st.caption(("✅" if airbyte_ok else "❌") + f" Airbyte: {airbyte_note}")
             st.caption(("✅" if docker_engine_ok else "⚠️") + f" Docker: {docker_engine_note if docker_ready else docker_cli_note}")
 
+            no_pull_mode = st.checkbox(
+                "No-pull mode (use local images only)",
+                value=True,
+                key="quick_actions_no_pull_mode",
+                help=(
+                    "Skips `docker compose pull` and starts stacks with `--no-build`. "
+                    "Use this when registry access is failing or working offline."
+                ),
+            )
+
             if st.button("🚀 Start All Local Services", type="primary", use_container_width=True, key="start_all_services"):
                 results = []
                 with st.spinner("Starting MLflow…"):
@@ -2598,7 +2629,11 @@ def main():
                     results.append(("MLflow", _ok, _msg))
                 if docker_ready:
                     with st.spinner("Starting Airflow stack…"):
-                        _ok, _msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
+                        _ok, _msg = start_docker_compose_services(
+                            "docker/docker-compose-airflow.yml",
+                            pull_before=not no_pull_mode,
+                            no_build=no_pull_mode,
+                        )
                         results.append(("Airflow", _ok, _msg))
                     with st.spinner("Starting Airbyte stack…"):
                         _airbyte_compose = next(
@@ -2612,7 +2647,11 @@ def main():
                             ),
                             "docker/docker-compose-airbyte.yml",
                         )
-                        _ok, _msg = start_docker_compose_services(_airbyte_compose)
+                        _ok, _msg = start_docker_compose_services(
+                            _airbyte_compose,
+                            pull_before=not no_pull_mode,
+                            no_build=no_pull_mode,
+                        )
                         results.append(("Airbyte", _ok, _msg))
                 else:
                     results.append(("Airflow", False, "Skipped: Docker CLI unavailable."))
@@ -2644,7 +2683,11 @@ def main():
                 key="start_airflow_stack",
                 disabled=not docker_ready,
             ):
-                ok, msg = start_docker_compose_services("docker/docker-compose-airflow.yml")
+                ok, msg = start_docker_compose_services(
+                    "docker/docker-compose-airflow.yml",
+                    pull_before=not no_pull_mode,
+                    no_build=no_pull_mode,
+                )
                 if ok:
                     st.success("Airflow stack start command completed.")
                     st.caption(msg)
@@ -2667,7 +2710,11 @@ def main():
                     ),
                     "docker/docker-compose-airbyte.yml",
                 )
-                ok, msg = start_docker_compose_services(_airbyte_compose)
+                ok, msg = start_docker_compose_services(
+                    _airbyte_compose,
+                    pull_before=not no_pull_mode,
+                    no_build=no_pull_mode,
+                )
                 if ok:
                     st.success("Airbyte stack start command completed.")
                     st.caption(msg)

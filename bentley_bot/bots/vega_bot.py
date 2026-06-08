@@ -5,10 +5,12 @@ Primary broker: IBKR (paper port 7497 / live port 7496).
 Fallback broker: Alpaca paper.
 
 Mount in Main.py:
-    from vega_bot import app as vega_app
+    from bentley_bot.bots.vega_bot import app as vega_app
     app.mount("/vega", vega_app)
 
 Standalone (port 8011):
+    python -m bentley_bot.bots.vega_bot
+Compatibility shim:
     python vega_bot.py
 """
 

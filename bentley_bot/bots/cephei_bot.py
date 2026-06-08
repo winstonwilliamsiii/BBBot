@@ -2,6 +2,15 @@
 
 Options and CFD API with ML signal generation, regime filtering,
 and execution hooks for broker integration.
+
+Mount in Main.py:
+    from bentley_bot.bots.cephei_bot import app as cephei_app
+    app.mount("/cephei", cephei_app)
+
+Standalone:
+    python -m bentley_bot.bots.cephei_bot
+Compatibility shim:
+    python cephei_bot.py
 """
 
 from __future__ import annotations

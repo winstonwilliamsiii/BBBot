@@ -1,0 +1,40 @@
+{
+  "ticker": "ELV",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": 0.9070124751189873,
+    "average_return": 0.009070124751189873,
+    "lookback": 20,
+    "latest_price": 377.3999938964844,
+    "signal": true
+  },
+  "fundamental": {
+    "score": 0.3405,
+    "forward_pe": 12.913703,
+    "return_on_equity": 0.12086,
+    "revenue_growth": 0.026,
+    "operating_margin": 0.05303,
+    "roe_component": 0.48344,
+    "growth_component": 0.12999999999999998,
+    "margin_component": 0.26515,
+    "pe_component": 0.48345188
+  },
+  "technical": {
+    "score": -0.6185429562085276,
+    "short_sma": 317.456201171875,
+    "long_sma": 327.58754974365235,
+    "signal": false,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 377.3999938964844,
+  "composite_score": 0.2479,
+  "buy_threshold": 0.15,
+  "action": "BUY"
+}

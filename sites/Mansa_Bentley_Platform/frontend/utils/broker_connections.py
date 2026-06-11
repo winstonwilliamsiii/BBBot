@@ -47,6 +47,14 @@ class BrokerConnectionManager:
         """Get demo broker connections for testing"""
         return [
             BrokerConnection(
+                broker_name="Alpaca",
+                account_number="****1122",
+                status="Connected",
+                last_sync=datetime.now(),
+                balance=124500.25,
+                positions_count=11,
+            ),
+            BrokerConnection(
                 broker_name="Interactive Brokers (IBKR)",
                 account_number="****9012",
                 status="Connected",
@@ -55,7 +63,7 @@ class BrokerConnectionManager:
                 positions_count=15,
             ),
             BrokerConnection(
-                broker_name="Binance",
+                broker_name="MT5 (FTMO)",
                 account_number="****3456",
                 status="Connected",
                 last_sync=datetime.now(),
@@ -63,7 +71,7 @@ class BrokerConnectionManager:
                 positions_count=8,
             ),
             BrokerConnection(
-                broker_name="NinjaTrader",
+                broker_name="MT5 (Axi)",
                 account_number="****7890",
                 status="Connected",
                 last_sync=datetime.now(),
@@ -71,12 +79,12 @@ class BrokerConnectionManager:
                 positions_count=5,
             ),
             BrokerConnection(
-                broker_name="MetaTrader 5 (Meta5)",
+                broker_name="Zenit Prop Connector",
                 account_number="****2345",
-                status="Connected",
+                status="Pending",
                 last_sync=datetime.now(),
-                balance=28750.50,
-                positions_count=6,
+                balance=0.00,
+                positions_count=0,
             ),
         ]
     

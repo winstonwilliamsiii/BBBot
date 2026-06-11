@@ -45,6 +45,72 @@ environment:
   AIRFLOW_CONN_MYSQL_BBBOT1: mysql://root:root@bentley-mysql:3306/bbbot1
 ```
 
+
+## Bentley No Docker Mode (Local MySQL)
+
+You can now run Bentley and Streamlit locally without Docker. This is useful if Docker Desktop or WSL is broken, or you want to use a native MySQL service.
+
+### VS Code Tasks
+
+- **🚫 No Docker Mode (Local MySQL)**: Runs Bentley (Main.py) with local MySQL. Sets all required environment variables for you.
+- **🚫 No Docker Mode (Streamlit)**: Runs the Streamlit dashboard with local MySQL. Also sets all required environment variables.
+
+Both tasks source `set_no_docker_env.ps1` to ensure the correct DB connection. Find them in the VS Code Run Task menu (Terminal → Run Task...).
+
+**Note:** `.env.local` and Docker Compose are ignored in this mode. Your local MySQL must be running on port 3306.
+
+---
+
+## WSL2 Docker Engine Mode
+
+If you run Docker Engine directly inside WSL2 (instead of relying on Docker Desktop engine), the project now supports this mode.
+
+### Environment variables
+
+- `BENTLEY_DOCKER_MODE=wsl`
+- `BENTLEY_WSL_DISTRO=Ubuntu` (optional override if your distro name differs)
+
+### Supported scripts
+
+- `start_mysql_docker.ps1`
+- `fix_mysql_connections.ps1`
+
+Both scripts automatically route Docker and Compose commands through WSL when `BENTLEY_DOCKER_MODE=wsl` is set.
+
+### VS Code tasks
+
+- `🐧 Start MySQL (WSL Docker Engine)`
+- `🧬 Verify MySQL Architecture`
+
+---
+
+## MySQL Architecture Verification
+
+Run the verifier any time (especially before/after Docker reinstall):
+
+```bash
+python scripts/verify_mysql_architecture.py
+```
+
+This writes a snapshot to `data/mysql_schema_snapshot.json` and validates expected databases:
+
+- `bbbot1`
+- `mansa_bot`
+- `mlflow_db`
+- `mansa_quant`
+- `Bentley_Budget`
+
+If databases are missing, recreate shells quickly:
+
+```python
+import pymysql
+conn = pymysql.connect(host="127.0.0.1", port=3306, user="root", password="root", autocommit=True)
+cur = conn.cursor()
+for db in ["bbbot1", "mansa_bot", "mlflow_db", "mansa_quant", "Bentley_Budget"]:
+  cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db}`")
+conn.close()
+```
+
 ---
 
 ### 2. MLFlow Connection (mlflow_tracking)

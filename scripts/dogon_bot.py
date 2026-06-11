@@ -17,6 +17,11 @@ import yfinance as yf
 from dotenv import load_dotenv
 
 try:
+    from scripts.bot_mlflow_benchmark import log_bot_benchmark_run
+except ModuleNotFoundError:
+    from bot_mlflow_benchmark import log_bot_benchmark_run
+
+try:
     import xgboost as xgb
 
     XGBOOST_AVAILABLE = True
@@ -285,6 +290,18 @@ def run_cycle() -> Dict[str, object]:
                 "to generate models."
             ),
         }
+        log_bot_benchmark_run(
+            bot_name="Dogon",
+            experiment_name="Dogon_Runtime_Benchmark",
+            run_name="Dogon-runtime-not-ready",
+            payload=result,
+            strategy_label="ETF raw strategy",
+            discipline_mode="raw_strategy",
+            extra_params={
+                "best_training_model": "missing",
+            },
+            extra_tags={"trade_status": str(result["status"])},
+        )
         logger.warning("Dogon runtime not ready: %s", result)
         return result
 
@@ -352,8 +369,28 @@ def run_cycle() -> Dict[str, object]:
         "model_used": str(inference["model_used"]),
         "best_training_model": best_model_name,
         "latest_feature_timestamp": str(features.index[-1]),
+        "feature_rows": float(len(features)),
+        "symbol_count": float(len(symbols)),
+        "predicted_class": float(inference.get("predicted_class", 0)),
+        "raw_probability": float(inference.get("raw_probability", 0.0) or 0.0),
         "detail": "Model-backed runtime inference completed.",
     }
+    log_bot_benchmark_run(
+        bot_name="Dogon",
+        experiment_name="Dogon_Runtime_Benchmark",
+        run_name=f"Dogon-{result['status']}-{result['model_used']}",
+        payload=result,
+        strategy_label="ETF raw strategy",
+        discipline_mode="raw_strategy",
+        extra_params={
+            "best_training_model": best_model_name,
+            "model_used": str(inference["model_used"]),
+            "symbols": ",".join(symbols),
+        },
+        extra_tags={
+            "trade_status": str(result["status"]),
+        },
+    )
     logger.info("Dogon cycle executed: %s", result)
     return result
 

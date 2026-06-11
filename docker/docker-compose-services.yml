@@ -1,4 +1,4 @@
-version: '3.8'
+name: bentley-services
 
 # Bentley Budget Bot - Simplified Services Configuration
 # This file runs MLflow and Airbyte with proper resource limits and networking

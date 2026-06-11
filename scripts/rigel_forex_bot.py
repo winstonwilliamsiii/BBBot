@@ -19,15 +19,22 @@ Author: Bentley Budget Bot Team
 import os
 import sys
 import time
+import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import pandas as pd
 import numpy as np
+import requests
 from alpaca_trade_api import REST, TimeFrame
 from dotenv import load_dotenv
+
+try:
+    from scripts.bot_mlflow_benchmark import log_bot_benchmark_run
+except ModuleNotFoundError:
+    from bot_mlflow_benchmark import log_bot_benchmark_run
 
 load_dotenv(override=True)
 
@@ -35,6 +42,11 @@ try:
     from frontend.components.mt5_connector import MT5Connector
 except Exception:
     MT5Connector = None
+
+try:
+    from frontend.components.ibkr_connector import IBKRConnector
+except Exception:
+    IBKRConnector = None
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +58,61 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def _notify_discord_trade(
+    side: str,
+    symbol: str,
+    qty: float,
+    broker: str = "unknown",
+    order_id: Optional[str] = None,
+    mode: str = "live",
+) -> None:
+    webhook = (
+        os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+        or os.getenv("DISCORD_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
+    )
+    if not webhook:
+        logger.warning("Discord webhook not configured — set DISCORD_BOT_TALK_WEBHOOK")
+        return
+    color = 3066993 if str(side).lower() == "buy" else 15158332
+    order_label = f" | order: {order_id}" if order_id else ""
+    mode_labels = {"dry_run": "🧪 DRY RUN", "paper": "📄 PAPER", "live": "🟢 LIVE", "disabled": "⛔ DISABLED"}
+    mode_label = mode_labels.get(mode, mode.upper())
+    embed = {
+        "title": f"🤖 Rigel [{mode_label}]: {side.upper()} {symbol}",
+        "description": f"Qty: {qty} via {broker}{order_label}",
+        "color": color,
+        "footer": {"text": f"Mode: {mode} | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"},
+    }
+    try:
+        requests.post(webhook, json={"embeds": [embed]}, timeout=5)
+        logger.info("Discord trade notification sent [%s]", mode)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Discord trade notification failed: %s", exc)
+
+
+def _write_trade_log(entry: dict) -> None:
+    """Append a trade entry to the Rigel JSON trade log (logs/rigel_trade_log.json)."""
+    try:
+        log_path = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs", "rigel_trade_log.json")
+        )
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        if os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = []
+        data.append(entry)
+        if len(data) > 1000:
+            data = data[-1000:]
+        with open(log_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, default=str)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to write trade log: %s", exc)
 
 
 # ============================================================================
@@ -122,6 +189,10 @@ class ForexConfig:
     MT5_PASSWORD = os.getenv("MT5_PASSWORD")
     MT5_HOST = os.getenv("MT5_HOST")
     MT5_PORT = int(os.getenv("MT5_PORT", "443"))
+
+    # ===== IBKR / TWS Configuration =====
+    IBKR_GATEWAY_URL = os.getenv("IBKR_GATEWAY_URL", "https://localhost:5000")
+    IBKR_ACCOUNT_ID = os.getenv("IBKR_ACCOUNT_ID")  # auto-detected if blank
     
     # ===== Trading Pairs =====
     # Major forex pairs with good liquidity
@@ -183,14 +254,18 @@ class ForexConfig:
     @classmethod
     def validate(cls):
         """Validate configuration"""
-        if cls.BROKER_PLATFORM not in {"alpaca", "mt5"}:
-            raise ValueError("BROKER_PLATFORM must be 'alpaca' or 'mt5'")
+        if cls.BROKER_PLATFORM not in {"alpaca", "mt5", "ibkr"}:
+            raise ValueError("BROKER_PLATFORM must be 'alpaca', 'mt5', or 'ibkr'")
 
         if cls.BROKER_PLATFORM == "alpaca":
             if not cls.ALPACA_API_KEY or not cls.ALPACA_SECRET_KEY:
                 raise ValueError("Missing Alpaca API credentials")
-        elif not cls.MT5_API_URL:
-            raise ValueError("Missing MT5_API_URL for MT5 broker platform")
+        elif cls.BROKER_PLATFORM == "mt5":
+            if not cls.MT5_API_URL:
+                raise ValueError("Missing MT5_API_URL for MT5 broker platform")
+        elif cls.BROKER_PLATFORM == "ibkr":
+            if not cls.IBKR_GATEWAY_URL:
+                raise ValueError("Missing IBKR_GATEWAY_URL for IBKR broker platform")
         
         logger.info("=" * 70)
         logger.info("RIGEL FOREX BOT CONFIGURATION")
@@ -204,6 +279,9 @@ class ForexConfig:
         logger.info(f"ML Enabled: {cls.ENABLE_ML}")
         logger.info(f"Dry Run: {cls.DRY_RUN}")
         logger.info(f"Trading Enabled: {cls.ENABLE_TRADING}")
+        if cls.BROKER_PLATFORM == "ibkr":
+            logger.info(f"IBKR Gateway: {cls.IBKR_GATEWAY_URL}")
+            logger.info(f"IBKR Account: {cls.IBKR_ACCOUNT_ID or 'auto-detect'}")
         logger.info("=" * 70)
 
 
@@ -796,13 +874,82 @@ class RigelForexBot:
         self.config = config
         self.api: Optional[REST] = None
         self.mt5_connector: Optional[MT5Connector] = None
+        self.ibkr_connector = None  # IBKRConnector instance
+        self._ibkr_account_id: Optional[str] = config.IBKR_ACCOUNT_ID
+        self._ibkr_conid_cache: Dict[str, int] = {}  # symbol -> conid
         self.ml_predictor = MLPredictor(config.ML_MODEL_PATH, config.ENABLE_ML)
         self.risk_manager = RiskManager(config)
         self.strategy = MeanReversionStrategy(config, self.ml_predictor)
         self.last_trade_time = {}
         
+    def _ibkr_resolve_conid(self, symbol: str) -> Optional[int]:
+        """Resolve IBKR forex contract ID from symbol like 'EUR/USD'"""
+        if symbol in self._ibkr_conid_cache:
+            return self._ibkr_conid_cache[symbol]
+        try:
+            # IBKR forex: search by base currency, filter CASH secType
+            base = symbol.split("/")[0]  # e.g. "EUR" from "EUR/USD"
+            results = self.ibkr_connector.search_contract(base)
+            if not results:
+                logger.error(f"IBKR: no contracts found for {symbol}")
+                return None
+            # Find CASH (forex) contract matching the pair
+            pair_no_slash = symbol.replace("/", "")  # "EURUSD"
+            for contract in results:
+                sec_type = contract.get("secType", "").upper()
+                desc = (contract.get("description", "") + contract.get("symbol", "")).upper()
+                conid = contract.get("conid")
+                if sec_type == "CASH" and pair_no_slash.upper() in desc:
+                    self._ibkr_conid_cache[symbol] = int(conid)
+                    logger.info(f"IBKR: resolved {symbol} -> conid {conid}")
+                    return int(conid)
+            # Fallback: first CASH contract
+            for contract in results:
+                if contract.get("secType", "").upper() == "CASH":
+                    conid = contract.get("conid")
+                    self._ibkr_conid_cache[symbol] = int(conid)
+                    logger.warning(f"IBKR: fallback conid {conid} for {symbol}")
+                    return int(conid)
+            logger.error(f"IBKR: no CASH contract for {symbol}")
+            return None
+        except Exception as exc:
+            logger.error(f"IBKR conid resolution failed for {symbol}: {exc}")
+            return None
+
     def initialize(self):
         """Initialize API connection"""
+        if self.config.BROKER_PLATFORM == "ibkr":
+            if IBKRConnector is None:
+                logger.error("IBKRConnector not available")
+                return False
+            try:
+                self.ibkr_connector = IBKRConnector(
+                    base_url=self.config.IBKR_GATEWAY_URL,
+                    verify_ssl=False,
+                )
+                if not self.ibkr_connector.is_authenticated():
+                    logger.error(
+                        "IBKR Gateway not authenticated. "
+                        "Start TWS/Gateway and log in first: %s",
+                        self.config.IBKR_GATEWAY_URL,
+                    )
+                    return False
+                accounts = self.ibkr_connector.get_accounts()
+                if accounts:
+                    detected = accounts[0] if isinstance(accounts, list) else list(accounts.keys())[0]
+                    if not self._ibkr_account_id:
+                        self._ibkr_account_id = detected
+                        logger.info(f"IBKR: auto-detected account {self._ibkr_account_id}")
+                summary = self.ibkr_connector.get_account_summary(self._ibkr_account_id) or {}
+                equity = summary.get("netliquidation", {}).get("amount", "N/A")
+                logger.info("Connected to IBKR Gateway (TWS paper trading)")
+                logger.info(f"  Account: {self._ibkr_account_id}")
+                logger.info(f"  Net Liquidation: {equity}")
+                return True
+            except Exception as exc:
+                logger.error(f"Failed to initialize IBKR: {exc}")
+                return False
+
         if self.config.BROKER_PLATFORM == "mt5":
             try:
                 if MT5Connector is None:
@@ -870,6 +1017,39 @@ class RigelForexBot:
     
     def get_market_data(self, symbol: str, days: int = 100) -> Optional[pd.DataFrame]:
         """Fetch market data for symbol"""
+        if self.config.BROKER_PLATFORM == "ibkr":
+            if not self.ibkr_connector:
+                return None
+            try:
+                conid = self._ibkr_resolve_conid(symbol)
+                if conid is None:
+                    return None
+                # IBKR period for ~100 days of hourly bars: "3m" period, "1h" bar
+                period = f"{max(1, days // 30)}m"  # months
+                raw = self.ibkr_connector.get_historical_data(conid, period=period, bar="1h")
+                if not raw:
+                    return None
+                bars = raw.get("data", [])
+                if not bars:
+                    return None
+                df = pd.DataFrame(bars)
+                # IBKR fields: o/h/l/c/v
+                col_map = {"o": "open", "h": "high", "l": "low", "c": "close", "v": "volume"}
+                df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+                required = {"open", "high", "low", "close"}
+                if not required.issubset(set(df.columns)):
+                    logger.error(f"IBKR historical data missing OHLC columns for {symbol}")
+                    return None
+                for col in required:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                if "volume" not in df.columns:
+                    df["volume"] = 0
+                df = df.dropna(subset=list(required))
+                return df
+            except Exception as exc:
+                logger.error(f"IBKR market data failed for {symbol}: {exc}")
+                return None
+
         if self.config.BROKER_PLATFORM == "mt5":
             if not self.mt5_connector:
                 logger.error("MT5 connector not initialized")
@@ -962,13 +1142,104 @@ class RigelForexBot:
             logger.info(f"  ML Prediction: {signal.ml_prediction.value}")
         logger.info("=" * 70)
         
+        side_label = "BUY" if is_long else "SELL"
+        trade_mode = (
+            "dry_run" if self.config.DRY_RUN
+            else "paper" if "paper" in self.config.ALPACA_BASE_URL.lower()
+                or self.config.BROKER_PLATFORM == "ibkr"
+            else "live"
+        )
+
         if self.config.DRY_RUN:
-            logger.info("DRY RUN - Trade not executed")
-            return
-        
+            logger.info("DRY RUN - Trade simulated (not executed)")
+            _write_trade_log({
+                "timestamp": datetime.now().isoformat(),
+                "symbol": signal.symbol,
+                "side": side_label,
+                "qty": position_size,
+                "entry_price": signal.price,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "mode": "dry_run",
+                "broker": self.config.BROKER_PLATFORM,
+                "status": "simulated",
+                "order_id": None,
+                "confidence": round(signal.confidence, 4),
+                "ml_prediction": signal.ml_prediction.value if signal.ml_prediction else None,
+            })
+            _notify_discord_trade(side_label, signal.symbol, position_size, self.config.BROKER_PLATFORM, None, "dry_run")
+            return "simulated"
+
         if not self.config.ENABLE_TRADING:
-            logger.warning("Trading disabled in config")
-            return
+            logger.warning("Trading disabled in config (ENABLE_TRADING=false)")
+            _write_trade_log({
+                "timestamp": datetime.now().isoformat(),
+                "symbol": signal.symbol,
+                "side": side_label,
+                "qty": position_size,
+                "entry_price": signal.price,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "mode": "disabled",
+                "broker": self.config.BROKER_PLATFORM,
+                "status": "disabled",
+                "order_id": None,
+                "confidence": round(signal.confidence, 4),
+                "ml_prediction": signal.ml_prediction.value if signal.ml_prediction else None,
+            })
+            _notify_discord_trade(side_label, signal.symbol, position_size, self.config.BROKER_PLATFORM, None, "disabled")
+            return "disabled"
+
+        if self.config.BROKER_PLATFORM == "ibkr":
+            if not self.ibkr_connector or not self._ibkr_account_id:
+                logger.error("IBKR not initialized")
+                return "error"
+            try:
+                conid = self._ibkr_resolve_conid(signal.symbol)
+                if conid is None:
+                    logger.error(f"IBKR: cannot resolve conid for {signal.symbol}")
+                    return "error"
+                ibkr_side = "BUY" if is_long else "SELL"
+                # Forex quantity in units (IBKR accepts fractional lots as qty)
+                result = self.ibkr_connector.place_order(
+                    account_id=self._ibkr_account_id,
+                    conid=conid,
+                    order_type="LMT",
+                    side=ibkr_side,
+                    quantity=float(position_size),
+                    price=round(signal.price, 5),
+                    tif="GTC",
+                )
+                if result:
+                    order_id = None
+                    if isinstance(result, list) and result:
+                        order_id = str(result[0].get("order_id", "") or result[0].get("orderId", ""))
+                    elif isinstance(result, dict):
+                        order_id = str(result.get("order_id", "") or result.get("orderId", ""))
+                    logger.info(f"IBKR order placed: {order_id}")
+                    _write_trade_log({
+                        "timestamp": datetime.now().isoformat(),
+                        "symbol": signal.symbol,
+                        "side": ibkr_side,
+                        "qty": position_size,
+                        "entry_price": signal.price,
+                        "stop_price": stop_price,
+                        "target_price": target_price,
+                        "mode": trade_mode,
+                        "broker": "ibkr_tws",
+                        "status": "submitted",
+                        "order_id": order_id,
+                        "confidence": round(signal.confidence, 4),
+                        "ml_prediction": signal.ml_prediction.value if signal.ml_prediction else None,
+                    })
+                    _notify_discord_trade(ibkr_side, signal.symbol, position_size, "ibkr_tws", order_id, trade_mode)
+                    return "submitted"
+                else:
+                    logger.error("IBKR order placement returned no result")
+                    return "error"
+            except Exception as exc:
+                logger.error(f"IBKR execute_trade failed: {exc}")
+                return "error"
 
         if self.config.BROKER_PLATFORM == "mt5":
             if not self.mt5_connector:
@@ -990,16 +1261,31 @@ class RigelForexBot:
                 )
 
                 if result and result.get("success"):
-                    logger.info(
-                        "MT5 order placed: %s",
-                        result.get("ticket", "unknown"),
-                    )
+                    ticket = str(result.get("ticket", "")) or None
+                    logger.info("MT5 order placed: %s", ticket or "unknown")
+                    _write_trade_log({
+                        "timestamp": datetime.now().isoformat(),
+                        "symbol": signal.symbol,
+                        "side": side,
+                        "qty": lot_size,
+                        "entry_price": signal.price,
+                        "stop_price": stop_price,
+                        "target_price": target_price,
+                        "mode": trade_mode,
+                        "broker": "mt5",
+                        "status": "submitted",
+                        "order_id": ticket,
+                        "confidence": round(signal.confidence, 4),
+                        "ml_prediction": signal.ml_prediction.value if signal.ml_prediction else None,
+                    })
+                    _notify_discord_trade(side, mt5_symbol, lot_size, "mt5", ticket, trade_mode)
+                    return "submitted"
                 else:
                     logger.error("Failed to execute MT5 trade: %s", result)
-                return
+                    return "error"
             except Exception as e:
                 logger.error(f"Failed to execute MT5 trade: {e}")
-                return
+                return "error"
         
         try:
             # Place bracket order with stop loss and take profit
@@ -1018,21 +1304,91 @@ class RigelForexBot:
             )
             
             logger.info(f"Order placed: {order.id}")
+            _write_trade_log({
+                "timestamp": datetime.now().isoformat(),
+                "symbol": signal.symbol,
+                "side": side,
+                "qty": position_size,
+                "entry_price": signal.price,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "mode": trade_mode,
+                "broker": "alpaca",
+                "status": "submitted",
+                "order_id": str(order.id),
+                "confidence": round(signal.confidence, 4),
+                "ml_prediction": signal.ml_prediction.value if signal.ml_prediction else None,
+            })
+            _notify_discord_trade(side, signal.symbol, position_size, "alpaca", str(order.id), trade_mode)
+            return "submitted"
             
         except Exception as e:
             logger.error(f"Failed to execute trade: {e}")
+            return "error"
     
     def run_cycle(self):
         """Run one trading cycle"""
+        cycle_timestamp = datetime.now(timezone.utc).isoformat()
+        cycle_result = {
+            "bot": "Rigel",
+            "fund": "Mansa_FOREX",
+            "timestamp": cycle_timestamp,
+            "signals_generated": 0.0,
+            "executed_signals": 0.0,
+            "avg_signal_confidence": 0.0,
+        }
         
         # Check trading session
         if not self.is_trading_session():
             logger.debug("Outside trading session")
-            return
+            cycle_result.update(
+                {
+                    "status": "skipped_outside_session",
+                    "detail": "Rigel cycle skipped outside configured trading hours.",
+                }
+            )
+            log_bot_benchmark_run(
+                bot_name="Rigel",
+                experiment_name="Rigel_Runtime_Benchmark",
+                run_name="Rigel-skipped-session",
+                payload=cycle_result,
+                strategy_label="FOREX raw strategy",
+                discipline_mode="raw_strategy",
+                extra_params={
+                    "broker_platform": self.config.BROKER_PLATFORM,
+                },
+                extra_tags={"trade_status": str(cycle_result["status"])},
+            )
+            return cycle_result
         
         # Get account info
         try:
-            if self.config.BROKER_PLATFORM == "mt5":
+            if self.config.BROKER_PLATFORM == "ibkr":
+                if not self.ibkr_connector or not self._ibkr_account_id:
+                    logger.error("IBKR not initialized")
+                    return cycle_result
+                summary = self.ibkr_connector.get_account_summary(self._ibkr_account_id) or {}
+                # IBKR summary keys vary; try common keys
+                equity_val = (
+                    summary.get("netliquidation", {}).get("amount", None)
+                    or summary.get("NetLiquidation", {}).get("amount", None)
+                    or 0.0
+                )
+                cash_val = (
+                    summary.get("cashbalance", {}).get("amount", None)
+                    or summary.get("TotalCashValue", {}).get("amount", None)
+                    or equity_val
+                )
+                equity = float(equity_val)
+                cash = float(cash_val)
+                account = {
+                    "equity": equity,
+                    "cash": cash,
+                    "portfolio_value": max(equity, 1.0),
+                }
+                raw_positions = self.ibkr_connector.get_positions(self._ibkr_account_id) or []
+                positions = raw_positions
+            elif self.config.BROKER_PLATFORM == "mt5":
                 if not self.mt5_connector:
                     logger.error("MT5 connector not initialized")
                     return
@@ -1052,12 +1408,48 @@ class RigelForexBot:
                 positions = self.api.list_positions()
         except Exception as e:
             logger.error(f"Failed to get account info: {e}")
-            return
+            cycle_result.update(
+                {
+                    "status": "account_error",
+                    "detail": f"Failed to get account info: {e}",
+                }
+            )
+            log_bot_benchmark_run(
+                bot_name="Rigel",
+                experiment_name="Rigel_Runtime_Benchmark",
+                run_name="Rigel-account-error",
+                payload=cycle_result,
+                strategy_label="FOREX raw strategy",
+                discipline_mode="raw_strategy",
+                extra_params={
+                    "broker_platform": self.config.BROKER_PLATFORM,
+                },
+                extra_tags={"trade_status": str(cycle_result["status"])},
+            )
+            return cycle_result
         
         # Check daily loss limit
         if not self.risk_manager.check_daily_loss_limit(account):
             logger.error("Daily loss limit exceeded - stopping trading")
-            return
+            cycle_result.update(
+                {
+                    "status": "blocked_daily_loss_limit",
+                    "detail": "Daily loss limit exceeded.",
+                }
+            )
+            log_bot_benchmark_run(
+                bot_name="Rigel",
+                experiment_name="Rigel_Runtime_Benchmark",
+                run_name="Rigel-blocked-daily-loss",
+                payload=cycle_result,
+                strategy_label="FOREX raw strategy",
+                discipline_mode="raw_strategy",
+                extra_params={
+                    "broker_platform": self.config.BROKER_PLATFORM,
+                },
+                extra_tags={"trade_status": str(cycle_result["status"])},
+            )
+            return cycle_result
         
         # Get risk metrics
         risk_metrics = self.risk_manager.get_risk_metrics(account, positions)
@@ -1065,8 +1457,18 @@ class RigelForexBot:
         logger.info(f"Risk Metrics: {risk_metrics.position_count}/{risk_metrics.max_positions_allowed} positions "
                    f"| Liquidity: {risk_metrics.liquidity_ratio:.1%} "
                    f"| Available: ${risk_metrics.available_cash:,.2f}")
+        cycle_result.update(
+            {
+                "liquidity_ratio": float(risk_metrics.liquidity_ratio),
+                "available_cash": float(risk_metrics.available_cash),
+                "position_count": float(risk_metrics.position_count),
+                "max_positions_allowed": float(risk_metrics.max_positions_allowed),
+            }
+        )
         
         # Scan pairs for signals
+        generated_signals = []
+        executed_signals = []
         for pair in self.config.FOREX_PAIRS:
             
             # Rate limiting: min 1 minute between trades per pair
@@ -1091,11 +1493,80 @@ class RigelForexBot:
             
             if signal:
                 logger.info(f"Signal generated: {signal}")
-                self.execute_trade(signal, risk_metrics)
+                generated_signals.append(signal)
+                execution_status = self.execute_trade(signal, risk_metrics)
+                executed_signals.append(
+                    {
+                        "symbol": pair,
+                        "status": execution_status,
+                        "confidence": float(signal.confidence),
+                        "ml_prediction": (
+                            signal.ml_prediction.value
+                            if signal.ml_prediction
+                            else "neutral"
+                        ),
+                    }
+                )
                 self.last_trade_time[pair] = datetime.now()
             else:
                 logger.debug(f"{pair}: No signal (RSI: {indicators['rsi']:.1f}, "
                            f"Trend: {indicators['trend']})")
+
+        if generated_signals:
+            avg_confidence = float(
+                np.mean([signal.confidence for signal in generated_signals])
+            )
+            latest_status = str(executed_signals[-1]["status"] or "signal_generated")
+            cycle_result.update(
+                {
+                    "status": latest_status,
+                    "detail": (
+                        f"Generated {len(generated_signals)} Rigel signals this cycle."
+                    ),
+                    "signals_generated": float(len(generated_signals)),
+                    "executed_signals": float(
+                        len(
+                            [
+                                item for item in executed_signals
+                                if item["status"] in {"submitted", "simulated"}
+                            ]
+                        )
+                    ),
+                    "avg_signal_confidence": avg_confidence,
+                    "latest_symbol": str(generated_signals[-1].symbol),
+                    "latest_signal": str(generated_signals[-1].signal_type.value),
+                    "latest_rsi": float(generated_signals[-1].indicators.get("rsi", 0.0)),
+                    "latest_price": float(generated_signals[-1].price),
+                }
+            )
+            if generated_signals[-1].ml_prediction is not None:
+                cycle_result["latest_ml_prediction"] = str(
+                    generated_signals[-1].ml_prediction.value
+                )
+        else:
+            cycle_result.update(
+                {
+                    "status": "no_signal",
+                    "detail": "No Rigel signals generated this cycle.",
+                }
+            )
+
+        log_bot_benchmark_run(
+            bot_name="Rigel",
+            experiment_name="Rigel_Runtime_Benchmark",
+            run_name=f"Rigel-{cycle_result['status']}",
+            payload=cycle_result,
+            strategy_label="FOREX raw strategy",
+            discipline_mode="raw_strategy",
+            extra_params={
+                "broker_platform": self.config.BROKER_PLATFORM,
+                "trading_pairs": ",".join(self.config.FOREX_PAIRS),
+                "dry_run": self.config.DRY_RUN,
+                "enable_trading": self.config.ENABLE_TRADING,
+            },
+            extra_tags={"trade_status": str(cycle_result["status"])},
+        )
+        return cycle_result
     
     def run(self, interval_seconds: int = 300):
         """

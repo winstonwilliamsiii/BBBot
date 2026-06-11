@@ -15,8 +15,10 @@ Installation:
 
 Environment Variables Required:
     MT5_LOGIN=your_account_number
+    MT5_USER=your_account_number  # fallback alias
     MT5_PASSWORD=your_password
     MT5_SERVER=your_broker_server  # e.g., 'MetaQuotes-Demo'
+    MT5_HOST=your_broker_server  # fallback alias
     MT5_PATH=C:/Program Files/MetaTrader 5/terminal64.exe  # Windows
 """
 
@@ -36,9 +38,13 @@ class MetaTrader5Client:
     """
     
     def __init__(self):
-        self.login = os.getenv("MT5_LOGIN")
+        self.login = os.getenv("MT5_LOGIN") or os.getenv("MT5_USER")
         self.password = os.getenv("MT5_PASSWORD")
-        self.server = os.getenv("MT5_SERVER", "MetaQuotes-Demo")
+        self.server = (
+            os.getenv("MT5_SERVER")
+            or os.getenv("MT5_HOST")
+            or "MetaQuotes-Demo"
+        )
         self.mt5_path = os.getenv("MT5_PATH")
         self.mt5 = None
         
@@ -56,7 +62,10 @@ class MetaTrader5Client:
             
             if not self.login or not self.password:
                 logger.error("❌ MT5 credentials not found in environment")
-                logger.info("📌 Set MT5_LOGIN, MT5_PASSWORD, MT5_SERVER in .env")
+                logger.info(
+                    "📌 Set MT5_LOGIN or MT5_USER, plus MT5_PASSWORD and "
+                    "MT5_SERVER or MT5_HOST in .env"
+                )
                 return False
             
             # Initialize MT5 connection

@@ -296,17 +296,20 @@ def connect_mt5(
             st.success("✅ MT5 Connected!")
             st.rerun()
         else:
+            detail = getattr(connector, "last_connect_error", "").strip()
             st.error(
-                "❌ MT5 connection failed - Check if MT5 REST server is running"
+                "❌ MT5 connection failed"
             )
-            st.info("💡 Run: START_MT5_SERVER.bat to start the MT5 API server")
+            if detail:
+                st.info(f"Failure detail: {detail}")
+            st.info("💡 Run: src\\START_MT5_SERVER.bat to start the MT5 API server")
     except Exception as e:
         st.error("❌ MT5 API server is not responding")
         st.info(f"Error details: {e}")
         st.warning(
             "🔧 **Quick Fix:**\n"
             "1. Make sure MT5 desktop is logged in\n"
-            "2. Run `START_MT5_SERVER.bat` to start the API bridge\n"
+            "2. Run `src\\START_MT5_SERVER.bat` to start the API bridge\n"
             "3. Try connecting again"
         )
 
@@ -321,11 +324,178 @@ def connect_alpaca(
     """Connect to Alpaca"""
     try:
         from frontend.utils.secrets_helper import get_alpaca_config
-        from frontend.components.alpaca_connector import AlpacaConnector
+
+        def _clean_secret_value(value: str | None) -> str:
+            cleaned = (value or "").strip()
+            if (
+                len(cleaned) >= 2
+                and cleaned[0] == cleaned[-1]
+                and cleaned[0] in ('"', "'")
+            ):
+                cleaned = cleaned[1:-1].strip()
+            return cleaned
+
+        def _attempt_connect(
+            key_to_use: str,
+            secret_to_use: str,
+            requested_mode_flag: bool,
+        ):
+            key_prefix_local = key_to_use[:2].upper() if key_to_use else ""
+
+            # Respect key type first to avoid invalid cross-mode attempts.
+            if key_prefix_local == "PK":
+                attempted_modes_local: list[bool] = [True]
+            elif key_prefix_local == "AK":
+                attempted_modes_local = [False]
+            else:
+                attempted_modes_local = [requested_mode_flag, not requested_mode_flag]
+
+            connector_local = None
+            account_local = None
+            connected_mode_local = requested_mode_flag
+            failure_detail_local = ""
+
+            for mode_flag in attempted_modes_local:
+                connector_candidate = AlpacaConnector(key_to_use, secret_to_use, mode_flag)
+                account_candidate = connector_candidate.get_account()
+                if account_candidate:
+                    connector_local = connector_candidate
+                    account_local = account_candidate
+                    connected_mode_local = mode_flag
+                    break
+                failure_detail_local = getattr(connector_candidate, "last_error", "") or failure_detail_local
+
+            return {
+                "connected": connector_local is not None and account_local is not None,
+                "connector": connector_local,
+                "account": account_local,
+                "connected_mode": connected_mode_local,
+                "failure_detail": failure_detail_local,
+                "attempted_modes": attempted_modes_local,
+                "key_prefix": key_prefix_local,
+            }
+
+        def _collect_alternate_candidates(default_mode: bool):
+            candidates: list[dict[str, object]] = []
+            seen_fingerprints: set[str] = set()
+
+            def _add_candidate(
+                cand_key: str | None,
+                cand_secret: str | None,
+                cand_mode: bool,
+                cand_source: str,
+            ):
+                key_clean = _clean_secret_value(cand_key)
+                secret_clean = _clean_secret_value(cand_secret)
+                if not key_clean or not secret_clean:
+                    return
+                fingerprint = f"{key_clean}|{secret_clean}|{cand_mode}"
+                if fingerprint in seen_fingerprints:
+                    return
+                seen_fingerprints.add(fingerprint)
+                candidates.append(
+                    {
+                        "key": key_clean,
+                        "secret": secret_clean,
+                        "paper": bool(cand_mode),
+                        "source": cand_source,
+                    }
+                )
+
+            # Config-resolved pair (already precedence-aware).
+            try:
+                cfg = get_alpaca_config()
+                _add_candidate(
+                    str(cfg.get("api_key", "")),
+                    str(cfg.get("secret_key", "")),
+                    bool(cfg.get("paper", default_mode)),
+                    "resolved config",
+                )
+            except Exception:
+                pass
+
+            # Explicit paper/live env pairs first.
+            _add_candidate(
+                os.getenv("ALPACA_PAPER_API_KEY"),
+                os.getenv("ALPACA_PAPER_SECRET_KEY"),
+                True,
+                "env ALPACA_PAPER_*",
+            )
+            _add_candidate(
+                os.getenv("ALPACA_LIVE_API_KEY"),
+                os.getenv("ALPACA_LIVE_SECRET_KEY"),
+                False,
+                "env ALPACA_LIVE_*",
+            )
+            _add_candidate(
+                os.getenv("ALPACA_API_KEY"),
+                os.getenv("ALPACA_SECRET_KEY"),
+                default_mode,
+                "env ALPACA_API_KEY/ALPACA_SECRET_KEY",
+            )
+            _add_candidate(
+                os.getenv("APCA_API_KEY_ID"),
+                os.getenv("APCA_API_SECRET_KEY"),
+                default_mode,
+                "env APCA_API_KEY_ID/APCA_API_SECRET_KEY",
+            )
+
+            # Streamlit secrets root + [alpaca] section.
+            try:
+                secrets_obj = getattr(st, "secrets", None)
+                if secrets_obj is not None:
+                    secrets_alpaca = None
+                    try:
+                        secrets_alpaca = secrets_obj.get("alpaca", None)
+                    except Exception:
+                        secrets_alpaca = None
+
+                    def _safe_get(container, name: str) -> str:
+                        if container is None:
+                            return ""
+                        try:
+                            value = container.get(name, "")
+                        except Exception:
+                            return ""
+                        return str(value) if value is not None else ""
+
+                    for container, cname in (
+                        (secrets_obj, "secrets root"),
+                        (secrets_alpaca, "secrets [alpaca]"),
+                    ):
+                        _add_candidate(
+                            _safe_get(container, "ALPACA_PAPER_API_KEY"),
+                            _safe_get(container, "ALPACA_PAPER_SECRET_KEY"),
+                            True,
+                            f"{cname} ALPACA_PAPER_*",
+                        )
+                        _add_candidate(
+                            _safe_get(container, "ALPACA_LIVE_API_KEY"),
+                            _safe_get(container, "ALPACA_LIVE_SECRET_KEY"),
+                            False,
+                            f"{cname} ALPACA_LIVE_*",
+                        )
+                        _add_candidate(
+                            _safe_get(container, "ALPACA_API_KEY"),
+                            _safe_get(container, "ALPACA_SECRET_KEY"),
+                            default_mode,
+                            f"{cname} ALPACA_API_KEY/ALPACA_SECRET_KEY",
+                        )
+                        _add_candidate(
+                            _safe_get(container, "APCA_API_KEY_ID"),
+                            _safe_get(container, "APCA_API_SECRET_KEY"),
+                            default_mode,
+                            f"{cname} APCA_API_KEY_ID/APCA_API_SECRET_KEY",
+                        )
+            except Exception:
+                pass
+
+            return candidates
 
         # Prefer credentials entered in UI; fallback to secrets/env.
         key = (api_key or "").strip()
         secret = (secret_key or "").strip()
+        manual_credentials_provided = bool(key and secret)
         source = "manual"
 
         if not key or not secret:
@@ -347,32 +517,65 @@ def connect_alpaca(
             paper = True
 
         requested_mode = bool(paper)
-        key_prefix = key[:2].upper() if key else ""
+        connect_result = _attempt_connect(key, secret, requested_mode)
+        connected = bool(connect_result["connected"])
+        connector = connect_result["connector"]
+        account = connect_result["account"]
+        connected_mode = connect_result["connected_mode"]
+        failure_detail = str(connect_result["failure_detail"] or "")
+        attempted_modes = connect_result["attempted_modes"]
+        key_prefix = str(connect_result["key_prefix"])
 
-        # Respect key type first to avoid invalid cross-mode attempts.
-        if key_prefix == "PK":
-            attempted_modes: list[bool] = [True]
-        elif key_prefix == "AK":
-            attempted_modes = [False]
-        else:
-            attempted_modes = [requested_mode, not requested_mode]
+        # If auth fails, probe alternate credential sources and use the first valid pair.
+        auth_failed = "HTTP 401" in failure_detail or "HTTP 403" in failure_detail
+        if (not connected) and auth_failed:
+            fallback_errors: list[str] = []
+            tried_fingerprints = {
+                f"{key}|{secret}|{requested_mode}",
+            }
+            for candidate in _collect_alternate_candidates(requested_mode):
+                candidate_key = str(candidate["key"])
+                candidate_secret = str(candidate["secret"])
+                candidate_mode = bool(candidate["paper"])
+                candidate_source = str(candidate["source"])
+                candidate_fingerprint = (
+                    f"{candidate_key}|{candidate_secret}|{candidate_mode}"
+                )
+                if candidate_fingerprint in tried_fingerprints:
+                    continue
+                tried_fingerprints.add(candidate_fingerprint)
 
-        connected = False
-        connected_mode = requested_mode
-        account = None
-        connector = None
-        failure_detail = ""
+                fallback_result = _attempt_connect(
+                    candidate_key,
+                    candidate_secret,
+                    candidate_mode,
+                )
+                if fallback_result["connected"]:
+                    connected = True
+                    connector = fallback_result["connector"]
+                    account = fallback_result["account"]
+                    connected_mode = fallback_result["connected_mode"]
+                    attempted_modes = fallback_result["attempted_modes"]
+                    key_prefix = str(fallback_result["key_prefix"])
+                    source = f"fallback: {candidate_source}"
+                    st.session_state.alpaca_api_key_stored = ""
+                    st.session_state.alpaca_secret_key_stored = ""
+                    st.session_state.alpaca_paper_trading = candidate_mode
+                    break
 
-        for mode_flag in attempted_modes:
-            connector_candidate = AlpacaConnector(key, secret, mode_flag)
-            account_candidate = connector_candidate.get_account()
-            if account_candidate:
-                connector = connector_candidate
-                account = account_candidate
-                connected = True
-                connected_mode = mode_flag
-                break
-            failure_detail = getattr(connector_candidate, "last_error", "") or failure_detail
+                candidate_failure = str(fallback_result["failure_detail"] or "")
+                if candidate_failure:
+                    fallback_errors.append(
+                        f"{candidate_source}: {candidate_failure}"
+                    )
+
+            if (not connected) and fallback_errors:
+                fallback_summary = " | ".join(fallback_errors[:3])
+                failure_detail = (
+                    f"{failure_detail} | fallback attempts: {fallback_summary}"
+                    if failure_detail
+                    else f"fallback attempts: {fallback_summary}"
+                )
 
         if connected and connector and account:
             st.session_state.brokers['alpaca'] = connector
@@ -423,14 +626,22 @@ def connect_ibkr():
 
         connector = IBKRConnector(gateway_url)
 
-        if connector.is_authenticated():
+        status = connector.get_auth_status()
+
+        if status.get("ok") and status.get("authenticated"):
             st.session_state.brokers['ibkr'] = connector
             accounts = connector.get_accounts()
             accounts_str = ', '.join(accounts) if accounts else 'None'
             st.success(f"✅ IBKR Connected! Accounts: {accounts_str}")
             st.rerun()
         else:
-            st.error("❌ IBKR Gateway not authenticated. Make sure Gateway is running.")
+            if not status.get("ok"):
+                st.error("❌ Cannot reach IBKR Gateway. Start Gateway/TWS and verify IBKR_GATEWAY_URL.")
+                st.caption(f"Last error: {status.get('error')}")
+            else:
+                resolved_url = status.get("url") or gateway_url
+                st.error("❌ IBKR Gateway reachable, but not authenticated. Complete login in Gateway/TWS and retry.")
+                st.caption(f"Gateway URL: {resolved_url}")
     except Exception as e:
         st.error(f"IBKR error: {e}")
 
@@ -463,6 +674,7 @@ def connect_axi():
             or get_secret("AXI_MT5_SERVER", section="axi", default=None)
             or get_secret("AXI_MT5_HOST", default=None)
             or get_secret("AXI_MT5_SERVER", default=None)
+            or get_secret("MT5_SERVER", default=None)
             or get_secret("MT5_HOST", default="")
         )
         port = int(
@@ -472,7 +684,10 @@ def connect_axi():
         )
 
         if not host:
-            st.error("❌ AXI MT5 server not configured. Set AXI_MT5_SERVER or AXI_MT5_HOST in .env")
+            st.error(
+                "❌ AXI MT5 server not configured. Set AXI_MT5_SERVER or "
+                "AXI_MT5_HOST in .env, or reuse MT5_SERVER/MT5_HOST."
+            )
             st.info("Examples — AXI demo: mt5-demo07.axi.com | AXI live: Axi-US51-Live")
             return
 
@@ -837,6 +1052,8 @@ def render_axi_section():
                         or get_secret("AXI_MT5_SERVER", section="axi", default=None)
                         or get_secret("AXI_MT5_HOST", default=None)
                         or get_secret("AXI_MT5_SERVER", default=None)
+                        or get_secret("MT5_SERVER", default=None)
+                        or get_secret("MT5_HOST", default=None)
                         or "mt5-demo07.axi.com"
                     ),
                     key="axi_host_input",
@@ -900,7 +1117,7 @@ def render_axi_section():
                         st.success("✅ MT5 API bridge is reachable")
                     else:
                         st.error("❌ MT5 API bridge not responding")
-                        st.info("Start the MT5 REST server: `START_MT5_SERVER.bat`")
+                        st.info("Start the MT5 REST server: `src\\START_MT5_SERVER.bat`")
 
             st.markdown("---")
             st.markdown("**Required `.env` settings:**")
@@ -909,7 +1126,9 @@ def render_axi_section():
                 "AXI_MT5_PASSWORD=your_axi_password\n"
                 "AXI_MT5_SERVER=Axi-US51-Live  # or AXI_MT5_HOST=mt5-demo07.axi.com\n"
                 "AXI_MT5_PORT=443\n"
-                "AXI_MT5_API_URL=http://localhost:8002  # shared MT5 bridge",
+                "AXI_MT5_API_URL=http://localhost:8002  # shared MT5 bridge\n\n"
+                "# Optional shared fallback for both FTMO and AXI\n"
+                "MT5_SERVER=Axi-US51-Live",
                 language="bash",
             )
         return

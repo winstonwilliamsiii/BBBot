@@ -1,5 +1,9 @@
 # MT5 .gitignore
 
+# Local MT5 installation copy used for Docker builds (copied via robocopy)
+# Run:  robocopy "C:\Program Files\MetaTrader 5" mt5\terminal /E /COPY:DAT
+terminal/
+
 # Compiled EAs
 *.ex5
 *.ex4

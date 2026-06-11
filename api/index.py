@@ -11,6 +11,19 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
+try:
+    from scripts.load_screener_csv import (
+        load_bot_config,
+        load_screener_csv,
+        resolve_screener_path,
+    )
+
+    BOT_UNIVERSE_LOADER_AVAILABLE = True
+    BOT_UNIVERSE_LOADER_ERROR = None
+except (ImportError, OSError, ValueError) as error:
+    BOT_UNIVERSE_LOADER_AVAILABLE = False
+    BOT_UNIVERSE_LOADER_ERROR = str(error)
+
 
 ALLOWED_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://bbbot305.streamlit.app")
 API_KEY = os.getenv("API_GATEWAY_KEY")
@@ -20,6 +33,7 @@ DISCORD_WEBHOOK = (
     os.getenv("DISCORD_WEBHOOK")
     or os.getenv("DISCORD_WEBHOOK_PROD")
 )
+REQUIRED_DISCORD_INDICATORS = ("FVFI", "ROVL")
 VEGA_PAPER_ONLY = os.getenv("VEGA_PAPER_ONLY", "true").strip().lower()
 VEGA_LIVE_MODE_KEY = os.getenv("VEGA_LIVE_MODE_KEY")
 VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS = os.getenv(
@@ -28,6 +42,7 @@ VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS = os.getenv(
 )
 
 BLOCKED_LIVE_ALERT_LAST_SENT = {}
+BOT_UNIVERSE_CACHE = {}
 
 
 def _is_truthy(value):
@@ -144,10 +159,151 @@ def _redact_payload(payload: dict):
     return redacted
 
 
+def _normalize_symbol_token(value):
+    token = str(value or "").strip().upper()
+    if not token:
+        return None
+
+    if ":" not in token:
+        return token
+
+    exchange, symbol = token.split(":", 1)
+    if not symbol:
+        return None
+    if exchange == "TSX":
+        return f"{symbol}.TO"
+    if exchange == "TSXV":
+        return f"{symbol}.V"
+    return symbol
+
+
+def _load_bot_universe(bot_name: str):
+    requested_bot = str(bot_name or "Vega_Bot").strip() or "Vega_Bot"
+    config_path = os.getenv("BOT_CONFIG_PATH", "bentley-bot/config/bots")
+    cache_key = f"{requested_bot}|{config_path}"
+    cached = BOT_UNIVERSE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not BOT_UNIVERSE_LOADER_AVAILABLE:
+        result = {
+            "loaded": False,
+            "bot": requested_bot,
+            "reason": (
+                BOT_UNIVERSE_LOADER_ERROR
+                or "bot universe loader unavailable"
+            ),
+            "symbols": set(),
+            "universe": "",
+            "screener_file": "",
+        }
+        BOT_UNIVERSE_CACHE[cache_key] = result
+        return result
+
+    try:
+        bot_config = load_bot_config(requested_bot, config_path=config_path)
+        screener_path = resolve_screener_path(
+            bot_config,
+            config_path=config_path,
+        )
+        symbols = {
+            normalized
+            for normalized in (
+                _normalize_symbol_token(symbol)
+                for symbol in load_screener_csv(screener_path)
+            )
+            if normalized
+        }
+        result = {
+            "loaded": True,
+            "bot": str(bot_config.get("bot_name") or requested_bot),
+            "display_bot": str(
+                bot_config.get("bot_display_name")
+                or bot_config.get("bot_name")
+                or requested_bot
+            ),
+            "universe": str(bot_config.get("universe") or ""),
+            "screener_file": str(screener_path),
+            "symbols": symbols,
+        }
+    except (FileNotFoundError, OSError, ValueError) as error:
+        result = {
+            "loaded": False,
+            "bot": requested_bot,
+            "reason": str(error),
+            "symbols": set(),
+            "universe": "",
+            "screener_file": "",
+        }
+
+    BOT_UNIVERSE_CACHE[cache_key] = result
+    return result
+
+
+def _validate_symbol_for_bot(normalized: dict):
+    bot_name = normalized.get("bot") or "Vega_Bot"
+    symbol = _normalize_symbol_token(normalized.get("symbol"))
+    if not symbol:
+        return {
+            "valid": False,
+            "bot": bot_name,
+            "reason": "missing symbol",
+        }
+
+    universe_info = _load_bot_universe(bot_name)
+    if not universe_info.get("loaded"):
+        return {
+            "valid": False,
+            "bot": bot_name,
+            "symbol": symbol,
+            "reason": (
+                universe_info.get("reason")
+                or "unable to load bot universe"
+            ),
+            "universe": universe_info.get("universe") or "",
+            "screener_file": universe_info.get("screener_file") or "",
+        }
+
+    allowed_symbols = universe_info.get("symbols") or set()
+    if not allowed_symbols:
+        return {
+            "valid": False,
+            "bot": universe_info.get("bot") or bot_name,
+            "symbol": symbol,
+            "reason": "configured universe has no symbols",
+            "universe": universe_info.get("universe") or "",
+            "screener_file": universe_info.get("screener_file") or "",
+        }
+
+    if symbol not in allowed_symbols:
+        return {
+            "valid": False,
+            "bot": universe_info.get("bot") or bot_name,
+            "symbol": symbol,
+            "reason": "symbol not in configured universe",
+            "universe": universe_info.get("universe") or "",
+            "screener_file": universe_info.get("screener_file") or "",
+        }
+
+    return {
+        "valid": True,
+        "bot": universe_info.get("bot") or bot_name,
+        "symbol": symbol,
+        "universe": universe_info.get("universe") or "",
+        "screener_file": universe_info.get("screener_file") or "",
+    }
+
+
 def _normalize_tradingview_payload(payload):
     if not isinstance(payload, dict):
         return {}
 
+    bot_name = (
+        payload.get("bot")
+        or payload.get("bot_name")
+        or payload.get("runtime_name")
+        or "Vega_Bot"
+    )
     symbol = payload.get("symbol") or payload.get("ticker")
     side = (
         payload.get("action")
@@ -157,39 +313,93 @@ def _normalize_tradingview_payload(payload):
     timeframe = payload.get("timeframe") or payload.get("interval")
 
     return {
+        "bot": bot_name,
+        "fund": (
+            payload.get("fund")
+            or payload.get("fund_name")
+            or "Mansa Retail"
+        ),
         "symbol": symbol,
         "side": side,
         "timeframe": timeframe,
-        "strategy": payload.get("strategy") or payload.get("strategy_name"),
+        "strategy": (
+            payload.get("strategy")
+            or payload.get("strategy_name")
+            or "Breakout Strategy"
+        ),
+        "configured_universe": payload.get("universe"),
         "price": payload.get("price") or payload.get("close"),
         "alert_name": payload.get("alert_name") or payload.get("name"),
+        "fvfi": (
+            payload.get("FVFI")
+            or payload.get("fvfi")
+            or payload.get("volume_flow_indicator")
+        ),
+        "rovl": (
+            payload.get("ROVL")
+            or payload.get("rovl")
+            or payload.get("relative_volume")
+        ),
     }
+
+
+def _missing_required_discord_indicators(normalized: dict):
+    missing = []
+    if normalized.get("fvfi") in (None, ""):
+        missing.append("FVFI")
+    if normalized.get("rovl") in (None, ""):
+        missing.append("ROVL")
+    return missing
 
 
 def _send_discord_alert(normalized: dict):
     if not DISCORD_WEBHOOK:
         return {"sent": False, "reason": "DISCORD_WEBHOOK not configured"}
 
+    missing_indicators = _missing_required_discord_indicators(normalized)
+    if missing_indicators:
+        return {
+            "sent": False,
+            "reason": "missing required indicators",
+            "missing": missing_indicators,
+        }
+
+    bot_name = normalized.get("bot") or "Vega_Bot"
+    fund = normalized.get("fund") or "Mansa Retail"
     symbol = normalized.get("symbol") or "UNKNOWN"
     side = normalized.get("side") or "signal"
     timeframe = normalized.get("timeframe") or "n/a"
-    strategy = normalized.get("strategy") or "Vega Mansa Retail MTF-ML"
+    strategy = normalized.get("strategy") or "Breakout Strategy"
+    universe = normalized.get("configured_universe") or "n/a"
     price = normalized.get("price")
+    fvfi = normalized.get("fvfi")
+    rovl = normalized.get("rovl")
 
     content = (
-        f"📡 TradingView Alert | {strategy} | {symbol} | "
+        f"📡 Trading Signal Alert | {bot_name} | {strategy} | {symbol} | "
         f"{side} | TF: {timeframe}"
     )
     if price is not None:
         content += f" | Price: {price}"
+    content += f" | Universe: {universe}"
+    content += f" | FVFI: {fvfi} | ROVL: {rovl}"
 
     body = {
         "content": content,
         "embeds": [
             {
-                "title": "TradingView Screener Alert",
-                "description": "Webhook received by Bentley Vega endpoint",
+                "title": "Trading Signal Alert",
+                "description": (
+                    "Webhook received by Bentley bot alert endpoint"
+                ),
                 "fields": [
+                    {"name": "Bot", "value": str(bot_name), "inline": True},
+                    {"name": "Fund", "value": str(fund), "inline": True},
+                    {
+                        "name": "Strategy",
+                        "value": str(strategy),
+                        "inline": False,
+                    },
                     {"name": "Symbol", "value": str(symbol), "inline": True},
                     {"name": "Side", "value": str(side), "inline": True},
                     {
@@ -197,6 +407,13 @@ def _send_discord_alert(normalized: dict):
                         "value": str(timeframe),
                         "inline": True,
                     },
+                    {
+                        "name": "Universe",
+                        "value": str(universe),
+                        "inline": False,
+                    },
+                    {"name": "FVFI", "value": str(fvfi), "inline": True},
+                    {"name": "ROVL", "value": str(rovl), "inline": True},
                 ],
                 "timestamp": datetime.now().isoformat(),
             }
@@ -231,6 +448,13 @@ def _send_discord_tiny_alert(message: str):
 
 
 def _forward_to_vega(payload, normalized: dict):
+    bot_name = str(normalized.get("bot") or "Vega_Bot")
+    if bot_name not in {"Vega", "Vega_Bot"}:
+        return {
+            "forwarded": False,
+            "reason": f"No bot execution forward configured for {bot_name}",
+        }
+
     if not VEGA_BOT_WEBHOOK_URL:
         return {
             "forwarded": False,
@@ -316,14 +540,15 @@ def handler(request):
                     "health": "/health",
                     "status": "/status",
                     "portfolio": "/api/portfolio",
+                    "generic_tradingview_alert": "/api/tradingview-alert",
                     "tradingview_alert": "/api/vega/tradingview-alert",
                 },
                 "timestamp": datetime.now().isoformat(),
             },
         )
 
-    # TradingView webhook for Vega automation
-    if path_only == "/api/vega/tradingview-alert":
+    # TradingView webhook for bot automation
+    if path_only in {"/api/vega/tradingview-alert", "/api/tradingview-alert"}:
         if method != "POST":
             return _response(405, {"error": "Method not allowed. Use POST."})
 
@@ -345,6 +570,25 @@ def handler(request):
                 return _response(401, {"error": "Unauthorized webhook secret"})
         elif API_KEY and provided_api_key != API_KEY:
             return _response(401, {"error": "Unauthorized"})
+
+        universe_validation = _validate_symbol_for_bot(normalized)
+        normalized["symbol"] = universe_validation.get(
+            "symbol",
+            normalized.get("symbol"),
+        )
+        normalized["configured_universe"] = universe_validation.get(
+            "universe",
+            normalized.get("configured_universe"),
+        )
+        if not universe_validation.get("valid"):
+            return _response(
+                422,
+                {
+                    "error": "Symbol rejected by bot universe guard",
+                    "validation": universe_validation,
+                    "normalized": normalized,
+                },
+            )
 
         execution_mode = "paper"
         mode_value = (
@@ -407,6 +651,19 @@ def handler(request):
         vega_result = _forward_to_vega(payload_dict, normalized)
 
         send_discord = bool(payload_dict.get("send_discord", False))
+        missing_discord_indicators = _missing_required_discord_indicators(
+            normalized
+        )
+        if send_discord and missing_discord_indicators:
+            return _response(
+                400,
+                {
+                    "error": "Missing required Discord indicators",
+                    "required_indicators": list(REQUIRED_DISCORD_INDICATORS),
+                    "missing": missing_discord_indicators,
+                    "normalized": normalized,
+                },
+            )
         if send_discord:
             discord_result = _send_discord_alert(normalized)
         else:
@@ -419,10 +676,11 @@ def handler(request):
             200,
             {
                 "status": "received",
-                "route": "/api/vega/tradingview-alert",
+                "route": path_only,
                 "received_at": datetime.now().isoformat(),
                 "execution_mode": execution_mode,
                 "normalized": normalized,
+                "validation": universe_validation,
                 "forward": vega_result,
                 "discord": discord_result,
                 "raw_message_present": bool(raw_text),

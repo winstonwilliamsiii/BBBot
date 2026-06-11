@@ -178,7 +178,7 @@ Infrastructure:
 ├── Broker abstraction layer (Alpaca, MT5, Binance) ✅
 ├── Multi-tenant MySQL database ✅
 ├── Appwrite cloud functions ✅
-├── Service dashboard (service_dashboard.html) ✅
+├── Service dashboard (Admin Control Center → Services) ✅
 ├── Management scripts (manage_services.ps1) ✅
 └── Deployment (Streamlit Cloud, Vercel) ✅
 
@@ -382,7 +382,7 @@ A: Totally fine. Phases 1-6 give you full control. Analytics is optional enhance
 - [x] ✅ Architecture reviewed and approved
 - [x] ✅ Documentation created
 - [x] ✅ Roadmap understood
-- [ ] ⏸️ Docker services running (run `open_dashboard.ps1`)
+- [ ] ⏸️ Docker services running (open Admin Control Center → Services)
 - [ ] ⏸️ Python virtual environment active
 - [ ] ⏸️ MySQL accessible (test with `mysql -h nozomi.proxy.rlwy.net -P 54537 -u root -p`)
 - [ ] ⏸️ Text editor/IDE ready (VS Code)

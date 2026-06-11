@@ -24,7 +24,7 @@ def test_vega_catalog_row_uses_updated_display_values():
     rows = get_bot_catalog_rows()
     vega_row = next(row for row in rows if row["bot"] == "Vega_Bot")
     assert vega_row["fund"] == "Mansa_Retail"
-    assert vega_row["strategy"] == "Vega Mansa Retail MTF-ML"
+    assert vega_row["strategy"] == "Breakout Strategy"
 
 
 def test_run_fund_bot_rigel_ready_or_placeholder():
@@ -42,6 +42,9 @@ def test_evaluate_titan_gate_with_mock(monkeypatch):
         def ensure_database_tables(self):
             return None
 
+        def log_orchestration_run(self, **kwargs):
+            return None
+
         def titan_guard(self, buffer_threshold=None):
             return buffer_threshold != 0.99
 
@@ -52,3 +55,55 @@ def test_evaluate_titan_gate_with_mock(monkeypatch):
 
     assert approved["status"] == "approved"
     assert blocked["status"] == "blocked"
+
+
+def test_run_fund_bot_titan_executes_cycle(monkeypatch):
+    class FakeTitanBot:
+        def __init__(self, _cfg):
+            self.config = type(
+                "Config",
+                (),
+                {
+                    "active_bot_name": "Titan_Bot",
+                    "dry_run": False,
+                    "enable_trading": True,
+                },
+            )()
+
+        def ensure_database_tables(self):
+            return None
+
+        def _rank_candidates(self, candidates):
+            return candidates
+
+        def execute_from_screener(self, max_trades=None):
+            return [{"symbol": "NVDA", "executed": True}]
+
+        def get_recent_trade_activity(self, since=None, symbols=None, limit=100):
+            import pandas as pd
+
+            return pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(["2026-04-06T07:00:00"]),
+                    "symbol": ["NVDA"],
+                    "status": ["submitted"],
+                    "notes": ["submitted"],
+                }
+            )
+
+        def log_orchestration_run(self, **kwargs):
+            return None
+
+    monkeypatch.setattr(stars_orchestration, "TitanBot", FakeTitanBot)
+    monkeypatch.setattr(
+        stars_orchestration,
+        "load_bot_trade_candidates",
+        lambda _bot_name: [{"symbol": "NVDA"}],
+    )
+
+    result = stars_orchestration.run_fund_bot("Titan")
+
+    assert result["bot"] == "Titan"
+    assert result["task"] == "execution"
+    assert result["status"] == "submitted"
+    assert result["candidates_considered"] == 1

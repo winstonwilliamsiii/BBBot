@@ -15,7 +15,7 @@ BOT_CATALOG: List[Dict[str, str]] = [
         "bot": "Vega",
         "display_bot": "Vega_Bot",
         "fund": "Mansa_Retail",
-        "strategy": "Vega Mansa Retail MTF-ML",
+        "strategy": "Breakout Strategy",
     },
     {
         "bot": "Draco",
@@ -40,7 +40,7 @@ BOT_CATALOG: List[Dict[str, str]] = [
     {
         "bot": "Triton",
         "fund": "Mansa Transportation",
-        "strategy": "Pending",
+        "strategy": "ARIMA and LSTM Swing Trading",
     },
     {
         "bot": "Dione",

@@ -1,12 +1,11 @@
 """
 Create Broker API Credentials Table - Multi-Tenant Support
 ============================================================
-Creates a unified table for storing broker API credentials across all platforms:
-- Interactive Brokers / IBKR (FOREX, futures, commodities)
-- Binance (crypto assets)
-- NinjaTrader (Options, Futures, FOREX)
-- tZero (crypto tokens)
-- MetaTrader 5 (Options, Futures, FOREX)
+Creates a unified table for storing broker API credentials across the supported platforms:
+- Alpaca (equities)
+- Interactive Brokers / IBKR (equities, forex, futures, commodities)
+- MetaTrader 5 (forex, futures)
+- FTMO / Axi / Zenit prop-firm connectors
 
 This table includes:
 - is_active: Enable/disable connections without deleting
@@ -52,11 +51,12 @@ CREATE TABLE IF NOT EXISTS broker_api_credentials (
     
     -- Broker Information
     broker ENUM(
-        'ibkr', 
-        'binance', 
-        'ninjatrader', 
-        'tzero', 
-        'metatrader5'
+        'alpaca',
+        'ibkr',
+        'mt5',
+        'ftmo',
+        'axi',
+        'zenit'
     ) NOT NULL COMMENT 'Broker platform identifier',
     
     -- API Credentials (ENCRYPTED in production!)
@@ -76,9 +76,9 @@ CREATE TABLE IF NOT EXISTS broker_api_credentials (
     environment ENUM('production', 'sandbox', 'testnet', 'paper') DEFAULT 'sandbox' 
         COMMENT 'Trading environment (prod vs test)',
     
-    host VARCHAR(255) NULL COMMENT 'API host for IBKR (127.0.0.1)',
-    port INT NULL COMMENT 'API port for IBKR (7497=paper, 7496=live)',
-    client_id INT NULL COMMENT 'Client ID for IBKR',
+    host VARCHAR(255) NULL COMMENT 'API host for IBKR or MT5 bridge',
+    port INT NULL COMMENT 'API port for IBKR or MT5 bridge',
+    client_id INT NULL COMMENT 'Client ID for IBKR when applicable',
     
     -- Account Metrics
     balance DECIMAL(15, 2) DEFAULT 0 COMMENT 'Current account balance',
@@ -112,13 +112,14 @@ CREATE TABLE IF NOT EXISTS broker_connections (
     user_id INT NOT NULL COMMENT 'Reference to user account',
     
     -- Broker Information
-    broker_name VARCHAR(100) NOT NULL COMMENT 'Broker name (IBKR, Binance, etc.)',
+    broker_name VARCHAR(100) NOT NULL COMMENT 'Broker name (Alpaca, IBKR, MT5, etc.)',
     broker ENUM(
-        'ibkr', 
-        'binance', 
-        'ninjatrader', 
-        'tzero', 
-        'metatrader5'
+        'alpaca',
+        'ibkr',
+        'mt5',
+        'ftmo',
+        'axi',
+        'zenit'
     ) NULL COMMENT 'Standardized broker identifier',
     
     account_number VARCHAR(100) NOT NULL COMMENT 'Masked account number',
@@ -220,50 +221,42 @@ def verify_broker_readiness():
     print(f"{'='*70}\n")
     
     broker_files = {
+        'Alpaca': [
+            'backend/api/mansa_ai_router.py'
+        ],
         'IBKR': [
-            'bbbot1_pipeline/broker_api.py'
-        ],
-        'Binance': [
-            'bbbot1_pipeline/broker_api.py'
-        ],
-        'NinjaTrader': [
-            'bbbot1_pipeline/broker_api.py'  # Scaffolded in unified API
-        ],
-        'tZero': [
-            '# NEEDS IMPLEMENTATION'
+            'bbbot1_pipeline/broker_api.py',
+            'backend/api/mansa_ai_router.py'
         ],
         'MetaTrader 5': [
-            '# NEEDS IMPLEMENTATION'
+            'pages/api/mt5_bridge.py',
+            'backend/api/mansa_ai_router.py'
+        ],
+        'FTMO / Axi / Zenit': [
+            'backend/api/mansa_ai_router.py'
         ]
     }
     
     broker_status = {
+        'Alpaca': {
+            'equities': '✅ READY',
+            'paper_trading': '✅ READY',
+            'implementation': 'Primary equities broker in the FastAPI router'
+        },
         'IBKR': {
             'forex': '✅ READY',
             'futures': '✅ READY',
             'commodities': '✅ READY',
             'implementation': 'Complete with TWS/Gateway support'
         },
-        'Binance': {
-            'crypto': '✅ READY',
-            'testnet': '✅ READY',
-            'implementation': 'Complete with testnet support'
-        },
-        'NinjaTrader': {
-            'options': '⚠️  SCAFFOLDED',
-            'futures': '⚠️  SCAFFOLDED',
-            'forex': '⚠️  SCAFFOLDED',
-            'implementation': 'Needs NinjaTrader SDK integration'
-        },
-        'tZero': {
-            'crypto_tokens': '❌ NOT IMPLEMENTED',
-            'implementation': 'Needs tZero API client'
-        },
         'MetaTrader 5': {
-            'options': '❌ NOT IMPLEMENTED',
-            'futures': '❌ NOT IMPLEMENTED',
-            'forex': '❌ NOT IMPLEMENTED',
-            'implementation': 'Needs MT5 Python API (MetaTrader5 package)'
+            'forex': '✅ READY',
+            'futures': '✅ READY',
+            'implementation': 'Bridge-based execution for MT5 accounts'
+        },
+        'FTMO / Axi / Zenit': {
+            'prop_firm_execution': '✅ READY',
+            'implementation': 'Unified prop-firm bridge via FastAPI router'
         }
     }
     
@@ -315,16 +308,16 @@ if __name__ == "__main__":
     print(f"   1. Add API keys to .env:")
     print(f"      IBKR_HOST=127.0.0.1")
     print(f"      IBKR_PORT=7497")
-    print(f"      BINANCE_API_KEY=your_key")
-    print(f"      BINANCE_API_SECRET=your_secret")
+    print(f"      ALPACA_API_KEY=your_key")
+    print(f"      ALPACA_SECRET_KEY=your_secret")
     print(f"")
     print(f"   2. Test broker connections:")
     print(f"      python bbbot1_pipeline/broker_api.py")
     print(f"")
     print(f"   3. Implement missing brokers:")
-    print(f"      • NinjaTrader SDK integration")
-    print(f"      • tZero API client")
-    print(f"      • MetaTrader 5 Python API")
+    print(f"      • Complete live connector wiring for Alpaca/IBKR")
+    print(f"      • Finalize MT5 bridge credentials")
+    print(f"      • Map prop-firm accounts to FTMO/Axi/Zenit")
     
     print(f"\n⚠️  SECURITY REMINDER:")
     print(f"   In PRODUCTION, encrypt all access_token and api_secret fields!")

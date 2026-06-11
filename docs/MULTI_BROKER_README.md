@@ -33,12 +33,33 @@ IBKR_GATEWAY_URL=https://localhost:5000
 
 **Option C: MetaTrader 5**
 ```bash
-# Set up MT5 REST API server
+# Start the MT5 REST API server (FastAPI, port 8080)
+python scripts/mt5_rest.py
+# Or the simple variant (port 8002)
+python src/mt5_server_simple.py
 # Add to .env:
-MT5_API_URL=http://localhost:8000
+MT5_API_URL=http://localhost:8080
 MT5_USER=account_number
 MT5_PASSWORD=password
 MT5_HOST=broker.com
+```
+
+**Option D: Triton Bot (Transport-Universe Swing Trading)**
+```bash
+# Toggle ON via VS Code task or launcher script
+powershell -File start_bot_mode.ps1 -Bot Triton -Mode ON
+
+# Start the Control-Center API (port 5001)
+powershell -File start_control_center_api.ps1
+
+# Check status
+curl http://127.0.0.1:5001/triton/status
+
+# Add to .env:
+ALPACA_API_KEY=your_key
+ALPACA_SECRET_KEY=your_secret
+ALPACA_PAPER=true          # set false for live
+TRITON_ENABLE_TRADING=true
 ```
 
 ### 3. Launch Dashboard
@@ -47,6 +68,14 @@ streamlit run streamlit_app.py
 ```
 
 Navigate to: **🌐 Multi-Broker Trading**
+
+### 4. Start Control-Center API (for Bot Management)
+```bash
+# Starts FastAPI on port 5001 (all bot routes: /triton/*, /hydra/*, etc.)
+powershell -File start_control_center_api.ps1
+```
+
+Or via VS Code task: **🚀 Start Control Center API**
 
 ---
 
@@ -59,6 +88,7 @@ Navigate to: **🌐 Multi-Broker Trading**
 | **MT5** | FOREX, Futures | ✅ Ready | Currency pairs, commodities |
 | **Alpaca** | Stocks, Crypto | ✅ Ready | US equities, Bitcoin/Ethereum |
 | **IBKR** | All Assets | ✅ Ready | Global markets, professional trading |
+| **Triton** | Transport ETFs | ✅ Ready | Swing trading via Alpaca (IYT, XTN, FTSE) |
 
 ### Features
 
@@ -285,10 +315,16 @@ python -c "from frontend.utils.alpaca_connector import AlpacaConnector;
 4. ✅ Try: `python test_multi_broker.py`
 
 ### MT5 Server Not Found
-1. ✅ Is REST API server running?
+1. ✅ Is REST API server running? (`python scripts/mt5_rest.py` → port 8080)
 2. ✅ Check firewall settings
-3. ✅ Verify URL in .env
-4. ✅ Test health: `curl http://localhost:8000/Health`
+3. ✅ Verify URL in .env (`MT5_API_URL=http://localhost:8080`)
+4. ✅ Test health: `curl http://localhost:8080/health`
+
+### Triton Bot Not Responding
+1. ✅ Is Control-Center API running on port 5001? (`powershell -File start_control_center_api.ps1`)
+2. ✅ Is Triton ON? (`broker_modes.json` → `active_bots.Triton: true`)
+3. ✅ Check status: `curl http://127.0.0.1:5001/triton/status`
+4. ✅ Run bootstrap: `curl -X POST http://127.0.0.1:5001/triton/bootstrap`
 
 ---
 

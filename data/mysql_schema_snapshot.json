@@ -1,0 +1,2098 @@
+{
+  "captured_at": "2026-05-24T23:09:41.241035+00:00",
+  "connection": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "root"
+  },
+  "expected_databases": [
+    "bbbot1",
+    "mansa_bot",
+    "mlflow_db",
+    "mansa_quant",
+    "Bentley_Budget"
+  ],
+  "missing_databases": [],
+  "databases": {
+    "bbbot1": {
+      "resolved_name": "bbbot1",
+      "table_count": 1,
+      "tables": {
+        "cygnus_pair_analytics": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "pair_symbol_x",
+              "type": "varchar(16)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "pair_symbol_y",
+              "type": "varchar(16)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "hedge_ratio",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "zscore",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "bollinger_bandwidth",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "smi",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "smi_signal",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "rsi_divergence",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "cointegration_pvalue",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "nlp_sentiment",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "siamese_similarity",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "signal_action",
+              "type": "varchar(16)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "signal_bias",
+              "type": "varchar(16)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "composite_score",
+              "type": "double",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "mode",
+              "type": "varchar(12)",
+              "nullable": "NO",
+              "default": "paper"
+            },
+            {
+              "name": "run_timestamp",
+              "type": "datetime",
+              "nullable": "NO",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      }
+    },
+    "mansa_bot": {
+      "resolved_name": "mansa_bot",
+      "table_count": 17,
+      "tables": {
+        "accounts": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "account_name",
+              "type": "varchar(255)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "account_type",
+              "type": "enum('checking','savings','credit','investment')",
+              "nullable": "YES",
+              "default": "checking"
+            },
+            {
+              "name": "balance",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": "0.00"
+            },
+            {
+              "name": "currency",
+              "type": "varchar(3)",
+              "nullable": "YES",
+              "default": "USD"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "bot_metrics": {
+          "columns": [
+            {
+              "name": "metric_id",
+              "type": "varchar(64)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "varchar(64)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "bot_name",
+              "type": "varchar(64)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "experiment_id",
+              "type": "varchar(64)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "pnl",
+              "type": "decimal(14,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "win_rate",
+              "type": "decimal(6,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "trades",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "broker_api_credentials": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "tenant_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": "1"
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "broker",
+              "type": "enum('webull','ibkr','binance','ninjatrader','tzero','metatrader5')",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "access_token",
+              "type": "text",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "api_key",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "api_secret",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "device_id",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "account_number",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "is_active",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": "1"
+            },
+            {
+              "name": "status",
+              "type": "enum('connected','pending','disconnected','error')",
+              "nullable": "YES",
+              "default": "pending"
+            },
+            {
+              "name": "last_sync",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "last_error",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "environment",
+              "type": "enum('production','sandbox','testnet','paper')",
+              "nullable": "YES",
+              "default": "sandbox"
+            },
+            {
+              "name": "host",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "port",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "client_id",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "balance",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": "0.00"
+            },
+            {
+              "name": "positions_count",
+              "type": "int",
+              "nullable": "YES",
+              "default": "0"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "broker_connections": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "tenant_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": "1"
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "broker_name",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "broker",
+              "type": "enum('webull','ibkr','binance','ninjatrader','tzero','metatrader5')",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "account_number",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "is_active",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": "1"
+            },
+            {
+              "name": "status",
+              "type": "enum('connected','pending','disconnected','error')",
+              "nullable": "YES",
+              "default": "pending"
+            },
+            {
+              "name": "last_sync",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "last_error",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "balance",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": "0.00"
+            },
+            {
+              "name": "positions_count",
+              "type": "int",
+              "nullable": "YES",
+              "default": "0"
+            },
+            {
+              "name": "api_credential_id",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "budgets": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "category",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "amount",
+              "type": "decimal(15,2)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "period",
+              "type": "enum('monthly','yearly')",
+              "nullable": "YES",
+              "default": "monthly"
+            },
+            {
+              "name": "start_date",
+              "type": "date",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "end_date",
+              "type": "date",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "categories": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "type",
+              "type": "enum('income','expense')",
+              "nullable": "YES",
+              "default": "expense"
+            },
+            {
+              "name": "description",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "fundamentals_annual": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "ticker",
+              "type": "varchar(10)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "fiscal_year",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "revenue",
+              "type": "decimal(20,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "free_cash_flow",
+              "type": "decimal(20,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "shares_outstanding",
+              "type": "decimal(20,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "net_debt",
+              "type": "decimal(20,2)",
+              "nullable": "YES",
+              "default": "0.00"
+            },
+            {
+              "name": "cash",
+              "type": "decimal(20,2)",
+              "nullable": "YES",
+              "default": "0.00"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "logs": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "entry",
+              "type": "text",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "NO",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "plaid_items": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "item_id",
+              "type": "varchar(255)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "access_token",
+              "type": "text",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "institution_id",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "institution_name",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "is_active",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "portfolio_positions": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "symbol",
+              "type": "varchar(20)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "quantity",
+              "type": "decimal(15,4)",
+              "nullable": "NO",
+              "default": "0.0000"
+            },
+            {
+              "name": "average_cost",
+              "type": "decimal(15,4)",
+              "nullable": "NO",
+              "default": "0.0000"
+            },
+            {
+              "name": "current_price",
+              "type": "decimal(15,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "market_value",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "cost_basis",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "unrealized_gain",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "asset_type",
+              "type": "enum('stock','etf','crypto','fund','forex','futures','options','token')",
+              "nullable": "YES",
+              "default": "stock"
+            },
+            {
+              "name": "broker",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "account_number",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "is_active",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": "1"
+            },
+            {
+              "name": "last_updated",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "prices_latest": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "ticker",
+              "type": "varchar(10)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal(12,4)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "as_of_date",
+              "type": "date",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "volume",
+              "type": "bigint",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "market_cap",
+              "type": "decimal(20,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "setup_status": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "message",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "staging_trades": {
+          "columns": [
+            {
+              "name": "trade_id",
+              "type": "varchar(64)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "varchar(64)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "broker",
+              "type": "varchar(32)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "symbol",
+              "type": "varchar(32)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "side",
+              "type": "enum('BUY','SELL')",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "qty",
+              "type": "decimal(14,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal(14,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "enum('PENDING','PLACED','FAILED')",
+              "nullable": "YES",
+              "default": "PENDING"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "transactions": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "account_id",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "transaction_id",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "date",
+              "type": "date",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "amount",
+              "type": "decimal(15,2)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "description",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "category",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "merchant_name",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "transaction_type",
+              "type": "enum('debit','credit')",
+              "nullable": "YES",
+              "default": "debit"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "user_plaid_tokens": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "user_id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "access_token",
+              "type": "text",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "item_id",
+              "type": "varchar(255)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "institution_id",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "institution_name",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "last_sync",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sync_cursor",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "is_active",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": "1"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "users": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "int",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "username",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "password_hash",
+              "type": "varchar(255)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "email",
+              "type": "varchar(255)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "role",
+              "type": "enum('guest','client','investor','admin')",
+              "nullable": "YES",
+              "default": "guest"
+            },
+            {
+              "name": "is_active",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": "1"
+            },
+            {
+              "name": "is_verified",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": "0"
+            },
+            {
+              "name": "first_name",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "last_name",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "wefolio_funds": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "name",
+              "type": "varchar(255)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "nav",
+              "type": "decimal(10,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "shares",
+              "type": "decimal(15,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "value",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "daily_change",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "daily_change_pct",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "last_updated",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      }
+    },
+    "mlflow_db": {
+      "resolved_name": "mlflow_db",
+      "table_count": 0,
+      "tables": {}
+    },
+    "mansa_quant": {
+      "resolved_name": "mansa_quant",
+      "table_count": 12,
+      "tables": {
+        "bot_decision_audit": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "bot_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "decision_type",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "decision_result",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "input_data",
+              "type": "json",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "output_data",
+              "type": "json",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "execution_time_ms",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "bot_performance_metrics": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "bot_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "date_utc",
+              "type": "date",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "total_trades",
+              "type": "int",
+              "nullable": "YES",
+              "default": "0"
+            },
+            {
+              "name": "winning_trades",
+              "type": "int",
+              "nullable": "YES",
+              "default": "0"
+            },
+            {
+              "name": "losing_trades",
+              "type": "int",
+              "nullable": "YES",
+              "default": "0"
+            },
+            {
+              "name": "win_rate",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "total_profit_loss",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "avg_profit_per_trade",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "max_drawdown",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sharpe_ratio",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "contracts_traded",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "avg_confidence_score",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "daily_signal_aggregates": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "date_utc",
+              "type": "date",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "avg_implied_probability",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "avg_sentiment_score",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sentiment_signal_strength",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "orderbook_volume_usd",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "price_volatility",
+              "type": "decimal(5,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "tweet_volume_24h",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "nlp_sentiment_tweets",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "prediction_id",
+              "type": "bigint",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sentiment_id",
+              "type": "bigint",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "event_contracts": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_name",
+              "type": "varchar(500)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "description",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "source",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "source_connector",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "category",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "resolution_date",
+              "type": "datetime",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "status",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "yes_price",
+              "type": "decimal(5,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "no_price",
+              "type": "decimal(5,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "volume_24h",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "liquidity_usd",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "external_data_source",
+              "type": "varchar(200)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "ingestion_timestamp",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "last_synced",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "ingestion_log": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "connector_name",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "source",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "feed_type",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sync_status",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "records_synced",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "records_inserted",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "records_updated",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "error_message",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sync_start_time",
+              "type": "datetime",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sync_end_time",
+              "type": "datetime",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "duration_seconds",
+              "type": "int",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "nlp_sentiment_data": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "source_text",
+              "type": "text",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "text_source",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sentiment_score",
+              "type": "decimal(5,2)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "emotion_labels",
+              "type": "json",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "confidence_score",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "model_version",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "author_influence_score",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "analyzed_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "orderbook_data": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "source",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "feed_type",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "side",
+              "type": "varchar(10)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "price",
+              "type": "decimal(5,4)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "quantity",
+              "type": "decimal(15,2)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "timestamp",
+              "type": "timestamp",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "raw_data",
+              "type": "json",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "ingestion_timestamp",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "passive_income_logs": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "bot_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "prediction_id",
+              "type": "bigint",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sentiment_id",
+              "type": "bigint",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "trade_action",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "position_size",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "entry_price",
+              "type": "decimal(5,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "exit_price",
+              "type": "decimal(5,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "profit_loss",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "profit_loss_pct",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "trade_rationale",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "implied_probability_at_entry",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sentiment_score_at_entry",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "combined_signal_score",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "confidence_threshold_met",
+              "type": "tinyint(1)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "broker",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "trade_status",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "execution_timestamp",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "resolution_timestamp",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "prediction_probabilities": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "source",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "implied_probability",
+              "type": "decimal(5,2)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "confidence_score",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "rationale",
+              "type": "text",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "prediction_sentiment_analysis": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "prediction_id",
+              "type": "bigint",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sentiment_id",
+              "type": "bigint",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "combined_score",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "recommendation",
+              "type": "varchar(50)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "last_updated",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "probability_engine_inputs": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "calculation_method",
+              "type": "varchar(100)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "yes_price",
+              "type": "decimal(5,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "no_price",
+              "type": "decimal(5,4)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "order_volume_24h",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "sentiment_average",
+              "type": "decimal(5,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "liquidity_usd",
+              "type": "decimal(15,2)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "external_odds_source",
+              "type": "varchar(200)",
+              "nullable": "YES",
+              "default": ""
+            },
+            {
+              "name": "calculated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        },
+        "sentiment_signals": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "bigint",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "contract_id",
+              "type": "varchar(100)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "sentiment_score",
+              "type": "decimal(5,2)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "signal_strength",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "source",
+              "type": "varchar(50)",
+              "nullable": "NO",
+              "default": ""
+            },
+            {
+              "name": "created_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            },
+            {
+              "name": "updated_at",
+              "type": "timestamp",
+              "nullable": "YES",
+              "default": "CURRENT_TIMESTAMP"
+            }
+          ]
+        }
+      }
+    },
+    "Bentley_Budget": {
+      "resolved_name": "bentley_budget",
+      "table_count": 0,
+      "tables": {}
+    }
+  }
+}

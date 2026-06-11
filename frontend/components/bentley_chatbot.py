@@ -47,7 +47,7 @@ class BentleyChatBot:
         2. **Budget Analysis** - Personal spending patterns and recommendations
         3. **Market Data** - Stock prices, crypto trends, and market news
         4. **Economic Data** - BLS employment data, Census statistics, macro indicators
-        5. **Trading Insights** - Analysis for your broker accounts (WeBull, IBKR, Binance, NinjaTrader, Meta5)
+        5. **Trading Insights** - Analysis for your broker accounts (Alpaca, IBKR, MT5, FTMO, Axi, Zenit)
         
         I have access to:
         - Your personal budget and transaction data
@@ -168,12 +168,12 @@ class BentleyChatBot:
                 return "💰 I can help analyze your budget! Visit the Personal Budget page to connect your bank account via Plaid and track your spending."
         
         # Crypto questions
-        elif any(word in message_lower for word in ['crypto', 'bitcoin', 'ethereum', 'binance']):
+        elif any(word in message_lower for word in ['crypto', 'bitcoin', 'ethereum']):
             return "🔴 For cryptocurrency analysis, check out the Live Crypto Dashboard page. I can help analyze trends and provide trading insights!"
         
         # Trading questions
-        elif any(word in message_lower for word in ['trade', 'broker', 'ibkr', 'webull', 'ninjatrader']):
-            return "💼 You have accounts with WeBull, IBKR, Binance, NinjaTrader, and Meta5. Visit the Broker Trading page to manage your positions and execute trades."
+        elif any(word in message_lower for word in ['trade', 'broker', 'ibkr', 'alpaca', 'mt5', 'ftmo', 'axi', 'zenit']):
+            return "💼 You can manage Alpaca, IBKR, MT5, and supported prop-firm connectors from the Broker Trading page."
         
         # Economic data questions
         elif any(word in message_lower for word in ['bls', 'employment', 'census', 'economic', 'macro', 'unemployment', 'inflation', 'cpi', 'jobs', 'release', 'gdp', 'housing']):

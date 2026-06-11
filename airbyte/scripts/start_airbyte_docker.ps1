@@ -1,66 +1,79 @@
-# Airbyte Docker Startup Script for Bentley Budget Bot
-# This script starts Airbyte in Docker containers
+# Bentley Budget Bot - Airbyte Docker Startup
+# Starts the Airbyte compose stack from the first available compose file.
 
-# Set encoding
+param(
+    [switch]$NoPull,
+    [switch]$NoBuild
+)
+
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-Write-Host "🔄 Bentley Budget Bot - Airbyte Docker Setup" -ForegroundColor Green
-Write-Host "=============================================" -ForegroundColor Green
-Write-Host ""
+$scriptDir = $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+$composeCandidates = @(
+    (Join-Path $repoRoot "docker\docker-compose-airbyte-fixed.yml"),
+    (Join-Path $repoRoot "docker\docker-compose-airbyte-simple.yml"),
+    (Join-Path $repoRoot "docker\docker-compose-airbyte.yml")
+)
+$composeFile = $composeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-# Check if Docker is running
-Write-Host "🐳 Checking Docker status..." -ForegroundColor Cyan
-$dockerStatus = docker info 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Docker is not running. Please start Docker Desktop first." -ForegroundColor Red
-    exit 1
+if (-not $composeFile) {
+    throw "No Airbyte compose file found."
 }
 
-# Stop existing Airbyte containers
-Write-Host "🛑 Stopping existing Airbyte containers..." -ForegroundColor Yellow
-docker-compose -f docker-compose-airbyte.yml down
+Push-Location $repoRoot
 
-# Pull latest Airbyte images
-Write-Host "📦 Pulling latest Airbyte images (this may take a while)..." -ForegroundColor Cyan
-docker-compose -f docker-compose-airbyte.yml pull
+try {
+    Write-Host "Bentley Budget Bot - Airbyte Docker Setup" -ForegroundColor Green
+    Write-Host "=========================================" -ForegroundColor Green
+    Write-Host "Compose file: $composeFile" -ForegroundColor Gray
 
-# Start Airbyte services
-Write-Host "🚀 Starting Airbyte services..." -ForegroundColor Cyan
-Write-Host "   - PostgreSQL Database (internal)" -ForegroundColor White
-Write-Host "   - Airbyte Server (API - port 8001)" -ForegroundColor White  
-Write-Host "   - Airbyte Web UI (port 8000)" -ForegroundColor White
-Write-Host "   - Airbyte Worker" -ForegroundColor White
-Write-Host "   - Airbyte Scheduler" -ForegroundColor White
+    Write-Host "Stopping existing Airbyte containers..." -ForegroundColor Yellow
+    docker compose -f $composeFile down
 
-docker-compose -f docker-compose-airbyte.yml up -d
+    if (-not $NoPull) {
+        Write-Host "Pulling images..." -ForegroundColor Yellow
+        docker compose -f $composeFile pull
+    } else {
+        Write-Host "No-pull mode enabled: skipping image pull." -ForegroundColor Yellow
+    }
 
-Write-Host ""
-Write-Host "⏳ Waiting for Airbyte to initialize (this can take 2-3 minutes)..." -ForegroundColor Yellow
-Start-Sleep -Seconds 60
+    Write-Host "Starting Airbyte services..." -ForegroundColor Yellow
+    Write-Host "  Airbyte DB" -ForegroundColor White
+    Write-Host "  Airbyte server (8001)" -ForegroundColor White
+    Write-Host "  Airbyte web UI (8000)" -ForegroundColor White
+    Write-Host "  Airbyte worker" -ForegroundColor White
+    Write-Host "  Airbyte temporal" -ForegroundColor White
+    $upCmd = @("compose", "-f", $composeFile, "up", "-d")
+    if ($NoBuild) {
+        $upCmd += "--no-build"
+        Write-Host "No-build mode enabled: skipping image builds." -ForegroundColor Yellow
+    }
+    & docker @upCmd
+    if ($LASTEXITCODE -ne 0) {
+        if ($NoPull -or $NoBuild) {
+            throw (
+                "Compose start failed in no-pull/no-build mode. " +
+                "One or more local images are missing. " +
+                "Run again without -NoPull/-NoBuild after registry connectivity is restored."
+            )
+        }
+        throw "Compose start failed. Review docker compose output and retry."
+    }
 
-# Check status
-Write-Host "📊 Checking Airbyte service status..." -ForegroundColor Cyan
-docker-compose -f docker-compose-airbyte.yml ps
+    Write-Host "Waiting for Airbyte to initialize..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 30
 
-Write-Host ""
-Write-Host "🎉 Airbyte Setup Complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "🌐 Access Points:" -ForegroundColor Yellow
-Write-Host "   • Airbyte Web UI:  http://localhost:8000" -ForegroundColor Cyan
-Write-Host "   • Airbyte API:     http://localhost:8001" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "🔧 Integration with Airflow:" -ForegroundColor Yellow
-Write-Host "   • Your Airflow DAG is configured to use: http://localhost:8001" -ForegroundColor White
-Write-Host "   • No additional configuration needed!" -ForegroundColor White
-Write-Host ""
-Write-Host "📝 Useful commands:" -ForegroundColor Cyan
-Write-Host "   View logs:     docker-compose -f docker-compose-airbyte.yml logs -f" -ForegroundColor White
-Write-Host "   Stop Airbyte:  docker-compose -f docker-compose-airbyte.yml down" -ForegroundColor White
-Write-Host "   Restart:       .\start_airbyte_docker.ps1" -ForegroundColor White
-Write-Host ""
-Write-Host "🔄 Next Steps:" -ForegroundColor Yellow
-Write-Host "   1. Visit http://localhost:8000 to configure data sources" -ForegroundColor White
-Write-Host "   2. Create connections between your data sources and destinations" -ForegroundColor White
-Write-Host "   3. Update the CONNECTION_ID in your Airflow DAG (.vscode/Airbyt_sync_DAG.py)" -ForegroundColor White
-Write-Host "   4. Test the integration with your Airflow setup" -ForegroundColor White
+    Write-Host "Service status:" -ForegroundColor Cyan
+    docker compose -f $composeFile ps
+
+    Write-Host "Access points:" -ForegroundColor Green
+    Write-Host "  Airbyte UI:  http://127.0.0.1:8000" -ForegroundColor White
+    Write-Host "  Airbyte API: http://127.0.0.1:8001" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Use: docker compose -f $composeFile logs -f" -ForegroundColor Gray
+    Write-Host "Use: docker compose -f $composeFile down" -ForegroundColor Gray
+} finally {
+    Pop-Location
+}

@@ -1,0 +1,15 @@
+{
+  "bot": "Titan_Bot",
+  "strategy": "Mansa Tech - Titan Bot",
+  "symbol": "NVDA",
+  "side": "buy",
+  "feature_schema_version": "titan_cnn_sequence_v2",
+  "model_registry_uri": "models:/TitanRiskModel/Production",
+  "feature_metrics": {
+    "titan_sentiment_score": 0.3,
+    "titan_liquidity_ratio": 0.4,
+    "titan_effective_liquidity_buffer": 0.15000000000000002,
+    "titan_liquidity_buffer_adjustment": -0.04999999999999999,
+    "titan_feature_vector_size": 2.0
+  }
+}

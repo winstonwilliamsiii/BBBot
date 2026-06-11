@@ -333,6 +333,20 @@ class RBACManager:
     }
     
     @staticmethod
+    def _build_demo_user(username: str, user_data: dict) -> User:
+        """Create a User instance from the in-memory demo user store."""
+        return User(
+            username=username,
+            role=user_data['role'],
+            kyc_completed=user_data.get('kyc_completed', False),
+            investment_agreement_signed=user_data.get('investment_agreement_signed', False),
+            kyc_date=user_data.get('kyc_date'),
+            agreement_date=user_data.get('agreement_date'),
+            email=user_data.get('email'),
+            agreement_type=user_data.get('agreement_type'),
+        )
+
+    @staticmethod
     def hash_password(password: str) -> str:
         """Hash password using SHA-256"""
         return hashlib.sha256(password.encode()).hexdigest()
@@ -349,16 +363,7 @@ class RBACManager:
         if password_hash != user_data['password_hash']:
             return None
         
-        return User(
-            username=username,
-            role=user_data['role'],
-            kyc_completed=user_data.get('kyc_completed', False),
-            investment_agreement_signed=user_data.get('investment_agreement_signed', False),
-            kyc_date=user_data.get('kyc_date'),
-            agreement_date=user_data.get('agreement_date'),
-            email=user_data.get('email'),
-            agreement_type=user_data.get('agreement_type'),
-        )
+        return RBACManager._build_demo_user(username, user_data)
     
     @staticmethod
     def init_session_state():
@@ -367,6 +372,54 @@ class RBACManager:
             st.session_state.authenticated = False
         if 'current_user' not in st.session_state:
             st.session_state.current_user = None
+        if 'current_user_data' not in st.session_state:
+            st.session_state.current_user_data = None
+
+        # Rebuild the user object from serialized data when session reruns lose
+        # the in-memory User instance (common on Streamlit Cloud).
+        if (
+            st.session_state.get('authenticated', False)
+            and st.session_state.get('current_user') is None
+            and isinstance(st.session_state.get('current_user_data'), dict)
+        ):
+            try:
+                st.session_state.current_user = User.from_dict(
+                    st.session_state.current_user_data
+                )
+            except Exception:
+                # Only clear the stale User object — keep current_user_data and
+                # authenticated so the legacy repair path below can recover.
+                st.session_state.current_user = None
+
+        # Secondary repair path: if auth flag is true but user payload is gone,
+        # recover from legacy admin markers instead of forcing a logout.
+        if (
+            st.session_state.get('authenticated', False)
+            and st.session_state.get('current_user') is None
+            and st.session_state.get('current_user_data') is None
+            and st.session_state.get('admin_authenticated', False)
+        ):
+            user_data = RBACManager.DEMO_USERS.get('admin')
+            if user_data is not None:
+                restored = RBACManager._build_demo_user('admin', user_data)
+                st.session_state.current_user = restored
+                st.session_state.current_user_data = restored.to_dict()
+
+        legacy_admin_authenticated = st.session_state.get('admin_authenticated', False)
+        legacy_admin_user = st.session_state.get('admin_user', 'admin')
+        if legacy_admin_authenticated and not st.session_state.get('authenticated', False):
+            user_data = RBACManager.DEMO_USERS.get(legacy_admin_user)
+            if legacy_admin_user == 'admin' and user_data is None:
+                user_data = RBACManager.DEMO_USERS.get('admin')
+            if user_data is not None:
+                st.session_state.authenticated = True
+                st.session_state.current_user = RBACManager._build_demo_user(
+                    legacy_admin_user,
+                    user_data,
+                )
+                st.session_state.current_user_data = (
+                    st.session_state.current_user.to_dict()
+                )
 
         # Optional dev bypass for local development
         bypass = os.getenv('DEV_BYPASS_AUTH', '').lower() in ('1', 'true', 'yes', 'on')
@@ -377,6 +430,7 @@ class RBACManager:
             if user:
                 st.session_state.authenticated = True
                 st.session_state.current_user = user
+                st.session_state.current_user_data = user.to_dict()
     
     @staticmethod
     def login(username: str, password: str) -> bool:
@@ -386,6 +440,10 @@ class RBACManager:
         if user:
             st.session_state.authenticated = True
             st.session_state.current_user = user
+            st.session_state.current_user_data = user.to_dict()
+            if user.role == UserRole.ADMIN:
+                st.session_state.admin_authenticated = True
+                st.session_state.admin_user = user.username
             return True
         
         return False
@@ -395,25 +453,86 @@ class RBACManager:
         """Logout current user"""
         st.session_state.authenticated = False
         st.session_state.current_user = None
+        st.session_state.current_user_data = None
+        if 'admin_authenticated' in st.session_state:
+            st.session_state.admin_authenticated = False
+        if 'admin_user' in st.session_state:
+            st.session_state.admin_user = None
     
     @staticmethod
     def get_current_user() -> Optional[User]:
         """Get currently logged in user"""
-        return st.session_state.get('current_user')
+        user = st.session_state.get('current_user')
+        if user is not None:
+            return user
+
+        user_data = st.session_state.get('current_user_data')
+        if isinstance(user_data, dict):
+            try:
+                restored = User.from_dict(user_data)
+                st.session_state.current_user = restored
+                return restored
+            except Exception:
+                return None
+
+        return None
     
     @staticmethod
     def is_authenticated() -> bool:
         """Check if user is authenticated"""
-        return st.session_state.get('authenticated', False)
+        user = RBACManager.get_current_user()
+        if user is not None:
+            return True
+
+        if st.session_state.get('admin_authenticated', False):
+            return True
+
+        return bool(st.session_state.get('authenticated', False))
     
     @staticmethod
     def has_permission(permission: Permission) -> bool:
         """Check if current user has required permission"""
-        if not RBACManager.is_authenticated():
-            return False
-        
         user = RBACManager.get_current_user()
-        return user.has_permission(permission) if user else False
+        if user is not None:
+            return user.has_permission(permission)
+
+        # Legacy fallback: if admin marker is set but user object is missing,
+        # treat as admin for permission checks and rehydrate session payload.
+        if st.session_state.get('admin_authenticated', False):
+            admin_data = RBACManager.DEMO_USERS.get('admin')
+            if admin_data is not None:
+                restored = RBACManager._build_demo_user('admin', admin_data)
+                st.session_state.authenticated = True
+                st.session_state.current_user = restored
+                st.session_state.current_user_data = restored.to_dict()
+                return restored.has_permission(permission)
+
+        # Final fallback: if authenticated flag is set, try to recover the user
+        # from admin_user key. Only recover if we can confirm admin role.
+        if st.session_state.get('authenticated', False):
+            username = st.session_state.get('admin_user', '')
+            # Only promote if username explicitly resolves to admin in DEMO_USERS
+            if username and username in RBACManager.DEMO_USERS:
+                candidate_data = RBACManager.DEMO_USERS[username]
+                if candidate_data.get('role') == UserRole.ADMIN:
+                    restored = RBACManager._build_demo_user(username, candidate_data)
+                    st.session_state.current_user = restored
+                    st.session_state.current_user_data = restored.to_dict()
+                    st.session_state.admin_authenticated = True
+                    return restored.has_permission(permission)
+            # If admin_user not set but current_user_data has username=admin, recover
+            _ud = st.session_state.get('current_user_data')
+            if isinstance(_ud, dict) and _ud.get('username') == 'admin':
+                admin_data = RBACManager.DEMO_USERS.get('admin')
+                if admin_data is not None:
+                    restored = RBACManager._build_demo_user('admin', admin_data)
+                    st.session_state.current_user = restored
+                    st.session_state.current_user_data = restored.to_dict()
+                    st.session_state.admin_authenticated = True
+                    st.session_state.admin_user = 'admin'
+                    return restored.has_permission(permission)
+
+        return False
     
     @staticmethod
     def require_permission(permission: Permission) -> bool:

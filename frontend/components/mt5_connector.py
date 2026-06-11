@@ -18,8 +18,21 @@ from datetime import datetime
 import logging
 import os
 import time
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_error_text(value: str) -> str:
+    sanitized = value
+    for token in ("password=", "user="):
+        if token in sanitized:
+            prefix, _, remainder = sanitized.partition(token)
+            remainder = remainder.split("&", 1)[-1] if "&" in remainder else ""
+            sanitized = prefix + token.rstrip("=") + "=<redacted>"
+            if remainder:
+                sanitized += "&" + remainder
+    return sanitized
 
 
 @dataclass
@@ -67,11 +80,36 @@ class MT5Connector:
         self.session = requests.Session()
         self.account: Optional[MT5Account] = None
         self.last_connect_error: str = ""
-        self.request_timeout = float(os.getenv("MT5_REQUEST_TIMEOUT", "10"))
+        self.request_timeout = float(os.getenv("MT5_REQUEST_TIMEOUT", "20"))
         self.connect_retries = int(os.getenv("MT5_CONNECT_RETRIES", "3"))
-        self.connect_retry_delay = float(
-            os.getenv("MT5_CONNECT_RETRY_DELAY", "1.0")
-        )
+        self.connect_retry_delay = float(os.getenv("MT5_CONNECT_RETRY_DELAY", "1.0"))
+
+    def _candidate_base_urls(self) -> List[str]:
+        """Return ordered bridge URL candidates for local development resilience."""
+        primary = self.base_url.rstrip('/')
+        candidates: List[str] = [primary]
+
+        parsed = urlparse(primary)
+        host = parsed.hostname
+        if not host:
+            return candidates
+
+        # Improve local reliability by probing loopback aliases and common MT5 ports.
+        if host in {"localhost", "127.0.0.1"}:
+            scheme = parsed.scheme or "http"
+            aliases = ["localhost", "127.0.0.1"]
+            selected_port = parsed.port
+            # Keep fallback on the same port to avoid routing trading calls to
+            # unrelated local services (for example UI apps on :8000/:8080).
+            ordered_ports: List[int] = [selected_port or 8002]
+
+            for alias in aliases:
+                for port in ordered_ports:
+                    candidate = f"{scheme}://{alias}:{port}"
+                    if candidate not in candidates:
+                        candidates.append(candidate)
+
+        return candidates
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         """Execute HTTP request with retry for transient network failures."""
@@ -109,16 +147,25 @@ class MT5Connector:
         last_response = None
         last_error = None
 
-        for path in paths:
-            url = f"{self.base_url}{path}"
-            try:
-                response = self._request(method, url, **kwargs)
-                if response.status_code == 404:
-                    last_response = response
-                    continue
-                return response
-            except requests.exceptions.RequestException as exc:
-                last_error = exc
+        for base_url in self._candidate_base_urls():
+            for path in paths:
+                url = f"{base_url}{path}"
+                try:
+                    response = self._request(method, url, **kwargs)
+                    if response.status_code == 404:
+                        last_response = response
+                        continue
+
+                    if base_url != self.base_url:
+                        logger.info(
+                            "MT5 bridge endpoint auto-resolved to %s (from %s)",
+                            base_url,
+                            self.base_url,
+                        )
+                        self.base_url = base_url
+                    return response
+                except requests.exceptions.RequestException as exc:
+                    last_error = exc
 
         if last_response is not None:
             return last_response
@@ -148,19 +195,19 @@ class MT5Connector:
                 'port': port,
             }
             
-            logger.info(f"Connecting to MT5 account {user} on {host}:{port}")
-            # Legacy API uses GET /Connect query params; new bridge uses POST /connect JSON.
+            logger.info(f"Connecting to MT5 on {host}:{port}")
+            # Prefer the JSON login endpoint so credentials stay out of URLs.
             response = self._request_with_fallback(
-                'GET',
-                ['/Connect'],
-                params=params,
+                'POST',
+                ['/connect'],
+                json=params,
                 timeout=10,
             )
             if response.status_code == 404:
                 response = self._request_with_fallback(
-                    'POST',
-                    ['/connect'],
-                    json=params,
+                    'GET',
+                    ['/Connect'],
+                    params=params,
                     timeout=10,
                 )
             response.raise_for_status()
@@ -170,7 +217,7 @@ class MT5Connector:
             if result.get('success') or result.get('connected'):
                 self.connected = True
                 self.account = MT5Account(user=user, password=password, host=host, port=port)
-                logger.info(f"Successfully connected to MT5 account {user}")
+                logger.info("Successfully connected to MT5")
                 return True
             else:
                 self.last_connect_error = str(result.get('error', 'Unknown error'))
@@ -185,24 +232,27 @@ class MT5Connector:
             except Exception:
                 detail = (e.response.text[:300] if e.response is not None else "")
 
-            self.last_connect_error = detail or str(e)
-            logger.error(f"Connection error: {e}; detail: {self.last_connect_error}")
+            self.last_connect_error = _sanitize_error_text(detail or "HTTP error from MT5 bridge")
+            status_code = e.response.status_code if e.response is not None else "unknown"
+            logger.error(
+                f"Connection error from MT5 bridge (status {status_code}): {self.last_connect_error}"
+            )
             return False
         except requests.exceptions.RequestException as e:
-            self.last_connect_error = str(e)
-            logger.error(f"Connection error: {e}")
+            self.last_connect_error = f"Network error reaching MT5 bridge: {type(e).__name__}"
+            logger.error(self.last_connect_error)
             return False
         except Exception as e:
-            self.last_connect_error = str(e)
-            logger.error(f"Unexpected error during connection: {e}")
+            self.last_connect_error = f"Unexpected MT5 connection error: {type(e).__name__}"
+            logger.error(self.last_connect_error)
             return False
     
     def disconnect(self) -> bool:
         """Disconnect from MT5 account"""
         try:
-            response = self._request_with_fallback('GET', ['/Disconnect'], timeout=5)
+            response = self._request_with_fallback('POST', ['/disconnect'], timeout=5)
             if response.status_code == 404:
-                response = self._request_with_fallback('POST', ['/disconnect'], timeout=5)
+                response = self._request_with_fallback('GET', ['/Disconnect'], timeout=5)
             response.raise_for_status()
             
             self.connected = False
@@ -226,7 +276,7 @@ class MT5Connector:
             return None
             
         try:
-            response = self._request_with_fallback('GET', ['/AccountInfo', '/account'], timeout=5)
+            response = self._request_with_fallback('GET', ['/account', '/AccountInfo'], timeout=5)
             response.raise_for_status()
             
             return response.json()
@@ -247,7 +297,7 @@ class MT5Connector:
             return None
             
         try:
-            response = self._request_with_fallback('GET', ['/Positions', '/positions'], timeout=5)
+            response = self._request_with_fallback('GET', ['/positions', '/Positions'], timeout=5)
             response.raise_for_status()
             
             data = response.json()
@@ -527,19 +577,37 @@ class MT5Connector:
     
     def health_check(self) -> bool:
         """
-        Check if MT5 REST API server is reachable
-        
+        Check if MT5 REST API server is reachable AND MT5 is initialized.
+        Use is_reachable() for a pre-connect server-up check.
+
         Returns:
-            True if server is healthy, False otherwise
+            True if server is healthy and MT5 terminal is connected.
         """
         try:
-            response = self._request_with_fallback('GET', ['/Health', '/health'], timeout=3)
+            response = self._request_with_fallback('GET', ['/health', '/Health'], timeout=3)
             response.raise_for_status()
-            
+
             result = response.json()
             status = str(result.get('status', '')).lower()
-            return status in {'healthy', 'ok'}
-            
+            mt5_initialized = result.get('mt5_initialized', True)
+            return status in {'healthy', 'ok', 'running'} and bool(mt5_initialized)
+
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return False
+
+    def is_reachable(self) -> bool:
+        """
+        Check if the MT5 REST API server process is running and accepting
+        connections. Does NOT require MT5 terminal to be connected yet.
+        Use this before calling connect().
+
+        Returns:
+            True if the server responds with any 2xx status.
+        """
+        try:
+            response = self._request_with_fallback('GET', ['/health', '/Health'], timeout=3)
+            return response.status_code < 500
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return False

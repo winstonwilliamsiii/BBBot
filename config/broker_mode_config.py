@@ -40,7 +40,7 @@ CONFIG_FILE = CONFIG_DIR / "broker_modes.json"
 # Default bot-to-broker mapping
 BOT_BROKER_MAPPING = {
     "Titan": "alpaca",
-    "Vega": "ibkr",
+    "Vega": "axi",
     "Draco": "alpaca",
     "Altair": "alpaca",
     "Procryon": "alpaca",
@@ -48,14 +48,15 @@ BOT_BROKER_MAPPING = {
     "Triton": "alpaca",
     "Dione": "ibkr",
     "Dogon": "alpaca",
-    "Rigel": "mt5",
+    "Rigel": "ftmo",
     "Orion": "mt5",
     "Rhea": "alpaca",
     "Jupicita": "alpaca",
+    "Cygnus": "ibkr",
 }
 
 # Supported brokers
-SUPPORTED_BROKERS = ["alpaca", "mt5", "axi", "ibkr"]
+SUPPORTED_BROKERS = ["alpaca", "mt5", "ftmo", "axi", "ibkr"]
 
 
 class BrokerModeConfig:
@@ -75,7 +76,7 @@ class BrokerModeConfig:
         """Load config from file or create default if not exists."""
         if self.config_path.exists():
             try:
-                with open(self.config_path, "r") as f:
+                with open(self.config_path, "r", encoding="utf-8-sig") as f:
                     self.config = json.load(f)
                 logger.info(f"Loaded broker mode config from {self.config_path}")
             except Exception as e:
@@ -91,6 +92,7 @@ class BrokerModeConfig:
             "broker_modes": {
                 "alpaca": "paper",
                 "mt5": "paper",
+                "ftmo": "paper",
                 "axi": "paper",
                 "ibkr": "paper",
             },
@@ -103,7 +105,7 @@ class BrokerModeConfig:
         """Persist config to file."""
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_path, "w") as f:
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=2)
             logger.info(f"Saved broker mode config to {self.config_path}")
         except Exception as e:

@@ -16,6 +16,7 @@ from plotly.subplots import make_subplots
 from frontend.utils.rbac import RBACManager, Permission, show_login_form, show_user_info
 from frontend.components.multi_broker_dashboard import render_multi_broker_dashboard
 from frontend.utils.broker_trade_sync import sync_connected_brokers
+from frontend.utils.api import get_api_client
 
 # Page config must be the first Streamlit command in this script.
 st.set_page_config(
@@ -48,6 +49,25 @@ except ImportError:
     def create_metric_card(title, value, delta=None):
         st.metric(title, value, delta)
 
+
+DEFAULT_LAUNCH_BOTS = [
+    "Titan",
+    "Vega",
+    "Rigel",
+    "Dogon",
+    "Orion",
+    "Draco",
+    "Altair",
+    "Procryon",
+    "Hydra",
+    "Triton",
+    "Dione",
+    "Cephei",
+    "Rhea",
+    "Jupicita",
+    "Cygnus",
+]
+
 try:
     from frontend.utils.bot_fund_mapping import BOT_FUND_ALLOCATIONS
 except ImportError:
@@ -57,16 +77,120 @@ except ImportError:
         "Orion": "Mansa_Minerals",
     }
 
+
+def _read_latest_bot_snapshot(file_name: str) -> dict:
+    snapshot_path = Path(__file__).resolve().parents[1] / "airflow" / "config" / "logs" / file_name
+    if not snapshot_path.exists():
+        return {}
+    try:
+        with snapshot_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _render_orion_snapshot() -> None:
+    snapshot = _read_latest_bot_snapshot("orion_cycle_latest.json")
+    if not snapshot:
+        st.info("No Orion snapshot available yet.")
+        return
+
+    execution = snapshot.get("execution") if isinstance(snapshot.get("execution"), dict) else {}
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Selected Symbol", str(snapshot.get("selected_symbol", "n/a")))
+    col2.metric("Signal", str(snapshot.get("signal", "n/a")))
+    rsi_value = snapshot.get("rsi_value")
+    col3.metric("RSI", f"{float(rsi_value):.2f}" if rsi_value is not None else "n/a")
+    col4.metric("Execution", str(execution.get("status", "n/a")))
+
+    details = {
+        "primary_symbol": snapshot.get("primary_symbol"),
+        "execution_symbol": execution.get("execution_symbol"),
+        "mode": execution.get("mode"),
+        "mt5_api_url": execution.get("mt5_api_url"),
+        "detail": execution.get("detail") or snapshot.get("detail"),
+        "timestamp": snapshot.get("timestamp"),
+    }
+    st.json({k: v for k, v in details.items() if v not in (None, "")})
+
+    scan_results = snapshot.get("scan_results")
+    if isinstance(scan_results, list) and scan_results:
+        st.markdown("**Orion Scan Results**")
+        st.dataframe(pd.DataFrame(scan_results), use_container_width=True, hide_index=True)
+
 try:
-    from config.broker_mode_config import get_config as get_broker_mode_config
+    from config.broker_mode_config import (
+        BOT_BROKER_MAPPING,
+        get_config as get_broker_mode_config,
+    )
 except ImportError:
     get_broker_mode_config = None
+    BOT_BROKER_MAPPING = {}
 
 try:
     from scripts.mansa_titan_bot import TitanBot, TitanConfig
     TITAN_AVAILABLE = True
 except Exception:
     TITAN_AVAILABLE = False
+
+
+RBACManager.init_session_state()
+show_user_info()
+
+
+def _restore_admin_session_if_possible() -> None:
+    """Best-effort RBAC repair when Streamlit drops user objects on reruns."""
+    if st.session_state.get("current_user") is not None:
+        return
+
+    if isinstance(st.session_state.get("current_user_data"), dict):
+        try:
+            from frontend.utils.rbac import User as _User
+            restored = _User.from_dict(st.session_state["current_user_data"])
+            st.session_state.current_user = restored
+            st.session_state.authenticated = True
+            if getattr(restored, "role", None) is not None and str(restored.role.value).lower() == "admin":
+                st.session_state.admin_authenticated = True
+                st.session_state.admin_user = restored.username
+            return
+        except Exception:
+            pass
+
+    legacy_admin = st.session_state.get("admin_user") or "admin"
+    if st.session_state.get("admin_authenticated", False):
+        try:
+            admin_data = RBACManager.DEMO_USERS.get(legacy_admin) or RBACManager.DEMO_USERS.get("admin")
+            if admin_data is not None:
+                restored = RBACManager._build_demo_user(legacy_admin if legacy_admin in RBACManager.DEMO_USERS else "admin", admin_data)
+                st.session_state.authenticated = True
+                st.session_state.current_user = restored
+                st.session_state.current_user_data = restored.to_dict()
+        except Exception:
+            pass
+
+_restore_admin_session_if_possible()
+
+# ── Auth debug panel — rendered BEFORE the guard so it's visible on failure ───
+with st.sidebar.expander("🔑 Auth Debug", expanded=False):
+    _ss = st.session_state
+    _is_authed = RBACManager.is_authenticated()
+    _has_perm = RBACManager.has_permission(Permission.VIEW_TRADING_BOT)
+    st.write("is_authenticated():", _is_authed)
+    st.write("has_permission(VIEW_TRADING_BOT):", _has_perm)
+    st.write("authenticated flag:", _ss.get("authenticated"))
+    st.write("admin_authenticated:", _ss.get("admin_authenticated"))
+    st.write("current_user present:", _ss.get("current_user") is not None)
+    st.write("current_user_data present:", isinstance(_ss.get("current_user_data"), dict))
+    _cu = _ss.get("current_user")
+    if _cu is not None:
+        st.write("user role:", str(getattr(_cu, "role", "n/a")))
+    st.caption("Session keys: " + ", ".join(sorted(_ss.keys())))
+
+if not _is_authed or not _has_perm:
+    st.error("🚫 ADMIN access required")
+    show_login_form()
+    st.stop()
 
 # Database connection
 try:
@@ -78,16 +202,43 @@ try:
         reload_env()
 
     MYSQL_CONFIG = get_mysql_config()
-    connection_string = get_mysql_url()
-    engine = create_engine(connection_string)
-    # Test connection (SQLAlchemy 2.x requires text() for raw SQL)
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1"))
-    DB_AVAILABLE = True
+
+    # Prefer explicit local DB first for desktop/dev operation where broker/bot
+    # writes are expected to land.
+    candidates = ["mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot"]
+    try:
+        secret_url = get_mysql_url()
+        if secret_url and secret_url not in candidates:
+            candidates.append(secret_url)
+    except Exception:
+        pass
+
+    last_db_error = None
+    DB_AVAILABLE = False
+    engine = None
+    connection_string = ""
+    for candidate in candidates:
+        try:
+            trial_engine = create_engine(candidate)
+            with trial_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            engine = trial_engine
+            connection_string = candidate
+            DB_AVAILABLE = True
+            break
+        except Exception as _db_exc:
+            last_db_error = _db_exc
+
+    if not DB_AVAILABLE:
+        raise RuntimeError(f"DB connect failed for all candidates: {last_db_error}")
 except Exception as e:
     DB_AVAILABLE = False
     # Show helpful setup message instead of raw error
     st.warning("💾 **Database Connection Not Available**")
+    st.caption(
+        "Titan launch controls can still run from the launcher even when "
+        "trade-history tables are unavailable."
+    )
     with st.expander("🔧 Setup Instructions"):
         st.markdown(f"""
         **MySQL Connection Failed**
@@ -131,12 +282,47 @@ except Exception as e:
         ```
         """)
     st.info("📊 The page will show limited functionality without database access.")
-RBACManager.init_session_state()
-show_user_info()
-if not RBACManager.is_authenticated() or not RBACManager.has_permission(Permission.VIEW_TRADING_BOT):
-    st.error("🚫 ADMIN access required")
-    show_login_form()
-    st.stop()
+
+
+def _record_bot_action(bot_name: str, mode: str, trading_mode: str, execution: dict) -> None:
+    st.session_state["last_bot_action"] = {
+        "bot": bot_name,
+        "mode": mode.upper(),
+        "trading_mode": trading_mode,
+        "ok": bool(execution.get("ok")),
+        "output": execution.get("output", ""),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    # Keep an immediate UI override so the sidebar status reflects successful
+    # ON/OFF actions even before launcher logs are re-read.
+    if bool(execution.get("ok")):
+        overrides = st.session_state.get("bot_status_overrides", {})
+        overrides[str(bot_name).lower()] = {
+            "status": "active" if str(mode).lower() == "on" else "inactive",
+            "trading_mode": str(trading_mode).lower(),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        st.session_state["bot_status_overrides"] = overrides
+
+
+def _render_last_bot_action() -> None:
+    action = st.session_state.get("last_bot_action")
+    if not action:
+        return
+
+    message = (
+        f"{action['bot']} {action['mode']} in {str(action['trading_mode']).upper()} mode "
+        f"at {action['timestamp']}"
+    )
+    if action.get("ok"):
+        st.success(message)
+    else:
+        st.error(message)
+
+    if action.get("output"):
+        with st.expander("Latest Bot Control Output", expanded=False):
+            st.code(str(action["output"]), language="text")
 
 # Apply custom styling
 if STYLING_AVAILABLE:
@@ -270,6 +456,7 @@ st.markdown("""
 
 # Header
 st.title("🤖 ML Trading Bot Dashboard")
+_render_last_bot_action()
 
 # Bot Status Banner - Moved from Home Page
 try:
@@ -284,56 +471,387 @@ except ImportError:
 st.markdown("---")
 
 # Bot status check
-def get_bot_status():
-    """Check if trading bot DAG is running"""
+
+
+def _latest_bot_mode_event() -> dict | None:
+    repo_root = Path(__file__).resolve().parents[1]
+    latest_path = repo_root / "logs" / "last_bot_mode_event.json"
+    if not latest_path.exists():
+        return None
+
     try:
-        # Check Airflow DAG status (simplified)
-        query = """
-            SELECT status, strategy, timestamp
-            FROM bot_status
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """
-        status_df = pd.read_sql(query, engine)
-        
-        if not status_df.empty:
-            return status_df.iloc[0].to_dict()
+        with latest_path.open("r", encoding="utf-8-sig") as handle:
+            payload = json.load(handle)
+            if isinstance(payload, dict):
+                return payload
+    except Exception:
+        return None
+
+    return None
+
+
+@st.cache_data(ttl=15)
+def _latest_bot_mode_events_all() -> dict:
+    """Return {bot_name_lower: latest_event} by reading the full append JSONL log.
+
+    Each line in bot_mode_events.jsonl is one event; we keep the LAST event
+    per bot so every bot gets its own up-to-date status.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    events_path = repo_root / "logs" / "bot_mode_events.jsonl"
+    if not events_path.exists():
+        # Fallback: try the single-event file for at least the last bot
+        ev = _latest_bot_mode_event()
+        if ev and ev.get("bot"):
+            return {ev["bot"].lower(): ev}
+        return {}
+
+    per_bot: dict = {}
+    try:
+        with events_path.open("r", encoding="utf-8-sig") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    ev = json.loads(raw)
+                    if isinstance(ev, dict) and ev.get("bot"):
+                        per_bot[str(ev["bot"]).lower()] = ev
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return per_bot
+
+
+def get_bot_status(bot_name: str = "Titan"):
+    """Resolve launcher-first status without relying on bot_status."""
+    strategy = "Mansa Tech - Titan Bot"
+    trading_mode = _get_bot_trading_mode(bot_name)
+    all_events = _latest_bot_mode_events_all()
+    latest_event = all_events.get(bot_name.lower())
+    overrides = st.session_state.get("bot_status_overrides", {})
+    override = overrides.get(bot_name.lower())
+
+    if (
+        latest_event
+        and str(latest_event.get("bot", "")).lower() == bot_name.lower()
+    ):
+        last_mode = str(latest_event.get("mode", "")).lower()
+        launcher_status = str(latest_event.get("status", "unknown")).lower()
+        active_statuses = {"active", "ready", "placeholder", "warning", "running", "started", "success", "online"}
+        inactive_statuses = {"inactive", "off", "stopped", "disabled", "shutdown", "terminated"}
+        if (
+            last_mode == "on"
+            and launcher_status in active_statuses
+        ):
+            status = "active"
+        elif last_mode == "off" and (
+            launcher_status in inactive_statuses
+            or launcher_status in {"placeholder", "ready", "warning", "success"}
+        ):
+            status = "inactive"
         else:
-            return {'status': 'unknown', 'strategy': 'N/A', 'timestamp': None}
-    except:
-        return {'status': 'unknown', 'strategy': 'N/A', 'timestamp': None}
+            status = launcher_status or "unknown"
+
+        if status not in {"active", "inactive"} and isinstance(override, dict):
+            override_status = str(override.get("status", "")).lower()
+            if override_status in {"active", "inactive"}:
+                status = override_status
+
+        return {
+            "status": status,
+            "strategy": strategy,
+            "timestamp": latest_event.get("timestamp"),
+            "note": latest_event.get("note", ""),
+            "trading_mode": latest_event.get(
+                "trading_mode",
+                (override or {}).get("trading_mode", trading_mode),
+            ),
+        }
+
+    active_flag = None
+    if get_broker_mode_config is not None:
+        try:
+            config = get_broker_mode_config()
+            active_flag = config.get_bot_active(bot_name)
+        except Exception:
+            active_flag = None
+
+    if active_flag is None:
+        if isinstance(override, dict) and str(override.get("status", "")).lower() in {"active", "inactive"}:
+            status = str(override.get("status", "unknown")).lower()
+        else:
+            status = "unknown"
+    else:
+        status = "active" if active_flag else "inactive"
+
+    return {
+        "status": status,
+        "strategy": strategy,
+        "timestamp": None,
+        "note": "Launcher event not available yet",
+        "trading_mode": trading_mode,
+    }
+
+
+def _bot_status_indicator(bot_name: str) -> str:
+    status = str(get_bot_status(bot_name).get("status", "unknown")).lower()
+    if status == "active":
+        return "🟢"
+    if status == "inactive":
+        return "🔴"
+    return "🟡"
+
+
+@st.cache_data(ttl=30)
+def fetch_hydra_api_snapshot() -> dict:
+    client = get_api_client()
+    return {
+        "status": client.get_hydra_status(),
+        "health": client.get_hydra_health(),
+    }
+
+
+@st.cache_data(ttl=30)
+def fetch_triton_api_snapshot() -> dict:
+    client = get_api_client()
+    return {
+        "status": client.get_triton_status(),
+        "health": client.get_triton_health(),
+    }
+
+
+def _mode_case_sql(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return (
+        "CASE "
+        f"WHEN LOWER(COALESCE({prefix}strategy, '')) LIKE '%live%' "
+        f"OR LOWER(COALESCE({prefix}status, '')) LIKE '%live%' "
+        "THEN 'live' "
+        "ELSE 'paper' "
+        "END"
+    )
+
+
+@st.cache_data(ttl=120)
+def _existing_trade_tables() -> list[str]:
+    if not DB_AVAILABLE:
+        return []
+
+    try:
+        q = text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_name IN (
+                  'trades_history',
+                  'titan_trades',
+                  'bot_signal_events',
+                  'rhea_trade_events',
+                  'vega_trades'
+              )
+            ORDER BY table_name
+        """)
+        with engine.connect() as conn:
+            return [str(row[0]) for row in conn.execute(q).fetchall()]
+    except Exception:
+        return []
+
+
+def _json_price_sql(json_col: str) -> str:
+    return (
+        "COALESCE("
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.filled_avg_price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.limit_price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.entry_price')) AS DECIMAL(18,6)),"
+        f"CAST(JSON_UNQUOTE(JSON_EXTRACT({json_col}, '$.exit_price')) AS DECIMAL(18,6))"
+        ")"
+    )
+
+
+def _trade_events_union_sql() -> str:
+    parts = []
+    existing = set(_existing_trade_tables())
+
+    if "trades_history" in existing:
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                shares,
+                price,
+                value,
+                timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(order_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'trades_history' AS source_table,
+                CASE
+                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%' THEN 'live'
+                    ELSE 'paper'
+                END AS trade_mode
+            FROM trades_history
+            """
+        )
+
+    if "titan_trades" in existing:
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(symbol USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(side, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                NULL AS price,
+                NULL AS value,
+                timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(order_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'titan_trades' AS source_table,
+                CASE
+                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%' THEN 'live'
+                    ELSE 'paper'
+                END AS trade_mode
+            FROM titan_trades
+            """
+        )
+
+    if "bot_signal_events" in existing:
+        _json_price = _json_price_sql("trade_payload_json")
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                {_json_price} AS price,
+                CASE
+                    WHEN {_json_price} IS NOT NULL THEN ROUND(CAST(qty AS DECIMAL(18,6)) * {_json_price}, 6)
+                    ELSE NULL
+                END AS value,
+                created_at AS timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(bot_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(JSON_UNQUOTE(JSON_EXTRACT(trade_payload_json, '$.order_id')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'bot_signal_events' AS source_table,
+                LOWER(COALESCE(mode, 'paper')) AS trade_mode
+            FROM bot_signal_events
+            """
+        )
+
+    if "rhea_trade_events" in existing:
+        _json_price = _json_price_sql("trade_payload_json")
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                {_json_price} AS price,
+                CASE
+                    WHEN {_json_price} IS NOT NULL THEN ROUND(CAST(qty AS DECIMAL(18,6)) * {_json_price}, 6)
+                    ELSE NULL
+                END AS value,
+                created_at AS timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(bot_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(JSON_UNQUOTE(JSON_EXTRACT(trade_payload_json, '$.order_id')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'rhea_trade_events' AS source_table,
+                LOWER(COALESCE(mode, 'paper')) AS trade_mode
+            FROM rhea_trade_events
+            """
+        )
+
+    if "vega_trades" in existing:
+        parts.append(
+            f"""
+            SELECT
+                trade_id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                'SELL' AS action,
+                1 AS shares,
+                exit_price AS price,
+                pnl AS value,
+                timestamp,
+                'CLOSED' AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                CONVERT(trade_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS order_id,
+                'vega_trades' AS source_table,
+                CASE
+                    WHEN LOWER(COALESCE(strategy, '')) LIKE '%live%' THEN 'live'
+                    ELSE 'paper'
+                END AS trade_mode
+            FROM vega_trades
+            """
+        )
+
+    if not parts:
+        return """
+            SELECT
+                NULL AS row_id,
+                NULL AS ticker,
+                NULL AS action,
+                NULL AS shares,
+                NULL AS price,
+                NULL AS value,
+                NULL AS timestamp,
+                NULL AS status,
+                NULL AS strategy,
+                NULL AS order_id,
+                NULL AS source_table,
+                NULL AS trade_mode
+            WHERE 1 = 0
+        """
+
+    return "\nUNION ALL\n".join(parts)
 
 
 # Load data functions
 @st.cache_data(ttl=60)
-def load_recent_trades(days=7):
+def load_recent_trades(days=7, refresh_token=None):
     """Load recent trade history"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
-    
+
     query = f"""
-        SELECT ticker, action, shares, price, value, timestamp, status, strategy
-        FROM trades_history
+        SELECT ticker, action, shares, price, value, timestamp, status, strategy, trade_mode, source_table
+        FROM ({_trade_events_union_sql()}) unified
         WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         ORDER BY timestamp DESC
     """
-    
+
     try:
         return pd.read_sql(query, engine, parse_dates=['timestamp'])
-    except:
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).error("load_recent_trades failed: %s", _e)
         return pd.DataFrame()
 
 
 @st.cache_data(ttl=60)
-def load_performance_metrics(days=30):
+def load_performance_metrics(days=30, refresh_token=None):
     """Load performance metrics"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
     
     query = f"""
-        SELECT date, total_trades, buy_trades, sell_trades, total_value, strategy
-        FROM performance_metrics
-        WHERE date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+        SELECT
+            DATE(timestamp) AS date,
+            strategy,
+            COUNT(*) AS total_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY' THEN 1 ELSE 0 END) AS buy_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_trades,
+            SUM(COALESCE(value, 0)) AS total_value
+        FROM ({_trade_events_union_sql()}) unified
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+        GROUP BY DATE(timestamp), strategy
         ORDER BY date DESC
     """
     
@@ -352,68 +870,88 @@ def load_active_signals():
     query = """
         SELECT ticker, signal, price, timestamp, strategy
         FROM trading_signals
-        WHERE DATE(timestamp) = CURDATE()
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ORDER BY timestamp DESC
+        LIMIT 200
     """
     
     try:
-        return pd.read_sql(query, engine, parse_dates=['timestamp'])
-    except:
+        df = pd.read_sql(query, engine, parse_dates=['timestamp'])
+        if df.empty:
+            return df
+
+        # Normalize mixed signal formats from different pipelines.
+        def normalize_signal(value):
+            if pd.isna(value):
+                return "HOLD"
+            text_value = str(value).strip().upper()
+            if text_value in {"1", "+1", "BUY", "LONG", "BULLISH"}:
+                return "BUY"
+            if text_value in {"-1", "SELL", "SHORT", "BEARISH"}:
+                return "SELL"
+            if text_value in {"0", "HOLD", "NEUTRAL"}:
+                return "HOLD"
+            return "HOLD"
+
+        df["signal_label"] = df["signal"].apply(normalize_signal)
+        return df
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).error("load_recent_trades failed: %s", _e)
         return pd.DataFrame()
 
 
 # ── Calendar & Analytics Helpers ─────────────────────────────────────────────
 
 @st.cache_data(ttl=300)
-def load_daily_pnl(year: int, month: int) -> dict:
-    """Load daily P&L for calendar. Real data from DB when available; seeded demo otherwise."""
-    if DB_AVAILABLE:
-        try:
-            import calendar as _c
-            _, last_day = _c.monthrange(year, month)
-            start_d = f"{year}-{month:02d}-01"
-            end_d = f"{year}-{month:02d}-{last_day:02d}"
-            q = text("""
-                SELECT DATE(timestamp) AS day,
-                       ROUND(SUM(
-                           CASE WHEN side = 'sell'
-                                THEN  (prediction_probability - 0.5) * qty * 50
-                                ELSE -(prediction_probability - 0.5) * qty * 50
-                           END
-                       ), 2) AS est_pnl
-                FROM titan_trades
-                WHERE DATE(timestamp) BETWEEN :start AND :end
-                  AND status IN ('filled', 'submitted')
-                GROUP BY DATE(timestamp)
-            """)
-            with engine.connect() as conn:
-                rows = conn.execute(q, {"start": start_d, "end": end_d}).fetchall()
-            if rows:
-                return {str(r[0]): float(r[1]) for r in rows}
-        except Exception:
-            pass
-    import random
-    import calendar as _c
-    rng = random.Random(year * 100 + month + 7)
-    _, last_day = _c.monthrange(year, month)
-    result = {}
-    for d in range(1, last_day + 1):
-        if datetime(year, month, d).weekday() < 5:
-            result[f"{year}-{month:02d}-{d:02d}"] = round(rng.normalvariate(200, 620), 2)
-    return result
+def load_daily_pnl(year: int, month: int, mode: str = "All", refresh_token=None) -> dict:
+    """Load daily net flow from real trade history. Positive = net sells, negative = net buys."""
+    if not DB_AVAILABLE:
+        return {}
+
+    try:
+        import calendar as _c
+        _, last_day = _c.monthrange(year, month)
+        start_d = f"{year}-{month:02d}-01"
+        end_d = f"{year}-{month:02d}-{last_day:02d}"
+
+        mode_clause = ""
+        params: dict = {"start": start_d, "end": end_d}
+        if mode and mode.lower() in ("live", "paper"):
+            mode_clause = "AND trade_mode = :mode"
+            params["mode"] = mode.lower()
+
+        q = text(f"""
+            SELECT DATE(timestamp) AS day,
+                   ROUND(SUM(
+                       CASE
+                           WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                           WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                           ELSE 0
+                       END
+                   ), 2) AS net_flow
+            FROM ({_trade_events_union_sql()}) unified
+            WHERE DATE(timestamp) BETWEEN :start AND :end
+              AND value IS NOT NULL
+              {mode_clause}
+            GROUP BY DATE(timestamp)
+            ORDER BY DATE(timestamp)
+        """)
+        with engine.connect() as conn:
+            rows = conn.execute(q, params).fetchall()
+        return {str(r[0]): float(r[1]) for r in rows} if rows else {}
+    except Exception:
+        return {}
 
 
 @st.cache_data(ttl=300)
-def load_overview_metrics(year: int, month: int, daily_pnl: dict) -> dict:
+def load_overview_metrics(year: int, month: int, daily_pnl: dict, mode: str = "All", refresh_token=None) -> dict:
     """
     Compute 9 aggregate overview metrics across all broker bot trades.
     Derives calendar-based stats from daily_pnl (real DB or demo).
     Queries DB for buy/sell hold-time pairing; falls back to seeded demo.
     """
-    import random
     import calendar as _c
-
-    rng = random.Random(year * 100 + month + 42)
 
     # ── Stats from daily P&L dict ────────────────────────────────────────
     trading_days = sorted(daily_pnl.keys())
@@ -447,30 +985,37 @@ def load_overview_metrics(year: int, month: int, daily_pnl: dict) -> dict:
             _, last_day = _c.monthrange(year, month)
             start_d = f"{year}-{month:02d}-01"
             end_d = f"{year}-{month:02d}-{last_day:02d}"
-            # Pair each buy with the next sell on the same symbol (approximate hold time)
-            hold_q = text("""
+            mode_clause = ""
+            params: dict = {"start": start_d, "end": end_d}
+            if mode and mode.lower() in ("live", "paper"):
+                mode_clause = "AND t1.trade_mode = :mode"
+                params["mode"] = mode.lower()
+
+            hold_q = text(f"""
                 SELECT
-                    AVG(CASE WHEN est_pnl > 0 THEN hold_min END) AS avg_win_hold,
-                    AVG(CASE WHEN est_pnl <= 0 THEN hold_min END) AS avg_loss_hold
+                    AVG(CASE WHEN pnl_proxy > 0 THEN hold_min END) AS avg_win_hold,
+                    AVG(CASE WHEN pnl_proxy <= 0 THEN hold_min END) AS avg_loss_hold
                 FROM (
                     SELECT
-                        t1.symbol,
+                        t1.ticker,
                         TIMESTAMPDIFF(MINUTE, t1.timestamp, MIN(t2.timestamp)) AS hold_min,
-                        (t1.prediction_probability - 0.5) * t1.qty * 50         AS est_pnl
-                    FROM titan_trades t1
-                    JOIN titan_trades t2
-                        ON  t2.symbol    = t1.symbol
-                        AND t2.side      = 'sell'
+                        (MIN(t2.value) - t1.value) AS pnl_proxy
+                    FROM ({_trade_events_union_sql()}) t1
+                    JOIN ({_trade_events_union_sql()}) t2
+                        ON  t2.ticker    = t1.ticker
+                        AND UPPER(t2.action) = 'SELL'
+                        AND t2.value IS NOT NULL
                         AND t2.timestamp > t1.timestamp
-                    WHERE t1.side = 'buy'
+                    WHERE UPPER(t1.action) = 'BUY'
+                      AND t1.value IS NOT NULL
                       AND DATE(t1.timestamp) BETWEEN :start AND :end
-                      AND t1.status IN ('filled', 'submitted')
-                    GROUP BY t1.id, t1.symbol, t1.timestamp,
-                             t1.prediction_probability, t1.qty
+                      {mode_clause}
+                    GROUP BY t1.row_id, t1.ticker, t1.timestamp, t1.value
                 ) AS pairs
+                WHERE hold_min IS NOT NULL
             """)
             with engine.connect() as conn:
-                row = conn.execute(hold_q, {"start": start_d, "end": end_d}).fetchone()
+                row = conn.execute(hold_q, params).fetchone()
             if row:
                 if row[0] is not None:
                     avg_win_hold_min = float(row[0])
@@ -479,12 +1024,9 @@ def load_overview_metrics(year: int, month: int, daily_pnl: dict) -> dict:
         except Exception:
             pass
 
-    if avg_win_hold_min is None:
-        avg_win_hold_min = rng.uniform(35, 180)
-    if avg_loss_hold_min is None:
-        avg_loss_hold_min = rng.uniform(55, 240)
-
-    def _fmt_mins(m: float) -> str:
+    def _fmt_mins(m: float | None) -> str:
+        if m is None:
+            return "N/A"
         m = max(0, int(m))
         return f"{m}m" if m < 60 else f"{m // 60}h {m % 60:02d}m"
 
@@ -579,124 +1121,175 @@ def render_monthly_calendar(year: int, month: int, daily_pnl: dict):
 
 
 @st.cache_data(ttl=60)
-def load_bot_analytics(bot_name: str, days: int) -> dict:
-    """Load per-bot analytics. Merges real titan_trades data with estimated demo values."""
-    import random
-    _VALID_BOTS = ["Titan", "Dogon", "Orion", "Rigel", "Vega"]
+def load_bot_analytics(bot_name: str, days: int, mode: str = "All", refresh_token=None) -> dict:
+    """Load per-bot analytics from real trades_history rows (no seeded demo data)."""
+    _VALID_BOTS = [
+        "Titan", "Dogon", "Orion", "Rigel", "Vega",
+        "Draco", "Altair", "Procryon", "Hydra", "Triton",
+        "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus",
+    ]
     _SAFE = set(_VALID_BOTS) | {"All Bots"}
     if bot_name not in _SAFE:
         bot_name = "All Bots"
 
-    real_strategies = []
-    if DB_AVAILABLE:
-        try:
-            if bot_name == "All Bots":
-                q = text("""
-                    SELECT COALESCE(strategy,'unknown') AS strategy,
-                           COUNT(*)                          AS total_trades,
-                           SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END) AS buy_cnt,
-                           SUM(CASE WHEN side='sell' THEN 1 ELSE 0 END) AS sell_cnt,
-                           AVG(prediction_probability)       AS avg_prob,
-                           AVG(qty)                          AS avg_qty
-                    FROM titan_trades
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
-                    GROUP BY COALESCE(strategy,'unknown')
-                """)
-                params = {"days": days}
-            else:
-                q = text("""
-                    SELECT COALESCE(strategy,'unknown') AS strategy,
-                           COUNT(*)                          AS total_trades,
-                           SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END) AS buy_cnt,
-                           SUM(CASE WHEN side='sell' THEN 1 ELSE 0 END) AS sell_cnt,
-                           AVG(prediction_probability)       AS avg_prob,
-                           AVG(qty)                          AS avg_qty
-                    FROM titan_trades
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
-                      AND LOWER(strategy) LIKE :pat
-                    GROUP BY COALESCE(strategy,'unknown')
-                """)
-                params = {"days": days, "pat": f"%{bot_name.lower()}%"}
-            with engine.connect() as conn:
-                rows = conn.execute(q, params).fetchall()
-            real_strategies = [
-                dict(zip(["strategy", "total_trades", "buy_cnt", "sell_cnt", "avg_prob", "avg_qty"], r))
-                for r in rows
-            ]
-        except Exception:
-            pass
+    mode_clause = ""
+    mode_params: dict = {}
+    if mode and mode.lower() in ("live", "paper"):
+        mode_clause = "AND trade_mode = :mode_val"
+        mode_params["mode_val"] = mode.lower()
 
-    def _demo(name: str) -> dict:
-        rng = random.Random(hash(name) % 99991 + days)
-        trades = rng.randint(45, 230)
-        wr = rng.uniform(0.53, 0.68)
-        ep = rng.uniform(28, 380)
-        xp = ep * (1 + rng.uniform(0.005, 0.048))
-        qty = rng.uniform(5, 60)
-        es = rng.uniform(-0.07, -0.01)
-        xs = rng.uniform(-0.08, -0.01)
-        pnl = (xp - ep) * qty * trades * wr - (ep - xp) * qty * trades * (1 - wr) * 0.55
-        roi = pnl / max(ep * qty * trades, 1) * 100
-        en_s = rng.randint(8 * 3600, 11 * 3600)
-        ex_s = rng.randint(12 * 3600, 15 * 3600 + 3000)
-        hd_s = abs(ex_s - en_s) + rng.randint(-1800, 1800)
-        # Simulate per-trade daily returns for Sharpe Ratio calculation
-        daily_ret_mean = (roi / 100) / max(trades, 1)
-        daily_ret_std = abs(daily_ret_mean) * rng.uniform(1.5, 3.5) if daily_ret_mean != 0 else 0.01
-        sharpe = round((daily_ret_mean - 0.045 / 252) / max(daily_ret_std, 1e-9) * (252 ** 0.5), 2)
-        return dict(
-            bot=name, total_trades=trades,
-            win_trades=int(trades * wr), loss_trades=int(trades * (1 - wr)),
-            win_rate=round(wr * 100, 1),
-            avg_entry_price=round(ep, 2), avg_exit_price=round(xp, 2), avg_qty=round(qty, 2),
-            entry_slippage_bps=round(es, 3), exit_slippage_bps=round(xs, 3),
-            total_slippage_bps=round(es + xs, 3),
-            entry_fill_price=round(ep * (1 + es / 100), 2),
-            exit_fill_price=round(xp * (1 + xs / 100), 2),
-            exit_limit_price=round(xp * 1.004, 2),
-            total_pnl=round(pnl, 2), roi_pct=round(roi, 2),
-            sharpe_ratio=sharpe,
-            best_trade=round(abs((xp - ep) * qty) * rng.uniform(2.2, 3.8), 2),
-            worst_trade=round(-abs((xp - ep) * qty) * rng.uniform(0.7, 1.4), 2),
-            avg_pnl_per_trade=round(pnl / max(trades, 1), 2),
-            avg_entry_time=f"{en_s // 3600:02d}:{(en_s % 3600) // 60:02d}",
-            avg_exit_time=f"{ex_s // 3600:02d}:{(ex_s % 3600) // 60:02d}",
-            avg_hold_time=f"{hd_s // 3600}h {(hd_s % 3600) // 60:02d}m",
-        )
+    def _metric_shell(label: str) -> dict:
+        return {
+            "bot": label,
+            "total_trades": 0,
+            "win_trades": 0,
+            "loss_trades": 0,
+            "win_rate": 0.0,
+            "avg_entry_price": 0.0,
+            "avg_exit_price": 0.0,
+            "avg_qty": 0.0,
+            "entry_slippage_bps": 0.0,
+            "exit_slippage_bps": 0.0,
+            "total_slippage_bps": 0.0,
+            "entry_fill_price": 0.0,
+            "exit_fill_price": 0.0,
+            "exit_limit_price": 0.0,
+            "total_pnl": 0.0,
+            "roi_pct": 0.0,
+            "sharpe_ratio": 0.0,
+            "best_trade": 0.0,
+            "worst_trade": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "avg_entry_time": "N/A",
+            "avg_exit_time": "N/A",
+            "avg_hold_time": "N/A",
+        }
 
-    bot_list = _VALID_BOTS if bot_name == "All Bots" else [bot_name]
-    bots_data = [_demo(b) for b in bot_list]
-    # Overlay real trade counts from DB where matched
-    for rs in real_strategies:
-        for bd in bots_data:
-            strat = rs.get("strategy") or ""
-            if bd["bot"].lower() in strat.lower():
-                bd["total_trades"] = int(rs["total_trades"])
-    return {"bots": bots_data, "has_real_data": bool(real_strategies)}
+    if not DB_AVAILABLE:
+        fallback_name = bot_name if bot_name != "All Bots" else "No Data"
+        return {"bots": [_metric_shell(fallback_name)], "has_real_data": False}
+
+    try:
+        filter_clause = ""
+        params = {"days": days, **mode_params}
+        if bot_name != "All Bots":
+            filter_clause = "AND LOWER(COALESCE(strategy, '')) LIKE :pat"
+            params["pat"] = f"%{bot_name.lower()}%"
+
+        q = text(f"""
+            SELECT
+                COALESCE(strategy, 'unknown') AS strategy,
+                COUNT(*) AS total_trades,
+                SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN 1 ELSE 0 END) AS buy_cnt,
+                SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_cnt,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN price END) AS avg_entry_price,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN price END) AS avg_exit_price,
+                AVG(shares) AS avg_qty,
+                SUM(CASE
+                        WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                        WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                        ELSE 0
+                    END) AS net_flow,
+                MAX(CASE
+                        WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                        WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                        ELSE NULL
+                    END) AS best_flow,
+                MIN(CASE
+                        WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN value
+                        WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN -value
+                        ELSE NULL
+                    END) AS worst_flow,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY'  THEN HOUR(timestamp) * 60 + MINUTE(timestamp) END) AS avg_buy_minute,
+                AVG(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN HOUR(timestamp) * 60 + MINUTE(timestamp) END) AS avg_sell_minute
+            FROM ({_trade_events_union_sql()}) unified
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL :days DAY)
+              {filter_clause}
+              {mode_clause}
+            GROUP BY COALESCE(strategy, 'unknown')
+            ORDER BY total_trades DESC
+        """)
+        with engine.connect() as conn:
+            rows = conn.execute(q, params).fetchall()
+
+        if not rows:
+            fallback_name = bot_name if bot_name != "All Bots" else "No Data"
+            return {"bots": [_metric_shell(fallback_name)], "has_real_data": False}
+
+        def _fmt_minutes(v: float | None) -> str:
+            if v is None:
+                return "N/A"
+            total = int(max(v, 0))
+            return f"{total // 60:02d}:{total % 60:02d}"
+
+        def _canonical_label(strategy: str) -> str:
+            s = str(strategy or "").strip()
+            low = s.lower()
+            for b in _VALID_BOTS:
+                if b.lower() in low:
+                    return b
+            if low == "alpaca":
+                return "Alpaca"
+            if low == "ibkr":
+                return "IBKR"
+            if low == "mt5":
+                return "FTMO MT5"
+            if low == "axi_mt5":
+                return "AXI MT5"
+            return s if s else "Unknown"
+
+        bots_data = []
+        for row in rows:
+            strategy = row[0]
+            total_trades = int(row[1] or 0)
+            buy_cnt = int(row[2] or 0)
+            sell_cnt = int(row[3] or 0)
+            avg_entry_price = float(row[4] or 0.0)
+            avg_exit_price = float(row[5] or 0.0)
+            avg_qty = float(row[6] or 0.0)
+            net_flow = float(row[7] or 0.0)
+            best_flow = float(row[8] or 0.0)
+            worst_flow = float(row[9] or 0.0)
+            avg_buy_minute = row[10]
+            avg_sell_minute = row[11]
+
+            base_notional = abs(avg_entry_price) * max(avg_qty, 0.0) * max(total_trades, 1)
+            roi_pct = (net_flow / base_notional * 100.0) if base_notional > 0 else 0.0
+            win_proxy = sell_cnt
+            loss_proxy = buy_cnt
+            win_rate = (win_proxy / max(total_trades, 1)) * 100.0
+
+            record = _metric_shell(_canonical_label(strategy))
+            record.update(
+                {
+                    "total_trades": total_trades,
+                    "win_trades": win_proxy,
+                    "loss_trades": loss_proxy,
+                    "win_rate": round(win_rate, 1),
+                    "avg_entry_price": round(avg_entry_price, 2),
+                    "avg_exit_price": round(avg_exit_price, 2),
+                    "avg_qty": round(avg_qty, 2),
+                    "entry_fill_price": round(avg_entry_price, 2),
+                    "exit_fill_price": round(avg_exit_price if avg_exit_price else avg_entry_price, 2),
+                    "exit_limit_price": round((avg_exit_price if avg_exit_price else avg_entry_price), 2),
+                    "total_pnl": round(net_flow, 2),
+                    "roi_pct": round(roi_pct, 2),
+                    "best_trade": round(best_flow, 2),
+                    "worst_trade": round(worst_flow, 2),
+                    "avg_pnl_per_trade": round(net_flow / max(total_trades, 1), 2),
+                    "avg_entry_time": _fmt_minutes(avg_buy_minute),
+                    "avg_exit_time": _fmt_minutes(avg_sell_minute),
+                }
+            )
+            bots_data.append(record)
+
+        return {"bots": bots_data, "has_real_data": True}
+    except Exception:
+        fallback_name = bot_name if bot_name != "All Bots" else "No Data"
+        return {"bots": [_metric_shell(fallback_name)], "has_real_data": False}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-def _build_titan_status_rows() -> pd.DataFrame:
-    rows = []
-    for bot_name, fund_name in BOT_FUND_ALLOCATIONS.items():
-        display_name = "Mansa Star Bots" if bot_name == "Titan" else bot_name
-        rows.append(
-            {
-                "Bot": display_name,
-                "Fund": fund_name,
-                "Status": "active" if bot_name == "Titan" else "pending",
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def _build_quick_start_command(bot_name: str, mode: str) -> str:
-    return (
-        "powershell -ExecutionPolicy Bypass -File "
-        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
-    )
-
-
 def _get_bot_trading_mode(bot_name: str) -> str:
     if get_broker_mode_config is None:
         return "paper"
@@ -711,6 +1304,35 @@ def _get_bot_trading_mode(bot_name: str) -> str:
         return "paper"
 
 
+def _build_quick_start_command(bot_name: str, mode: str) -> str:
+    return (
+        "powershell -ExecutionPolicy Bypass -File "
+        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
+    )
+
+
+def _build_titan_status_rows() -> pd.DataFrame:
+    rows = []
+    for bot_name, fund_name in BOT_FUND_ALLOCATIONS.items():
+        display_name = "Mansa Star Bots" if bot_name == "Titan" else bot_name
+        resolved = str(get_bot_status(bot_name).get("status", "unknown")).lower()
+        if resolved == "active":
+            live_status = "🟢 running"
+        elif resolved == "inactive":
+            live_status = "🔴 off"
+        else:
+            live_status = "🟡 unknown"
+        rows.append(
+            {
+                "Bot": display_name,
+                "Fund": fund_name,
+                "Mode": str(_get_bot_trading_mode(bot_name)).upper(),
+                "Status": live_status,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _set_bot_launch_preferences(
     bot_name: str,
     trading_mode: Literal["paper", "live"],
@@ -719,25 +1341,97 @@ def _set_bot_launch_preferences(
     if get_broker_mode_config is None:
         return
 
-    config = get_broker_mode_config()
-    broker_name = config.get_bot_broker(bot_name)
-    if broker_name:
-        config.set_broker_mode(broker_name, trading_mode)
-    config.set_bot_active(bot_name, active)
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if broker_name:
+            config.set_broker_mode(broker_name, trading_mode)
+        config.set_bot_active(bot_name, active)
+    except Exception:
+        # The launcher script remains the source of truth for bots that are not
+        # fully represented in broker_modes.json yet.
+        return
 
 
-def _build_quick_start_rows() -> pd.DataFrame:
-    launch_bots = ["Titan", "Vega", "Rigel", "Dogon", "Orion"]
+def _get_configured_launch_bots() -> list[str]:
+    configured = list(DEFAULT_LAUNCH_BOTS)
+
+    try:
+        configured.extend(list(BOT_BROKER_MAPPING.keys()))
+    except Exception:
+        pass
+
+    if get_broker_mode_config is not None:
+        try:
+            config = get_broker_mode_config()
+            configured.extend(list(config.get_all_bots_status().keys()))
+        except Exception:
+            pass
+
+    ordered = []
+    seen = set()
+    for bot_name in configured:
+        if bot_name not in seen:
+            seen.add(bot_name)
+            ordered.append(bot_name)
+    return ordered
+
+
+def _build_launch_status_rows() -> pd.DataFrame:
     rows = []
-    for bot_name in launch_bots:
+    all_events = _latest_bot_mode_events_all()
+
+    for bot_name in _get_configured_launch_bots():
+        status = get_bot_status(bot_name)
+        ev = all_events.get(bot_name.lower(), {})
+        raw_status = str(status.get("status", "unknown")).lower()
+        if raw_status == "active":
+            indicator = "🟢 RUNNING"
+        elif raw_status == "inactive":
+            indicator = "🔴 OFF"
+        else:
+            indicator = "🟡 UNKNOWN"
         rows.append(
             {
                 "Bot": bot_name,
-                "ON Command": _build_quick_start_command(bot_name, "on"),
-                "OFF Command": _build_quick_start_command(bot_name, "off"),
+                "Broker": str(BOT_BROKER_MAPPING.get(bot_name, "unknown")).upper(),
+                "Mode": str(status.get("trading_mode", "paper")).upper(),
+                "Status": indicator,
+                "Last Updated": ev.get("timestamp", ""),
+                "Note": str(status.get("note", "")),
             }
         )
+
     return pd.DataFrame(rows)
+
+
+def _normalize_bot_name(bot_name: str) -> str:
+    raw = str(bot_name or "").strip()
+    if not raw:
+        return raw
+
+    compact = raw.replace("_", "").replace("-", "").replace(" ", "").upper()
+    if compact.endswith("BOT"):
+        compact = compact[:-3]
+
+    alias_map = {
+        "TITAN": "Titan",
+        "VEGA": "Vega",
+        "RIGEL": "Rigel",
+        "DOGON": "Dogon",
+        "ORION": "Orion",
+        "DRACO": "Draco",
+        "ALTAIR": "Altair",
+        "PROCRYON": "Procryon",
+        "HYDRA": "Hydra",
+        "TRITON": "Triton",
+        "DIONE": "Dione",
+        "CEPHEI": "Cephei",
+        "RHEA": "Rhea",
+        "JUPICITA": "Jupicita",
+        "CYGNUS": "Cygnus",
+    }
+    return alias_map.get(compact, raw)
 
 
 def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
@@ -758,7 +1452,7 @@ def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> 
         "-File",
         str(launcher),
         "-Bot",
-        bot_name,
+        _normalize_bot_name(bot_name),
         "-Mode",
         mode.upper(),
         "-TradingMode",
@@ -783,9 +1477,9 @@ def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> 
 
 
 def _vega_automation_status() -> dict:
-    """Read 9:30 Vega task metadata and latest launcher event from logs."""
+    """Read Vega task metadata and latest launcher event from logs."""
     repo_root = Path(__file__).resolve().parents[1]
-    task_name = "Bentley-Vega-IBKR-930"
+    task_name = "Bentley-Vega"
     schedule = {
         "exists": False,
         "task_name": task_name,
@@ -824,7 +1518,7 @@ def _vega_automation_status() -> dict:
     latest_path = repo_root / "logs" / "last_bot_mode_event.json"
     if latest_path.exists():
         try:
-            with latest_path.open("r", encoding="utf-8") as handle:
+            with latest_path.open("r", encoding="utf-8-sig") as handle:
                 payload = json.load(handle)
                 if isinstance(payload, dict):
                     latest_event = payload
@@ -838,79 +1532,13 @@ def _vega_automation_status() -> dict:
 
 
 def _render_quick_launch_buttons() -> None:
-    launch_bots = ["Titan", "Vega", "Rigel", "Dogon", "Orion"]
-
-    st.markdown("**Quick Launch Commands (ON/OFF)**")
-    st.dataframe(
-        _build_quick_start_rows(),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    for bot_name in launch_bots:
-        current_mode = _get_bot_trading_mode(bot_name)
-        c1, c2, c3, c4, c5, c6 = st.columns([2, 1.4, 1, 1, 1, 1])
-        with c1:
-            st.markdown(f"**{bot_name}**")
-        with c2:
-            selected_mode = st.selectbox(
-                "Mode",
-                options=["paper", "live"],
-                index=0 if current_mode == "paper" else 1,
-                key=f"trading_mode_{bot_name}",
-                label_visibility="collapsed",
-            )
-        with c3:
-            if st.button("ON Cmd", key=f"quick_on_{bot_name}"):
-                st.session_state["selected_bot_launch_command"] = (
-                    _build_quick_start_command(bot_name, "on")
-                    + f" -TradingMode {selected_mode}"
-                )
-        with c4:
-            if st.button("OFF Cmd", key=f"quick_off_{bot_name}"):
-                st.session_state["selected_bot_launch_command"] = (
-                    _build_quick_start_command(bot_name, "off")
-                    + f" -TradingMode {selected_mode}"
-                )
-        with c5:
-            if st.button("Run ON", key=f"exec_on_{bot_name}"):
-                _set_bot_launch_preferences(bot_name, selected_mode, True)
-                with st.spinner(f"Running {bot_name} ON..."):
-                    execution = _execute_bot_mode(bot_name, "on", selected_mode)
-                st.session_state["selected_bot_launch_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success(f"{bot_name} ON command completed.")
-                else:
-                    st.error(f"{bot_name} ON command failed.")
-        with c6:
-            if st.button("Run OFF", key=f"exec_off_{bot_name}"):
-                _set_bot_launch_preferences(bot_name, selected_mode, False)
-                with st.spinner(f"Running {bot_name} OFF..."):
-                    execution = _execute_bot_mode(bot_name, "off", selected_mode)
-                st.session_state["selected_bot_launch_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success(f"{bot_name} OFF command completed.")
-                else:
-                    st.error(f"{bot_name} OFF command failed.")
-
-    selected_cmd = st.session_state.get("selected_bot_launch_command")
-    if selected_cmd:
-        st.code(selected_cmd, language="powershell")
-        st.caption(
-            "Run this command in a PowerShell terminal "
-            "from the repository root."
-        )
-
-    selected_output = st.session_state.get("selected_bot_launch_output")
-    if selected_output:
-        with st.expander("Last Command Output", expanded=False):
-            st.code(selected_output, language="text")
+    st.caption("Bot control actions are available in the left sidebar.")
 
     automation = _vega_automation_status()
     schedule = automation["schedule"]
     latest_event = automation["latest_event"]
 
-    st.markdown("**Vega IBKR Scheduled Automation (09:30 ET)**")
+    st.markdown("**Vega Scheduled Automation (09:30 ET)**")
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Task", "Configured" if schedule.get("exists") else "Missing")
@@ -922,6 +1550,62 @@ def _render_quick_launch_buttons() -> None:
     if latest_event:
         st.caption("Latest launcher event")
         st.json(latest_event)
+
+    hydra_api = fetch_hydra_api_snapshot()
+    hydra_status = hydra_api.get("status") or {}
+    hydra_health = hydra_api.get("health") or {}
+
+    st.markdown("**Hydra API Snapshot**")
+    h1, h2, h3 = st.columns(3)
+    with h1:
+        st.metric(
+            "Hydra Action",
+            str(hydra_status.get("last_analysis", {}).get("action", "N/A")),
+        )
+    with h2:
+        st.metric(
+            "Execution Enabled",
+            "YES" if hydra_status.get("execution_enabled") else "NO",
+        )
+    with h3:
+        st.metric(
+            "Hydra API",
+            str(
+                hydra_health.get("fastapi", {}).get("reachable", False)
+            ).upper(),
+        )
+
+    if hydra_health:
+        with st.expander("Hydra Health Details", expanded=False):
+            st.json(hydra_health)
+
+    triton_api = fetch_triton_api_snapshot()
+    triton_status = triton_api.get("status") or {}
+    triton_health = triton_api.get("health") or {}
+
+    st.markdown("**Triton API Snapshot**")
+    t1, t2, t3 = st.columns(3)
+    with t1:
+        st.metric(
+            "Triton Action",
+            str(triton_status.get("last_analysis", {}).get("action", "N/A")),
+        )
+    with t2:
+        st.metric(
+            "Execution Enabled",
+            "YES" if triton_status.get("execution_enabled") else "NO",
+        )
+    with t3:
+        st.metric(
+            "Triton API",
+            str(
+                triton_health.get("fastapi", {}).get("reachable", False)
+            ).upper(),
+        )
+
+    if triton_health:
+        with st.expander("Triton Health Details", expanded=False):
+            st.json(triton_health)
 
 
 @st.cache_data(ttl=30)
@@ -951,46 +1635,180 @@ def load_titan_snapshot() -> dict:
 # Sidebar controls
 st.sidebar.header("🎛️ Bot Controls")
 
-# Bot status
+# ── Fleet overview (all bots, compact) ────────────────────────────────────
+_all_ev = _latest_bot_mode_events_all()
+_fleet_rows = []
+for _bname in _get_configured_launch_bots():
+    _ind = _bot_status_indicator(_bname)
+    _fleet_rows.append(f"{_ind} {_bname}")
+
+with st.sidebar.expander("📊 Fleet Status (all bots)", expanded=True):
+    _mid = len(_fleet_rows) // 2 + len(_fleet_rows) % 2
+    _fc1, _fc2 = st.columns(2)
+    with _fc1:
+        for r in _fleet_rows[:_mid]:
+            st.markdown(r)
+    with _fc2:
+        for r in _fleet_rows[_mid:]:
+            st.markdown(r)
+
+# Bot status (Titan – header section)
 bot_status = get_bot_status()
-status_color = "🟢" if bot_status['status'] == 'active' else "🔴"
+status_color = "🟢" if bot_status['status'] == 'active' else "🟡" if bot_status['status'] == 'unknown' else "🔴"
 st.sidebar.markdown(f"**Status:** {status_color} {bot_status['status'].upper()}")
 st.sidebar.markdown(f"**Strategy:** {bot_status.get('strategy', 'N/A').replace('_', ' ').title()}")
+st.sidebar.caption(
+    f"Trading Mode: {str(bot_status.get('trading_mode', 'paper')).upper()}"
+)
+if bot_status.get("note"):
+    st.sidebar.caption(str(bot_status["note"]))
 
 # Manual controls
 st.sidebar.markdown("---")
-st.sidebar.subheader("Manual Controls")
+st.sidebar.subheader("Titan Controls")
+
+titan_sidebar_mode = st.sidebar.selectbox(
+    "Titan Trading Mode",
+    options=["paper", "live"],
+    index=0 if str(bot_status.get("trading_mode", "paper")) == "paper" else 1,
+    key="sidebar_titan_trading_mode",
+)
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
-    if st.button("▶️ Start Bot", use_container_width=True):
-        st.sidebar.success("Bot start triggered!")
-        # TODO: Trigger Airflow DAG
+    if st.button("▶️ Titan ON", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, True)
+        with st.spinner("Running Titan ON..."):
+            execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        _record_bot_action("Titan", "on", titan_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
+        st.rerun()
 
 with col2:
-    if st.button("⏸️ Stop Bot", use_container_width=True):
-        st.sidebar.warning("Bot stopped!")
-        # TODO: Stop Airflow DAG
+    if st.button("⏸️ Titan OFF", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, False)
+        with st.spinner("Running Titan OFF..."):
+            execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        _record_bot_action("Titan", "off", titan_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
+        st.rerun()
+
+hydra_sidebar_status = get_bot_status("Hydra")
+hydra_snapshot = fetch_hydra_api_snapshot()
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Hydra Controls")
+
+hydra_sidebar_mode = st.sidebar.selectbox(
+    "Hydra Trading Mode",
+    options=["paper", "live"],
+    index=(
+        0
+        if str(hydra_sidebar_status.get("trading_mode", "paper"))
+        == "paper"
+        else 1
+    ),
+    key="sidebar_hydra_trading_mode",
+)
+
+hcol1, hcol2 = st.sidebar.columns(2)
+with hcol1:
+    if st.button("▶️ Hydra ON", use_container_width=True):
+        _set_bot_launch_preferences("Hydra", hydra_sidebar_mode, True)
+        with st.spinner("Running Hydra ON..."):
+            execution = _execute_bot_mode("Hydra", "on", hydra_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        _record_bot_action("Hydra", "on", hydra_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
+        st.rerun()
+
+with hcol2:
+    if st.button("⏸️ Hydra OFF", use_container_width=True):
+        _set_bot_launch_preferences("Hydra", hydra_sidebar_mode, False)
+        with st.spinner("Running Hydra OFF..."):
+            execution = _execute_bot_mode("Hydra", "off", hydra_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        _record_bot_action("Hydra", "off", hydra_sidebar_mode, execution)
+        _latest_bot_mode_events_all.clear()
+        st.rerun()
+
+st.sidebar.caption(
+    "Hydra API reachable: "
+    + str(
+        (hydra_snapshot.get("health") or {})
+        .get("fastapi", {})
+        .get("reachable", False)
+    ).upper()
+)
+if hydra_snapshot.get("status"):
+    st.sidebar.caption(
+        "Hydra last action: "
+        + str(
+            hydra_snapshot["status"].get("last_analysis", {}).get(
+                "action",
+                "N/A",
+            )
+        )
+    )
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    brokers = st.session_state.get("brokers", {})
+    if brokers:
+        try:
+            with st.spinner("Syncing connected broker trades..."):
+                sync_stats = sync_connected_brokers(brokers)
+            st.session_state["broker_sync_results"] = [
+                {
+                    "Broker": item.broker,
+                    "Inserted": item.inserted,
+                    "Skipped": item.skipped,
+                    "Notified": item.notified,
+                    "Errors": item.errors,
+                }
+                for item in sync_stats
+            ]
+            st.session_state["_broker_sync_success"] = True
+        except Exception as _sync_exc:
+            st.session_state["_broker_sync_error"] = str(_sync_exc)
+    st.session_state["trading_data_refresh_nonce"] = st.session_state.get(
+        "trading_data_refresh_nonce", 0
+    ) + 1
     st.cache_data.clear()
     st.rerun()
 
+# Use a short rolling refresh token so Overview/Performance tabs keep updating
+# even without manually clicking refresh.
+_manual_refresh_nonce = st.session_state.get("trading_data_refresh_nonce", 0)
+_auto_refresh_bucket = int(datetime.now().timestamp() // 15)
+_data_refresh_token = f"{_manual_refresh_nonce}:{_auto_refresh_bucket}"
+
 # Date range selector
+
+# --- Patch: Ensure period dropdown always visible and extended ---
 st.sidebar.markdown("---")
 date_range = st.sidebar.selectbox(
     "Time Period",
-    ["Today", "Last 7 Days", "Last 30 Days", "All Time"]
+    ["Today", "5 Days", "1 Month", "3 Months", "6 Months", "YTD", "All Time"]
 )
 
+ytd_days = max((datetime.now().date() - datetime(datetime.now().year, 1, 1).date()).days + 1, 1)
 days_map = {
     "Today": 1,
-    "Last 7 Days": 7,
-    "Last 30 Days": 30,
+    "5 Days": 5,
+    "1 Month": 30,
+    "3 Months": 90,
+    "6 Months": 180,
+    "YTD": ytd_days,
     "All Time": 365
 }
 selected_days = days_map[date_range]
+
+# Load trade / performance data before tabs so all tabs see fresh values
+trades_df = load_recent_trades(selected_days, refresh_token=_data_refresh_token)
+perf_df = load_performance_metrics(selected_days, refresh_token=_data_refresh_token)
 
 # Main dashboard
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -1004,12 +1822,9 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
 # TAB 1: Overview
 with tab1:
-    # Keep trades_df / perf_df in scope for downstream tabs
-    trades_df = load_recent_trades(selected_days)
-    perf_df = load_performance_metrics(selected_days)
 
-    # ── Month / Year selector ──────────────────────────────────────────────
-    cal_c1, cal_c2, _ = st.columns([1, 1, 4])
+    # ── Month / Year / Mode selectors ─────────────────────────────────────
+    cal_c1, cal_c2, cal_c3, _ = st.columns([1, 1, 1, 3])
     _now = datetime.now()
     with cal_c1:
         cal_year = st.selectbox(
@@ -1022,17 +1837,41 @@ with tab1:
             format_func=lambda x: datetime(cal_year, x, 1).strftime("%B"),
             key="cal_month",
         )
+    with cal_c3:
+        _ov_trade_mode = st.selectbox(
+            "Trade Mode",
+            options=["All", "paper", "live"],
+            index=0,
+            key="ov_trade_mode",
+        )
 
     # ── Load data ──────────────────────────────────────────────────────────
-    _daily_pnl = load_daily_pnl(cal_year, cal_month)
-    _ov = load_overview_metrics(cal_year, cal_month, _daily_pnl)
+    _daily_pnl = load_daily_pnl(
+        cal_year,
+        cal_month,
+        _ov_trade_mode,
+        refresh_token=_data_refresh_token,
+    )
+    _ov = load_overview_metrics(
+        cal_year,
+        cal_month,
+        _daily_pnl,
+        _ov_trade_mode,
+        refresh_token=_data_refresh_token,
+    )
+
+    _ov_mode_tag = (
+        f"🔴 Live only"   if _ov_trade_mode == "live"
+        else f"📄 Paper only" if _ov_trade_mode == "paper"
+        else "All trades"
+    )
 
     # ── 9 Aggregate Metric Cards ───────────────────────────────────────────
     st.markdown(
-        "<p style='font-size:0.75rem;color:#FFFFFF;margin-bottom:6px;opacity:0.92;'>"
-        "Aggregate across all broker bot trades — "
-        + ("live DB" if DB_AVAILABLE else "estimated demo")
-        + "</p>",
+        f"<p style='font-size:0.75rem;color:#FFFFFF;margin-bottom:6px;opacity:0.92;'>"
+        f"Aggregate across all broker bot trades (net flow proxy) — "
+        + ("live DB" if DB_AVAILABLE else "DB unavailable")
+        + f" · {_ov_mode_tag}</p>",
         unsafe_allow_html=True,
     )
 
@@ -1200,24 +2039,42 @@ with tab1:
 
 # TAB 2: Performance
 with tab2:
-    pf1, pf2 = st.columns([2, 2])
+    pf1, pf2, pf3 = st.columns([2, 1, 1])
     with pf1:
         bot_filter = st.selectbox(
-            "🤖 Bot", ["All Bots", "Titan", "Dogon", "Orion", "Rigel", "Vega"],
+            "🤖 Bot", [
+                "All Bots", "Titan", "Dogon", "Orion", "Rigel", "Vega",
+                "Draco", "Altair", "Procryon", "Hydra", "Triton",
+                "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus",
+            ],
             key="perf_bot_filter",
         )
     with pf2:
+        _perf_mode = st.selectbox(
+            "Trade Mode",
+            options=["All", "paper", "live"],
+            index=0,
+            key="perf_trade_mode",
+        )
+    with pf3:
         st.markdown(
             f"<br><small style='color:#FFFFFF;opacity:0.9;'>Period: {date_range}</small>",
             unsafe_allow_html=True,
         )
 
-    _analytics = load_bot_analytics(bot_filter, selected_days)
+    _analytics = load_bot_analytics(
+        bot_filter,
+        selected_days,
+        _perf_mode,
+        refresh_token=_data_refresh_token,
+    )
     _bots = _analytics["bots"]
     if not _analytics.get("has_real_data"):
         st.caption(
-            "💡 Estimated analytics — live data activates when trade history tables are populated."
+            "ℹ️ No matching real trade rows found for this filter yet."
         )
+    else:
+        st.caption("ℹ️ Metrics are derived from trades_history using real broker/bot rows (P/L shown as net trade flow proxy).")
 
     # ── Row 1: Execution  |  Entry & Exit Slippage ────────────────────────
     blk1, blk2 = st.columns(2)
@@ -1358,51 +2215,277 @@ with tab2:
     } for b in _bots])
     st.dataframe(_tbl, use_container_width=True, hide_index=True)
 
-# TAB 3: Active Signals
+# TAB 3: Active Signals — Cosmic Signal Engine
 with tab3:
-    st.subheader("Today's Trading Signals")
-    
-    signals_df = load_active_signals()
-    
-    if not signals_df.empty:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**🟢 Buy Signals**")
-            buy_signals = signals_df[signals_df['signal'] == 1]
-            
-            if not buy_signals.empty:
-                for _, signal in buy_signals.iterrows():
-                    st.markdown(f"""
-                        <div class="trade-card trade-buy">
-                            <strong>{signal['ticker']}</strong><br>
-                            Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No buy signals today")
-        
-        with col2:
-            st.markdown("**🔴 Sell Signals**")
-            sell_signals = signals_df[signals_df['signal'] == -1]
-            
-            if not sell_signals.empty:
-                for _, signal in sell_signals.iterrows():
-                    st.markdown(f"""
-                        <div class="trade-card trade-sell">
-                            <strong>{signal['ticker']}</strong><br>
-                            Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No sell signals today")
-    
+    # ── Cosmic Signal Engine ───────────────────────────────────────────────
+    try:
+        from frontend.utils.cosmic_signal import (
+            compute_cosmic_score,
+            DEFAULT_WEIGHTS,
+            DECISION_BUY, DECISION_SELL, DECISION_HOLD,
+        )
+        _COSMIC_OK = True
+    except Exception as _ce:
+        _COSMIC_OK = False
+
+    # ── Controls row ──────────────────────────────────────────────────────
+    _sig_c1, _sig_c2, _sig_c3, _sig_c4 = st.columns([2, 2, 1, 1])
+    with _sig_c1:
+        _sig_bot = st.selectbox(
+            "🤖 Bot",
+            ["Titan", "Vega", "Rigel", "Dogon", "Orion", "Draco", "Altair",
+             "Procryon", "Hydra", "Triton", "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus"],
+            key="sig_bot_select",
+        )
+    with _sig_c2:
+        _sig_symbol = st.text_input("Ticker / Symbol", value="SPY", key="sig_symbol_input")
+    with _sig_c3:
+        _sig_mode = st.selectbox("Mode", ["paper", "live"], key="sig_mode_select")
+    with _sig_c4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        _sig_refresh = st.button("🔄 Evaluate", key="sig_refresh_btn", use_container_width=True)
+
+    st.markdown("---")
+
+    if _COSMIC_OK:
+        # ── Input sliders (collapsed) ─────────────────────────────────────
+        with st.expander("⚙️ Market Context Inputs", expanded=False):
+            _ic1, _ic2, _ic3, _ic4 = st.columns(4)
+            with _ic1:
+                _rsi_val  = st.slider("RSI",  0.0, 100.0, 50.0, 0.5, key="cs_rsi")
+                _mom_val  = st.slider("Momentum (% change)", -10.0, 10.0, 0.0, 0.1, key="cs_mom")
+            with _ic2:
+                _sent_val = st.slider("Sentiment score", -1.0, 1.0, 0.0, 0.01, key="cs_sent")
+                _vol_bw   = st.slider("Volatility bandwidth", 0.0, 2.0, 0.5, 0.01, key="cs_vol")
+            with _ic3:
+                _liq_val  = st.slider("Liquidity ratio", 0.0, 1.0, 0.5, 0.01, key="cs_liq")
+                _ml_prob  = st.slider("ML probability", 0.0, 1.0, 0.5, 0.01, key="cs_ml")
+            with _ic4:
+                _spread_bps = st.slider("Avg spread (bps)", 0.0, 100.0, 20.0, 0.5, key="cs_spread")
+                _ml_side    = st.selectbox("Predicted side", ["buy", "sell", "hold"], key="cs_side")
+
+        _ctx = {
+            "rsi": st.session_state.cs_rsi,
+            "momentum": st.session_state.cs_mom,
+            "sentiment_score": st.session_state.cs_sent,
+            "volatility_bandwidth": st.session_state.cs_vol,
+            "liquidity_ratio": st.session_state.cs_liq,
+            "execution_probability": st.session_state.cs_ml,
+            "predicted_side": st.session_state.cs_side,
+            "average_spread_bps": st.session_state.cs_spread,
+        }
+
+        # ── Evaluate ──────────────────────────────────────────────────────
+        _snap = compute_cosmic_score(
+            _ctx,
+            symbol=_sig_symbol.strip() or None,
+            bot_name=_sig_bot,
+            mode=_sig_mode,
+        )
+
+        # ── Decision badge ────────────────────────────────────────────────
+        _DEC_BADGE = {
+            DECISION_BUY:  ("#10B981", "🔥 starfire",       "BUY"),
+            DECISION_SELL: ("#EF4444", "🌑 eclipse",        "SELL"),
+            DECISION_HOLD: ("#9B59B6", "⚖️ cosmic balance", "HOLD"),
+        }
+        _badge_color, _badge_label, _badge_decision = _DEC_BADGE.get(
+            _snap.decision, ("#06B6D4", _snap.cosmic_symbol, _snap.decision)
+        )
+
+        _badge_col, _score_col, _mode_col = st.columns([3, 3, 2])
+        with _badge_col:
+            st.markdown(
+                f"<div style='background:rgba(15,23,42,0.8);border:2px solid {_badge_color};"
+                f"border-radius:12px;padding:20px 24px;text-align:center;'>"
+                f"<p style='margin:0;font-size:0.75rem;color:#FFFFFF;opacity:0.8;"
+                f"text-transform:uppercase;letter-spacing:.08em;'>Cosmic Decision</p>"
+                f"<p style='margin:6px 0 4px;font-size:2.2rem;font-weight:800;color:{_badge_color};"
+                f"font-family:monospace;'>{_badge_decision}</p>"
+                f"<p style='margin:0;font-size:1rem;color:#FFFFFF;opacity:0.9;'>{_badge_label}</p>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with _score_col:
+            _gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=round(_snap.cosmic_score, 4),
+                number={"font": {"color": "#FFFFFF", "size": 28}, "suffix": ""},
+                gauge={
+                    "axis": {"range": [-1, 1], "tickcolor": "#FFFFFF",
+                             "tickfont": {"color": "#FFFFFF", "size": 11}},
+                    "bar": {"color": _badge_color},
+                    "bgcolor": "rgba(0,0,0,0)",
+                    "steps": [
+                        {"range": [-1, -0.20], "color": "rgba(239,68,68,0.18)"},
+                        {"range": [-0.20, 0.20], "color": "rgba(139,92,246,0.18)"},
+                        {"range": [0.20, 1], "color": "rgba(16,185,129,0.18)"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "#FFFFFF", "width": 2},
+                        "thickness": 0.8,
+                        "value": _snap.cosmic_score,
+                    },
+                },
+                title={"text": "Cosmic Score", "font": {"color": "#FFFFFF", "size": 13}},
+            ))
+            _gauge.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#FFFFFF"),
+                height=200,
+                margin=dict(l=20, r=20, t=30, b=10),
+            )
+            st.plotly_chart(_gauge, use_container_width=True)
+        with _mode_col:
+            _mode_label = "🔴 LIVE" if _sig_mode == "live" else "📄 PAPER"
+            _ts = _snap.timestamp
+            _ts_fmt = _ts[:19].replace("T", " ") if _ts else "—"
+            st.markdown(
+                f"<div style='background:rgba(15,23,42,0.8);border:1px solid rgba(255,255,255,0.1);"
+                f"border-radius:10px;padding:14px 16px;'>"
+                f"<p style='margin:0 0 6px;font-size:0.72rem;color:#FFFFFF;opacity:0.8;"
+                f"text-transform:uppercase;'>Details</p>"
+                f"<p style='margin:2px 0;font-size:0.88rem;color:#FFFFFF;'>Bot: <b>{_sig_bot}</b></p>"
+                f"<p style='margin:2px 0;font-size:0.88rem;color:#FFFFFF;'>Symbol: <b>{_sig_symbol or '—'}</b></p>"
+                f"<p style='margin:2px 0;font-size:0.88rem;color:#FFFFFF;'>Mode: <b>{_mode_label}</b></p>"
+                f"<p style='margin:6px 0 0;font-size:0.72rem;color:#FFFFFF;opacity:0.65;'>{_ts_fmt}</p>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+
+        # ── Analytic Heads bar chart ───────────────────────────────────────
+        st.markdown("#### 🧠 Analytic Head Breakdown")
+        _heads_data = _snap.to_dict().get("heads", [])
+        if _heads_data:
+            _h_names  = [h["head"] for h in reversed(_heads_data)]
+            _h_scores = [h["score"] for h in reversed(_heads_data)]
+            _h_wt_contrib = [h["score"] * h["weight"] for h in reversed(_heads_data)]
+            _h_colors = ["#10B981" if s >= 0 else "#EF4444" for s in _h_scores]
+
+            _hbar_fig = go.Figure()
+            _hbar_fig.add_trace(go.Bar(
+                y=_h_names, x=_h_scores, orientation="h",
+                marker_color=_h_colors, marker_opacity=0.85,
+                name="Raw Score",
+                text=[f"{s:+.3f}" for s in _h_scores],
+                textposition="outside",
+                textfont=dict(color="#FFFFFF", size=10),
+                hovertemplate="<b>%{y}</b><br>Score: %{x:+.4f}<extra></extra>",
+            ))
+            _hbar_fig.add_trace(go.Bar(
+                y=_h_names, x=_h_wt_contrib, orientation="h",
+                marker_color=[c.replace(")", ",0.45)").replace("rgb", "rgba") for c in _h_colors],
+                name="Weighted Contribution",
+                visible="legendonly",
+                hovertemplate="<b>%{y}</b><br>Weighted: %{x:+.4f}<extra></extra>",
+            ))
+            _hbar_fig.add_vline(x=0, line_color="rgba(255,255,255,0.3)", line_width=1)
+            _hbar_fig.add_vline(x=0.20, line_dash="dot", line_color="rgba(16,185,129,0.45)", line_width=1)
+            _hbar_fig.add_vline(x=-0.20, line_dash="dot", line_color="rgba(239,68,68,0.45)", line_width=1)
+            _hbar_fig.update_layout(
+                barmode="group",
+                xaxis=dict(
+                    title=dict(
+                        text="Signal Score  (−1 → −, 0 = Neutral, +1 → +)",
+                        font=dict(color="#FFFFFF"),
+                    ),
+                    range=[-1.15, 1.15],
+                    showgrid=True, gridcolor="rgba(255,255,255,0.07)",
+                    zeroline=True, zerolinecolor="rgba(255,255,255,0.25)",
+                    tickfont=dict(color="#FFFFFF"),
+                ),
+                yaxis=dict(
+                    showgrid=False, tickfont=dict(color="#FFFFFF"),
+                    autorange=True,
+                ),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#FFFFFF", size=11),
+                height=320,
+                margin=dict(l=10, r=70, t=10, b=30),
+                legend=dict(
+                    font=dict(color="#FFFFFF"),
+                    bgcolor="rgba(0,0,0,0)",
+                    orientation="h", y=-0.12,
+                ),
+            )
+            st.plotly_chart(_hbar_fig, use_container_width=True)
+
+            # Numeric table
+            _htbl_rows = []
+            for h in _heads_data:
+                _htbl_rows.append({
+                    "Head":         h["head"],
+                    "Score":        f"{h['score']:+.4f}",
+                    "Weight":       f"{h['weight']:.2f}",
+                    "Contribution": f"{h['score'] * h['weight']:+.4f}",
+                    "Explanation":  h.get("explanation", ""),
+                })
+            st.dataframe(pd.DataFrame(_htbl_rows), use_container_width=True, hide_index=True)
+
+        # ── Notify Discord button ─────────────────────────────────────────
+        st.markdown("---")
+        _nb_col, _ = st.columns([1, 3])
+        with _nb_col:
+            if st.button("📣 Notify Discord", key="cs_discord_notify", use_container_width=True):
+                try:
+                    from frontend.utils.discord_notify import notify_signal
+                    notify_signal(
+                        bot_name=_sig_bot,
+                        symbol=_sig_symbol or "",
+                        decision=_snap.decision,
+                        cosmic_score=_snap.cosmic_score,
+                        heads=_snap.to_dict().get("heads"),
+                        mode=_sig_mode,
+                    )
+                    st.success("Signal posted to Discord.")
+                except Exception as _dn_err:
+                    st.error(f"Discord notify failed: {_dn_err}")
+
     else:
-        st.info("No active signals today")
+        st.warning("Cosmic Signal Engine not available — check `frontend/utils/cosmic_signal.py`.")
+
+    st.markdown("---")
+    st.markdown("### 🤖 Recent ML Trading Signals")
+    signals_df = load_active_signals()
+
+    if not signals_df.empty:
+        latest_timestamp = signals_df["timestamp"].max()
+        if pd.notna(latest_timestamp):
+            st.caption(
+                f"Showing latest signals through {latest_timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+        buy_count = int((signals_df["signal_label"] == "BUY").sum())
+        sell_count = int((signals_df["signal_label"] == "SELL").sum())
+        hold_count = int((signals_df["signal_label"] == "HOLD").sum())
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🟢 BUY", buy_count)
+        m2.metric("🔴 SELL", sell_count)
+        m3.metric("⚪ HOLD", hold_count)
+
+        display_signals = signals_df.copy()
+        display_signals["strategy"] = display_signals["strategy"].fillna("unknown")
+        display_signals["price"] = pd.to_numeric(
+            display_signals["price"], errors="coerce"
+        ).round(2)
+        st.dataframe(
+            display_signals[
+                ["timestamp", "ticker", "signal_label", "price", "strategy"]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No recent ML trading signals found in the last 7 days.")
+
+    # ── Orion Execution Snapshot (secondary context) ───────────────────────
+    st.markdown("---")
+    st.markdown("### 🌌 Orion Execution Snapshot")
+    _render_orion_snapshot()
 
 # TAB 4: Trade History
 with tab4:
@@ -1428,7 +2511,15 @@ with tab4:
                     for item in sync_stats
                 ]
                 st.cache_data.clear()
-                st.success("Broker trade sync completed.")
+                st.session_state["_broker_sync_success"] = True
+                st.rerun()
+
+    if st.session_state.pop("_broker_sync_success", False):
+        st.success("Broker trade sync completed.")
+
+    sync_error = st.session_state.pop("_broker_sync_error", "")
+    if sync_error:
+        st.error(f"Broker trade sync failed: {sync_error}")
 
     with sync_col2:
         if st.session_state.get("broker_sync_results"):
@@ -1442,8 +2533,12 @@ with tab4:
         # Format dataframe
         display_df = trades_df.copy()
         display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        display_df['value'] = display_df['value'].apply(lambda x: f"${x:,.2f}")
-        display_df['price'] = display_df['price'].apply(lambda x: f"${x:.2f}")
+        display_df['value'] = display_df['value'].apply(
+            lambda x: f"${x:,.2f}" if pd.notna(x) else "N/A"
+        )
+        display_df['price'] = display_df['price'].apply(
+            lambda x: f"${x:.2f}" if pd.notna(x) else "N/A"
+        )
         
         # Color code actions
         def color_action(val):
@@ -1456,7 +2551,10 @@ with tab4:
         )
         
         st.dataframe(
-            display_df[['timestamp', 'ticker', 'action', 'shares', 'price', 'value', 'status', 'strategy']],
+            display_df[[
+                'timestamp', 'ticker', 'action', 'shares', 'price', 'value',
+                'status', 'strategy', 'trade_mode', 'source_table'
+            ]],
             use_container_width=True,
             hide_index=True
         )
@@ -1501,12 +2599,61 @@ with tab5:
             with c4:
                 create_metric_card("Blocked", str(snapshot.get("blocked_trades", 0)))
 
+            today = snapshot.get("today", {}) if isinstance(snapshot.get("today"), dict) else {}
+            latest_trade = snapshot.get("latest_trade", {}) if isinstance(snapshot.get("latest_trade"), dict) else {}
+            st.markdown("**Titan Today Diagnostics**")
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                create_metric_card("Today Total", str(today.get("total", 0)))
+            with d2:
+                create_metric_card("Today Submitted", str(today.get("submitted", 0)))
+            with d3:
+                create_metric_card("Today Blocked", str(today.get("blocked", 0)))
+            with d4:
+                create_metric_card(
+                    "Latest Probability",
+                    f"{float(latest_trade.get('prediction_probability', 0.0)):.4f}",
+                )
+
+            latest_status = str(latest_trade.get("status") or "unknown")
+            latest_notes = str(latest_trade.get("notes") or "")
+            if today.get("submitted", 0) == 0:
+                st.warning(
+                    "No Titan trade was submitted today. "
+                    f"Latest status: {latest_status}. "
+                    + (f"Reason: {latest_notes}" if latest_notes else "Check trade notes and guard metrics below.")
+                )
+            elif latest_notes:
+                st.info(f"Latest Titan note: {latest_notes}")
+
             st.markdown("**Service Health**")
             health_df = pd.DataFrame(snapshot.get("health", []))
             if health_df.empty:
                 st.info("No service health data available yet.")
             else:
                 st.dataframe(health_df, use_container_width=True)
+
+            st.markdown("**Recent Orchestration Runs**")
+            orchestration_df = snapshot.get("orchestration_df", pd.DataFrame())
+            if orchestration_df.empty:
+                st.info("No orchestration runs logged yet.")
+            else:
+                st.dataframe(
+                    orchestration_df[
+                        [
+                            "timestamp",
+                            "bot_name",
+                            "task_name",
+                            "status",
+                            "decision_reason",
+                            "candidates_considered",
+                            "candidates_executed",
+                            "traded_symbols",
+                            "detail",
+                        ]
+                    ],
+                    use_container_width=True,
+                )
 
             st.markdown("**Recent Mansa Star Bot Trades**")
             trades_df_titan = snapshot.get("trades_df", pd.DataFrame())

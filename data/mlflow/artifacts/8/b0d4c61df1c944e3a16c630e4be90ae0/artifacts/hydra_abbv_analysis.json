@@ -1,0 +1,40 @@
+{
+  "ticker": "ABBV",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": -0.04573413469012744,
+    "average_return": -0.00045734134690127436,
+    "lookback": 20,
+    "latest_price": 204.0850067138672,
+    "signal": false
+  },
+  "fundamental": {
+    "score": 0.5291,
+    "forward_pe": 12.591109,
+    "return_on_equity": null,
+    "revenue_growth": 0.124,
+    "operating_margin": 0.32156,
+    "roe_component": 0.0,
+    "growth_component": 0.62,
+    "margin_component": 1.0,
+    "pe_component": 0.49635564000000004
+  },
+  "technical": {
+    "score": -0.6079934090449424,
+    "short_sma": 211.7618994140625,
+    "long_sma": 218.40122467041016,
+    "signal": false,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 204.0850067138672,
+  "composite_score": -0.0357,
+  "buy_threshold": 0.15,
+  "action": "HOLD"
+}

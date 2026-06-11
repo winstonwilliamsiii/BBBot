@@ -116,7 +116,7 @@ airflow variables set MYSQL_PASSWORD "your_password"
 
 - `docker-compose-mlflow.yml` - Hardcoded passwords (use environment variables)
 - `workflows/airflow/dags/bentleybot_trading_dag.py` - MySQL config needs env vars
-- `service_dashboard.html` - Default credentials should be changed
+- `pages/99_🔧_Admin_Control_Center.py` - Replace development-only admin credentials
 
 ---
 

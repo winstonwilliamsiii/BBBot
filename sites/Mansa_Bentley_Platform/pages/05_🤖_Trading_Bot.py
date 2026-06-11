@@ -6,7 +6,11 @@ Monitor automated trading bot performance with Mean Reversion & Random Forest st
 import streamlit as st
 import pandas as pd
 import numpy as np
+import subprocess
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Literal
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -31,32 +35,56 @@ except ImportError:
         'text': '#E6EEF8'
     }
 
+try:
+    from config.broker_mode_config import get_config as get_broker_mode_config
+except ImportError:
+    get_broker_mode_config = None
+
 # Database connection
 try:
-    from sqlalchemy import create_engine
-    import os
-    
+    from sqlalchemy import create_engine, text
+    from frontend.utils.secrets_helper import get_mysql_url
+
     # Reload env vars to ensure fresh database credentials
     if ENV_RELOAD_AVAILABLE:
         reload_env(force=False)
-    
-    MYSQL_CONFIG = {
-        'host': 'localhost',
-        'port': 3307,
-        'user': 'root',
-        'password': os.getenv('MYSQL_PASSWORD', ''),
-        'database': 'bentleybot'
-    }
-    
-    connection_string = (
-        f"mysql+pymysql://{MYSQL_CONFIG['user']}:{MYSQL_CONFIG['password']}@"
-        f"{MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}/{MYSQL_CONFIG['database']}"
-    )
-    engine = create_engine(connection_string)
-    DB_AVAILABLE = True
+
+    candidates = [
+        "mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot",
+        "mysql+pymysql://root:root@127.0.0.1:3307/bentleybot",
+    ]
+    try:
+        secret_url = get_mysql_url()
+        if secret_url and secret_url not in candidates:
+            candidates.append(secret_url)
+    except Exception:
+        pass
+
+    last_db_error = None
+    DB_AVAILABLE = False
+    engine = None
+    connection_string = ""
+    for candidate in candidates:
+        try:
+            trial_engine = create_engine(candidate)
+            with trial_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            engine = trial_engine
+            connection_string = candidate
+            DB_AVAILABLE = True
+            break
+        except Exception as _db_exc:
+            last_db_error = _db_exc
+
+    if not DB_AVAILABLE:
+        raise RuntimeError(f"DB connect failed for all candidates: {last_db_error}")
 except Exception as e:
     DB_AVAILABLE = False
     st.error(f"Database connection failed: {e}")
+    st.caption(
+        "Titan launcher controls can still run without the legacy "
+        "bot_status table."
+    )
 
 # Apply custom styling
 if STYLING_AVAILABLE:
@@ -172,8 +200,200 @@ st.title("🤖 ML Trading Bot Dashboard")
 st.markdown("**Automated Trading with Mean Reversion & Random Forest Strategies**")
 
 # Bot status check
-def get_bot_status():
-    """Check if trading bot DAG is running"""
+def _get_bot_trading_mode(bot_name: str) -> str:
+    if get_broker_mode_config is None:
+        return "paper"
+
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if not broker_name:
+            return "paper"
+        return config.get_broker_mode(broker_name)
+    except Exception:
+        return "paper"
+
+
+def _set_bot_launch_preferences(
+    bot_name: str,
+    trading_mode: Literal["paper", "live"],
+    active: bool,
+) -> None:
+    if get_broker_mode_config is None:
+        return
+
+    try:
+        config = get_broker_mode_config()
+        broker_name = config.get_bot_broker(bot_name)
+        if broker_name:
+            config.set_broker_mode(broker_name, trading_mode)
+        config.set_bot_active(bot_name, active)
+    except Exception:
+        return
+
+
+def _execute_bot_mode(
+    bot_name: str,
+    mode: str,
+    trading_mode: str = "paper",
+) -> dict:
+    def _normalize_bot_name(raw_bot_name: str) -> str:
+        raw = str(raw_bot_name or "").strip()
+        if not raw:
+            return raw
+
+        compact = raw.replace("_", "").replace("-", "").replace(" ", "").upper()
+        if compact.endswith("BOT"):
+            compact = compact[:-3]
+
+        alias_map = {
+            "TITAN": "Titan",
+            "VEGA": "Vega",
+            "RIGEL": "Rigel",
+            "DOGON": "Dogon",
+            "ORION": "Orion",
+            "DRACO": "Draco",
+            "ALTAIR": "Altair",
+            "PROCRYON": "Procryon",
+            "HYDRA": "Hydra",
+            "TRITON": "Triton",
+            "DIONE": "Dione",
+            "CEPHEI": "Cephei",
+            "RHEA": "Rhea",
+            "JUPICITA": "Jupicita",
+            "CYGNUS": "Cygnus",
+        }
+        return alias_map.get(compact, raw)
+
+    repo_root = Path(__file__).resolve().parents[2]
+    launcher = repo_root / "start_bot_mode.ps1"
+
+    if not launcher.exists():
+        return {"ok": False, "output": f"Launcher not found: {launcher}"}
+
+    cmd = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(launcher),
+        "-Bot",
+        _normalize_bot_name(bot_name),
+        "-Mode",
+        mode.upper(),
+        "-TradingMode",
+        trading_mode,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        merged = "\n".join(
+            part for part in [result.stdout.strip(), result.stderr.strip()] if part
+        )
+        return {"ok": result.returncode == 0, "output": merged or "No output"}
+    except Exception as exc:
+        return {"ok": False, "output": str(exc)}
+
+
+def _latest_bot_mode_event() -> dict | None:
+    repo_root = Path(__file__).resolve().parents[2]
+    latest_path = repo_root / "logs" / "last_bot_mode_event.json"
+    if not latest_path.exists():
+        return None
+
+    try:
+        with latest_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+            if isinstance(payload, dict):
+                return payload
+    except Exception:
+        return None
+
+    return None
+
+
+def get_bot_status(bot_name: str = "Titan"):
+    """Resolve launcher-first status without relying on bot_status."""
+    strategy = "Mansa Tech - Titan Bot"
+    trading_mode = _get_bot_trading_mode(bot_name)
+    latest_event = _latest_bot_mode_event()
+
+    if (
+        latest_event
+        and str(latest_event.get("bot", "")).lower() == bot_name.lower()
+    ):
+        last_mode = str(latest_event.get("mode", "")).lower()
+        launcher_status = str(latest_event.get("status", "unknown")).lower()
+        if (
+            last_mode == "on"
+            and launcher_status in {"ready", "placeholder", "warning"}
+        ):
+            status = "active"
+        elif last_mode == "off":
+            status = "inactive"
+        else:
+            status = launcher_status or "unknown"
+
+        return {
+            "status": status,
+            "strategy": strategy,
+            "timestamp": latest_event.get("timestamp"),
+            "note": latest_event.get("note", ""),
+            "trading_mode": latest_event.get("trading_mode", trading_mode),
+        }
+
+    active_flag = None
+    if get_broker_mode_config is not None:
+        try:
+            config = get_broker_mode_config()
+            active_flag = config.get_bot_active(bot_name)
+        except Exception:
+            active_flag = None
+
+    if active_flag is None:
+        status = "unknown"
+    else:
+        status = "active" if active_flag else "inactive"
+
+    return {
+        "status": status,
+        "strategy": strategy,
+        "timestamp": None,
+        "note": "Launcher event not available yet",
+        "trading_mode": trading_mode,
+    }
+
+
+def _build_quick_start_command(bot_name: str, mode: str) -> str:
+    return (
+        "powershell -ExecutionPolicy Bypass -File "
+        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
+    )
+
+
+def _render_sidebar_launch_output() -> None:
+    selected_output = st.session_state.get("selected_bot_launch_output")
+    if selected_output:
+        with st.expander("Last Command Output", expanded=False):
+            st.code(selected_output, language="text")
+
+
+def _render_sidebar_launch_command() -> None:
+    selected_cmd = st.session_state.get("selected_bot_launch_command")
+    if selected_cmd:
+        st.code(selected_cmd, language="powershell")
+
+
+def _legacy_db_bot_status():
+    """Deprecated legacy DB status lookup retained only for reference."""
     try:
         # Check Airflow DAG status (simplified)
         query = """
@@ -192,16 +412,109 @@ def get_bot_status():
         return {'status': 'unknown', 'strategy': 'N/A', 'timestamp': None}
 
 
+def _mode_case_sql(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return (
+        "CASE "
+        f"WHEN LOWER(CONVERT(COALESCE({prefix}strategy, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) LIKE '%live%' "
+        f"OR LOWER(CONVERT(COALESCE({prefix}status, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) LIKE '%live%' "
+        "THEN 'live' "
+        "ELSE 'paper' "
+        "END"
+    )
+
+
+@st.cache_data(ttl=120)
+def _existing_trade_tables() -> list[str]:
+    if not DB_AVAILABLE:
+        return []
+
+    try:
+        q = text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_name IN ('trades_history', 'titan_trades')
+            ORDER BY table_name
+        """)
+        with engine.connect() as conn:
+            return [str(row[0]) for row in conn.execute(q).fetchall()]
+    except Exception:
+        return []
+
+
+def _trade_events_union_sql() -> str:
+    parts = []
+    existing = set(_existing_trade_tables())
+
+    if "trades_history" in existing:
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(action, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                shares,
+                price,
+                value,
+                timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                'trades_history' COLLATE utf8mb4_unicode_ci AS source_table,
+                {_mode_case_sql()} COLLATE utf8mb4_unicode_ci AS trade_mode
+            FROM trades_history
+            """
+        )
+
+    if "titan_trades" in existing:
+        parts.append(
+            f"""
+            SELECT
+                id AS row_id,
+                CONVERT(symbol USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ticker,
+                UPPER(CONVERT(COALESCE(side, '') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS action,
+                CAST(qty AS SIGNED) AS shares,
+                NULL AS price,
+                NULL AS value,
+                timestamp,
+                CONVERT(status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status,
+                CONVERT(strategy USING utf8mb4) COLLATE utf8mb4_unicode_ci AS strategy,
+                'titan_trades' COLLATE utf8mb4_unicode_ci AS source_table,
+                {_mode_case_sql()} COLLATE utf8mb4_unicode_ci AS trade_mode
+            FROM titan_trades
+            """
+        )
+
+    if not parts:
+        return """
+            SELECT
+                NULL AS row_id,
+                NULL AS ticker,
+                NULL AS action,
+                NULL AS shares,
+                NULL AS price,
+                NULL AS value,
+                NULL AS timestamp,
+                NULL AS status,
+                NULL AS strategy,
+                NULL AS source_table,
+                NULL AS trade_mode
+            WHERE 1 = 0
+        """
+
+    return "\nUNION ALL\n".join(parts)
+
+
 # Load data functions
 @st.cache_data(ttl=60)
-def load_recent_trades(days=7):
+def load_recent_trades(days=7, refresh_token=None):
     """Load recent trade history"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
     
     query = f"""
-        SELECT ticker, action, shares, price, value, timestamp, status, strategy
-        FROM trades_history
+        SELECT ticker, action, shares, price, value, timestamp, status, strategy, trade_mode, source_table
+        FROM ({_trade_events_union_sql()}) unified
         WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         ORDER BY timestamp DESC
     """
@@ -213,15 +526,22 @@ def load_recent_trades(days=7):
 
 
 @st.cache_data(ttl=60)
-def load_performance_metrics(days=30):
+def load_performance_metrics(days=30, refresh_token=None):
     """Load performance metrics"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
     
     query = f"""
-        SELECT date, total_trades, buy_trades, sell_trades, total_value, strategy
-        FROM performance_metrics
-        WHERE date >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
+        SELECT
+            DATE(timestamp) AS date,
+            strategy,
+            COUNT(*) AS total_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY' THEN 1 ELSE 0 END) AS buy_trades,
+            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_trades,
+            SUM(COALESCE(value, 0)) AS total_value
+        FROM ({_trade_events_union_sql()}) unified
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+        GROUP BY DATE(timestamp), strategy
         ORDER BY date DESC
     """
     
@@ -240,13 +560,32 @@ def load_active_signals():
     query = """
         SELECT ticker, signal, price, timestamp, strategy
         FROM trading_signals
-        WHERE DATE(timestamp) = CURDATE()
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ORDER BY timestamp DESC
+        LIMIT 200
     """
     
     try:
-        return pd.read_sql(query, engine, parse_dates=['timestamp'])
-    except:
+        df = pd.read_sql(query, engine, parse_dates=['timestamp'])
+        if df.empty:
+            return df
+
+        # Normalize mixed signal formats from different pipelines.
+        def normalize_signal(value):
+            if pd.isna(value):
+                return "HOLD"
+            text_value = str(value).strip().upper()
+            if text_value in {"1", "+1", "BUY", "LONG", "BULLISH"}:
+                return "BUY"
+            if text_value in {"-1", "SELL", "SHORT", "BEARISH"}:
+                return "SELL"
+            if text_value in {"0", "HOLD", "NEUTRAL"}:
+                return "HOLD"
+            return "HOLD"
+
+        df["signal_label"] = df["signal"].apply(normalize_signal)
+        return df
+    except Exception:
         return pd.DataFrame()
 
 
@@ -255,44 +594,95 @@ st.sidebar.header("🎛️ Bot Controls")
 
 # Bot status
 bot_status = get_bot_status()
-status_color = "🟢" if bot_status['status'] == 'active' else "🔴"
+status_color = "🟢" if bot_status['status'] == 'active' else "🟡" if bot_status['status'] == 'unknown' else "🔴"
 st.sidebar.markdown(f"**Status:** {status_color} {bot_status['status'].upper()}")
 st.sidebar.markdown(f"**Strategy:** {bot_status.get('strategy', 'N/A').replace('_', ' ').title()}")
+st.sidebar.caption(
+    f"Trading Mode: {str(bot_status.get('trading_mode', 'paper')).upper()}"
+)
+if bot_status.get("note"):
+    st.sidebar.caption(str(bot_status["note"]))
 
 # Manual controls
 st.sidebar.markdown("---")
-st.sidebar.subheader("Manual Controls")
+st.sidebar.subheader("Titan Controls")
+
+titan_sidebar_mode = st.sidebar.selectbox(
+    "Titan Trading Mode",
+    options=["paper", "live"],
+    index=0 if str(bot_status.get("trading_mode", "paper")) == "paper" else 1,
+    key="sidebar_titan_trading_mode",
+)
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
-    if st.button("▶️ Start Bot", use_container_width=True):
-        st.sidebar.success("Bot start triggered!")
-        # TODO: Trigger Airflow DAG
+    if st.button("▶️ Titan ON", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, True)
+        with st.spinner("Running Titan ON..."):
+            execution = _execute_bot_mode("Titan", "on", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        st.session_state["selected_bot_launch_command"] = (
+            _build_quick_start_command("Titan", "on")
+            + f" -TradingMode {titan_sidebar_mode}"
+        )
+        if execution["ok"]:
+            st.sidebar.success("Titan ON command completed.")
+        else:
+            st.sidebar.error("Titan ON command failed.")
+        st.rerun()
 
 with col2:
-    if st.button("⏸️ Stop Bot", use_container_width=True):
-        st.sidebar.warning("Bot stopped!")
-        # TODO: Stop Airflow DAG
+    if st.button("⏸️ Titan OFF", use_container_width=True):
+        _set_bot_launch_preferences("Titan", titan_sidebar_mode, False)
+        with st.spinner("Running Titan OFF..."):
+            execution = _execute_bot_mode("Titan", "off", titan_sidebar_mode)
+        st.session_state["selected_bot_launch_output"] = execution["output"]
+        st.session_state["selected_bot_launch_command"] = (
+            _build_quick_start_command("Titan", "off")
+            + f" -TradingMode {titan_sidebar_mode}"
+        )
+        if execution["ok"]:
+            st.sidebar.success("Titan OFF command completed.")
+        else:
+            st.sidebar.error("Titan OFF command failed.")
+        st.rerun()
+
+_render_sidebar_launch_command()
+_render_sidebar_launch_output()
 
 # Refresh data
 if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    st.session_state["legacy_trading_data_refresh_nonce"] = st.session_state.get(
+        "legacy_trading_data_refresh_nonce", 0
+    ) + 1
     st.cache_data.clear()
     st.rerun()
+
+_manual_refresh_nonce = st.session_state.get("legacy_trading_data_refresh_nonce", 0)
+_auto_refresh_bucket = int(datetime.now().timestamp() // 15)
+_data_refresh_token = f"{_manual_refresh_nonce}:{_auto_refresh_bucket}"
 
 # Date range selector
 st.sidebar.markdown("---")
 date_range = st.sidebar.selectbox(
     "Time Period",
-    ["Today", "Last 7 Days", "Last 30 Days", "All Time"]
+    ["Today", "5 Days", "1 Month", "3 Months", "6 Months", "YTD", "All Time"]
 )
 
+ytd_days = max((datetime.now().date() - datetime(datetime.now().year, 1, 1).date()).days + 1, 1)
 days_map = {
     "Today": 1,
-    "Last 7 Days": 7,
-    "Last 30 Days": 30,
+    "5 Days": 5,
+    "1 Month": 30,
+    "3 Months": 90,
+    "6 Months": 180,
+    "YTD": ytd_days,
     "All Time": 365
 }
 selected_days = days_map[date_range]
+
+trades_df = load_recent_trades(selected_days, refresh_token=_data_refresh_token)
+perf_df = load_performance_metrics(selected_days, refresh_token=_data_refresh_token)
 
 # Main dashboard
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -305,9 +695,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # TAB 1: Overview
 with tab1:
     # Key metrics
-    trades_df = load_recent_trades(selected_days)
-    perf_df = load_performance_metrics(selected_days)
-    
     if not trades_df.empty:
         total_trades = len(trades_df)
         buy_trades = len(trades_df[trades_df['action'] == 'BUY'])
@@ -451,20 +838,26 @@ with tab3:
     signals_df = load_active_signals()
     
     if not signals_df.empty:
+        latest_timestamp = signals_df['timestamp'].max()
+        if pd.notna(latest_timestamp):
+            st.caption(f"Showing latest signals through {latest_timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("**🟢 Buy Signals**")
-            buy_signals = signals_df[signals_df['signal'] == 1]
+            buy_signals = signals_df[signals_df['signal_label'] == 'BUY']
             
             if not buy_signals.empty:
                 for _, signal in buy_signals.iterrows():
+                    signal_time = signal['timestamp'].strftime('%H:%M:%S') if pd.notna(signal['timestamp']) else 'N/A'
+                    strategy_name = str(signal.get('strategy') or 'unknown').replace('_', ' ').title()
                     st.markdown(f"""
                         <div class="trade-card trade-buy">
                             <strong>{signal['ticker']}</strong><br>
                             Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
+                            Time: {signal_time}<br>
+                            Strategy: {strategy_name}
                         </div>
                     """, unsafe_allow_html=True)
             else:
@@ -472,16 +865,18 @@ with tab3:
         
         with col2:
             st.markdown("**🔴 Sell Signals**")
-            sell_signals = signals_df[signals_df['signal'] == -1]
+            sell_signals = signals_df[signals_df['signal_label'] == 'SELL']
             
             if not sell_signals.empty:
                 for _, signal in sell_signals.iterrows():
+                    signal_time = signal['timestamp'].strftime('%H:%M:%S') if pd.notna(signal['timestamp']) else 'N/A'
+                    strategy_name = str(signal.get('strategy') or 'unknown').replace('_', ' ').title()
                     st.markdown(f"""
                         <div class="trade-card trade-sell">
                             <strong>{signal['ticker']}</strong><br>
                             Price: ${signal['price']:.2f}<br>
-                            Time: {signal['timestamp'].strftime('%H:%M:%S')}<br>
-                            Strategy: {signal['strategy'].replace('_', ' ').title()}
+                            Time: {signal_time}<br>
+                            Strategy: {strategy_name}
                         </div>
                     """, unsafe_allow_html=True)
             else:
@@ -493,13 +888,22 @@ with tab3:
 # TAB 4: Trade History
 with tab4:
     st.subheader("Recent Trade History")
+
+    sync_col, _ = st.columns([1, 3])
+    with sync_col:
+        if st.button("🔄 Sync Broker Trades Now", key="sync_broker_trades_history_btn", use_container_width=True):
+            st.info("Broker sync is available in the Unified Broker workflow for this environment.")
     
     if not trades_df.empty:
         # Format dataframe
         display_df = trades_df.copy()
         display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        display_df['value'] = display_df['value'].apply(lambda x: f"${x:,.2f}")
-        display_df['price'] = display_df['price'].apply(lambda x: f"${x:.2f}")
+        display_df['value'] = display_df['value'].apply(
+            lambda x: f"${x:,.2f}" if pd.notna(x) else "N/A"
+        )
+        display_df['price'] = display_df['price'].apply(
+            lambda x: f"${x:.2f}" if pd.notna(x) else "N/A"
+        )
         
         # Color code actions
         def color_action(val):
@@ -512,7 +916,7 @@ with tab4:
         )
         
         st.dataframe(
-            display_df[['timestamp', 'ticker', 'action', 'shares', 'price', 'value', 'status', 'strategy']],
+            display_df[['timestamp', 'ticker', 'action', 'shares', 'price', 'value', 'status', 'strategy', 'trade_mode', 'source_table']],
             use_container_width=True,
             hide_index=True
         )

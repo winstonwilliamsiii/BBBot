@@ -2,7 +2,7 @@
 # This docker-compose file sets up MLflow tracking server independently
 # Use this if you want to run MLflow without the full Airflow stack
 
-version: '3.8'
+name: bentley-mlflow
 
 services:
   # MLflow Tracking Server

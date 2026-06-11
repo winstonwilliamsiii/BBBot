@@ -1,6 +1,6 @@
 """
 Broker Trading Dashboard
-Monitor positions and execute trades across IBKR and Binance
+Monitor direct IBKR positions and route Alpaca/MT5/prop execution through FastAPI.
 """
 
 import streamlit as st
@@ -107,8 +107,7 @@ try:
     from bbbot1_pipeline.broker_api import (
         execute_trade, 
         get_all_positions,
-        IBKRClient,
-        BinanceClient
+        IBKRClient
     )
     BROKER_API_AVAILABLE = True
 except ImportError as e:
@@ -185,7 +184,7 @@ def main():
         
         **Available locally:**
         - Interactive Brokers (Forex, Futures, Commodities)
-        - Binance (Cryptocurrency)
+        - Alpaca / MT5 / prop execution through the FastAPI router
         
         **For more information**, see [Broker Trading Setup Guide](https://github.com/winstonwilliamsiii/BBBot/blob/main/docs/BROKER_TRADING_SETUP.md)
         """)
@@ -201,22 +200,22 @@ def main():
         
         broker = st.selectbox(
             "Broker",
-            ["ibkr", "binance"],
-            help="IBKR: Forex/Futures | Binance: Crypto"
+            ["ibkr"],
+            help="Direct broker client support in this mirrored dashboard is IBKR only."
         )
         
         symbol = st.text_input(
             "Symbol",
-            value="BTCUSDT" if broker == "binance" else "ES"
+            value="ES"
         )
         
         side = st.radio("Side", ["BUY", "SELL"])
         
         quantity = st.number_input(
             "Quantity",
-            min_value=0.0001,
-            value=1.0 if broker != "binance" else 0.001,
-            step=0.0001 if broker == "binance" else 1.0
+            min_value=1.0,
+            value=1.0,
+            step=1.0
         )
         
         # Advanced options for IBKR
@@ -228,13 +227,10 @@ def main():
         if st.button("🚀 Execute Trade", type="primary"):
             with st.spinner(f"Placing {side} order on {broker.upper()}..."):
                 try:
-                    if broker == "ibkr":
-                        result = execute_trade(
-                            broker, symbol, side, quantity,
-                            sec_type=sec_type, exchange=exchange
-                        )
-                    else:
-                        result = execute_trade(broker, symbol, side, quantity)
+                    result = execute_trade(
+                        broker, symbol, side, quantity,
+                        sec_type=sec_type, exchange=exchange
+                    )
                     
                     if "error" in result:
                         st.error(f"❌ Trade failed: {result['error']}")
@@ -279,19 +275,12 @@ def main():
                 st.info("No IBKR positions")
                 st.caption("Note: IBKR positions require async callback handling")
         
-        # Binance positions
         with col2:
-            st.subheader("₿ Binance (Crypto)")
-            binance_positions = positions.get('binance', [])
-            
-            if binance_positions and len(binance_positions) > 0:
-                df_binance = pd.DataFrame(binance_positions)
-                # Filter to show only non-zero balances
-                df_binance['total'] = df_binance['free'].astype(float) + df_binance['locked'].astype(float)
-                df_binance = df_binance[df_binance['total'] > 0]
-                st.dataframe(df_binance[['asset', 'free', 'locked', 'total']], use_container_width=True)
-            else:
-                st.info("No Binance balances")
+            st.subheader("🧭 Routed Broker Execution")
+            st.info(
+                "Use the FastAPI broker router for Alpaca, MT5, FTMO, Axi, and Zenit execution. "
+                "This mirrored dashboard keeps only the direct IBKR client surface."
+            )
         
         # Last refresh time
         if "last_refresh" in st.session_state:
@@ -391,19 +380,12 @@ def main():
         IBKR_CLIENT_ID=1
         ```
 
-        #### 2. Binance (Cryptocurrency)
-        ```bash
-        pip install python-binance
-        ```
-        - Create API key at binance.com
-        - Enable spot trading permissions
-        
-        Add to `.env`:
-        ```
-        BINANCE_API_KEY=your_api_key
-        BINANCE_API_SECRET=your_secret
-        BINANCE_TESTNET=true  # Use testnet for testing
-        ```
+        #### 2. Routed brokers via FastAPI
+        Use `backend.api.mansa_ai_router` or `#mansa_ai_router.py` for:
+        - Alpaca order execution
+        - MT5 bridge execution
+        - Prop-firm routing for FTMO, Axi, and Zenit
+        - ML inference before order submission
         
         #### 4. Test Configuration
         ```bash

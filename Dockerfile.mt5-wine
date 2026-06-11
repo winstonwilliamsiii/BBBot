@@ -1,0 +1,64 @@
+FROM python:3.11-slim
+
+# ── LOCAL-ONLY: Requires mt5/terminal/ directory with MT5 desktop binaries ──
+# ── Do NOT use this on Railway/CI - use Dockerfile.mt5-bridge instead      ──
+#
+# Before building, mirror your local MT5 installation:
+#   robocopy "C:\Program Files\MetaTrader 5" mt5\terminal /E /COPY:DAT
+#
+# Then build:
+#   docker build -f Dockerfile.mt5-wine -t bentley-mt5-wine .
+
+# ── Core environment ─────────────────────────────────────────────────────────
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    WINEPREFIX=/root/.wine \
+    WINEARCH=win64 \
+    DISPLAY=:0
+
+WORKDIR /app
+
+# ── 1. Install Wine (stable) + Xvfb for headless display ────────────────────
+RUN dpkg --add-architecture i386 \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+        ca-certificates wget gnupg2 software-properties-common \
+        xvfb xauth cabextract winbind \
+ && wget -qO /usr/share/keyrings/winehq-archive.key \
+        https://dl.winehq.org/wine-builds/winehq.key \
+ && echo "deb [signed-by=/usr/share/keyrings/winehq-archive.key] \
+        https://dl.winehq.org/wine-builds/debian/ bookworm main" \
+        > /etc/apt/sources.list.d/winehq.list \
+ && apt-get update \
+ && apt-get install -y --install-recommends winehq-stable \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── 2. Bootstrap a 64-bit Wine prefix ───────────────────────────────────────
+RUN Xvfb :0 -screen 0 1024x768x24 -nolisten tcp &>/dev/null & \
+    sleep 3 && \
+    DISPLAY=:0 wineboot --init 2>/dev/null; \
+    sleep 5 && \
+    pkill -f Xvfb || true
+
+# ── 3. Copy the locally-installed MT5 directory into the Wine C: drive ───────
+COPY ["mt5/terminal/", "/root/.wine/drive_c/Program Files/MetaTrader 5/"]
+
+# Verify the terminal executable is present
+RUN test -f "/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe" \
+ || { echo "ERROR: terminal64.exe not found — run the robocopy command above first"; exit 1; }
+
+# ── 4. Python dependencies ───────────────────────────────────────────────────
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# ── 5. Application code ──────────────────────────────────────────────────────
+COPY . /app
+
+EXPOSE 8080
+
+# ── 6. Entrypoint: Xvfb → MT5 (headless) → Python REST bridge ───────────────
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+CMD ["/usr/local/bin/docker-entrypoint.sh"]

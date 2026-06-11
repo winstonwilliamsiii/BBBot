@@ -1,6 +1,6 @@
-"""Market-open launcher for Titan and Dogon bots.
+"""Market-open launcher for Titan, Dogon, Orion, and Rigel bots.
 
-Runs both bots with liquidity and dry-powder controls so morning automation
+Runs all four bots with liquidity and dry-powder controls so morning automation
 can remain risk-aware without manual intervention.
 """
 
@@ -10,13 +10,18 @@ import json
 import logging
 import math
 import os
+import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, Tuple
 
+import requests
 from dotenv import load_dotenv
 
 from scripts.dogon_bot import run_cycle as run_dogon_cycle
 from scripts.mansa_titan_bot import TitanBot, TitanConfig
+from scripts.orion_bot import run_cycle as run_orion_cycle
+from scripts.rigel_forex_bot import ForexConfig as RigelConfig
+from scripts.rigel_forex_bot import RigelForexBot
 
 try:
     from alpaca_trade_api.rest import APIError
@@ -146,6 +151,39 @@ def run_market_open_cycle() -> Dict[str, Any]:
 
     dogon_result = run_dogon_cycle()
 
+    orion_result: Dict[str, Any] = {}
+    try:
+        orion_result = run_orion_cycle()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Orion cycle failed: %s", exc)
+        orion_result = {
+            "bot": "Orion",
+            "status": "error",
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+
+    rigel_result: Dict[str, Any] = {}
+    try:
+        rigel_config = RigelConfig()
+        rigel_bot = RigelForexBot(rigel_config)
+        if rigel_bot.initialize():
+            rigel_result = rigel_bot.run_cycle() or {}
+        else:
+            rigel_result = {
+                "bot": "Rigel",
+                "status": "init_failed",
+                "detail": "Rigel initialization failed (check broker credentials/connection).",
+            }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Rigel cycle failed: %s", exc)
+        rigel_result = {
+            "bot": "Rigel",
+            "status": "error",
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+
     summary: Dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "titan": {
@@ -163,9 +201,59 @@ def run_market_open_cycle() -> Dict[str, Any]:
             "results": titan_results,
         },
         "dogon": dogon_result,
+        "orion": orion_result,
+        "rigel": rigel_result,
     }
 
+    _notify_discord_session_summary(summary)
+
     return summary
+
+
+def _notify_discord_session_summary(summary: Dict[str, Any]) -> None:
+    webhook = (
+        os.getenv("DISCORD_BOT_TALK_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+        or os.getenv("DISCORD_WEBHOOK", "").strip()
+        or os.getenv("DISCORD_WEBHOOK_PROD", "").strip()
+    )
+    if not webhook:
+        logger.warning("Discord webhook not set — skipping session summary notification.")
+        return
+
+    def _bot_status_line(name: str, data: Dict[str, Any]) -> str:
+        status = data.get("status", "unknown")
+        signal = data.get("signal") or data.get("results", {})
+        if isinstance(signal, dict):
+            signal = signal.get("action") or signal.get("signal") or ""
+        detail = data.get("detail", "")
+        error = data.get("error", "")
+        parts = [f"**{name}**: `{status}`"]
+        if signal:
+            parts.append(f"signal=`{signal}`")
+        if detail:
+            parts.append(detail[:80])
+        if error:
+            parts.append(f"❌ {str(error)[:80]}")
+        return " | ".join(parts)
+
+    ts = summary.get("timestamp", datetime.now(timezone.utc).isoformat())
+    lines = [
+        _bot_status_line("Titan", summary.get("titan", {})),
+        _bot_status_line("Dogon", summary.get("dogon", {})),
+        _bot_status_line("Orion", summary.get("orion", {})),
+        _bot_status_line("Rigel", summary.get("rigel", {})),
+    ]
+    embed = {
+        "title": "🌅 Market Open — 4-Bot Cycle Complete",
+        "description": "\n".join(lines),
+        "color": 3447003,
+        "footer": {"text": f"Cycle timestamp: {ts}"},
+    }
+    try:
+        requests.post(webhook, json={"embeds": [embed]}, timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to send Discord session summary: %s", exc)
 
 
 def main() -> None:

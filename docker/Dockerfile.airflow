@@ -18,6 +18,7 @@ RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted
     mysqlclient \
     apache-airflow[mysql] \
     apache-airflow-providers-airbyte \
+    alpaca-trade-api==3.2.0 \
     mlflow==2.8.1 \
     pandas==2.1.4 \
     numpy==1.24.3 \

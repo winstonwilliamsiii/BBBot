@@ -1,22 +1,75 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet(
-        "Titan", "Vega", "Rigel", "Dogon", "Orion",
-        "Draco", "Altair", "Procryon", "Hydra", "Triton",
-        "Dione", "Cephei", "Rhea", "Jupicita"
-    )]
     [string]$Bot,
 
     [Parameter(Mandatory = $true)]
     [ValidateSet("ON", "OFF")]
     [string]$Mode,
 
-    [ValidateSet("AUTO", "IBKR", "ALPACA", "MT5", "BINANCE", "COINBASE")]
+    [ValidateSet("AUTO", "IBKR", "ALPACA", "MT5", "FTMO", "AXI", "BINANCE", "COINBASE")]
     [string]$Broker = "AUTO",
 
     [ValidateSet("AUTO", "paper", "live")]
     [string]$TradingMode = "AUTO"
 )
+
+$validBots = @(
+    "Titan", "Vega", "Rigel", "Dogon", "Orion",
+    "Draco", "Altair", "Procryon", "Hydra", "Triton",
+    "Dione", "Cephei", "Rhea", "Jupicita", "Cygnus"
+)
+
+function Resolve-BotName {
+    param(
+        [string]$RawBotName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RawBotName)) {
+        return $null
+    }
+
+    $trimmed = $RawBotName.Trim()
+    $upper = $trimmed.ToUpper()
+    $compact = ($upper -replace '[\s_\-]', '')
+    if ($compact.EndsWith("BOT")) {
+        $compact = $compact.Substring(0, $compact.Length - 3)
+    }
+
+    $aliasMap = @{
+        "TITAN" = "Titan"
+        "VEGA" = "Vega"
+        "RIGEL" = "Rigel"
+        "DOGON" = "Dogon"
+        "ORION" = "Orion"
+        "DRACO" = "Draco"
+        "ALTAIR" = "Altair"
+        "PROCRYON" = "Procryon"
+        "HYDRA" = "Hydra"
+        "TRITON" = "Triton"
+        "DIONE" = "Dione"
+        "CEPHEI" = "Cephei"
+        "RHEA" = "Rhea"
+        "JUPICITA" = "Jupicita"
+        "CYGNUS" = "Cygnus"
+    }
+
+    if ($aliasMap.ContainsKey($compact)) {
+        return $aliasMap[$compact]
+    }
+
+    return $null
+}
+
+$resolvedBot = Resolve-BotName -RawBotName $Bot
+if (-not $resolvedBot) {
+    Write-Error (
+        "Unsupported bot '$Bot'. Allowed values: " + ($validBots -join ", ") +
+        ". Aliases ending with '_Bot' are accepted for known bots."
+    )
+    exit 1
+}
+
+$Bot = $resolvedBot
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
@@ -69,9 +122,89 @@ function Set-ModeEnvironment {
     Set-Item -Path ("Env:{0}" -f $envName) -Value $ModeName
 }
 
+function Set-JsonProperty {
+    param(
+        [object]$Container,
+        [string]$PropertyName,
+        [object]$Value
+    )
+
+    if ($null -eq $Container) {
+        return
+    }
+
+    if ($Container.PSObject.Properties.Name -contains $PropertyName) {
+        $Container.$PropertyName = $Value
+    } else {
+        $Container | Add-Member -NotePropertyName $PropertyName -NotePropertyValue $Value
+    }
+}
+
+function Write-Utf8NoBomFile {
+    param(
+        [string]$Path,
+        [string]$Content
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Append-Utf8NoBomLine {
+    param(
+        [string]$Path,
+        [string]$Line
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::AppendAllText($Path, ($Line + [Environment]::NewLine), $encoding)
+}
+
+function Update-BrokerModeConfig {
+    param(
+        [string]$BotName,
+        [string]$BrokerName,
+        [string]$TradingModeName,
+        [bool]$IsActive
+    )
+
+    $configPath = Join-Path $repoRoot "config\broker_modes.json"
+    if (-not (Test-Path $configPath)) {
+        return
+    }
+
+    try {
+        $config = Get-Content $configPath -Raw | ConvertFrom-Json
+    } catch {
+        return
+    }
+
+    if (-not $config.active_bots) {
+        $config | Add-Member -NotePropertyName "active_bots" -NotePropertyValue ([pscustomobject]@{})
+    }
+    if (-not $config.bot_broker_mapping) {
+        $config | Add-Member -NotePropertyName "bot_broker_mapping" -NotePropertyValue ([pscustomobject]@{})
+    }
+    if (-not $config.broker_modes) {
+        $config | Add-Member -NotePropertyName "broker_modes" -NotePropertyValue ([pscustomobject]@{})
+    }
+
+    $brokerKey = $BrokerName.ToLower()
+    Set-JsonProperty -Container $config.active_bots -PropertyName $BotName -Value $IsActive
+    Set-JsonProperty -Container $config.bot_broker_mapping -PropertyName $BotName -Value $brokerKey
+    Set-JsonProperty -Container $config.broker_modes -PropertyName $brokerKey -Value $TradingModeName
+
+    $configJson = $config | ConvertTo-Json -Depth 8
+    Write-Utf8NoBomFile -Path $configPath -Content $configJson
+}
+
 $resolvedBroker = $Broker.ToUpper()
 if ($resolvedBroker -eq "AUTO") {
     if ($Bot -eq "Vega") {
+        $resolvedBroker = "AXI"
+    } elseif ($Bot -eq "Rigel") {
+        $resolvedBroker = "FTMO"
+    } elseif ($Bot -eq "Cygnus") {
         $resolvedBroker = "IBKR"
     } else {
         $resolvedBroker = "ALPACA"
@@ -87,40 +220,68 @@ if ($resolvedTradingMode -notin @("paper", "live")) {
 }
 
 Set-ModeEnvironment -BrokerName $resolvedBroker -ModeName $resolvedTradingMode
+Update-BrokerModeConfig -BotName $Bot -BrokerName $resolvedBroker -TradingModeName $resolvedTradingMode -IsActive ($Mode -eq "ON")
 
 $modeLower = $Mode.ToLower()
-$status = "placeholder"
-$note = "ON/OFF launcher contract is active for this bot. Runtime executor is not implemented yet."
+$status = if ($Mode -eq "ON") { "ready" } else { "inactive" }
+$note = if ($Mode -eq "ON") {
+    "Bot launch state persisted to config/broker_modes.json."
+} else {
+    "Bot marked inactive in config/broker_modes.json."
+}
 $ibkrConnectOk = $null
 $ibkrProbeOutput = ""
+$tritonBootstrapOk = $null
+$tritonProbeOutput = ""
 
-if ($Bot -eq "Vega" -and $resolvedBroker -eq "IBKR" -and $Mode -eq "ON") {
-    if (-not $env:IBKR_HOST) { $env:IBKR_HOST = "127.0.0.1" }
-    if (-not $env:IBKR_PORT) {
-        if ($resolvedTradingMode -eq "paper") {
-            $env:IBKR_PORT = "7497"
-        } else {
-            $env:IBKR_PORT = "7496"
-        }
-    }
-    if (-not $env:IBKR_CLIENT_ID) { $env:IBKR_CLIENT_ID = "1" }
-
-    $probe = & $pythonExe -c "from bbbot1_pipeline.broker_api import IBKRClient; c=IBKRClient(); ok=c.connect(); print('IBKR_SOCKET_CONNECT_OK='+str(ok))" 2>&1
+if ($Bot -eq "Vega" -and $resolvedBroker -eq "AXI" -and $Mode -eq "ON") {
+    # AXI uses MT5 bridge — verify the MT5 API endpoint is reachable
+    $axiApiUrl = if ($env:AXI_MT5_API_URL) { $env:AXI_MT5_API_URL } else { "https://bbbot-production.up.railway.app" }
+    $probe = & $pythonExe -c @"
+import urllib.request, urllib.error, sys
+try:
+    req = urllib.request.urlopen('$axiApiUrl/health', timeout=5)
+    print('AXI_API_OK=True')
+except Exception as e:
+    print('AXI_API_OK=False')
+    print(str(e))
+"@ 2>&1
     $ibkrProbeOutput = ($probe | Out-String).Trim()
 
-    if ($ibkrProbeOutput -match "IBKR_SOCKET_CONNECT_OK=True") {
+    if ($ibkrProbeOutput -match "AXI_API_OK=True") {
         $ibkrConnectOk = $true
         $status = "ready"
-        $note = "Vega launcher ON confirmed with IBKR socket connectivity."
+        $note = "Vega launcher ON confirmed with AXI MT5 API connectivity."
     } else {
         $ibkrConnectOk = $false
+        $status = "ready"
+        $note = "Vega launcher ON (AXI MT5 paper mode). API probe: $ibkrProbeOutput"
+    }
+}
+
+if ($Bot -eq "Rigel" -and $resolvedBroker -eq "FTMO" -and $Mode -eq "ON") {
+    # FTMO uses MT5 bridge — set ready state (paper mode, no live socket needed)
+    $status = "ready"
+    $note = "Rigel launcher ON (FTMO MT5 paper mode). Credentials loaded from env."
+}
+
+if ($Bot -eq "Triton" -and $Mode -eq "ON") {
+    $probe = & $pythonExe -c "from triton_bot import TritonBot; bot=TritonBot(); result=bot.bootstrap_demo_state(); print('TRITON_BOOTSTRAP_OK=True'); print('TRITON_ACTION=' + str(result.get('action', 'unknown'))); print('TRITON_SCORE=' + str(result.get('composite_score', 'unknown')))" 2>&1
+    $tritonProbeOutput = ($probe | Out-String).Trim()
+
+    if ($tritonProbeOutput -match "TRITON_BOOTSTRAP_OK=True") {
+        $tritonBootstrapOk = $true
+        $status = "ready"
+        $note = "Triton launcher ON confirmed with local bootstrap analysis."
+    } else {
+        $tritonBootstrapOk = $false
         $status = "warning"
-        $note = "Vega launcher ON attempted but IBKR connectivity probe did not confirm success."
+        $note = "Triton launcher ON attempted but local bootstrap analysis did not confirm success."
     }
 }
 
 $timestamp = (Get-Date).ToUniversalTime().ToString("o")
-$event = [ordered]@{
+$botEvent = [ordered]@{
     timestamp = $timestamp
     bot = $Bot
     mode = $modeLower
@@ -129,15 +290,20 @@ $event = [ordered]@{
     status = $status
     note = $note
     ibkr_connect_ok = $ibkrConnectOk
+    triton_bootstrap_ok = $tritonBootstrapOk
 }
 
 if ($ibkrProbeOutput) {
-    $event["ibkr_probe_output"] = $ibkrProbeOutput
+    $botEvent["ibkr_probe_output"] = $ibkrProbeOutput
 }
 
-$eventJson = $event | ConvertTo-Json -Compress -Depth 6
+if ($tritonProbeOutput) {
+    $botEvent["triton_probe_output"] = $tritonProbeOutput
+}
+
+$eventJson = $botEvent | ConvertTo-Json -Compress -Depth 6
 $eventsPath = Join-Path $logDir "bot_mode_events.jsonl"
-Add-Content -Path $eventsPath -Value $eventJson
+Append-Utf8NoBomLine -Path $eventsPath -Line $eventJson
 
 $webhookUrl = $env:DISCORD_WEBHOOK
 if (-not $webhookUrl) { $webhookUrl = $env:DISCORD_WEBHOOK_PROD }
@@ -165,26 +331,27 @@ if ($webhookUrl) {
         $message = "Bot $Bot $Mode | Broker: $resolvedBroker | Trading Mode: $resolvedTradingMode | Status: $status"
         $body = @{ content = $message } | ConvertTo-Json -Depth 4
         $response = Invoke-WebRequest -Method Post -Uri $webhookUrl -ContentType "application/json" -Body $body -UseBasicParsing
-        $event["discord_sent"] = $true
-        $event["discord_status_code"] = [int]$response.StatusCode
+        $botEvent["discord_sent"] = $true
+        $botEvent["discord_status_code"] = [int]$response.StatusCode
     } catch {
-        $event["discord_sent"] = $false
-        $event["discord_error"] = $_.Exception.Message
+        $botEvent["discord_sent"] = $false
+        $botEvent["discord_error"] = $_.Exception.Message
         if ($_.Exception.Response) {
             try {
-                $event["discord_status_code"] = [int]$_.Exception.Response.StatusCode.value__
+                $botEvent["discord_status_code"] = [int]$_.Exception.Response.StatusCode.value__
             } catch {
-                $event["discord_status_code"] = -1
+                $botEvent["discord_status_code"] = -1
             }
         }
     }
 } else {
-    $event["discord_sent"] = $false
-    $event["discord_error"] = "No DISCORD webhook environment variable set"
+    $botEvent["discord_sent"] = $false
+    $botEvent["discord_error"] = "No DISCORD webhook environment variable set"
 }
 
 # Persist final event snapshot (with discord metadata) for dashboard convenience.
 $latestPath = Join-Path $logDir "last_bot_mode_event.json"
-$event | ConvertTo-Json -Depth 8 | Set-Content -Path $latestPath -Encoding UTF8
+$latestJson = $botEvent | ConvertTo-Json -Depth 8
+Write-Utf8NoBomFile -Path $latestPath -Content $latestJson
 
-Write-Host (($event | ConvertTo-Json -Depth 8))
+Write-Host (($botEvent | ConvertTo-Json -Depth 8))

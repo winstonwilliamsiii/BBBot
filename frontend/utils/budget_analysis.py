@@ -82,9 +82,23 @@ class BudgetAnalyzer:
     
     def _get_connection(self):
         """Create database connection."""
+        last_error = None
         try:
-            return mysql.connector.connect(**self.db_config)
-        except mysql.connector.Error as err:
+            for attempt in range(2):
+                try:
+                    conn = mysql.connector.connect(
+                        **self.db_config,
+                        connection_timeout=10,
+                    )
+                    conn.ping(reconnect=True, attempts=1, delay=0)
+                    return conn
+                except mysql.connector.Error as err:
+                    last_error = err
+                    if getattr(err, 'errno', None) in (2006, 2013) and attempt == 0:
+                        continue
+                    break
+
+            err = last_error
             st.error(f"❌ Database connection error: {err}")
             
             # Provide helpful troubleshooting
@@ -147,8 +161,12 @@ class BudgetAnalyzer:
                 - `2003`: Cannot connect to server (check if MySQL is running)
                 - `1045`: Access denied (check username/password)
                 - `1049`: Unknown database (create database first)
+                - `2013`: Lost connection during query/handshake (network timeout or stale connection)
                 """)
             
+            return None
+        except Exception as err:
+            st.error(f"❌ Database connection error: {err}")
             return None
     
     # ==========================================================================
@@ -606,9 +624,11 @@ class BudgetAnalyzer:
                             'last_sync': result['last_sync'],
                             'is_active': result['is_active']
                         }
-                except mysql.connector.Error:
-                    # Table doesn't exist, try next one
-                    continue
+                except mysql.connector.Error as db_err:
+                    # Unknown table/column: try next legacy table shape.
+                    if getattr(db_err, 'errno', None) in (1054, 1146):
+                        continue
+                    raise
             
             return {'connected': False}
                 

@@ -1,6 +1,6 @@
 """
-Trading Strategies for WeBull Equities & ETFs
-Compares Mean Reversion vs Random Forest Regression with MACD/RSI signals
+Trading Strategies for broker-routed equities and ETFs.
+Compares Mean Reversion vs Random Forest Regression with MACD/RSI signals.
 """
 
 import pandas as pd

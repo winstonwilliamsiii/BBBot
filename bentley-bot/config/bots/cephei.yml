@@ -1,0 +1,55 @@
+bot:
+  id: 14
+  name: Cephei
+  runtime_name: Cephei_Bot
+  fund: Mansa Functions Options
+  strategy: Options CFD Trading
+  module: cephei_bot.py
+  objective: Execute options and CFD signals using IV/RV edge detection, Siamese NN mispricing scores, LightGBM regime filtering, and IBKR CFD options execution. Log MLflow experiments, persist MySQL performance metrics, and notify Discord on trade actions.
+
+execution:
+  primary_client: ibkr
+  fallback_client: null
+  mode: paper
+  enabled: false
+  order_type: market
+  ibkr_api_url_env: IBKR_API_URL          # default: https://api.ibkr.com/v1/cfd/options
+
+strategy:
+  label: Cephei_Options_CFD
+  screener_file: cephei_options_universe.csv
+  universe: Options_CFD
+  timeframe: 1h
+  position_size: 2500
+
+services:
+  fastapi:
+    route_prefix: /cephei
+    health_endpoint: /cephei/health
+    analyze_endpoint: /cephei/analyze
+    tune_endpoint: /cephei/optuna_tune
+  airflow:
+    dag_id: cephei_mansa_functions_options
+    schedule: 15 8 * * 1-5
+  airbyte:
+    source: yfinance
+    source_config: airbyte/sources/yfinance/cephei_mansa_config.json
+    connection_id_env: CEPHEI_AIRBYTE_CONNECTION_ID
+  mlflow:
+    experiment: Cephei_Mansa_Functions_Options
+    tracking_uri_env: MLFLOW_TRACKING_URI
+
+risk:
+  max_open_positions: 5
+  max_daily_loss_pct: 1.5
+  leverage_limit: 2.0
+  rsi_overbought: 70
+  rsi_oversold: 30
+
+notification:
+  discord:
+    required_indicators:
+      - IV_RV_Edge
+      - GARCH
+      - Siamese_Score
+      - LightGBM_Regime

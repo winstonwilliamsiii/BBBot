@@ -29,7 +29,7 @@ jobs:
         pip install flask flask-cors
         if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
     
-    - name: Start Flask API (Port 5001)
+    - name: Start FastAPI (Port 5001)
       run: |
         cd backend/api
         python app.py &
@@ -38,32 +38,32 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}
     
-    - name: Test Flask API Health
+    - name: Test FastAPI Health
       run: |
-        # Test Flask API on port 5001
+        # Test FastAPI on port 5001
         response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5001/health)
         if [ $response -eq 200 ]; then
-          echo "✅ Flask API is healthy on port 5001"
+          echo "✅ FastAPI is healthy on port 5001"
         else
-          echo "❌ Flask API health check failed with status: $response"
+          echo "❌ FastAPI health check failed with status: $response"
           exit 1
         fi
         
-        # Test Flask API root endpoint
+        # Test FastAPI root endpoint
         root_response=$(curl -s http://localhost:5001/)
-        if echo "$root_response" | grep -q "Bentley Bot Control Center API"; then
-          echo "✅ Flask API root endpoint is working"
+        if echo "$root_response" | grep -q "Bentley Budget Bot API"; then
+          echo "✅ FastAPI root endpoint is working"
         else
-          echo "❌ Flask API root endpoint check failed"
+          echo "❌ FastAPI root endpoint check failed"
           exit 1
         fi
         
-        # Test admin endpoint
-        admin_response=$(curl -s http://localhost:5001/admin/test)
-        if echo "$admin_response" | grep -q "Admin API is accessible"; then
-          echo "✅ Flask API admin endpoint is working"
+        # Test platform health endpoint
+        platform_response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5001/platform/health)
+        if [ $platform_response -eq 200 ]; then
+          echo "✅ FastAPI platform health endpoint is working"
         else
-          echo "❌ Flask API admin endpoint check failed"
+          echo "❌ FastAPI platform health endpoint check failed with status: $platform_response"
           exit 1
         fi
     
@@ -102,7 +102,7 @@ jobs:
         echo "Testing that Flask API (5001) and MLflow (5000) don't conflict..."
         
         # Verify both services respond on their respective ports
-        flask_response=$(curl -s http://localhost:5001/health | grep -q "Bentley Bot Control Center API" && echo "OK" || echo "FAIL")
+        flask_response=$(curl -s http://localhost:5001/health | grep -q "Bentley Budget Bot API" && echo "OK" || echo "FAIL")
         mlflow_response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health)
         
         if [ "$flask_response" = "OK" ] && [ "$mlflow_response" = "200" ]; then
@@ -131,6 +131,6 @@ jobs:
       if: success()
       run: |
         echo "🎉 All service tests passed!"
-        echo "✅ Flask API: http://localhost:5001"
+        echo "✅ FastAPI: http://localhost:5001"
         echo "✅ MLflow: http://localhost:5000"
         echo "✅ No port conflicts detected"

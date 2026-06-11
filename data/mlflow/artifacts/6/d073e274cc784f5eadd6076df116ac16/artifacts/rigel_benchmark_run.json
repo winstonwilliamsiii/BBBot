@@ -1,0 +1,10 @@
+{
+  "bot": "Rigel",
+  "fund": "Mansa_FOREX",
+  "timestamp": "2026-04-20T07:23:35.197721+00:00",
+  "signals_generated": 0.0,
+  "executed_signals": 0.0,
+  "avg_signal_confidence": 0.0,
+  "status": "skipped_outside_session",
+  "detail": "Rigel cycle skipped outside configured trading hours."
+}

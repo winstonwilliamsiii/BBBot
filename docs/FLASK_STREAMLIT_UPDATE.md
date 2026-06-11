@@ -87,12 +87,12 @@
 pip install Flask==3.0.0 flask-cors==4.0.0
 ```
 
-### Step 2: Start Flask API
+### Step 2: Start FastAPI Control Center
 ```bash
-python backend/api/app.py
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
 ```
 
-API will run on **http://localhost:5000**
+API will run on **http://localhost:5001**
 
 ### Step 3: Start Streamlit App
 ```bash
@@ -292,9 +292,9 @@ All docs now reflect Flask + Streamlit:
 
 ---
 
-**Ready to start building?** Flask API starter is at `backend/api/app.py` - test it now!
+**Ready to start building?** The FastAPI control center is started by `start_control_center_api.ps1` - test it now!
 
 ```bash
-python backend/api/app.py
-# Then visit: http://localhost:5000
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+# Then visit: http://localhost:5001/docs
 ```

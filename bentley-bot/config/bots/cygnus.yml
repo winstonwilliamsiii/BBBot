@@ -1,0 +1,55 @@
+bot:
+  id: 15
+  name: Cygnus
+  runtime_name: Cygnus_Bot
+  fund: Mansa Shorts Fund
+  strategy: Relative Value Arbitrage
+  module: cygnus_bot.py
+  objective: Execute relative value arbitrage pair signals with short and long bias, log MLflow experiments, persist MySQL performance metrics, and notify Discord on trade actions.
+
+execution:
+  primary_client: ibkr
+  fallback_client: alpaca
+  mode: paper
+  enabled: false
+  order_type: market
+
+strategy:
+  label: Cygnus_Relative_Value_Arb
+  screener_file: cygnus_pairs.csv
+  universe: Pairs_Relative_Value
+  timeframe: 1h
+  position_size: 2500
+
+services:
+  fastapi:
+    route_prefix: /cygnus
+    health_endpoint: /cygnus/health
+    analyze_endpoint: /cygnus/analyze
+    trade_endpoint: /cygnus/trade
+  airflow:
+    dag_id: cygnus_mansa_shorts_fund
+    schedule: 10 8 * * 1-5
+  airbyte:
+    source: yfinance
+    source_config: airbyte/sources/yfinance/cygnus_mansa_config.json
+    connection_id_env: CYGNUS_AIRBYTE_CONNECTION_ID
+  mlflow:
+    experiment: Cygnus_Mansa_Shorts_Fund
+    tracking_uri_env: MLFLOW_TRACKING_URI
+
+risk:
+  min_samples: 60
+  max_open_positions: 6
+  max_daily_loss_pct: 1.5
+  cointegration_pvalue_max: 0.10
+  zscore_entry_short: 1.5
+  zscore_entry_long: -1.5
+
+notification:
+  discord:
+    required_indicators:
+      - Bollinger
+      - SMI
+      - Cointegration
+      - RSI

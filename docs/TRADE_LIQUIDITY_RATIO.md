@@ -246,7 +246,7 @@ Check if position profit has reached benchmark.
 Run the test script to see the system in action:
 
 ```bash
-python test_liquidity_ratio.py
+python tests/manual/test_liquidity_ratio.py
 ```
 
 This demonstrates:
@@ -355,15 +355,15 @@ mlflow.log_metric("buffer_deviation", metrics['buffer_deviation'])
 ### Issue: API returns errors
 
 **Solution**:
-- Ensure Flask API is running: `python backend/api/app.py`
-- Check CORS settings in `app.py`
+- Ensure the FastAPI control center is running: `powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1`
+- Check the backend health endpoint: `http://localhost:5001/health`
 - Verify portfolio values are positive numbers
 
 ## 📞 Support
 
 For questions or issues with the Trade Liquidity Ratio system:
 1. Check this documentation
-2. Run `test_liquidity_ratio.py` to verify functionality
+2. Run `tests/manual/test_liquidity_ratio.py` to verify functionality
 3. Review Admin Console Risk Management tab
 4. Check API endpoints with `curl http://localhost:5000/admin/liquidity`
 

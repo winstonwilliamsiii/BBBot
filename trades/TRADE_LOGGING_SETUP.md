@@ -487,6 +487,6 @@ To fully implement MySQL trade logging:
 ## 📚 Related Files
 
 - [`scripts/setup/init_all_databases.sql`](../scripts/setup/init_all_databases.sql) - Database schema
-- [`place_turb_supx_orders.py`](../place_turb_supx_orders.py) - Needs integration
+- [`place_turb_supx_orders.py`](place_turb_supx_orders.py) - Needs integration
 - [`frontend/components/alpaca_connector.py`](../frontend/components/alpaca_connector.py) - Alpaca API client
 - [`.env.example`](../.env.example) - Environment variable template

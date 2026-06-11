@@ -20,9 +20,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 
 try:
     from scripts.load_screener_csv import load_bot_trade_candidates
@@ -38,20 +44,17 @@ except ModuleNotFoundError:
     )
 
 try:
-    import yaml
-except ImportError:
-    yaml = None
-
-try:
     import alpaca_trade_api as tradeapi
 except ImportError:
     tradeapi = None
 
 try:
     import mlflow
+    import mlflow.pyfunc as mlflow_pyfunc
     from mlflow.exceptions import MlflowException
 except ImportError:
     mlflow = None
+    mlflow_pyfunc = None
     MlflowException = RuntimeError
 
 try:
@@ -59,8 +62,33 @@ try:
 except ImportError:
     mysql = None
 
+try:
+    from scripts.titan_cnn_model import (
+        BASE_FEATURE_COLUMNS,
+        DEFAULT_SEQUENCE_WINDOW,
+        build_feature_timeseries,
+        build_latest_sequence_features,
+        build_neutral_feature_row,
+    )
+except ModuleNotFoundError:
+    from titan_cnn_model import (
+        BASE_FEATURE_COLUMNS,
+        DEFAULT_SEQUENCE_WINDOW,
+        build_feature_timeseries,
+        build_latest_sequence_features,
+        build_neutral_feature_row,
+    )
+
 
 logger = logging.getLogger(__name__)
+
+TITAN_BENCHMARK_PEERS: tuple[str, ...] = (
+    "Orion",
+    "Rigel",
+    "Dogon",
+)
+
+TITAN_MLFLOW_FEATURE_SCHEMA_VERSION = "titan_cnn_sequence_v2"
 
 
 def _default_bot_profile(bot_name: str = "Titan_Bot") -> Dict[str, Any]:
@@ -97,7 +125,10 @@ def _load_active_bot_profile(
         return profile
 
     try:
-        bot_profile = load_runtime_bot_config(active_name, config_path=config_path)
+        bot_profile = load_runtime_bot_config(
+            active_name,
+            config_path=config_path,
+        )
     except (OSError, ValueError, TypeError, FileNotFoundError) as exc:
         logger.warning("Failed reading bot config %s: %s", config_path, exc)
         return profile
@@ -108,7 +139,10 @@ def _load_active_bot_profile(
         "bot_name": str(bot_profile.get("bot_name") or active_name),
     }
 
-    if "risk_rules" not in merged or not isinstance(merged["risk_rules"], dict):
+    if (
+        "risk_rules" not in merged
+        or not isinstance(merged["risk_rules"], dict)
+    ):
         merged["risk_rules"] = profile["risk_rules"]
 
     return merged
@@ -151,12 +185,17 @@ class TitanConfig:
     mysql_database: str
     titan_trades_table: str
     titan_service_table: str
+    titan_orchestration_table: str
     mlflow_tracking_uri: str
     titan_model_uri: str
     airflow_base_url: str
     airbyte_base_url: str
     airbyte_connection_id: Optional[str]
+    sentiment_table: str
     liquidity_buffer_threshold: float
+    liquidity_buffer_positive_delta: float
+    liquidity_buffer_negative_delta: float
+    sentiment_trade_bias_threshold: float
     prediction_threshold: float
     order_timeout_seconds: float
     dry_run: bool
@@ -167,9 +206,11 @@ class TitanConfig:
     universe: str = "Mag7+Tech"
     position_size: float = 5000.0
     risk_rules: Dict[str, Any] = field(default_factory=dict)
+    notification: Dict[str, Any] = field(default_factory=dict)
     selection_mode: str = "technical"
     manual_symbols: List[str] = field(default_factory=list)
     technical_lookback_days: int = 120
+    sequence_window: int = DEFAULT_SEQUENCE_WINDOW
 
     @classmethod
     def from_env(cls) -> "TitanConfig":
@@ -189,7 +230,8 @@ class TitanConfig:
                 "https://paper-api.alpaca.markets",
             ),
             discord_webhook_url=(
-                os.getenv("DISCORD_WEBHOOK_URL")
+                os.getenv("DISCORD_BOT_TALK_WEBHOOK")
+                or os.getenv("DISCORD_WEBHOOK_URL")
                 or os.getenv("DISCORD_WEBHOOK")
                 or os.getenv("DISCORD_WEBHOOK_PROD")
             ),
@@ -202,6 +244,10 @@ class TitanConfig:
             titan_service_table=os.getenv(
                 "TITAN_SERVICE_HEALTH_TABLE",
                 "titan_service_health",
+            ),
+            titan_orchestration_table=os.getenv(
+                "TITAN_ORCHESTRATION_TABLE",
+                "titan_orchestration_runs",
             ),
             mlflow_tracking_uri=os.getenv(
                 "MLFLOW_TRACKING_URI",
@@ -220,8 +266,24 @@ class TitanConfig:
                 "http://localhost:8001",
             ),
             airbyte_connection_id=os.getenv("AIRBYTE_CONNECTION_ID"),
+            sentiment_table=os.getenv(
+                "TITAN_SENTIMENT_TABLE",
+                "sentiment_msgs",
+            ),
             liquidity_buffer_threshold=_as_float(
                 os.getenv("TITAN_LIQUIDITY_BUFFER"),
+                0.20,
+            ),
+            liquidity_buffer_positive_delta=_as_float(
+                os.getenv("TITAN_POSITIVE_SENTIMENT_BUFFER_DELTA"),
+                0.05,
+            ),
+            liquidity_buffer_negative_delta=_as_float(
+                os.getenv("TITAN_NEGATIVE_SENTIMENT_BUFFER_DELTA"),
+                0.10,
+            ),
+            sentiment_trade_bias_threshold=_as_float(
+                os.getenv("TITAN_SENTIMENT_BIAS_THRESHOLD"),
                 0.20,
             ),
             prediction_threshold=_as_float(
@@ -242,13 +304,17 @@ class TitanConfig:
                 str(
                     bot_profile.get(
                         "strategy_label",
-                        bot_profile.get("strategy_name", "Mansa Tech - Titan Bot"),
+                        bot_profile.get(
+                            "strategy_name",
+                            "Mansa Tech - Titan Bot",
+                        ),
                     )
                 ),
             ),
             active_bot_name=str(bot_profile.get("bot_name", "Titan_Bot")),
             screener_file=str(
-                bot_profile.get("screener_file") or "titan_tech_fundamentals.csv"
+                bot_profile.get("screener_file")
+                or "titan_tech_fundamentals.csv"
             ),
             universe=str(bot_profile.get("universe") or "Mag7+Tech"),
             position_size=_as_float(
@@ -258,6 +324,11 @@ class TitanConfig:
             risk_rules=(
                 bot_profile.get("risk_rules", {})
                 if isinstance(bot_profile.get("risk_rules", {}), dict)
+                else {}
+            ),
+            notification=(
+                bot_profile.get("notification", {})
+                if isinstance(bot_profile.get("notification", {}), dict)
                 else {}
             ),
             selection_mode=str(
@@ -271,6 +342,13 @@ class TitanConfig:
             technical_lookback_days=max(
                 30,
                 _as_int(os.getenv("TITAN_TECH_LOOKBACK_DAYS"), 120),
+            ),
+            sequence_window=max(
+                10,
+                _as_int(
+                    os.getenv("TITAN_SEQUENCE_WINDOW"),
+                    DEFAULT_SEQUENCE_WINDOW,
+                ),
             ),
         )
 
@@ -288,6 +366,118 @@ class TitanBot:
     def __init__(self, config: Optional[TitanConfig] = None):
         self.config = config or TitanConfig.from_env()
         self.api = self._init_alpaca_client()
+        self._last_trade_outcome: Optional[Dict[str, Any]] = None
+        self._last_market_data_source: Dict[str, str] = {}
+        self._last_prediction_feature_metadata: Dict[str, Dict[str, Any]] = {}
+
+    def _account_snapshot_cache_path(self) -> str:
+        return os.path.join(
+            os.getcwd(),
+            "data",
+            "titan_last_account_snapshot.json",
+        )
+
+    def _market_data_cache_dir(self) -> str:
+        return os.path.join(
+            os.getcwd(),
+            "data",
+            "titan_market_data_cache",
+        )
+
+    def _market_data_cache_path(self, symbol: str) -> str:
+        return os.path.join(
+            self._market_data_cache_dir(),
+            f"{symbol.strip().upper()}.csv",
+        )
+
+    def _read_cached_account_snapshot(self) -> Optional[Dict[str, float]]:
+        path = self._account_snapshot_cache_path()
+        if not os.path.exists(path):
+            return None
+
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError, TypeError):
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+
+        try:
+            cash = float(payload.get("cash", 0.0))
+            equity = float(payload.get("equity", 0.0))
+        except (TypeError, ValueError):
+            return None
+
+        return {"cash": cash, "equity": equity}
+
+    def _write_cached_account_snapshot(
+        self,
+        snapshot: Dict[str, float],
+    ) -> None:
+        path = self._account_snapshot_cache_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(snapshot, handle)
+        except OSError:
+            logger.warning("Failed writing Titan account snapshot cache")
+
+    def _read_cached_close_history(self, symbol: str) -> pd.Series:
+        path = self._market_data_cache_path(symbol)
+        if not os.path.exists(path):
+            return pd.Series(dtype="float64")
+
+        try:
+            frame = pd.read_csv(path)
+        except (OSError, ValueError, TypeError):
+            return pd.Series(dtype="float64")
+
+        if frame.empty or "close" not in frame.columns:
+            return pd.Series(dtype="float64")
+
+        return pd.to_numeric(frame["close"], errors="coerce").dropna()
+
+    def _write_cached_close_history(
+        self,
+        symbol: str,
+        close_history: pd.Series,
+    ) -> None:
+        if close_history.empty:
+            return
+
+        if len(close_history) < self._minimum_close_history_points():
+            return
+
+        cache_dir = self._market_data_cache_dir()
+        os.makedirs(cache_dir, exist_ok=True)
+        path = self._market_data_cache_path(symbol)
+        frame = pd.DataFrame(
+            {
+                "close": pd.to_numeric(
+                    close_history,
+                    errors="coerce",
+                ).dropna()
+            }
+        )
+        try:
+            frame.to_csv(path, index=False)
+        except OSError:
+            logger.warning(
+                "Failed writing Titan close history cache for %s",
+                symbol,
+            )
+
+    def _set_market_data_source(
+        self,
+        symbol: str,
+        source: str,
+    ) -> None:
+        self._last_market_data_source[symbol.strip().upper()] = source
+
+    def _minimum_close_history_points(self) -> int:
+        return max(35, self.config.sequence_window + 19)
 
     def _alpaca_headers(self) -> Dict[str, str]:
         return {
@@ -338,16 +528,37 @@ class TitanBot:
             self.config.order_timeout_seconds
         )
 
-        submit_script = (
-            "import json, os, requests;"
-            "endpoint=os.environ['TITAN_SUBMIT_ENDPOINT'];"
-            "payload=json.loads(os.environ['TITAN_SUBMIT_PAYLOAD']);"
-            "headers=json.loads(os.environ['TITAN_SUBMIT_HEADERS']);"
-            "timeout=float(os.environ['TITAN_ORDER_TIMEOUT_SECONDS']);"
-            "resp=requests.post(endpoint, headers=headers, json=payload, timeout=timeout);"
-            "resp.raise_for_status();"
-            "print(json.dumps(resp.json()))"
+        submit_script = """
+import json
+import os
+import time
+
+import requests
+
+endpoint = os.environ['TITAN_SUBMIT_ENDPOINT']
+payload = json.loads(os.environ['TITAN_SUBMIT_PAYLOAD'])
+headers = json.loads(os.environ['TITAN_SUBMIT_HEADERS'])
+timeout = float(os.environ['TITAN_ORDER_TIMEOUT_SECONDS'])
+last_error = ''
+
+for _ in range(3):
+    try:
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
         )
+        response.raise_for_status()
+        print(json.dumps(response.json()))
+        raise SystemExit(0)
+    except Exception as exc:
+        last_error = str(exc)
+        time.sleep(0.4)
+
+print(last_error)
+raise SystemExit(1)
+        """.strip()
 
         try:
             completed = subprocess.run(
@@ -360,7 +571,8 @@ class TitanBot:
             )
         except subprocess.TimeoutExpired as exc:
             raise requests.Timeout(
-                f"Timed out submitting Alpaca order after {self.config.order_timeout_seconds}s"
+                "Timed out submitting Alpaca order after "
+                f"{self.config.order_timeout_seconds}s"
             ) from exc
 
         if completed.returncode != 0:
@@ -370,6 +582,80 @@ class TitanBot:
             )
 
         return json.loads(completed.stdout.strip())
+
+    def _fetch_live_account_snapshot(self) -> Dict[str, float]:
+        if not self.config.alpaca_api_key or not self.config.alpaca_secret_key:
+            raise RuntimeError("Alpaca credentials missing")
+
+        endpoint = f"{self.config.alpaca_base_url.rstrip('/')}/v2/account"
+        env = os.environ.copy()
+        env["TITAN_ACCOUNT_ENDPOINT"] = endpoint
+        env["TITAN_SUBMIT_HEADERS"] = json.dumps(self._alpaca_headers())
+        env["TITAN_ORDER_TIMEOUT_SECONDS"] = str(
+            self.config.order_timeout_seconds
+        )
+
+        account_script = """
+import json
+import os
+import time
+
+import requests
+
+endpoint = os.environ['TITAN_ACCOUNT_ENDPOINT']
+headers = json.loads(os.environ['TITAN_SUBMIT_HEADERS'])
+timeout = float(os.environ['TITAN_ORDER_TIMEOUT_SECONDS'])
+last_error = ''
+
+for _ in range(3):
+    try:
+        response = requests.get(endpoint, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+        print(
+            json.dumps(
+                {
+                    'cash': payload.get('cash', 0.0),
+                    'equity': payload.get('equity', 0.0),
+                }
+            )
+        )
+        raise SystemExit(0)
+    except Exception as exc:
+        last_error = str(exc)
+        time.sleep(0.4)
+
+print(last_error)
+raise SystemExit(1)
+        """.strip()
+
+        try:
+            completed = subprocess.run(
+                [sys.executable, "-c", account_script],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=self.config.order_timeout_seconds + 3.0,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise requests.Timeout(
+                "Timed out retrieving Alpaca account snapshot"
+            ) from exc
+
+        if completed.returncode != 0:
+            stderr = (completed.stderr or completed.stdout or "").strip()
+            raise requests.RequestException(
+                stderr or "Unknown Alpaca account snapshot failure"
+            )
+
+        payload = json.loads(completed.stdout.strip())
+        snapshot = {
+            "cash": float(payload.get("cash", 0.0)),
+            "equity": float(payload.get("equity", 0.0)),
+        }
+        self._write_cached_account_snapshot(snapshot)
+        return snapshot
 
     def _mlflow_tracking_is_reachable(self) -> bool:
         if mlflow is None:
@@ -381,10 +667,355 @@ class TitanBot:
             return 200 <= response.status_code < 300
         except requests.RequestException:
             logger.info(
-                "Skipping MLflow model load because tracking URI is unavailable: %s",
+                "Skipping MLflow model load because tracking URI is "
+                "unavailable: %s",
                 health_url,
             )
             return False
+
+    def _start_mlflow_trade_run(
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+        prediction_features: Sequence[float] | Dict[str, float],
+        sentiment_score: float,
+        liquidity_ratio: float,
+        effective_buffer: float,
+    ) -> bool:
+        if mlflow is None or not self._mlflow_tracking_is_reachable():
+            return False
+
+        try:
+            mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
+            if mlflow.active_run() is None:
+                mlflow.start_run(
+                    run_name=(
+                        f"{self.config.active_bot_name}-{symbol}-{side}"
+                    )
+                )
+                self._log_mlflow_tags(
+                    {
+                        "bot": self.config.active_bot_name,
+                        "strategy": self.config.strategy_name,
+                        "symbol": symbol,
+                        "side": side,
+                        "discipline_mode": "ml_driven",
+                        "benchmark_peers": ",".join(
+                            TITAN_BENCHMARK_PEERS,
+                        ),
+                        "feature_schema_version": (
+                            TITAN_MLFLOW_FEATURE_SCHEMA_VERSION
+                        ),
+                    }
+                )
+                self._log_mlflow_params(
+                    {
+                        "active_bot": self.config.active_bot_name,
+                        "strategy_label": self.config.strategy_name,
+                        "symbol": symbol,
+                        "side": side,
+                        "qty": qty,
+                        "dry_run": self.config.dry_run,
+                        "enable_trading": self.config.enable_trading,
+                        "model_registry_uri": self.config.titan_model_uri,
+                        "ensemble_components": (
+                            "cnn_symmetry,xgboost_tabular,deep_ensemble"
+                        ),
+                        "benchmark_group": "Titan_vs_Orion_Rigel_Dogon",
+                        "sequence_window": self.config.sequence_window,
+                        "feature_schema_version": (
+                            TITAN_MLFLOW_FEATURE_SCHEMA_VERSION
+                        ),
+                    }
+                )
+                feature_metrics = self._extract_mlflow_feature_metrics(
+                    prediction_features=prediction_features,
+                    sentiment_score=sentiment_score,
+                    liquidity_ratio=liquidity_ratio,
+                    effective_buffer=effective_buffer,
+                )
+                self._log_mlflow_metrics(feature_metrics)
+                feature_metadata = self._last_prediction_feature_metadata.get(
+                    symbol,
+                    {},
+                )
+                if feature_metadata:
+                    self._log_mlflow_tags(
+                        {
+                            "market_data_source": str(
+                                feature_metadata.get(
+                                    "market_data_source",
+                                    "unknown",
+                                )
+                            ),
+                            "feature_source": str(
+                                feature_metadata.get(
+                                    "feature_source",
+                                    "unknown",
+                                )
+                            ),
+                        }
+                    )
+                    self._log_mlflow_metrics(
+                        {
+                            "titan_close_history_points": float(
+                                feature_metadata.get("close_history_points", 0)
+                            ),
+                            "titan_feature_timeseries_points": float(
+                                feature_metadata.get(
+                                    "feature_timeseries_points",
+                                    0,
+                                )
+                            ),
+                        }
+                    )
+                self._log_mlflow_decision_artifact(
+                    symbol=symbol,
+                    side=side,
+                    prediction_features=prediction_features,
+                    feature_metrics=feature_metrics,
+                )
+                return True
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow run start failed: %s", exc)
+
+        return False
+
+    def _log_mlflow_trade_result(
+        self,
+        prediction: int,
+        probability: float,
+        status: str,
+        order_id: Optional[str] = None,
+        ml_gate_passed: Optional[bool] = None,
+        liquidity_gate_passed: Optional[bool] = None,
+        effective_buffer: Optional[float] = None,
+        liquidity_ratio: Optional[float] = None,
+    ) -> None:
+        if mlflow is None or mlflow.active_run() is None:
+            return
+
+        try:
+            confidence = probability if prediction == 1 else (1.0 - probability)
+            self._log_mlflow_metrics(
+                {
+                    "titan_prediction_probability": float(probability),
+                    "titan_prediction_label": float(prediction),
+                    "titan_prediction_confidence": float(confidence),
+                    "titan_trade_approved": float(
+                        status in {"submitted", "simulated"},
+                    ),
+                    "titan_trade_blocked": float(status.startswith("blocked")),
+                }
+            )
+            if ml_gate_passed is not None:
+                self._log_mlflow_metrics(
+                    {"titan_ml_gate_passed": float(ml_gate_passed)}
+                )
+            if liquidity_gate_passed is not None:
+                self._log_mlflow_metrics(
+                    {
+                        "titan_liquidity_gate_passed": float(
+                            liquidity_gate_passed,
+                        )
+                    }
+                )
+            if effective_buffer is not None:
+                self._log_mlflow_metrics(
+                    {
+                        "titan_effective_liquidity_buffer": float(
+                            effective_buffer,
+                        )
+                    }
+                )
+            if liquidity_ratio is not None:
+                self._log_mlflow_metrics(
+                    {"titan_liquidity_ratio": float(liquidity_ratio)}
+                )
+            self._log_mlflow_tags({"trade_status": status})
+            if order_id:
+                self._log_mlflow_tags({"alpaca_order_id": order_id})
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow trade logging failed: %s", exc)
+
+    def _end_mlflow_trade_run(self, started_run: bool) -> None:
+        if not started_run or mlflow is None:
+            return
+
+        try:
+            mlflow.end_run()
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ):
+            pass
+
+    def _log_mlflow_tags(self, tags: Dict[str, Any]) -> None:
+        if mlflow is None or not tags:
+            return
+
+        try:
+            if hasattr(mlflow, "set_tags"):
+                mlflow.set_tags(tags)
+                return
+
+            for key, value in tags.items():
+                mlflow.set_tag(key, value)
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow tag logging failed: %s", exc)
+
+    def _log_mlflow_params(self, params: Dict[str, Any]) -> None:
+        if mlflow is None or not params:
+            return
+
+        try:
+            if hasattr(mlflow, "log_params"):
+                mlflow.log_params(params)
+                return
+
+            for key, value in params.items():
+                mlflow.log_param(key, value)
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow param logging failed: %s", exc)
+
+    def _log_mlflow_metrics(self, metrics: Dict[str, float]) -> None:
+        if mlflow is None or not metrics:
+            return
+
+        try:
+            for key, value in metrics.items():
+                mlflow.log_metric(key, float(value))
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow metric logging failed: %s", exc)
+
+    def _extract_mlflow_feature_metrics(
+        self,
+        prediction_features: Sequence[float] | Dict[str, float],
+        sentiment_score: float,
+        liquidity_ratio: float,
+        effective_buffer: float,
+    ) -> Dict[str, float]:
+        metrics: Dict[str, float] = {
+            "titan_sentiment_score": float(sentiment_score),
+            "titan_liquidity_ratio": float(liquidity_ratio),
+            "titan_effective_liquidity_buffer": float(effective_buffer),
+            "titan_liquidity_buffer_adjustment": float(
+                effective_buffer - self.config.liquidity_buffer_threshold,
+            ),
+        }
+
+        if isinstance(prediction_features, dict):
+            latest_mapping = {
+                "rsi_14_t_minus_0": "titan_rsi_cycle_current",
+                "bb_bandwidth_t_minus_0": "titan_volatility_bandwidth",
+                "bb_percent_b_t_minus_0": "titan_bollinger_percent_b",
+                "sentiment_score_t_minus_0": "titan_sentiment_score",
+                "liquidity_ratio_t_minus_0": "titan_liquidity_ratio",
+            }
+            for feature_key, metric_name in latest_mapping.items():
+                value = prediction_features.get(feature_key)
+                if value is not None:
+                    metrics[metric_name] = float(value)
+
+            rsi_cycle = [
+                float(value)
+                for key, value in prediction_features.items()
+                if key.startswith("rsi_14_t_minus_")
+            ]
+            if rsi_cycle:
+                metrics["titan_rsi_cycle_mean"] = float(np.mean(rsi_cycle))
+                metrics["titan_rsi_cycle_span"] = float(
+                    max(rsi_cycle) - min(rsi_cycle)
+                )
+
+            bandwidth_cycle = [
+                float(value)
+                for key, value in prediction_features.items()
+                if key.startswith("bb_bandwidth_t_minus_")
+            ]
+            if bandwidth_cycle:
+                metrics["titan_volatility_bandwidth_mean"] = float(
+                    np.mean(bandwidth_cycle)
+                )
+
+            metrics["titan_feature_vector_size"] = float(
+                len(prediction_features)
+            )
+        elif prediction_features:
+            metrics["titan_feature_vector_size"] = float(
+                len(prediction_features)
+            )
+
+        return metrics
+
+    def _log_mlflow_decision_artifact(
+        self,
+        symbol: str,
+        side: str,
+        prediction_features: Sequence[float] | Dict[str, float],
+        feature_metrics: Dict[str, float],
+    ) -> None:
+        if mlflow is None:
+            return
+
+        artifact_payload = {
+            "bot": self.config.active_bot_name,
+            "strategy": self.config.strategy_name,
+            "symbol": symbol,
+            "side": side,
+            "feature_schema_version": TITAN_MLFLOW_FEATURE_SCHEMA_VERSION,
+            "model_registry_uri": self.config.titan_model_uri,
+            "feature_metrics": feature_metrics,
+        }
+        if isinstance(prediction_features, dict):
+            artifact_payload["prediction_features"] = prediction_features
+
+        try:
+            if hasattr(mlflow, "log_dict"):
+                mlflow.log_dict(
+                    artifact_payload,
+                    "titan_decision_context.json",
+                )
+            elif hasattr(mlflow, "log_text"):
+                mlflow.log_text(
+                    json.dumps(artifact_payload, indent=2, default=str),
+                    "titan_decision_context.json",
+                )
+        except (
+            RuntimeError,
+            TypeError,
+            ValueError,
+            MlflowException,
+        ) as exc:
+            logger.warning("MLflow artifact logging failed: %s", exc)
 
     def _init_alpaca_client(self):
         if tradeapi is None:
@@ -446,6 +1077,27 @@ class TitanBot:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )
+            cursor.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {self.config.titan_orchestration_table} (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    timestamp DATETIME NOT NULL,
+                    bot_name VARCHAR(40) NOT NULL,
+                    task_name VARCHAR(40) NOT NULL,
+                    fund_name VARCHAR(80),
+                    status VARCHAR(30) NOT NULL,
+                    decision_reason VARCHAR(120),
+                    candidates_considered INT,
+                    candidates_executed INT,
+                    traded_symbols TEXT,
+                    detail TEXT,
+                    INDEX idx_orchestration_time (timestamp),
+                    INDEX idx_orchestration_bot (bot_name),
+                    INDEX idx_orchestration_task (task_name),
+                    INDEX idx_orchestration_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
             conn.commit()
         finally:
             conn.close()
@@ -465,19 +1117,54 @@ class TitanBot:
 
     def get_account_snapshot(self) -> Dict[str, float]:
         if self.api is None:
-            return {"cash": 0.0, "equity": 0.0}
+            return self._read_cached_account_snapshot() or {
+                "cash": 0.0,
+                "equity": 0.0,
+            }
 
-        account = self.api.get_account()
-        return {
-            "cash": float(account.cash),
-            "equity": float(account.equity),
-        }
+        try:
+            return self._fetch_live_account_snapshot()
+        except (requests.RequestException, RuntimeError, ValueError) as exc:
+            logger.warning(
+                "Using cached Alpaca snapshot after live failure: %s",
+                exc,
+            )
+            return self._read_cached_account_snapshot() or {
+                "cash": 0.0,
+                "equity": 0.0,
+            }
 
-    def titan_guard(self, buffer_threshold: Optional[float] = None) -> bool:
-        if buffer_threshold is None:
-            threshold = self.config.liquidity_buffer_threshold
-        else:
-            threshold = buffer_threshold
+    def _effective_liquidity_threshold(
+        self,
+        buffer_threshold: Optional[float] = None,
+        sentiment_score: Optional[float] = None,
+    ) -> float:
+        threshold = (
+            self.config.liquidity_buffer_threshold
+            if buffer_threshold is None
+            else buffer_threshold
+        )
+
+        if sentiment_score is None:
+            return threshold
+
+        bias = self.config.sentiment_trade_bias_threshold
+        if sentiment_score <= -abs(bias):
+            threshold += self.config.liquidity_buffer_negative_delta
+        elif sentiment_score >= abs(bias):
+            threshold -= self.config.liquidity_buffer_positive_delta
+
+        return min(max(threshold, 0.05), 0.95)
+
+    def titan_guard(
+        self,
+        buffer_threshold: Optional[float] = None,
+        sentiment_score: Optional[float] = None,
+    ) -> bool:
+        threshold = self._effective_liquidity_threshold(
+            buffer_threshold=buffer_threshold,
+            sentiment_score=sentiment_score,
+        )
         snapshot = self.get_account_snapshot()
         equity = snapshot.get("equity", 0.0)
         cash = snapshot.get("cash", 0.0)
@@ -551,7 +1238,11 @@ class TitanBot:
             return float(self.config.position_size)
         return float(qty)
 
-    def _compute_rsi(self, close: pd.Series, period: int = 14) -> Optional[float]:
+    def _compute_rsi(
+        self,
+        close: pd.Series,
+        period: int = 14,
+    ) -> Optional[float]:
         if close.empty or len(close) <= period:
             return None
         delta = close.diff()
@@ -562,31 +1253,10 @@ class TitanBot:
         value = rsi.iloc[-1]
         return None if pd.isna(value) else float(value)
 
-    def _fetch_technical_metrics(self, symbol: str) -> Dict[str, float]:
-        if self.api is None:
-            return {}
-
-        try:
-            bars = self.api.get_bars(
-                symbol,
-                "1Day",
-                limit=self.config.technical_lookback_days,
-                adjustment="raw",
-            ).df
-        except Exception as exc:
-            logger.warning("Failed loading bars for %s: %s", symbol, exc)
-            return {}
-
-        if bars is None or bars.empty or "close" not in bars.columns:
-            return {}
-
-        if isinstance(bars.index, pd.MultiIndex):
-            try:
-                bars = bars.xs(symbol, level=0)
-            except (KeyError, TypeError, ValueError):
-                return {}
-
-        close = pd.to_numeric(bars["close"], errors="coerce").dropna()
+    def _technical_metrics_from_close(
+        self,
+        close: pd.Series,
+    ) -> Dict[str, float]:
         if close.empty or len(close) < 35:
             return {}
 
@@ -607,6 +1277,42 @@ class TitanBot:
             "macd_signal": signal,
             "macd_hist": macd - signal,
         }
+
+    def _fetch_technical_metrics(self, symbol: str) -> Dict[str, float]:
+        close = pd.Series(dtype="float64")
+
+        if self.api is not None:
+            try:
+                bars = self.api.get_bars(
+                    symbol,
+                    "1Day",
+                    limit=self.config.technical_lookback_days,
+                    adjustment="raw",
+                ).df
+            except Exception as exc:
+                logger.warning("Failed loading bars for %s: %s", symbol, exc)
+            else:
+                if (
+                    bars is not None
+                    and not bars.empty
+                    and "close" in bars.columns
+                ):
+                    if isinstance(bars.index, pd.MultiIndex):
+                        try:
+                            bars = bars.xs(symbol, level=0)
+                        except (KeyError, TypeError, ValueError):
+                            bars = pd.DataFrame()
+
+                    if not bars.empty:
+                        close = pd.to_numeric(
+                            bars["close"],
+                            errors="coerce",
+                        ).dropna()
+
+        if close.empty or len(close) < 35:
+            close = self._fetch_close_history(symbol)
+
+        return self._technical_metrics_from_close(close)
 
     def _score_technical_metrics(self, metrics: Dict[str, float]) -> float:
         if not metrics:
@@ -635,6 +1341,218 @@ class TitanBot:
 
         return score
 
+    def _fetch_close_history(self, symbol: str) -> pd.Series:
+        if self.api is None:
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        try:
+            bars = self.api.get_bars(
+                symbol,
+                "1Day",
+                limit=max(
+                    self.config.technical_lookback_days,
+                    self.config.sequence_window + 30,
+                ),
+                adjustment="raw",
+            ).df
+        except Exception as exc:
+            logger.warning("Failed loading bars for %s: %s", symbol, exc)
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        if bars is None or bars.empty or "close" not in bars.columns:
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        if isinstance(bars.index, pd.MultiIndex):
+            try:
+                bars = bars.xs(symbol, level=0)
+            except (KeyError, TypeError, ValueError):
+                return self._fetch_close_history_from_yfinance(symbol)
+
+        close_history = pd.to_numeric(bars["close"], errors="coerce").dropna()
+        if len(close_history) < self._minimum_close_history_points():
+            return self._fetch_close_history_from_yfinance(symbol)
+
+        self._set_market_data_source(symbol, "alpaca")
+        self._write_cached_close_history(symbol, close_history)
+        return close_history
+
+    def _fetch_close_history_from_yfinance(self, symbol: str) -> pd.Series:
+        if yf is None:
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
+            return pd.Series(dtype="float64")
+
+        lookback = max(
+            self.config.technical_lookback_days,
+            self.config.sequence_window + 30,
+        )
+        try:
+            data = yf.download(
+                symbol,
+                period=f"{lookback}d",
+                progress=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed yfinance fallback for %s: %s",
+                symbol,
+                exc,
+            )
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
+            return pd.Series(dtype="float64")
+
+        if data is None or data.empty or "Close" not in data:
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
+            return pd.Series(dtype="float64")
+
+        close = data["Close"]
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        close_history = pd.to_numeric(close, errors="coerce").dropna()
+        if len(close_history) < self._minimum_close_history_points():
+            cached = self._read_cached_close_history(symbol)
+            if len(cached) >= self._minimum_close_history_points():
+                self._set_market_data_source(symbol, "cache")
+                return cached
+            self._set_market_data_source(symbol, "unavailable")
+            return pd.Series(dtype="float64")
+
+        self._set_market_data_source(symbol, "yfinance")
+        self._write_cached_close_history(symbol, close_history)
+        return close_history
+
+    def _current_liquidity_ratio(self) -> float:
+        snapshot = self.get_account_snapshot()
+        equity = float(snapshot.get("equity", 0.0) or 0.0)
+        cash = float(snapshot.get("cash", 0.0) or 0.0)
+        if equity <= 0:
+            return 1.0
+        return max(0.0, cash / equity)
+
+    def _fetch_sentiment_score(self, symbol: str) -> float:
+        if mysql is None:
+            return 0.0
+
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning("Sentiment DB connection failed: %s", exc)
+            return 0.0
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT AVG(sentiment_score)
+                FROM {self.config.sentiment_table}
+                WHERE UPPER(ticker) = %s
+                """,
+                (symbol.upper(),),
+            )
+            row = cursor.fetchone()
+        except Exception as exc:
+            logger.warning(
+                "Sentiment lookup failed for %s from %s: %s",
+                symbol,
+                self.config.sentiment_table,
+                exc,
+            )
+            return 0.0
+        finally:
+            conn.close()
+
+        if not row or row[0] is None:
+            return 0.0
+        try:
+            return float(row[0])
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _build_prediction_features(
+        self,
+        symbol: str,
+        features: Sequence[float],
+        sentiment_score: Optional[float] = None,
+        liquidity_ratio: Optional[float] = None,
+    ) -> Sequence[float] | Dict[str, float]:
+        symbol_key = symbol.strip().upper()
+        if features:
+            self._last_prediction_feature_metadata[symbol_key] = {
+                "market_data_source": "provided",
+                "feature_source": "provided",
+                "close_history_points": 0,
+                "feature_timeseries_points": 0,
+            }
+            return features
+
+        resolved_sentiment = (
+            self._fetch_sentiment_score(symbol)
+            if sentiment_score is None
+            else float(sentiment_score)
+        )
+        resolved_liquidity = (
+            self._current_liquidity_ratio()
+            if liquidity_ratio is None
+            else float(liquidity_ratio)
+        )
+        close_history = self._fetch_close_history(symbol)
+        if close_history.empty:
+            self._last_prediction_feature_metadata[symbol_key] = {
+                "market_data_source": self._last_market_data_source.get(
+                    symbol_key,
+                    "unavailable",
+                ),
+                "feature_source": "neutral",
+                "close_history_points": 0,
+                "feature_timeseries_points": 0,
+            }
+            return build_neutral_feature_row(
+                sentiment_score=resolved_sentiment,
+                liquidity_ratio=resolved_liquidity,
+                window_size=self.config.sequence_window,
+                feature_columns=BASE_FEATURE_COLUMNS,
+            )
+
+        feature_timeseries = build_feature_timeseries(
+            close_series=close_history,
+            sentiment_score=resolved_sentiment,
+            liquidity_ratio=resolved_liquidity,
+        )
+        feature_source = "sequence"
+        if feature_timeseries.empty:
+            feature_source = "neutral"
+        elif len(feature_timeseries) < self.config.sequence_window:
+            feature_source = "sequence_short_window"
+
+        self._last_prediction_feature_metadata[symbol_key] = {
+            "market_data_source": self._last_market_data_source.get(
+                symbol_key,
+                "unknown",
+            ),
+            "feature_source": feature_source,
+            "close_history_points": int(len(close_history)),
+            "feature_timeseries_points": int(len(feature_timeseries)),
+        }
+
+        return build_latest_sequence_features(
+            close_series=close_history,
+            sentiment_score=resolved_sentiment,
+            liquidity_ratio=resolved_liquidity,
+            window_size=self.config.sequence_window,
+            feature_columns=BASE_FEATURE_COLUMNS,
+        )
+
     def _rank_candidates(
         self,
         candidates: List[Dict[str, Any]],
@@ -662,7 +1580,8 @@ class TitanBot:
 
         if self.api is None:
             logger.warning(
-                "TITAN_SELECTION_MODE=technical but Alpaca client unavailable; using CSV order"
+                "TITAN_SELECTION_MODE=technical but Alpaca client unavailable; "
+                "using CSV order"
             )
             return candidates
 
@@ -686,12 +1605,22 @@ class TitanBot:
         )
         return enriched
 
+    def rank_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        return self._rank_candidates(candidates)
+
     def load_model(self):
-        if mlflow is None or not self._mlflow_tracking_is_reachable():
+        if (
+            mlflow is None
+            or mlflow_pyfunc is None
+            or not self._mlflow_tracking_is_reachable()
+        ):
             return None
         try:
             mlflow.set_tracking_uri(self.config.mlflow_tracking_uri)
-            return mlflow.sklearn.load_model(self.config.titan_model_uri)
+            return mlflow_pyfunc.load_model(self.config.titan_model_uri)
         except (
             AttributeError,
             OSError,
@@ -702,26 +1631,108 @@ class TitanBot:
             logger.warning("MLflow model load failed: %s", exc)
             return None
 
-    def titan_predict(self, features: Sequence[float]) -> Tuple[int, float]:
+    def _prepare_model_features(
+        self,
+        features: Sequence[float] | Dict[str, float],
+    ) -> pd.DataFrame:
+        if isinstance(features, dict):
+            return pd.DataFrame([features])
+
+        vector = [float(value) for value in features] if features else [0.0]
+        return pd.DataFrame([vector])
+
+    def _coerce_prediction_output(
+        self,
+        output: Any,
+    ) -> Tuple[int, float]:
+        def _sanitize_probability(value: Any) -> float:
+            probability = float(value)
+            if np.isnan(probability):
+                raise ValueError("Prediction probability is NaN")
+            return float(np.clip(probability, 0.0, 1.0))
+
+        if isinstance(output, pd.DataFrame) and not output.empty:
+            row = output.iloc[0]
+            probability = _sanitize_probability(
+                row.get("probability", row.get("score", 0.5))
+            )
+            prediction = int(
+                row.get(
+                    "prediction",
+                    probability >= self.config.prediction_threshold,
+                )
+            )
+            return prediction, probability
+
+        if isinstance(output, pd.Series) and not output.empty:
+            probability = _sanitize_probability(
+                output.get("probability", output.iloc[0])
+            )
+            prediction = int(
+                output.get(
+                    "prediction",
+                    probability >= self.config.prediction_threshold,
+                )
+            )
+            return prediction, probability
+
+        if isinstance(output, np.ndarray):
+            if output.ndim >= 2 and output.shape[-1] >= 2:
+                # For binary class probabilities, use the positive-class column.
+                probability = _sanitize_probability(output[0, -1])
+                prediction = int(
+                    probability >= self.config.prediction_threshold
+                )
+                return prediction, probability
+            if output.ndim == 0:
+                probability = _sanitize_probability(output)
+                prediction = int(
+                    probability >= self.config.prediction_threshold
+                )
+                return prediction, probability
+            if output.ndim >= 1 and output.size:
+                first = output.reshape(-1)[0]
+                probability = _sanitize_probability(first)
+                prediction = int(
+                    probability >= self.config.prediction_threshold
+                )
+                return prediction, probability
+
+        if isinstance(output, (list, tuple)) and output:
+            first = output[0]
+            if isinstance(first, (list, tuple)) and first:
+                probability = _sanitize_probability(first[-1])
+            else:
+                probability = _sanitize_probability(first)
+            prediction = int(probability >= self.config.prediction_threshold)
+            return prediction, probability
+
+        raise ValueError("Unsupported prediction payload returned by model")
+
+    def titan_predict(
+        self,
+        features: Sequence[float] | Dict[str, float],
+    ) -> Tuple[int, float]:
         model = self.load_model()
         if model is None:
             return 1, 0.5
 
-        try:
-            prediction = int(model.predict([list(features)])[0])
-        except (AttributeError, IndexError, TypeError, ValueError) as exc:
-            logger.warning("Prediction inference failed, using fallback: %s", exc)
-            return 1, 0.5
+        prepared = self._prepare_model_features(features)
 
-        probability = 0.5
         try:
-            probability = float(model.predict_proba([list(features)])[0][1])
-        except (AttributeError, IndexError, TypeError, ValueError):
-            probability = 0.5
+            output = model.predict(prepared)
+            prediction, probability = self._coerce_prediction_output(output)
+        except (AttributeError, IndexError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Prediction inference failed, using fallback: %s",
+                exc,
+            )
+            return 1, 0.5
 
         try:
             if mlflow is not None:
                 mlflow.log_metric("titan_prediction_probability", probability)
+                mlflow.log_metric("titan_prediction_label", float(prediction))
         except (RuntimeError, TypeError, ValueError):
             pass
 
@@ -779,129 +1790,282 @@ class TitanBot:
         fundamentals: Optional[Dict[str, Any]] = None,
     ):
         effective_qty = self._effective_order_qty(qty)
-        prediction, probability = self.titan_predict(features)
+        sentiment_score = self._fetch_sentiment_score(symbol)
+        liquidity_ratio = self._current_liquidity_ratio()
+        effective_buffer = self._effective_liquidity_threshold(
+            sentiment_score=sentiment_score,
+        )
+        prediction_features = self._build_prediction_features(
+            symbol,
+            features,
+            sentiment_score=sentiment_score,
+            liquidity_ratio=liquidity_ratio,
+        )
+        prediction, probability = self.titan_predict(prediction_features)
+        mlflow_run_started = self._start_mlflow_trade_run(
+            symbol=symbol,
+            side=side,
+            qty=effective_qty,
+            prediction_features=prediction_features,
+            sentiment_score=sentiment_score,
+            liquidity_ratio=liquidity_ratio,
+            effective_buffer=effective_buffer,
+        )
         passes_ml_gate = (
             prediction == 1
             and probability >= self.config.prediction_threshold
         )
-        passes_risk_gate = self.titan_guard()
+        passes_risk_gate = self.titan_guard(sentiment_score=sentiment_score)
         passes_fundamental_risk_rules, failed_risk_rule = (
             self._passes_configured_risk_rules(fundamentals)
         )
+        self._last_trade_outcome = {
+            "symbol": symbol,
+            "status": "pending",
+            "prediction": prediction,
+            "probability": probability,
+            "sentiment_score": sentiment_score,
+            "liquidity_ratio": liquidity_ratio,
+            "effective_buffer_threshold": effective_buffer,
+            "market_data_source": self._last_prediction_feature_metadata.get(
+                symbol,
+                {},
+            ).get("market_data_source"),
+            "feature_source": self._last_prediction_feature_metadata.get(
+                symbol,
+                {},
+            ).get("feature_source"),
+            "close_history_points": self._last_prediction_feature_metadata.get(
+                symbol,
+                {},
+            ).get("close_history_points"),
+            "feature_timeseries_points": (
+                self._last_prediction_feature_metadata.get(
+                    symbol,
+                    {},
+                ).get("feature_timeseries_points")
+            ),
+            "notes": None,
+        }
 
         try:
-            if mlflow is not None:
-                mlflow.log_param("active_bot", self.config.active_bot_name)
-                mlflow.log_param("strategy_label", self.config.strategy_name)
-        except (RuntimeError, TypeError, ValueError):
-            pass
+            if not passes_ml_gate:
+                notes = "ML gate rejected trade"
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "blocked",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "blocked", "notes": notes}
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "blocked_ml_gate",
+                    ml_gate_passed=False,
+                    liquidity_gate_passed=passes_risk_gate,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
+                )
+                return None
 
-        if not passes_ml_gate:
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "blocked",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes="ML gate rejected trade",
-            )
-            return None
+            if not passes_risk_gate:
+                notes = (
+                    "Liquidity guard blocked trade: "
+                    f"sentiment={sentiment_score:.2f}, "
+                    f"threshold={effective_buffer:.2f}"
+                )
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "blocked",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "blocked", "notes": notes}
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "blocked_liquidity",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=False,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
+                )
+                return None
 
-        if not passes_risk_gate:
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "blocked",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes="Liquidity guard blocked trade",
-            )
-            return None
-
-        if not passes_fundamental_risk_rules:
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "blocked",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes=(
+            if not passes_fundamental_risk_rules:
+                notes = (
                     "Risk rule blocked trade: "
                     f"{failed_risk_rule}"
-                ),
-            )
-            return None
+                )
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "blocked",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "blocked", "notes": notes}
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    f"blocked_{failed_risk_rule}",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
+                )
+                return None
 
-        if (
-            self.config.dry_run
-            or not self.config.enable_trading
-            or self.api is None
-        ):
+            if (
+                self.config.dry_run
+                or not self.config.enable_trading
+                or self.api is None
+            ):
+                notes = (
+                    "Dry-run mode; "
+                    f"sentiment={sentiment_score:.2f}, "
+                    f"threshold={effective_buffer:.2f}"
+                )
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "simulated",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=notes,
+                )
+                self._last_trade_outcome.update(
+                    {"status": "simulated", "notes": notes}
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "simulated",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
+                )
+                return None
+
+            try:
+                order = self._submit_alpaca_order(
+                    symbol=symbol,
+                    qty=effective_qty,
+                    side=side,
+                )
+            except requests.RequestException as exc:
+                logger.error(
+                    "Alpaca order submission failed for %s: %s",
+                    symbol,
+                    exc,
+                )
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "error",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=f"Alpaca submit failed: {exc}",
+                )
+                self._last_trade_outcome.update(
+                    {
+                        "status": "error",
+                        "notes": f"Alpaca submit failed: {exc}",
+                    }
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "error_submit",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
+                )
+                return None
+            except RuntimeError as exc:
+                logger.error(
+                    "Alpaca order submission blocked for %s: %s",
+                    symbol,
+                    exc,
+                )
+                self.log_trade(
+                    symbol,
+                    side,
+                    effective_qty,
+                    "MARKET",
+                    "error",
+                    prediction_label=prediction,
+                    prediction_probability=probability,
+                    notes=str(exc),
+                )
+                self._last_trade_outcome.update(
+                    {"status": "error", "notes": str(exc)}
+                )
+                self._log_mlflow_trade_result(
+                    prediction,
+                    probability,
+                    "error_runtime",
+                    ml_gate_passed=True,
+                    liquidity_gate_passed=True,
+                    effective_buffer=effective_buffer,
+                    liquidity_ratio=liquidity_ratio,
+                )
+                return None
+
+            order_id = self._extract_order_id(order)
             self.log_trade(
                 symbol,
                 side,
                 effective_qty,
                 "MARKET",
-                "simulated",
+                "submitted",
+                order_id=order_id,
                 prediction_label=prediction,
                 prediction_probability=probability,
-                notes="Dry-run mode",
             )
-            return None
-
-        try:
-            order = self._submit_alpaca_order(
-                symbol=symbol,
-                qty=effective_qty,
-                side=side,
+            self._last_trade_outcome.update(
+                {"status": "submitted", "notes": "submitted"}
             )
-        except requests.RequestException as exc:
-            logger.error("Alpaca order submission failed for %s: %s", symbol, exc)
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "error",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes=f"Alpaca submit failed: {exc}",
+            self._log_mlflow_trade_result(
+                prediction,
+                probability,
+                "submitted",
+                order_id=order_id,
+                ml_gate_passed=True,
+                liquidity_gate_passed=True,
+                effective_buffer=effective_buffer,
+                liquidity_ratio=liquidity_ratio,
             )
-            return None
-        except RuntimeError as exc:
-            logger.error("Alpaca order submission blocked for %s: %s", symbol, exc)
-            self.log_trade(
-                symbol,
-                side,
-                effective_qty,
-                "MARKET",
-                "error",
-                prediction_label=prediction,
-                prediction_probability=probability,
-                notes=str(exc),
+            self._notify_discord(
+                f"Titan executed {side} order for {effective_qty} {symbol}"
             )
-            return None
-
-        self.log_trade(
-            symbol,
-            side,
-            effective_qty,
-            "MARKET",
-            "submitted",
-            order_id=self._extract_order_id(order),
-            prediction_label=prediction,
-            prediction_probability=probability,
-        )
-        self._notify_discord(
-            f"Titan executed {side} order for {effective_qty} {symbol}"
-        )
-        return order
+            return order
+        finally:
+            self._end_mlflow_trade_run(mlflow_run_started)
 
     def execute_from_screener(
         self,
@@ -911,10 +2075,10 @@ class TitanBot:
     ) -> List[Dict[str, Any]]:
         candidates = load_bot_trade_candidates(self.config.active_bot_name)
         candidates = self._rank_candidates(candidates)
-        if max_trades is not None and max_trades > 0:
-            candidates = candidates[:max_trades]
 
         results: List[Dict[str, Any]] = []
+        completed_trades = 0
+        target_trades = max_trades if max_trades and max_trades > 0 else None
         for candidate in candidates:
             symbol = str(candidate.get("symbol", "")).strip().upper()
             if not symbol:
@@ -937,16 +2101,50 @@ class TitanBot:
                 features=features,
                 fundamentals=fundamentals,
             )
+            outcome = dict(self._last_trade_outcome or {})
+            status = str(outcome.get("status") or "completed")
             results.append(
                 {
                     "symbol": symbol,
                     "executed": order is not None,
+                    "status": status,
+                    "notes": outcome.get("notes"),
+                    "prediction_probability": outcome.get("probability"),
+                    "sentiment_score": outcome.get("sentiment_score"),
+                    "effective_buffer_threshold": outcome.get(
+                        "effective_buffer_threshold"
+                    ),
+                    "market_data_source": outcome.get("market_data_source"),
+                    "feature_source": outcome.get("feature_source"),
+                    "close_history_points": outcome.get(
+                        "close_history_points"
+                    ),
+                    "feature_timeseries_points": outcome.get(
+                        "feature_timeseries_points"
+                    ),
                     "fundamentals": fundamentals,
                     "technical_score": candidate.get("technical_score"),
-                    "technical_metrics": candidate.get("technical_metrics", {}),
-                    "selection_reason": candidate.get("selection_reason", "csv_order"),
+                    "technical_metrics": candidate.get(
+                        "technical_metrics",
+                        {},
+                    ),
+                    "selection_reason": candidate.get(
+                        "selection_reason",
+                        "csv_order",
+                    ),
                 }
             )
+
+            successful_statuses = {"submitted"}
+            if self.config.dry_run or not self.config.enable_trading:
+                successful_statuses.add("simulated")
+            if status in successful_statuses:
+                completed_trades += 1
+                if (
+                    target_trades is not None
+                    and completed_trades >= target_trades
+                ):
+                    break
 
         return results
 
@@ -1046,7 +2244,72 @@ class TitanBot:
         finally:
             conn.close()
 
-    def get_recent_trades(self, limit: int = 100) -> pd.DataFrame:
+    def log_orchestration_run(
+        self,
+        bot_name: str,
+        task_name: str,
+        status: str,
+        detail: str,
+        fund_name: Optional[str] = None,
+        decision_reason: Optional[str] = None,
+        candidates_considered: Optional[int] = None,
+        candidates_executed: Optional[int] = None,
+        traded_symbols: Optional[Sequence[str]] = None,
+    ) -> None:
+        if mysql is None:
+            raise RuntimeError("mysql-connector-python is not installed")
+
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning(
+                "Could not connect for Titan orchestration logging: %s",
+                exc,
+            )
+            return
+
+        symbols_text = ", ".join(
+            symbol
+            for symbol in [
+                str(symbol).strip().upper() for symbol in (traded_symbols or [])
+            ]
+            if symbol
+        )
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                INSERT INTO {self.config.titan_orchestration_table}
+                (timestamp, bot_name, task_name, fund_name, status,
+                 decision_reason, candidates_considered, candidates_executed,
+                 traded_symbols, detail)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    datetime.now(timezone.utc).replace(tzinfo=None),
+                    bot_name,
+                    task_name,
+                    fund_name,
+                    status,
+                    decision_reason,
+                    candidates_considered,
+                    candidates_executed,
+                    symbols_text,
+                    detail,
+                ),
+            )
+            conn.commit()
+        except Exception as exc:
+            logger.warning("Could not write orchestration row: %s", exc)
+        finally:
+            conn.close()
+
+    def get_recent_trade_activity(
+        self,
+        limit: int = 100,
+        since: Optional[datetime] = None,
+        symbols: Optional[Sequence[str]] = None,
+    ) -> pd.DataFrame:
         if mysql is None:
             return pd.DataFrame()
 
@@ -1057,12 +2320,32 @@ class TitanBot:
             return pd.DataFrame()
         try:
             query = (
-                "SELECT timestamp, symbol, side, qty, status, "
-                "prediction_probability "
-                f"FROM {self.config.titan_trades_table} "
-                f"ORDER BY timestamp DESC LIMIT %s"
+                "SELECT timestamp, symbol, side, qty, status, order_id, "
+                "prediction_probability, notes "
+                f"FROM {self.config.titan_trades_table}"
             )
-            df = pd.read_sql(query, conn, params=(limit,))
+            clauses: List[str] = []
+            params: List[Any] = []
+            if since is not None:
+                clauses.append("timestamp >= %s")
+                params.append(since)
+
+            if symbols:
+                normalized_symbols = [
+                    str(symbol).strip().upper() for symbol in symbols if symbol
+                ]
+                if normalized_symbols:
+                    placeholders = ", ".join(["%s"] * len(normalized_symbols))
+                    clauses.append(f"symbol IN ({placeholders})")
+                    params.extend(normalized_symbols)
+
+            if clauses:
+                query = f"{query} WHERE {' AND '.join(clauses)}"
+
+            query = f"{query} ORDER BY timestamp DESC LIMIT %s"
+            params.append(limit)
+
+            df = pd.read_sql(query, conn, params=tuple(params))
             if not df.empty:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
             return df
@@ -1072,8 +2355,42 @@ class TitanBot:
         finally:
             conn.close()
 
+    def get_recent_trades(self, limit: int = 100) -> pd.DataFrame:
+        return self.get_recent_trade_activity(limit=limit)
+
+    def get_recent_orchestration_runs(self, limit: int = 50) -> pd.DataFrame:
+        if mysql is None:
+            return pd.DataFrame()
+
+        try:
+            conn = mysql.connector.connect(**self.config.mysql_config())
+        except Exception as exc:
+            logger.warning(
+                "Could not connect for Titan orchestration read: %s",
+                exc,
+            )
+            return pd.DataFrame()
+        try:
+            query = (
+                "SELECT timestamp, bot_name, task_name, fund_name, status, "
+                "decision_reason, candidates_considered, candidates_executed, "
+                "traded_symbols, detail "
+                f"FROM {self.config.titan_orchestration_table} "
+                "ORDER BY timestamp DESC LIMIT %s"
+            )
+            df = pd.read_sql(query, conn, params=(limit,))
+            if not df.empty:
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
+            return df
+        except Exception as exc:
+            logger.warning("Could not read Titan orchestration runs: %s", exc)
+            return pd.DataFrame()
+        finally:
+            conn.close()
+
     def dashboard_snapshot(self) -> Dict[str, Any]:
         trades_df = self.get_recent_trades(limit=250)
+        orchestration_df = self.get_recent_orchestration_runs(limit=100)
         health_rows = self.collect_service_health()
 
         if trades_df.empty:
@@ -1083,29 +2400,58 @@ class TitanBot:
                 "submitted_trades": 0,
                 "blocked_trades": 0,
                 "avg_prediction_probability": 0.0,
+                "latest_trade": {},
+                "today": {
+                    "total": 0,
+                    "submitted": 0,
+                    "blocked": 0,
+                    "simulated": 0,
+                },
                 "health": health_rows,
+                "orchestration_df": orchestration_df,
                 "trades_df": trades_df,
             }
 
+        trades_local = trades_df.copy()
+        trades_local["prediction_probability"] = pd.to_numeric(
+            trades_local["prediction_probability"],
+            errors="coerce",
+        ).fillna(0.0)
+        latest_row = trades_local.iloc[0].to_dict() if not trades_local.empty else {}
+
+        today_mask = trades_local["timestamp"].dt.date == pd.Timestamp.utcnow().date()
+        today_df = trades_local[today_mask]
+
         return {
-            "total_trades": int(len(trades_df)),
+            "total_trades": int(len(trades_local)),
             "simulated_trades": int(
-                (trades_df["status"] == "simulated").sum()
+                (trades_local["status"] == "simulated").sum()
             ),
             "submitted_trades": int(
-                (trades_df["status"] == "submitted").sum()
+                (trades_local["status"] == "submitted").sum()
             ),
-            "blocked_trades": int((trades_df["status"] == "blocked").sum()),
+            "blocked_trades": int((trades_local["status"] == "blocked").sum()),
             "avg_prediction_probability": float(
-                pd.to_numeric(
-                    trades_df["prediction_probability"],
-                    errors="coerce",
-                )
-                .fillna(0.0)
-                .mean()
+                trades_local["prediction_probability"].mean()
             ),
+            "latest_trade": {
+                "timestamp": str(latest_row.get("timestamp", "")),
+                "symbol": latest_row.get("symbol"),
+                "status": latest_row.get("status"),
+                "prediction_probability": float(
+                    latest_row.get("prediction_probability", 0.0) or 0.0
+                ),
+                "notes": latest_row.get("notes"),
+            },
+            "today": {
+                "total": int(len(today_df)),
+                "submitted": int((today_df["status"] == "submitted").sum()),
+                "blocked": int((today_df["status"] == "blocked").sum()),
+                "simulated": int((today_df["status"] == "simulated").sum()),
+            },
             "health": health_rows,
-            "trades_df": trades_df,
+            "orchestration_df": orchestration_df,
+            "trades_df": trades_local,
         }
 
 

@@ -67,6 +67,11 @@ try:
 except ImportError:
     get_mlflow_tracking_uri = None
 
+try:
+    from scripts.noomo_ml_notify import notify_training_completion
+except ImportError:
+    from noomo_ml_notify import notify_training_completion
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,
@@ -506,6 +511,7 @@ class RigelModelTrainer:
         try:
             run_context = nullcontext()
             run_active = False
+            run_id = "n/a"
 
             if MLFLOW_AVAILABLE:
                 try:
@@ -515,6 +521,7 @@ class RigelModelTrainer:
                     run_name = f"{symbol.replace('/', '')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
                     run_context = mlflow.start_run(run_name=run_name)
                     run_active = True
+                    run_id = getattr(getattr(run_context, "info", None), "run_id", "n/a")
                 except Exception as mlflow_init_error:
                     logger.warning(f"MLflow init failed, continuing without tracking: {mlflow_init_error}")
 
@@ -560,6 +567,30 @@ class RigelModelTrainer:
                     for _, artifact_path in saved_paths.items():
                         if os.path.exists(artifact_path):
                             mlflow.log_artifact(artifact_path)
+
+                accuracy_candidates = [
+                    float(metrics["accuracy"])
+                    for metrics in (lstm_metrics, xgb_metrics)
+                    if "accuracy" in metrics
+                ]
+                best_accuracy = (
+                    max(accuracy_candidates)
+                    if accuracy_candidates
+                    else None
+                )
+                notify_training_completion(
+                    bot_name="Rigel",
+                    model_label="LSTM/XGBoost",
+                    fields={
+                        "symbol": symbol.replace("/", ""),
+                        "run_id": run_id,
+                        "accuracy": (
+                            f"{best_accuracy:.4f}"
+                            if best_accuracy is not None
+                            else "n/a"
+                        ),
+                    },
+                )
 
                 logger.info(f"[OK] Successfully trained models for {symbol}")
             

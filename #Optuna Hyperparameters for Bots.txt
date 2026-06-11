@@ -1,0 +1,111 @@
+#Optuna Hyperparameters for Bots
+bot_config:
+  name: "<Bot_Name>"
+  domain: "<Asset_Class_or_Strategy>"
+  algorithm:
+    type: "<xgboost | random_forest | neural_network | sentiment_nlp | technical_strategy | optimizer>"
+    parameters:
+      # Fixed operational values
+      objective: "<regression | classification | custom>"
+      eval_metric: "<rmse | logloss | auc | sharpe>"
+      loss_function: "<mse | cross_entropy | custom>"
+      indicator_window: <int>   # for technical bots
+      thresholds:
+        rsi_overbought: 70
+        rsi_oversold: 30
+      constraints:
+        leverage_limit: 2.0
+        sector_weights: "balanced"
+    hyperparameters:
+      # Tunable ranges for Optuna/MLflow
+      learning_rate: [0.0001, 0.01]
+      max_depth: [3, 10]
+      n_estimators: [100, 1000]
+      subsample: [0.5, 1.0]
+      colsample_bytree: [0.5, 1.0]
+      min_child_weight: [1, 10]
+      batch_size: [32, 256]
+      epochs: [50, 500]
+      dropout_rate: [0.1, 0.5]
+      mutation_rate: [0.01, 0.1]   # for GA optimizers
+      crossover_rate: [0.5, 0.9]
+  risk_management:
+    stop_loss: "2_ATR"
+    take_profit: "4_ATR"
+    risk_per_trade: "1%"
+    position_sizing: "<fixed | kelly | volatility_based>"
+  data_sources:
+    market_data: "<broker_api | csv | db>"
+    sentiment_feed: "<news_api | finbert>"
+    indicators: ["RSI", "MACD", "ATR"]
+  logging:
+    format: "json"
+    destination: "<mysql | postgres | telemetry_dashboard>"
+    notify: "<telegram | slack>"
+# Further hyperparameter for Bots using XGBoost
+hyperparameters:
+XGBoost Bots (Dogon_Bot – ETF Optimizer, Altair_Bot – News Trading)
+
+bot_config:
+  name: "Dogon_Bot"
+  domain: "ETF Portfolio Optimizer"
+  algorithm:
+    type: "xgboost"
+    parameters:
+      objective: "regression"
+      eval_metric: "rmse"
+      booster: "gbtree"
+    hyperparameters:
+      eta: [0.01, 0.3]
+      max_depth: [3, 10]
+      subsample: [0.5, 1.0]
+      colsample_bytree: [0.5, 1.0]
+      lambda: [0, 10]
+      alpha: [0, 10]
+      n_estimators: [100, 1000]
+      min_child_weight: [1, 10]
+
+
+#Further hyperparameter for Bots using Random Forest
+bot_config:
+  name: "Rhea_Bot"
+  bot_config:
+  name: "Rhea_Bot"
+  domain: "ADI Fund"
+  algorithm:
+    type: "random_forest"
+    parameters:
+      criterion: "gini"
+      bootstrap: true
+    hyperparameters:
+      n_estimators: [100, 1000]
+      max_depth: [10, 100]
+      min_samples_split: [2, 20]
+      min_samples_leaf: [1, 10]
+      max_features: ["sqrt", "log2"]
+      max_samples: [0.5, 1.0]
+
+      #further hyperparameter for Bots using Neural Networks
+#Neural Network Bots (Rigel_Bot – FX Mean Reversion, Hydra_Bot – Healthcare Momentum)
+
+bot_config:
+  name: "Rigel_Bot"
+  domain: "FX Mean Reversion"
+  algorithm:
+    type: "neural_network"
+    parameters:
+      architecture: "LSTM"
+      loss_function: "mse"
+    hyperparameters:
+      hidden_layers: [2, 5]
+      neurons_per_layer: [64, 512]
+      activation: ["relu", "tanh"]
+      optimizer: ["Adam", "RMSprop"]
+      learning_rate: [0.0001, 0.01]
+      batch_size: [32, 256]
+      epochs: [50, 500]
+      dropout_rate: [0.1, 0.5]
+      weight_decay: [0, 0.01]
+
+
+

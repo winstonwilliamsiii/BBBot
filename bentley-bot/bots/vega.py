@@ -2,7 +2,7 @@
 Bot 2: Vega_Bot
 
 Fund: Mansa_Retail
-Strategy: Vega Mansa Retail MTF-ML
+Strategy: Breakout Strategy
 """
 
 def start():
@@ -21,7 +21,7 @@ def get_status():
         "id": 2,
         "name": "Vega_Bot",
         "fund": "Mansa_Retail",
-        "strategy": "Vega Mansa Retail MTF-ML",
+        "strategy": "Breakout Strategy",
         "status": "idle"
     }
 
@@ -31,4 +31,4 @@ def configure(config):
     pass
 
 if __name__ == "__main__":
-    print("Vega_Bot | Mansa_Retail | Vega Mansa Retail MTF-ML - Ready")
+    print("Vega_Bot | Mansa_Retail | Breakout Strategy - Ready")

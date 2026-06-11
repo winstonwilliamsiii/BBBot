@@ -1,52 +1,75 @@
-# Airflow Docker Startup Script for Bentley Budget Bot
-# This script handles the complete Docker setup for Airflow + Streamlit app
+# Bentley Budget Bot - Airflow Docker Startup
+# Starts the core container stack from docker/docker-compose-airflow.yml.
 
-# Set encoding
+param(
+    [switch]$NoPull,
+    [switch]$NoBuild
+)
+
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-Write-Host "🚀 Bentley Budget Bot - Docker Airflow Setup" -ForegroundColor Green
-Write-Host "===========================================" -ForegroundColor Green
-Write-Host ""
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$composeFile = Join-Path $repoRoot "docker\docker-compose-airflow.yml"
 
-# Stop any existing containers first
-Write-Host "🛑 Stopping existing containers..." -ForegroundColor Yellow
-docker-compose -f docker-compose-airflow.yml down
+Push-Location $repoRoot
 
-# Pull latest images
-Write-Host "📦 Pulling latest Docker images..." -ForegroundColor Cyan
-docker-compose -f docker-compose-airflow.yml pull
+try {
+    Write-Host "Bentley Budget Bot - Docker Airflow Setup" -ForegroundColor Green
+    Write-Host "=========================================" -ForegroundColor Green
+    Write-Host "Compose file: $composeFile" -ForegroundColor Gray
 
-# Start the services
-Write-Host "🔧 Starting Docker services..." -ForegroundColor Cyan
-Write-Host "   - MySQL Database (port 3306)" -ForegroundColor White
-Write-Host "   - Redis Cache (port 6379)" -ForegroundColor White
-Write-Host "   - Airflow Webserver (port 8080)" -ForegroundColor White
-Write-Host "   - Airflow Scheduler" -ForegroundColor White
-Write-Host "   - Airflow Worker" -ForegroundColor White
-Write-Host "   - Streamlit App (port 8501)" -ForegroundColor White
+    Write-Host "Stopping existing containers..." -ForegroundColor Yellow
+    docker compose -f $composeFile down
 
-docker-compose -f docker-compose-airflow.yml up -d
+    if (-not $NoPull) {
+        Write-Host "Pulling images..." -ForegroundColor Yellow
+        docker compose -f $composeFile pull
+    } else {
+        Write-Host "No-pull mode enabled: skipping image pull." -ForegroundColor Yellow
+    }
 
-Write-Host ""
-Write-Host "⏳ Waiting for services to start..." -ForegroundColor Yellow
-Start-Sleep -Seconds 30
+    Write-Host "Starting services..." -ForegroundColor Yellow
+    Write-Host "  MySQL (3307)" -ForegroundColor White
+    Write-Host "  Redis (6379)" -ForegroundColor White
+    Write-Host "  Airflow webserver (8080)" -ForegroundColor White
+    Write-Host "  Airflow scheduler" -ForegroundColor White
+    Write-Host "  Airflow worker" -ForegroundColor White
+    Write-Host "  MLflow (5000)" -ForegroundColor White
+    Write-Host "  Streamlit (8501)" -ForegroundColor White
+    $upCmd = @("compose", "-f", $composeFile, "up", "-d")
+    if ($NoBuild) {
+        $upCmd += "--no-build"
+        Write-Host "No-build mode enabled: skipping image builds." -ForegroundColor Yellow
+    }
+    & docker @upCmd
+    if ($LASTEXITCODE -ne 0) {
+        if ($NoPull -or $NoBuild) {
+            throw (
+                "Compose start failed in no-pull/no-build mode. " +
+                "One or more local images are missing (for example bentley-airflow-mlflow:latest). " +
+                "Run again without -NoPull/-NoBuild after registry connectivity is restored."
+            )
+        }
+        throw "Compose start failed. Review docker compose output and retry."
+    }
 
-# Check status
-Write-Host "📊 Checking service status..." -ForegroundColor Cyan
-docker-compose -f docker-compose-airflow.yml ps
+    Write-Host "Waiting for services to start..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 20
 
-Write-Host ""
-Write-Host "🎉 Setup Complete! Access your applications:" -ForegroundColor Green
-Write-Host "   🌐 Airflow UI:     http://localhost:8080" -ForegroundColor Yellow
-Write-Host "   📊 Streamlit App:  http://localhost:8501" -ForegroundColor Yellow
-Write-Host "   🗄️  MySQL:         localhost:3306" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "🔐 Airflow Login:" -ForegroundColor Cyan
-Write-Host "   Username: admin" -ForegroundColor White
-Write-Host "   Password: admin" -ForegroundColor White
-Write-Host ""
-Write-Host "📝 Useful commands:" -ForegroundColor Cyan
-Write-Host "   View logs:  docker-compose -f docker-compose-airflow.yml logs -f" -ForegroundColor White
-Write-Host "   Stop all:   docker-compose -f docker-compose-airflow.yml down" -ForegroundColor White
-Write-Host "   Restart:    .\start_airflow_docker.ps1" -ForegroundColor White
+    Write-Host "Service status:" -ForegroundColor Cyan
+    docker compose -f $composeFile ps
+
+    Write-Host "Access points:" -ForegroundColor Green
+    Write-Host "  Airflow:   http://127.0.0.1:8080" -ForegroundColor White
+    Write-Host "  Streamlit: http://127.0.0.1:8501" -ForegroundColor White
+    Write-Host "  MySQL:     127.0.0.1:3307" -ForegroundColor White
+    Write-Host "  Redis:     127.0.0.1:6379" -ForegroundColor White
+    Write-Host "  MLflow:    http://127.0.0.1:5000" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Airflow login: admin / admin" -ForegroundColor Cyan
+    Write-Host "Use: docker compose -f docker/docker-compose-airflow.yml logs -f" -ForegroundColor Gray
+    Write-Host "Use: docker compose -f docker/docker-compose-airflow.yml down" -ForegroundColor Gray
+} finally {
+    Pop-Location
+}

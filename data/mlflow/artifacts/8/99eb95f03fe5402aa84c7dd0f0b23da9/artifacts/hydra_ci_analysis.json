@@ -1,0 +1,40 @@
+{
+  "ticker": "CI",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": 0.25905461487146453,
+    "average_return": 0.002590546148714645,
+    "lookback": 20,
+    "latest_price": 289.0050048828125,
+    "signal": true
+  },
+  "fundamental": {
+    "score": 0.4525,
+    "forward_pe": 8.614933,
+    "return_on_equity": 0.16268998,
+    "revenue_growth": 0.046,
+    "operating_margin": 0.054780003,
+    "roe_component": 0.65075992,
+    "growth_component": 0.22999999999999998,
+    "margin_component": 0.273900015,
+    "pe_component": 0.65540268
+  },
+  "technical": {
+    "score": -0.5141881791086989,
+    "short_sma": 274.45710021972656,
+    "long_sma": 281.69942596435544,
+    "signal": false,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 289.0050048828125,
+  "composite_score": 0.0752,
+  "buy_threshold": 0.15,
+  "action": "HOLD"
+}

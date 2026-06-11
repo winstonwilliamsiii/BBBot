@@ -1,0 +1,16 @@
+{
+  "bot": "Dogon",
+  "fund": "Mansa_ETF",
+  "status": "ready",
+  "timestamp": "2026-04-15T12:37:13.278622+00:00",
+  "signal": "hold",
+  "confidence": 0.5212897658348083,
+  "model_used": "gbt",
+  "best_training_model": "gbt",
+  "latest_feature_timestamp": "2026-04-14 00:00:00",
+  "feature_rows": 76.0,
+  "symbol_count": 6.0,
+  "predicted_class": 0.0,
+  "raw_probability": 0.0,
+  "detail": "Model-backed runtime inference completed."
+}

@@ -65,10 +65,10 @@ The Bentley Bot Control Center is a comprehensive Streamlit-based admin interfac
 
 ### Step 1: Prerequisites
 
-Ensure Flask API is running:
+Ensure the FastAPI control center is running:
 ```bash
-# Terminal 1: Start Flask API
-python backend/api/app.py
+# Terminal 1: Start FastAPI control center
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
 ```
 
 ### Step 2: Access the Control Center
@@ -190,7 +190,7 @@ Connects to existing Docker containers:
 - **Redis** (localhost:6379)
 
 ### Service Dashboard
-Links to existing `sites/Mansa_Bentley_Platform/service_dashboard.html` in sidebar Quick Links.
+Rendered directly inside the Admin Control Center on the **Services** tab.
 
 ### Bot Integrations
 Uses bot modules from `/bentley-bot/bots/` folder:
@@ -310,9 +310,9 @@ If Flask API is not running, the UI gracefully falls back to sample data (lines 
 - Check for Python syntax errors in terminal output
 
 ### API connection errors
-- Ensure Flask API is running: `python backend/api/app.py`
-- Check FLASK_API_URL is correct (default: http://localhost:5001)
-- Verify CORS is enabled in Flask app
+- Ensure the FastAPI control center is running: `powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1`
+- Check `CONTROL_CENTER_API_URL` is correct (default: `http://localhost:5001`)
+- Verify the backend is healthy at `http://localhost:5001/health`
 
 ### Authentication loop
 - Clear browser cookies/cache
@@ -331,7 +331,7 @@ If Flask API is not running, the UI gracefully falls back to sample data (lines 
 - [BENTLEY_BOT_CONTROL_CENTER_ARCHITECTURE.md](BENTLEY_BOT_CONTROL_CENTER_ARCHITECTURE.md) - Full architecture
 - [CONTROL_CENTER_QUICK_START.md](CONTROL_CENTER_QUICK_START.md) - Week-by-week implementation
 - [FLASK_STREAMLIT_UPDATE.md](FLASK_STREAMLIT_UPDATE.md) - Tech stack details
-- [FOLDER_STRUCTURE.md](../FOLDER_STRUCTURE.md) - Bentley Bot directory structure
+- [FOLDER_STRUCTURE.md](root/FOLDER_STRUCTURE.md) - Bentley Bot directory structure
 
 ---
 

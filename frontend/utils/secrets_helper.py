@@ -105,13 +105,19 @@ def get_mysql_config(database: str = None) -> dict:
     Returns:
         dict: MySQL configuration with host, port, user, password, database
     """
-    # Get database from parameter, env var, or default
+    # Prefer explicit local env overrides for development, then secrets.
+    env_database = _clean_secret_value(os.getenv('MYSQL_DATABASE') or os.getenv('DB_NAME'))
     if database is None:
-        database = get_secret('MYSQL_DATABASE', default=get_secret('DB_NAME', default='mansa_bot'))
+        database = env_database or get_secret('MYSQL_DATABASE', default=get_secret('DB_NAME', default='mansa_bot'))
 
     # For production Railway, map default database names to actual databases
-    host = get_secret('MYSQL_HOST', default=get_secret('DB_HOST', default='127.0.0.1'))
+    env_host = _clean_secret_value(os.getenv('MYSQL_HOST') or os.getenv('DB_HOST'))
+    host = env_host or get_secret('MYSQL_HOST', default=get_secret('DB_HOST', default='127.0.0.1'))
     is_railway = any(x in host for x in ('railway', 'nozomi'))
+
+    env_port = _clean_secret_value(os.getenv('MYSQL_PORT') or os.getenv('DB_PORT'))
+    env_user = _clean_secret_value(os.getenv('MYSQL_USER') or os.getenv('DB_USER'))
+    env_password = _clean_secret_value(os.getenv('MYSQL_PASSWORD') or os.getenv('DB_PASSWORD'))
 
     # Auto-map database names for Railway production environment
     # mansa_bot and railway both point to bbbot1 on production
@@ -120,9 +126,9 @@ def get_mysql_config(database: str = None) -> dict:
 
     return {
         'host': host,
-        'port': int(get_secret('MYSQL_PORT', default=get_secret('DB_PORT', default='54537' if is_railway else '3306'))),
-        'user': get_secret('MYSQL_USER', default=get_secret('DB_USER', default='root')),
-        'password': get_secret('MYSQL_PASSWORD', default=get_secret('DB_PASSWORD', default='root')),
+        'port': int(env_port or get_secret('MYSQL_PORT', default=get_secret('DB_PORT', default='54537' if is_railway else '3306'))),
+        'user': env_user or get_secret('MYSQL_USER', default=get_secret('DB_USER', default='root')),
+        'password': env_password or get_secret('MYSQL_PASSWORD', default=get_secret('DB_PASSWORD', default='root')),
         'database': database,
     }
 

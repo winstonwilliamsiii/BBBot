@@ -1,0 +1,40 @@
+{
+  "ticker": "CVS",
+  "fund": "Mansa Health",
+  "strategy": "Momentum Strategy",
+  "momentum": {
+    "score": 0.875664154648767,
+    "average_return": 0.00875664154648767,
+    "lookback": 20,
+    "latest_price": 92.41000366210938,
+    "signal": true
+  },
+  "fundamental": {
+    "score": 0.3044,
+    "forward_pe": 11.096676,
+    "return_on_equity": 0.037520003,
+    "revenue_growth": 0.061,
+    "operating_margin": 0.04124,
+    "roe_component": 0.150080012,
+    "growth_component": 0.305,
+    "margin_component": 0.2062,
+    "pe_component": 0.55613296
+  },
+  "technical": {
+    "score": 0.3436554420863258,
+    "short_sma": 77.66460037231445,
+    "long_sma": 76.35265018463134,
+    "signal": true,
+    "short_window": 50,
+    "long_window": 200
+  },
+  "sentiment": {
+    "score": 0.0,
+    "headline_count": 2,
+    "method": "textblob"
+  },
+  "latest_price": 92.41000366210938,
+  "composite_score": 0.4685,
+  "buy_threshold": 0.15,
+  "action": "BUY"
+}

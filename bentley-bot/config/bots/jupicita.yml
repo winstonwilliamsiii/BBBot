@@ -24,3 +24,9 @@ risk:
   max_pair_divergence_zscore: 2.5
   max_daily_loss_pct: 1.25
   max_open_positions: 4
+
+notification:
+  discord:
+    required_indicators:
+      - FVFI
+      - ROVL

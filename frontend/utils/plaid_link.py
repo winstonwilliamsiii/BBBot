@@ -79,14 +79,18 @@ class PlaidLinkManager:
 
         # Fallback for legacy env var usage
         if not self.client_id:
-            self.client_id = os.getenv('PLAID_CLIENT_ID', '').strip()
+            self.client_id = self._get_secret('PLAID_CLIENT_ID', '').strip()
+
+        if not self.secret:
             self.secret = (
-                os.getenv('PLAID_SECRET_PRODUCTION', '').strip()
-                or os.getenv('PLAID_SECRET', '').strip()
+                self._get_secret('PLAID_SECRET_PRODUCTION', '').strip()
+                or self._get_secret('PLAID_SECRET', '').strip()
             )
+
+        if not self.env:
             self.env = (
-                os.getenv('PLAID_ENV', '').strip()
-                or os.getenv('PLAID_ENVIRONMENT', 'sandbox').strip()
+                self._get_secret('PLAID_ENV', '').strip()
+                or self._get_secret('PLAID_ENVIRONMENT', 'sandbox').strip()
             ).lower()
         
         # Validation: Must have credentials
@@ -132,6 +136,35 @@ class PlaidLinkManager:
         
         api_client = ApiClient(configuration)
         self.client = plaid_api.PlaidApi(api_client)
+    
+    def _get_secret(self, key: str, default: str = None) -> str:
+        """
+        Get a secret value from Streamlit secrets or environment variables.
+        Handles both flat and nested secrets.toml formats.
+        """
+        # Try Streamlit secrets first
+        try:
+            if hasattr(st, 'secrets'):
+                # Try flat format: PLAID_CLIENT_ID
+                if key in st.secrets:
+                    return str(st.secrets[key])
+                
+                # Try nested format: [plaid] section with PLAID_CLIENT_ID inside
+                section_map = {
+                    'PLAID_CLIENT_ID': 'plaid',
+                    'PLAID_SECRET': 'plaid',
+                    'PLAID_ENV': 'plaid',
+                }
+                
+                section = section_map.get(key)
+                if section and section in st.secrets:
+                    if key in st.secrets[section]:
+                        return str(st.secrets[section][key])
+        except Exception:
+            pass
+        
+        # Fall back to environment variables (for local development)
+        return os.getenv(key, default)
     
     def _get_plaid_host(self):
         """Get Plaid API host based on environment"""
@@ -231,31 +264,50 @@ class PlaidLinkManager:
 
 def save_plaid_item(user_id: str, item_id: str, access_token: str, institution_name: str):
     """Save Plaid item to database"""
+    conn = None
+    cursor = None
     try:
         from frontend.utils.budget_analysis import BudgetAnalyzer
         
         analyzer = BudgetAnalyzer()
-        conn = analyzer._get_connection()
         
-        if conn:
-            cursor = conn.cursor()
-            
-            # Insert or update plaid_items
-            sql = """
-                INSERT INTO plaid_items (item_id, user_id, access_token, institution_name)
-                VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE 
-                    access_token = VALUES(access_token),
-                    institution_name = VALUES(institution_name),
-                    updated_at = CURRENT_TIMESTAMP
-            """
-            cursor.execute(sql, (item_id, user_id, access_token, institution_name))
-            conn.commit()
-            
-            cursor.close()
-            conn.close()
-            
-            return True
+        # Handle transient disconnects (e.g. 2013/2006) with one reconnect attempt.
+        for attempt in range(2):
+            conn = analyzer._get_connection()
+            if not conn:
+                continue
+
+            try:
+                conn.ping(reconnect=True, attempts=1, delay=0)
+                cursor = conn.cursor()
+
+                sql = """
+                    INSERT INTO plaid_items (item_id, user_id, access_token, institution_name)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE 
+                        access_token = VALUES(access_token),
+                        institution_name = VALUES(institution_name),
+                        updated_at = CURRENT_TIMESTAMP
+                """
+                cursor.execute(sql, (item_id, user_id, access_token, institution_name))
+                conn.commit()
+                return True
+            except mysql.connector.Error as db_err:
+                err_no = getattr(db_err, 'errno', None)
+                if err_no in (2006, 2013) and attempt == 0:
+                    continue
+                st.error(f"Failed to save Plaid item: {db_err}")
+                return False
+            finally:
+                if cursor:
+                    cursor.close()
+                    cursor = None
+                if conn:
+                    conn.close()
+                    conn = None
+
+        st.error("Failed to save Plaid item: could not establish stable MySQL connection")
+        return False
     except Exception as e:
         st.error(f"Failed to save Plaid item: {e}")
         return False

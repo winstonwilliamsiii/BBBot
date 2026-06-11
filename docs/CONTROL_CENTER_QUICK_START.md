@@ -312,8 +312,8 @@ with tab1:
         else:
             st.error("Failed to fetch broker status")
     except Exception as e:
-        st.warning(f"Flask API not running: {e}")
-        st.info("Start Flask API: `python backend/api/app.py`")
+        st.warning(f"FastAPI control center not running: {e}")
+        st.info("Start FastAPI: `powershell -ExecutionPolicy Bypass -File .\\start_control_center_api.ps1`")
     
     st.divider()
     
@@ -855,18 +855,18 @@ class SchwabOAuth:
 ## Quick Commands
 
 ```bash
-# Start Flask API server
+# Start FastAPI control center
 cd C:\Users\winst\BentleyBudgetBot
-python backend/api/app.py
-# API runs on http://localhost:5000
+powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+# API runs on http://localhost:5001
 
 # Start Streamlit admin dashboard (in new terminal)
 streamlit run streamlit_app.py
 # Admin available at: http://localhost:8501
 # Navigate to: Pages → 🔧 Admin Control Center
 
-# Check broker health
-curl http://localhost:5000/admin/brokers/health
+# Check platform health
+curl http://localhost:5001/health
 
 # Check logs
 docker logs bentley-mlflow --tail 50

@@ -2,7 +2,7 @@
 # Based on Airbyte's official deployment method
 # Updated for latest version compatibility
 
-version: '3.8'
+name: bentley-airbyte
 
 x-logging: &default-logging
   options:

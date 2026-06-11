@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Tuple
@@ -36,10 +37,69 @@ try:
 except ImportError:
     get_mlflow_tracking_uri = None
 
-
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models" / "orion"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+try:
+    from scripts.orion_settings import load_orion_settings
+except ModuleNotFoundError:
+    from orion_settings import load_orion_settings
+
+
+def _normalize_price_frame(data: pd.DataFrame) -> pd.DataFrame:
+    close_data = None
+    if isinstance(data.columns, pd.MultiIndex):
+        if "Close" not in data.columns.get_level_values(0):
+            raise ValueError("Downloaded data does not include Close column")
+        close_data = data["Close"]
+        if isinstance(close_data, pd.DataFrame):
+            close_data = close_data.iloc[:, 0]
+    elif "Close" in data.columns:
+        close_data = data["Close"]
+    else:
+        raise ValueError("Downloaded data does not include Close column")
+
+    close_series = pd.to_numeric(close_data, errors="coerce")
+    if not isinstance(close_series, pd.Series):
+        raise TypeError("Close payload is not a 1-D series")
+
+    normalized_close = close_series.dropna()
+    if normalized_close.empty:
+        raise ValueError(
+            "Downloaded Close series is empty after normalization"
+        )
+
+    price_frame = pd.DataFrame(index=normalized_close.index)
+    price_frame["Close"] = normalized_close
+
+    for column in ("High", "Low", "Volume"):
+        series = None
+        if isinstance(data.columns, pd.MultiIndex):
+            if column in data.columns.get_level_values(0):
+                series = data[column]
+                if isinstance(series, pd.DataFrame):
+                    series = series.iloc[:, 0]
+        elif column in data.columns:
+            series = data[column]
+
+        if series is not None:
+            aligned = pd.to_numeric(series, errors="coerce").reindex(
+                price_frame.index
+            )
+            price_frame[column] = aligned
+
+    if "High" not in price_frame:
+        price_frame["High"] = price_frame["Close"]
+    if "Low" not in price_frame:
+        price_frame["Low"] = price_frame["Close"]
+    if "Volume" not in price_frame:
+        price_frame["Volume"] = 0.0
+
+    return price_frame
 
 
 def _compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -50,25 +110,26 @@ def _compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def _load_gold_data(days: int) -> pd.DataFrame:
-    """Load GLD daily data from yfinance with synthetic fallback."""
+def _load_symbol_data(symbol: str, days: int) -> pd.DataFrame:
+    """Load daily data from yfinance with deterministic fallback."""
     if yf is not None:
         end_dt = datetime.now(timezone.utc)
         start_dt = end_dt - pd.Timedelta(days=max(days, 90))
         try:
             df = yf.download(
-                "GLD",
+                symbol,
                 start=start_dt.date().isoformat(),
                 end=end_dt.date().isoformat(),
                 progress=False,
                 auto_adjust=True,
             )
-            if not df.empty and "Close" in df.columns:
-                return df
-        except (RuntimeError, ValueError, OSError, KeyError) as exc:
-            logger.warning("GLD data download failed: %s", exc)
+            if not df.empty:
+                return _normalize_price_frame(df)
+        except (RuntimeError, ValueError, OSError, KeyError, TypeError) as exc:
+            logger.warning("%s data download failed: %s", symbol, exc)
 
-    rng = np.random.default_rng(23)
+    seed = 23 + sum(ord(char) for char in symbol)
+    rng = np.random.default_rng(seed)
     periods = max(days, 240)
     idx = pd.date_range(end=datetime.now(), periods=periods, freq="D")
     drift = 0.04
@@ -101,8 +162,8 @@ def _build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     feat["sma_10"] = close.rolling(10).mean()
     feat["sma_30"] = close.rolling(30).mean()
     feat["sma_ratio"] = feat["sma_10"] / feat["sma_30"]
-    feat["rsi_14"] = _compute_rsi(close, period=14)
-    feat["rsi_delta"] = feat["rsi_14"].diff()
+    feat["rsi"] = _compute_rsi(close, period=14)
+    feat["rsi_delta"] = feat["rsi"].diff()
 
     feat["target"] = (close.shift(-1) > close).astype(int)
     feat = feat.dropna().copy()
@@ -130,7 +191,7 @@ def _train_ffnn(
         "ret_5d",
         "vol_10d",
         "sma_ratio",
-        "rsi_14",
+        "rsi",
         "rsi_delta",
     ]
 
@@ -193,7 +254,9 @@ def run_training(
     max_iter: int,
     hidden_layer_sizes: Tuple[int, int],
 ) -> Dict[str, float | str]:
-    data = _load_gold_data(days=days)
+    settings = load_orion_settings()
+    symbol = settings.training_symbol
+    data = _load_symbol_data(symbol=symbol, days=days)
     feat = _build_feature_frame(data)
     model, scaler, metrics, _, _, _ = _train_ffnn(
         feat=feat,
@@ -213,7 +276,7 @@ def run_training(
                 else os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
             )
             mlflow.set_tracking_uri(tracking_uri)
-            mlflow.set_experiment("Orion_FFNN_Gold_RSI")
+            mlflow.set_experiment("Orion_FFNN_Minerals_RSI")
 
             with mlflow.start_run(
                 run_name=(
@@ -224,7 +287,8 @@ def run_training(
                 run_id = run.info.run_id
                 mlflow.log_param("bot", "Orion")
                 mlflow.log_param("fund", "Mansa_Minerals")
-                mlflow.log_param("strategy", "Gold_RSI_FFNN")
+                mlflow.log_param("strategy", settings.strategy_label)
+                mlflow.log_param("training_symbol", symbol)
                 mlflow.log_param("days", days)
                 mlflow.log_param("max_iter", max_iter)
                 mlflow.log_param(
@@ -257,6 +321,7 @@ def run_training(
 
     return {
         "status": "trained",
+        "training_symbol": symbol,
         "mlflow_logged": str(mlflow_logged).lower(),
         "run_id": run_id,
         "accuracy": metrics["accuracy"],
@@ -269,7 +334,7 @@ def run_training(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train Orion FFNN model with Gold RSI features"
+        description="Train Orion FFNN model with minerals RSI features"
     )
     parser.add_argument(
         "--days",

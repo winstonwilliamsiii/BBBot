@@ -5,12 +5,14 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 from datetime import datetime, timedelta
+import os
 import requests
 import logging
 
 # Airbyte Configuration
-AIRBYTE_API_BASE = "http://localhost:8001/api/v1"
-AIRBYTE_SERVER = "http://localhost:8001"
+# Default to the Docker service name so Airflow containers can reach Airbyte.
+AIRBYTE_API_BASE = os.getenv("AIRBYTE_API_URL", "http://airbyte-server:8001/api/v1").rstrip("/")
+AIRBYTE_SERVER = os.getenv("AIRBYTE_SERVER_URL", "http://airbyte-server:8001").rstrip("/")
 
 default_args = {
     'owner': 'bentley-budget-bot',

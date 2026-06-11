@@ -209,9 +209,11 @@ def sync_alpaca_orders(alpaca_connector) -> SyncStats:
 
 
 def _iter_ibkr_trades(raw: Any) -> Iterable[dict[str, Any]]:
+    nested_keys = ("trades", "orders", "data", "fills", "executions", "results", "items")
+
     if isinstance(raw, dict):
         # Some responses return {'trades': [...]} or {'orders': [...]}.
-        for key in ("trades", "orders"):
+        for key in nested_keys:
             value = raw.get(key)
             if isinstance(value, list):
                 for item in value:
@@ -222,7 +224,29 @@ def _iter_ibkr_trades(raw: Any) -> Iterable[dict[str, Any]]:
     if isinstance(raw, list):
         for item in raw:
             if isinstance(item, dict):
-                yield item
+                found_nested = False
+                for key in nested_keys:
+                    value = item.get(key)
+                    if isinstance(value, list):
+                        found_nested = True
+                        for nested_item in value:
+                            if isinstance(nested_item, dict):
+                                yield nested_item
+                if not found_nested:
+                    yield item
+
+
+def _pick_first(trade: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = trade.get(key)
+        if value is not None and str(value).strip() != "":
+            return value
+    return None
+
+
+def _normalize_side(value: Any) -> str:
+    side = str(value or "").strip().upper()
+    return "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else ""
 
 
 def sync_ibkr_trades(ibkr_connector) -> SyncStats:
@@ -235,29 +259,86 @@ def sync_ibkr_trades(ibkr_connector) -> SyncStats:
         stats.errors += 1
         return stats
 
+    if isinstance(raw, dict):
+        logger.info("IBKR raw payload keys: %s", list(raw.keys()))
+    elif isinstance(raw, list):
+        logger.info("IBKR raw payload list length: %s", len(raw))
+
     engine = _get_engine()
     with engine.begin() as conn:
         for trade in _iter_ibkr_trades(raw):
             try:
                 symbol = str(
-                    trade.get("symbol")
-                    or trade.get("contractDesc")
-                    or trade.get("conidEx")
+                    _pick_first(
+                        trade,
+                        "symbol",
+                        "contractDesc",
+                        "ticker",
+                        "localSymbol",
+                        "description",
+                        "conidEx",
+                    )
                     or ""
                 ).strip().upper()
-                side = str(trade.get("side") or trade.get("action") or "").strip().upper()
-                side = "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else ""
+                side = _normalize_side(
+                    _pick_first(
+                        trade,
+                        "side",
+                        "action",
+                        "buySell",
+                        "direction",
+                        "orderAction",
+                        "instruction",
+                    )
+                )
 
                 order_id = str(
-                    trade.get("execution_id")
-                    or trade.get("orderId")
-                    or trade.get("id")
+                    _pick_first(
+                        trade,
+                        "execution_id",
+                        "orderId",
+                        "execId",
+                        "id",
+                        "permId",
+                        "tradeId",
+                    )
                     or ""
                 ).strip()
 
-                qty = _to_int(trade.get("size") or trade.get("quantity") or trade.get("qty"))
-                price = _to_float(trade.get("price") or trade.get("avgPrice") or trade.get("tradePrice"))
+                qty = _to_int(
+                    _pick_first(
+                        trade,
+                        "size",
+                        "quantity",
+                        "qty",
+                        "filledQuantity",
+                        "filledQty",
+                        "shares",
+                        "lastShares",
+                        "cumQty",
+                    )
+                )
+                price = _to_float(
+                    _pick_first(
+                        trade,
+                        "price",
+                        "avgPrice",
+                        "tradePrice",
+                        "executionPrice",
+                        "avgFillPrice",
+                        "fillPrice",
+                        "lastExecutionPrice",
+                    )
+                )
                 if not symbol or side not in {"BUY", "SELL"} or qty <= 0 or price <= 0:
+                    logger.debug(
+                        "Skipping IBKR trade due to missing required fields: symbol=%s side=%s qty=%s price=%s keys=%s",
+                        symbol,
+                        side,
+                        qty,
+                        price,
+                        list(trade.keys()) if isinstance(trade, dict) else [],
+                    )
                     stats.skipped += 1
                     continue
 
@@ -266,11 +347,21 @@ def sync_ibkr_trades(ibkr_connector) -> SyncStats:
                     continue
 
                 ts = _parse_timestamp(
-                    trade.get("trade_time")
-                    or trade.get("executionTime")
-                    or trade.get("time")
+                    _pick_first(
+                        trade,
+                        "trade_time",
+                        "executionTime",
+                        "tradeDate",
+                        "time",
+                        "timestamp",
+                        "lastExecutionTime",
+                        "lastExecutionTime_r",
+                        "dateTime",
+                        "createdAt",
+                    )
                 )
                 value = round(float(qty) * price, 4)
+                status = str(_pick_first(trade, "status") or "EXECUTED").strip().upper()
 
                 _insert_trade_row(
                     conn,
@@ -280,7 +371,7 @@ def sync_ibkr_trades(ibkr_connector) -> SyncStats:
                     price=price,
                     value=value,
                     timestamp=ts,
-                    status="EXECUTED",
+                    status=status,
                     order_id=order_id,
                     strategy="ibkr",
                 )

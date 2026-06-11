@@ -15,11 +15,12 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal, Tuple
 import json
 import subprocess
 import sys
 import os
+import shutil
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -34,10 +35,10 @@ try:
     )
 except Exception:
     def get_mlflow_tracking_uri():
-        return os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        return os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
 
     def get_mlflow_server_url():
-        return os.getenv("MLFLOW_SERVER_URL", "http://localhost:5000")
+        return os.getenv("MLFLOW_SERVER_URL", "http://127.0.0.1:5000")
 
     def get_mlflow_backend_store_uri():
         return os.getenv("MLFLOW_BACKEND_STORE_URI", "not-configured")
@@ -87,10 +88,98 @@ try:
 except Exception:
     get_broker_mode_config = None
 
+try:
+    from frontend.utils.rbac import RBACManager, UserRole
+    RBAC_AVAILABLE = True
+except Exception:
+    RBAC_AVAILABLE = False
+
 # Configuration
-DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://localhost:5001")
+DEFAULT_CONTROL_CENTER_URL = os.getenv("CONTROL_CENTER_API_URL", "http://127.0.0.1:5001")
 DEFAULT_MLFLOW_TRACKING_URI = get_mlflow_tracking_uri()
 DEFAULT_MLFLOW_URL = get_mlflow_server_url()
+REPO_ROOT = Path(__file__).resolve().parents[1]
+MLFLOW_BENCHMARK_BOTS = ["Titan", "Orion", "Rigel", "Dogon"]
+TITAN_MLFLOW_SCHEMA_ROWS = [
+    {
+        "Category": "Experiment Tracking",
+        "Field": "params.feature_schema_version",
+        "Kind": "param",
+        "Purpose": "Version the Titan CNN/ensemble feature contract.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_rsi_cycle_current",
+        "Kind": "metric",
+        "Purpose": "Latest RSI value used to ground timing discipline.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_rsi_cycle_span",
+        "Kind": "metric",
+        "Purpose": "Oscillation width across the recent RSI cycle window.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_volatility_bandwidth",
+        "Kind": "metric",
+        "Purpose": "Current Bollinger bandwidth used for volatility gating.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_sentiment_score",
+        "Kind": "metric",
+        "Purpose": "Sentiment overlay from WSJ/Airbyte-style feeds.",
+    },
+    {
+        "Category": "Experiment Tracking",
+        "Field": "metrics.titan_liquidity_ratio",
+        "Kind": "metric",
+        "Purpose": "Cash-to-equity guardrail before execution.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_effective_liquidity_buffer",
+        "Kind": "metric",
+        "Purpose": "Final liquidity threshold after sentiment adjustment.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_liquidity_buffer_adjustment",
+        "Kind": "metric",
+        "Purpose": "How much sentiment tightened or loosened the buffer.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_prediction_probability",
+        "Kind": "metric",
+        "Purpose": "Trade-success probability produced by the ensemble.",
+    },
+    {
+        "Category": "Metrics Logging",
+        "Field": "metrics.titan_prediction_confidence",
+        "Kind": "metric",
+        "Purpose": "Confidence score for forensic review and ranking.",
+    },
+    {
+        "Category": "Guard Outcome",
+        "Field": "tags.trade_status",
+        "Kind": "tag",
+        "Purpose": "Approved, simulated, blocked, or error decision outcome.",
+    },
+    {
+        "Category": "Model Registry",
+        "Field": "params.model_registry_uri",
+        "Kind": "param",
+        "Purpose": "Registry alias used for Titan model promotion.",
+    },
+    {
+        "Category": "Artifacts",
+        "Field": "titan_decision_context.json",
+        "Kind": "artifact",
+        "Purpose": "Feature snapshot and decision context for replay.",
+    },
+]
 
 
 def probe_mlflow_server(base_url: str):
@@ -131,6 +220,565 @@ def probe_mlflow_server(base_url: str):
     return False, host_reachable, "No MLflow endpoints were detected at this URL."
 
 
+def start_mlflow_server(backend_store_uri: str, port: int = 5000) -> Tuple[bool, str]:
+    """Launch MLflow server as a background process. Returns (success, message)."""
+    python_exe = sys.executable
+    mlflow_cmd = shutil.which("mlflow")
+
+    if mlflow_cmd:
+        cmd = [
+            mlflow_cmd, "server",
+            "--backend-store-uri", backend_store_uri,
+            "--host", "0.0.0.0",
+            "--port", str(port),
+        ]
+    else:
+        cmd = [
+            python_exe, "-m", "mlflow", "server",
+            "--backend-store-uri", backend_store_uri,
+            "--host", "0.0.0.0",
+            "--port", str(port),
+        ]
+
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+        return True, f"MLflow server start command issued on port {port}. Allow a few seconds to start."
+    except Exception as exc:
+        return False, f"Failed to launch MLflow server: {exc}"
+
+
+def get_docker_cli_command() -> tuple[list[str] | None, str]:
+    """Resolve a usable Docker CLI command on all supported OSes."""
+    docker_in_path = shutil.which("docker")
+    if docker_in_path:
+        return [docker_in_path], f"Docker CLI found at {docker_in_path}"
+
+    candidates = [
+        Path(os.getenv("ProgramFiles", "")) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+        Path(os.getenv("ProgramW6432", "")) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+        Path(os.getenv("ProgramFiles(x86)", "")) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+    ]
+
+    for candidate in candidates:
+        if str(candidate).strip() and candidate.exists():
+            return [str(candidate)], f"Docker CLI found at {candidate}"
+
+    return None, "Docker CLI not detected in PATH or standard Docker Desktop locations."
+
+
+def get_docker_compose_command() -> tuple[list[str] | None, str]:
+    """Resolve compose command using Docker v2 first, then docker-compose fallback."""
+    docker_cmd, docker_note = get_docker_cli_command()
+    if docker_cmd:
+        return docker_cmd + ["compose"], docker_note
+
+    legacy_compose = shutil.which("docker-compose")
+    if legacy_compose:
+        return [legacy_compose], f"Legacy docker-compose found at {legacy_compose}"
+
+    return None, docker_note
+
+
+def probe_docker_engine(docker_cmd: list[str] | None) -> Tuple[bool, str]:
+    """Check whether Docker engine is reachable from this process."""
+    if not docker_cmd:
+        return False, "Docker CLI unavailable."
+
+    ok, message = _run_shell_command(docker_cmd + ["info"], cwd=REPO_ROOT, timeout=20)
+    if ok:
+        return True, "Docker engine is reachable."
+    return False, f"Docker engine not reachable yet: {message}"
+
+
+def _run_shell_command(command: list[str], cwd: Path | None = None, timeout: int = 240) -> Tuple[bool, str]:
+    """Run a shell command and return a compact status message."""
+    try:
+        startupinfo = None
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+        result = subprocess.run(
+            command,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            startupinfo=startupinfo,
+        )
+        if result.returncode == 0:
+            output = (result.stdout or result.stderr or "Command completed successfully.").strip()
+            return True, output[:800]
+
+        error_output = (result.stderr or result.stdout or "Command failed without output.").strip()
+        return False, error_output[:800]
+    except FileNotFoundError:
+        return False, "Required command not found. Ensure Docker Desktop and docker CLI are installed."
+    except subprocess.TimeoutExpired:
+        return False, "Command timed out while starting services. Check Docker engine health and retry."
+    except Exception as exc:
+        return False, f"Command execution failed: {exc}"
+
+
+def start_docker_compose_services(
+    compose_rel_path: str,
+    services: list[str] | None = None,
+    *,
+    pull_before: bool = True,
+    no_build: bool = False,
+) -> Tuple[bool, str]:
+    """Start a docker-compose stack (or selected services) from repo root."""
+    compose_cmd, compose_note = get_docker_compose_command()
+    if not compose_cmd:
+        return False, "Docker compose command was not found. Install Docker Desktop and ensure docker CLI is available."
+
+    compose_file = REPO_ROOT / compose_rel_path
+    if not compose_file.exists():
+        return False, f"Compose file not found: {compose_file}"
+
+    if pull_before:
+        pull_cmd = compose_cmd + ["-f", str(compose_file), "pull"]
+        pull_ok, pull_output = _run_shell_command(pull_cmd, cwd=REPO_ROOT)
+        if not pull_ok:
+            return False, f"{compose_note} | Pull failed: {pull_output}"
+
+    cmd = compose_cmd + ["-f", str(compose_file), "up", "-d"]
+    if no_build:
+        cmd.append("--no-build")
+    if services:
+        cmd.extend(services)
+
+    ok, output = _run_shell_command(cmd, cwd=REPO_ROOT)
+    if ok:
+        return True, output
+    return False, f"{compose_note} | {output}"
+
+
+def probe_local_service(urls: list[str] | str) -> Tuple[bool, str]:
+    """Probe local service URLs and return status and detail."""
+    if isinstance(urls, str):
+        urls = [urls]
+
+    last_error = "Service is unreachable."
+    for url in urls:
+        try:
+            response = requests.get(url, timeout=2)
+            if response.status_code < 500:
+                return True, f"Reachable at {url} (HTTP {response.status_code})"
+            last_error = f"{url} returned HTTP {response.status_code}"
+        except requests.exceptions.RequestException as exc:
+            message = str(exc).lower()
+            if "connection refused" in message or "failed to establish a new connection" in message:
+                last_error = f"{url} is not reachable (connection refused)."
+            elif "timed out" in message:
+                last_error = f"{url} timed out."
+            else:
+                last_error = f"{url} request failed."
+    return False, last_error
+
+
+def format_run_payload(row: pd.Series, prefix: str, max_items: int = 6) -> str:
+    """Create a compact JSON summary for metrics/params columns."""
+    payload: dict[str, Any] = {}
+    for column in row.index:
+        if not str(column).startswith(prefix):
+            continue
+        value = row.get(column)
+        if pd.isna(value):
+            continue
+
+        key = str(column)[len(prefix):]
+        if isinstance(value, float):
+            payload[key] = round(value, 6)
+        else:
+            payload[key] = value
+
+        if len(payload) >= max_items:
+            break
+
+    if not payload:
+        return "{}"
+    return json.dumps(payload, default=str)
+
+
+def _first_present(row, candidates):
+    for candidate in candidates:
+        if candidate in row and pd.notna(row[candidate]):
+            return row[candidate]
+    return None
+
+
+def _infer_bot_name_from_run(row) -> str:
+    values = [
+        _first_present(
+            row,
+            [
+                "tags.bot",
+                "params.active_bot",
+                "params.bot_name",
+                "params.bot",
+                "experiment_name",
+            ],
+        )
+    ]
+
+    normalized_values = [str(value).strip().lower() for value in values if value]
+    for value in normalized_values:
+        if "titan" in value:
+            return "Titan"
+        if "orion" in value:
+            return "Orion"
+        if "rigel" in value:
+            return "Rigel"
+        if "dogon" in value:
+            return "Dogon"
+    return "Other"
+
+
+def _extract_trade_status(row) -> str:
+    status = _first_present(row, ["tags.trade_status", "status"])
+    if status is None:
+        return "unknown"
+    return str(status)
+
+
+def _extract_prediction_confidence(row) -> float | None:
+    confidence = _first_present(row, ["metrics.titan_prediction_confidence"])
+    if confidence is not None:
+        return float(confidence)
+
+    probability = _first_present(row, ["metrics.titan_prediction_probability"])
+    label = _first_present(row, ["metrics.titan_prediction_label"])
+    if probability is None:
+        return None
+
+    probability = float(probability)
+    if label is None:
+        return max(probability, 1.0 - probability)
+    return probability if float(label) >= 0.5 else (1.0 - probability)
+
+
+def build_mlflow_benchmark_frame(runs_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    if runs_df.empty:
+        return pd.DataFrame()
+
+    working = runs_df.copy()
+    working["benchmark_bot"] = working.apply(_infer_bot_name_from_run, axis=1)
+    working["trade_status_value"] = working.apply(_extract_trade_status, axis=1)
+    working["prediction_confidence"] = working.apply(
+        _extract_prediction_confidence,
+        axis=1,
+    )
+
+    for bot_name in MLFLOW_BENCHMARK_BOTS:
+        bot_runs = working[working["benchmark_bot"] == bot_name].copy()
+        if bot_runs.empty:
+            rows.append(
+                {
+                    "Bot": bot_name,
+                    "Discipline": (
+                        "ML-driven discipline"
+                        if bot_name == "Titan"
+                        else "Raw strategy"
+                    ),
+                    "Runs": 0,
+                    "Avg Probability": None,
+                    "Avg Confidence": None,
+                    "Blocked Rate": None,
+                    "Latest Status": "no-mlflow-runs",
+                    "Last Updated": "N/A",
+                }
+            )
+            continue
+
+        probability = pd.to_numeric(
+            bot_runs.get("metrics.titan_prediction_probability"),
+            errors="coerce",
+        )
+        confidence = pd.to_numeric(
+            bot_runs.get("prediction_confidence"),
+            errors="coerce",
+        )
+        statuses = bot_runs["trade_status_value"].astype(str).str.lower()
+        blocked_rate = statuses.str.startswith("blocked").mean()
+        last_updated = "N/A"
+        if "start_time" in bot_runs.columns:
+            timestamp = pd.to_datetime(bot_runs["start_time"], errors="coerce").max()
+            if pd.notna(timestamp):
+                last_updated = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+        rows.append(
+            {
+                "Bot": bot_name,
+                "Discipline": (
+                    "ML-driven discipline"
+                    if bot_name == "Titan"
+                    else "Raw strategy"
+                ),
+                "Runs": int(len(bot_runs)),
+                "Avg Probability": (
+                    round(float(probability.dropna().mean()), 4)
+                    if probability is not None and not probability.dropna().empty
+                    else None
+                ),
+                "Avg Confidence": (
+                    round(float(confidence.dropna().mean()), 4)
+                    if not confidence.dropna().empty
+                    else None
+                ),
+                "Blocked Rate": (
+                    round(float(blocked_rate), 4)
+                    if len(statuses)
+                    else None
+                ),
+                "Latest Status": str(statuses.iloc[0]) if len(statuses) else "unknown",
+                "Last Updated": last_updated,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _extract_optuna_objective(row: pd.Series) -> float | None:
+    candidates = [
+        "metrics.optuna_best_value",
+        "metrics.optuna_objective",
+        "metrics.objective",
+        "metrics.validation_score",
+        "metrics.accuracy",
+        "metrics.val_accuracy",
+        "metrics.f1_score",
+        "metrics.sharpe_ratio",
+    ]
+    for column in candidates:
+        if column in row and pd.notna(row[column]):
+            try:
+                return float(row[column])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _extract_optuna_params(row: pd.Series, max_items: int = 20) -> dict[str, Any]:
+    selected: dict[str, Any] = {}
+    for column in row.index:
+        column_name = str(column)
+        if not column_name.startswith("params."):
+            continue
+
+        key = column_name[len("params."):]
+        lower_key = key.lower()
+        is_optuna_like = (
+            lower_key.startswith("algorithm.hyperparameters.")
+            or "optuna" in lower_key
+            or key in {
+                "max_depth",
+                "learning_rate",
+                "subsample",
+                "n_estimators",
+                "threshold",
+                "gru_units",
+                "discount",
+                "exploration",
+                "sector_param",
+                "lr",
+                "hidden",
+            }
+        )
+        if not is_optuna_like:
+            continue
+
+        value = row.get(column)
+        if pd.isna(value):
+            continue
+        selected[key] = value
+        if len(selected) >= max_items:
+            break
+
+    return selected
+
+
+def build_optuna_benchmark_frames(
+    runs_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if runs_df.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    working = runs_df.copy()
+    working["benchmark_bot"] = working.apply(_infer_bot_name_from_run, axis=1)
+    working["optuna_objective"] = working.apply(_extract_optuna_objective, axis=1)
+    working["optuna_params"] = working.apply(_extract_optuna_params, axis=1)
+
+    if "start_time" in working.columns:
+        working["start_time"] = pd.to_datetime(working["start_time"], errors="coerce")
+    if "end_time" in working.columns:
+        working["end_time"] = pd.to_datetime(working["end_time"], errors="coerce")
+
+    summary_rows: list[dict[str, Any]] = []
+    param_rows: list[dict[str, Any]] = []
+    performance_rows: list[dict[str, Any]] = []
+
+    for bot_name in MLFLOW_BENCHMARK_BOTS:
+        bot_runs = working[working["benchmark_bot"] == bot_name].copy()
+        bot_runs = bot_runs[
+            bot_runs["optuna_objective"].notna()
+            | bot_runs["optuna_params"].apply(lambda x: isinstance(x, dict) and len(x) > 0)
+        ]
+
+        if bot_runs.empty:
+            summary_rows.append(
+                {
+                    "Bot": bot_name,
+                    "Optuna Runs": 0,
+                    "Best Objective": None,
+                    "Best Run": "N/A",
+                    "Last Updated": "N/A",
+                }
+            )
+            continue
+
+        best_objective_idx = pd.to_numeric(
+            bot_runs["optuna_objective"],
+            errors="coerce",
+        ).idxmax()
+        if pd.isna(best_objective_idx):
+            best_row = bot_runs.iloc[0]
+        else:
+            best_row = bot_runs.loc[best_objective_idx]
+
+        best_time = best_row.get("end_time")
+        if pd.isna(best_time):
+            best_time = best_row.get("start_time")
+
+        summary_rows.append(
+            {
+                "Bot": bot_name,
+                "Optuna Runs": int(len(bot_runs)),
+                "Best Objective": (
+                    round(float(best_row.get("optuna_objective")), 6)
+                    if pd.notna(best_row.get("optuna_objective"))
+                    else None
+                ),
+                "Best Run": str(_first_present(best_row, ["run_id", "tags.mlflow.runName"]) or "N/A"),
+                "Last Updated": (
+                    best_time.strftime("%Y-%m-%d %H:%M:%S")
+                    if pd.notna(best_time)
+                    else "N/A"
+                ),
+            }
+        )
+
+        best_params = best_row.get("optuna_params")
+        if isinstance(best_params, dict):
+            for key, value in best_params.items():
+                param_rows.append(
+                    {
+                        "Bot": bot_name,
+                        "Parameter": key,
+                        "Best Value": value,
+                    }
+                )
+
+        for _, run_row in bot_runs.iterrows():
+            run_time = run_row.get("end_time")
+            if pd.isna(run_time):
+                run_time = run_row.get("start_time")
+            objective = run_row.get("optuna_objective")
+            if pd.isna(run_time) or pd.isna(objective):
+                continue
+            performance_rows.append(
+                {
+                    "Bot": bot_name,
+                    "Timestamp": run_time,
+                    "Objective": float(objective),
+                }
+            )
+
+    summary_df = pd.DataFrame(summary_rows)
+    params_df = pd.DataFrame(param_rows)
+    performance_df = pd.DataFrame(performance_rows)
+    return summary_df, params_df, performance_df
+
+
+def build_titan_forensic_frame(runs_df: pd.DataFrame) -> pd.DataFrame:
+    if runs_df.empty:
+        return pd.DataFrame()
+
+    working = runs_df.copy()
+    working["benchmark_bot"] = working.apply(_infer_bot_name_from_run, axis=1)
+    titan_runs = working[working["benchmark_bot"] == "Titan"].copy()
+    if titan_runs.empty:
+        return pd.DataFrame()
+
+    titan_runs["status"] = titan_runs.apply(_extract_trade_status, axis=1)
+    titan_runs["confidence"] = titan_runs.apply(_extract_prediction_confidence, axis=1)
+
+    columns = {
+        "start_time": "Start Time",
+        "params.symbol": "Symbol",
+        "params.side": "Side",
+        "status": "Decision",
+        "metrics.titan_prediction_probability": "Probability",
+        "confidence": "Confidence",
+        "metrics.titan_rsi_cycle_current": "RSI",
+        "metrics.titan_sentiment_score": "Sentiment",
+        "metrics.titan_liquidity_ratio": "Liquidity Ratio",
+        "metrics.titan_effective_liquidity_buffer": "Liquidity Buffer",
+        "metrics.titan_liquidity_buffer_adjustment": "Buffer Delta",
+    }
+    available = {key: value for key, value in columns.items() if key in titan_runs.columns}
+    if not available:
+        return pd.DataFrame()
+
+    forensic = titan_runs[list(available.keys())].copy().rename(columns=available)
+    if "Start Time" in forensic.columns:
+        parsed = pd.to_datetime(forensic["Start Time"], errors="coerce")
+        forensic["Start Time"] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
+    return forensic.head(12)
+
+
+def build_model_registry_frame(client) -> pd.DataFrame:
+    try:
+        models = list(client.search_registered_models(max_results=50))
+    except TypeError:
+        models = list(client.search_registered_models())
+    except Exception:
+        return pd.DataFrame()
+
+    rows = []
+    for model in models:
+        latest_versions = getattr(model, "latest_versions", None) or []
+        if latest_versions:
+            for version in latest_versions:
+                rows.append(
+                    {
+                        "Model": model.name,
+                        "Version": str(getattr(version, "version", "")),
+                        "Stage": str(getattr(version, "current_stage", "")),
+                        "Run ID": str(getattr(version, "run_id", "")),
+                        "Source": str(getattr(version, "source", "")),
+                    }
+                )
+        else:
+            rows.append(
+                {
+                    "Model": model.name,
+                    "Version": "",
+                    "Stage": "",
+                    "Run ID": "",
+                    "Source": "",
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
 def _append_unique_url(candidate_urls, base_url: str):
     """Append a URL candidate once, preserving order."""
     if base_url and base_url not in candidate_urls:
@@ -166,7 +814,14 @@ def resolve_mlflow_server_url():
     cached_url = st.session_state.get("resolved_mlflow_server_url")
     cached_note = st.session_state.get("resolved_mlflow_server_note")
     if cached_url:
-        return cached_url, cached_note or "Using cached MLflow server resolution."
+        connected, _, probe_note = probe_mlflow_server(cached_url)
+        if connected:
+            st.session_state.resolved_mlflow_server_note = probe_note
+            return cached_url, probe_note or cached_note or "Using cached MLflow server resolution."
+
+        # Cached endpoint is stale; clear it and re-probe all candidates.
+        st.session_state.pop("resolved_mlflow_server_url", None)
+        st.session_state.pop("resolved_mlflow_server_note", None)
 
     candidate_urls = []
     _append_unique_url(candidate_urls, DEFAULT_MLFLOW_URL)
@@ -184,7 +839,6 @@ def resolve_mlflow_server_url():
             return base_url, probe_note
         last_note = probe_note
 
-    st.session_state.resolved_mlflow_server_url = DEFAULT_MLFLOW_URL
     st.session_state.resolved_mlflow_server_note = last_note
     return DEFAULT_MLFLOW_URL, last_note
 
@@ -202,17 +856,30 @@ def resolve_control_center_api_url():
     """Resolve a reachable Control Center API URL with localhost fallbacks."""
     cached_url = st.session_state.get("resolved_control_center_api_url")
     if cached_url:
-        return cached_url
+        # Re-validate: only reuse if the endpoint is actually still reachable.
+        # Use a short timeout here since we already know the URL.
+        try:
+            r = requests.get(f"{cached_url}/health", timeout=3.0)
+            if r.status_code == 200:
+                return cached_url
+        except requests.exceptions.RequestException:
+            pass
+        # Cached URL is stale — clear and re-probe.
+        st.session_state.pop("resolved_control_center_api_url", None)
 
+    # Note: port 5000 is intentionally excluded — it is reserved for MLflow.
+    # The Control Center API always runs on port 5001.
+    # Use a generous timeout on initial probe to handle slow startup (Vega sub-app
+    # can take several seconds to initialize on first request).
     candidate_urls = [DEFAULT_CONTROL_CENTER_URL]
     if DEFAULT_CONTROL_CENTER_URL != "http://localhost:5001":
         candidate_urls.append("http://localhost:5001")
-    if DEFAULT_CONTROL_CENTER_URL != "http://localhost:5000":
-        candidate_urls.append("http://localhost:5000")
+    if DEFAULT_CONTROL_CENTER_URL != "http://127.0.0.1:5001":
+        candidate_urls.append("http://127.0.0.1:5001")
 
     for base_url in candidate_urls:
         try:
-            response = requests.get(f"{base_url}/health", timeout=1.5)
+            response = requests.get(f"{base_url}/health", timeout=10.0)
             if response.status_code == 200:
                 st.session_state.resolved_control_center_api_url = base_url
                 return base_url
@@ -233,9 +900,15 @@ def show_control_center_api_notice_once(reason: str = "unavailable"):
         DEFAULT_CONTROL_CENTER_URL,
     )
     st.warning(
-        f"Control Center API is {reason} at {configured_url}. Showing fallback data where available."
+        (
+            f"Control Center API is {reason} at {configured_url}. "
+            "Showing fallback data where available."
+        )
     )
-    st.info("Start the API with: `python backend/api/app.py`")
+    st.info(
+        "Start the API with: `powershell -ExecutionPolicy Bypass "
+        "-File .\\start_control_center_api.ps1`"
+    )
     st.session_state.control_center_api_notice_shown = True
 
 # Page config
@@ -309,6 +982,17 @@ st.markdown("""
         margin: 20px 0 10px 0;
         border: 1px solid #374151;
     }
+    .stButton > button,
+    .stDownloadButton > button,
+    [data-testid="stLinkButton"] {
+        color: #f9fafb !important;
+        font-weight: 600 !important;
+    }
+    .stButton > button:disabled,
+    .stDownloadButton > button:disabled {
+        color: #d1d5db !important;
+        opacity: 1 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -316,6 +1000,14 @@ st.markdown("""
 # Authentication Check
 def check_admin_auth():
     """Verify admin authentication."""
+    if RBAC_AVAILABLE:
+        RBACManager.init_session_state()
+        current_user = RBACManager.get_current_user()
+        if current_user and current_user.role == UserRole.ADMIN:
+            st.session_state.admin_authenticated = True
+            st.session_state.admin_user = current_user.username
+            return True
+
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
     
@@ -329,8 +1021,15 @@ def check_admin_auth():
             password = st.text_input("Password", type="password", key="admin_password")
             
             if st.button("Login", type="primary"):
-                # TODO: Replace with actual authentication
-                if username == "admin" and password == "admin":  # DEVELOPMENT ONLY
+                if RBAC_AVAILABLE and RBACManager.login(username, password):
+                    current_user = RBACManager.get_current_user()
+                    if current_user and current_user.role == UserRole.ADMIN:
+                        st.session_state.admin_authenticated = True
+                        st.session_state.admin_user = current_user.username
+                        st.rerun()
+                    RBACManager.logout()
+                    st.error("Admin role required")
+                elif username == "admin" and password in ("admin", "admin123"):  # Legacy dev fallback
                     st.session_state.admin_authenticated = True
                     st.session_state.admin_user = username
                     st.rerun()
@@ -342,13 +1041,14 @@ def check_admin_auth():
 
 # Helper Functions
 def api_request(endpoint, method="GET", data=None, show_notice=False):
-    """Make request to Flask API."""
+    """Make request to the Control Center FastAPI service."""
     try:
-        flask_api_url = resolve_control_center_api_url()
+        control_center_api_url = resolve_control_center_api_url()
         normalized = endpoint if str(endpoint).startswith("/") else f"/{endpoint}"
         endpoint_variants = [normalized]
 
-        # Local Flask app currently exposes `/admin/*`; some clients use `/api/admin/*`.
+        # The unified FastAPI app accepts both `/admin/*` and `/api/admin/*`
+        # so older UI paths continue to work.
         if normalized.startswith("/api/"):
             endpoint_variants.append(normalized[4:])
         elif normalized.startswith("/admin/"):
@@ -356,13 +1056,13 @@ def api_request(endpoint, method="GET", data=None, show_notice=False):
 
         last_status = None
         for path in endpoint_variants:
-            url = f"{flask_api_url}{path}"
+            url = f"{control_center_api_url}{path}"
             if method == "GET":
-                response = requests.get(url, timeout=5)
+                response = requests.get(url, timeout=10)
             elif method == "POST":
-                response = requests.post(url, json=data, timeout=5)
+                response = requests.post(url, json=data, timeout=10)
             elif method == "DELETE":
-                response = requests.delete(url, timeout=5)
+                response = requests.delete(url, timeout=10)
             else:
                 return None
 
@@ -399,6 +1099,93 @@ def api_request(endpoint, method="GET", data=None, show_notice=False):
         return None
 
 
+BOT_DEFAULT_BROKERS = {
+    "Titan": "ALPACA",
+    "Vega": "IBKR",
+    "Rigel": "ALPACA",
+    "Dogon": "ALPACA",
+    "Orion": "ALPACA",
+    "Hydra": "ALPACA",
+    "Triton": "ALPACA",
+    "Rhea": "IBKR",
+}
+
+
+def get_bot_default_broker(bot_name: str) -> str:
+    return BOT_DEFAULT_BROKERS.get(str(bot_name or "").strip(), "AUTO")
+
+
+def resolve_mysql_provider(platform_architecture: dict, platform_health: dict) -> str:
+    """Resolve MySQL provider using both architecture and health payloads."""
+    from_architecture = (
+        platform_architecture.get("data", {})
+        .get("mysql", {})
+        .get("provider")
+    )
+    if from_architecture and str(from_architecture).strip().lower() != "unknown":
+        return str(from_architecture)
+
+    mysql_health = platform_health.get("services", {}).get("mysql", {})
+    from_health = mysql_health.get("provider")
+    if from_health and str(from_health).strip().lower() != "unknown":
+        return str(from_health)
+
+    host = (
+        mysql_health.get("host")
+        or platform_architecture.get("data", {}).get("mysql", {}).get("host")
+        or ""
+    )
+    normalized = str(host).strip().lower()
+    if "railway" in normalized or "rlwy" in normalized:
+        return "railway"
+    if normalized:
+        return "local"
+    return "unknown"
+
+
+def _resolve_powershell_executable() -> str | None:
+    """Resolve an available PowerShell executable on Windows/macOS/Linux."""
+    for candidate in ("powershell.exe", "pwsh.exe", "powershell", "pwsh"):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+
+    if os.name == "nt":
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        win_paths = [
+            Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+            Path(system_root) / "SysWOW64" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "PowerShell" / "7" / "pwsh.exe",
+            Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "PowerShell" / "7" / "pwsh.exe",
+        ]
+        for path in win_paths:
+            if path.exists():
+                return str(path)
+
+    return None
+
+
+def get_hydra_control_snapshot() -> dict:
+    return {
+        "status": api_request("/hydra/status", show_notice=False) or {},
+        "health": api_request("/hydra/health", show_notice=False) or {},
+    }
+
+
+def get_triton_control_snapshot() -> dict:
+    return {
+        "status": api_request("/triton/status", show_notice=False) or {},
+        "health": api_request("/triton/health", show_notice=False) or {},
+    }
+
+
+def get_rhea_control_snapshot() -> dict:
+    return {
+        "status": api_request("/rhea/status", show_notice=False) or {},
+        "health": api_request("/rhea/health", show_notice=False) or {},
+    }
+
+
 def get_status_badge(status):
     """Return colored status badge."""
     if status in ["running", "healthy", "active"]:
@@ -407,6 +1194,233 @@ def get_status_badge(status):
         return f'<span class="status-warning">● {status.upper()}</span>'
     else:
         return f'<span class="status-error">● {status.upper()}</span>'
+
+
+def probe_http_service(
+    base_url: str,
+    probe_paths: list[str] | None = None,
+) -> tuple[str, str]:
+    """Probe a local HTTP service and return (status, note)."""
+    paths = probe_paths or ["/"]
+    saw_timeout = False
+    saw_server_error = False
+
+    for path in paths:
+        try:
+            response = requests.get(
+                f"{base_url}{path}",
+                timeout=3,
+                allow_redirects=True,
+            )
+            if response.status_code == 200:
+                return "healthy", f"Reachable at {path} (HTTP 200)."
+            if response.status_code < 500:
+                return (
+                    "warning",
+                    f"Reachable at {path} (HTTP {response.status_code}).",
+                )
+            saw_server_error = True
+        except requests.exceptions.Timeout:
+            saw_timeout = True
+        except requests.exceptions.RequestException:
+            continue
+
+    if saw_timeout:
+        return "warning", "Timed out while probing the local endpoint."
+    if saw_server_error:
+        return "warning", "Service responded with a server-side error."
+    return "error", "Service is not responding on localhost."
+
+
+def get_service_dashboard_entries(
+    local_services: list[dict] | None = None,
+) -> list[dict]:
+    """Return service dashboard cards for the admin UI."""
+    docker_index = {
+        service["name"]: service for service in (local_services or [])
+    }
+    resolved_mlflow_url, resolved_probe_note = resolve_mlflow_server_url()
+    definitions = [
+        {
+            "name": "Airflow",
+            "icon": "📊",
+            "url": "http://127.0.0.1:8080",
+            "button": "Open Airflow UI",
+            "description": "Workflow orchestration and scheduled DAG runs.",
+            "details": "DAGs: /workflows/airflow/dags/",
+            "credentials": "admin / admin",
+            "probe_paths": ["/health", "/"],
+        },
+        {
+            "name": "MLflow",
+            "icon": "🧠",
+            "url": resolved_mlflow_url,
+            "button": "Open MLflow UI",
+            "description": "Experiment tracking and model run history.",
+            "details": "Tracking URI resolved dynamically from local config.",
+            "probe": "mlflow",
+        },
+        {
+            "name": "KNIME",
+            "icon": "📈",
+            "button": "Managed Through Airflow",
+            "description": "Visual analytics workflows executed through DAGs.",
+            "details": "Workflows: /workflows/knime/dags/",
+            "status": "healthy",
+            "note": "KNIME jobs are integrated through Airflow orchestration.",
+        },
+        {
+            "name": "Streamlit",
+            "icon": "💰",
+            "url": "http://localhost:8501",
+            "button": "Open Budget Dashboard",
+            "description": (
+                "Portfolio, budget, and admin interface entrypoint."
+            ),
+            "details": "Main UI entry: streamlit_app.py",
+            "probe_paths": ["/_stcore/health", "/"],
+        },
+        {
+            "name": "Airbyte",
+            "icon": "🔄",
+            "url": "http://localhost:8000",
+            "button": "Open Airbyte UI",
+            "description": "Data ingestion and ETL pipeline management.",
+            "details": "Workflows: /workflows/airbyte/dags/",
+            "probe_paths": ["/api/v1/health", "/"],
+        },
+    ]
+
+    entries = []
+    for definition in definitions:
+        status = definition.get("status", "error")
+        note = definition.get("note", "Status unavailable.")
+
+        if definition.get("probe") == "mlflow":
+            connected, host_reachable, probe_note = probe_mlflow_server(
+                definition["url"],
+            )
+            if connected:
+                status = "healthy"
+            elif host_reachable:
+                status = "warning"
+            else:
+                status = "error"
+            note = probe_note
+            if resolved_probe_note and resolved_probe_note != probe_note:
+                note = f"{note} {resolved_probe_note}"
+        elif definition.get("probe_paths"):
+            status, note = probe_http_service(
+                definition["url"],
+                definition["probe_paths"],
+            )
+
+        docker_service = docker_index.get(definition["name"])
+        container_note = None
+        if docker_service:
+            containers = ", ".join(docker_service.get("containers", []))
+            if containers:
+                container_note = (
+                    f"Docker: {docker_service['status']} ({containers})"
+                )
+            else:
+                container_note = f"Docker: {docker_service['status']}"
+
+        entries.append({
+            **definition,
+            "status": status,
+            "note": note,
+            "container_note": container_note,
+        })
+
+    return entries
+
+
+def render_service_dashboard(local_services: list[dict] | None = None) -> None:
+    """Render the former HTML service dashboard directly in Streamlit."""
+    st.markdown(
+        '<div class="section-header"><h2>🖥️ Service Dashboard</h2></div>',
+        unsafe_allow_html=True,
+    )
+    control_col, info_col = st.columns([1, 3])
+    with control_col:
+        if st.button(
+            "Refresh Service Status",
+            key="refresh_service_dashboard",
+        ):
+            st.rerun()
+    with info_col:
+        st.caption(
+            "Live probes run against localhost endpoints and available Docker "
+            "containers on each refresh."
+        )
+
+    current_services = local_services if local_services is not None else get_local_docker_services_status()
+    entries = get_service_dashboard_entries(current_services)
+    healthy_count = sum(1 for entry in entries if entry["status"] == "healthy")
+    warning_count = sum(1 for entry in entries if entry["status"] == "warning")
+    error_count = sum(1 for entry in entries if entry["status"] == "error")
+
+    metric_col1, metric_col2, metric_col3 = st.columns(3)
+    with metric_col1:
+        st.metric("Healthy Services", healthy_count)
+    with metric_col2:
+        st.metric("Warnings", warning_count)
+    with metric_col3:
+        st.metric("Errors", error_count)
+
+    left_col, right_col = st.columns(2)
+    for index, entry in enumerate(entries):
+        target_col = left_col if index % 2 == 0 else right_col
+        with target_col:
+            with st.container(border=True):
+                st.markdown(f"### {entry['icon']} {entry['name']}")
+                st.markdown(
+                    get_status_badge(entry["status"]),
+                    unsafe_allow_html=True,
+                )
+                st.write(entry["description"])
+                st.caption(entry["details"])
+                if entry.get("credentials"):
+                    st.caption(f"Credentials: {entry['credentials']}")
+                if entry.get("container_note"):
+                    st.caption(entry["container_note"])
+                if entry.get("url"):
+                    st.link_button(
+                        entry["button"],
+                        entry["url"],
+                        use_container_width=True,
+                    )
+                else:
+                    st.button(
+                        entry["button"],
+                        key=f"{entry['name']}_managed_button",
+                        disabled=True,
+                        use_container_width=True,
+                    )
+                st.caption(entry["note"])
+
+    st.caption(f"Last checked: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    st.markdown("### 🔧 Service Status & Troubleshooting")
+    st.markdown(
+        "- Airbyte stability depends on the container environment variables "
+        "and "
+        "network wiring.\n"
+        "- MLflow can appear reachable on localhost while a container is "
+        "still "
+        "restarting; use Docker status together with the HTTP probe.\n"
+        "- KNIME workflows are managed through Airflow, so there is no "
+        "separate "
+        "local web console to open from this page."
+    )
+    st.code(
+        ".\\fix_services.ps1\n"
+        "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\"\n"
+        "docker logs bentley-mlflow --tail 50\n"
+        "docker logs bentley-airflow-webserver --tail 50",
+        language="powershell",
+    )
 
 
 def _admin_broker_name_to_slug(name: str) -> str:
@@ -444,13 +1458,16 @@ def _admin_get_mt5_connector(prefix: str = "MT5"):
     host = (
         os.getenv(f"{prefix}_HOST")
         or os.getenv(f"{prefix}_SERVER")
+        or os.getenv("MT5_SERVER", "")
         or os.getenv("MT5_HOST", "")
     )
     port = int(os.getenv(f"{prefix}_PORT") or os.getenv("MT5_PORT", "443"))
 
     if not host or not user or not password:
         raise ValueError(
-            f"Missing {prefix} credentials. Set {prefix}_USER/{prefix}_PASSWORD/{prefix}_HOST"
+            "Missing "
+            f"{prefix} credentials. Set {prefix}_USER/{prefix}_PASSWORD/"
+            f"{prefix}_HOST or reuse MT5_SERVER/MT5_HOST"
         )
 
     if not connector.connect(user=user, password=password, host=host, port=port):
@@ -468,15 +1485,28 @@ def _admin_broker_action(broker_name: str, action: str) -> dict:
             connector = _admin_get_alpaca_connector()
             if action == "test":
                 account = connector.get_account()
+                message = "Alpaca authenticated" if account else (connector.last_error or "Alpaca test failed")
+                if not account and ("401" in message or "unauthorized" in message.lower()):
+                    message = (
+                        "Alpaca authentication failed (401 Unauthorized). "
+                        "Rotate ALPACA_PAPER_* / ALPACA_LIVE_* keys in .env and Streamlit secrets, "
+                        "then restart Streamlit and FastAPI."
+                    )
                 return {
                     "ok": bool(account),
-                    "message": "Alpaca authenticated" if account else (connector.last_error or "Alpaca test failed"),
+                    "message": message,
                 }
             if action == "refresh":
                 account = connector.get_account()
+                message = "Alpaca session refreshed" if account else (connector.last_error or "Refresh failed")
+                if not account and ("401" in message or "unauthorized" in message.lower()):
+                    message = (
+                        "Alpaca refresh failed (401 Unauthorized). "
+                        "Apply rotated keys and restart bot services."
+                    )
                 return {
                     "ok": bool(account),
-                    "message": "Alpaca session refreshed" if account else (connector.last_error or "Refresh failed"),
+                    "message": message,
                 }
             if action == "orders":
                 open_orders = connector.get_orders(status="open") or []
@@ -586,7 +1616,11 @@ def _admin_broker_action(broker_name: str, action: str) -> dict:
 
 def get_local_docker_services_status():
     """Return grouped Docker service status from local `docker ps` output."""
-    cmd = ["docker", "ps", "--format", "{{.Names}}|{{.Status}}"]
+    docker_cmd, _docker_note = get_docker_cli_command()
+    if not docker_cmd:
+        return None
+
+    cmd = docker_cmd + ["ps", "--format", "{{.Names}}|{{.Status}}"]
     try:
         result = subprocess.run(
             cmd,
@@ -662,8 +1696,8 @@ def get_local_docker_services_status():
 
 
 def get_vega_ibkr_schedule_status() -> dict:
-    """Return task scheduler metadata for the Vega IBKR 9:30 automation task."""
-    task_name = "Bentley-Vega-IBKR-930"
+    """Return task scheduler metadata for the Vega automation task."""
+    task_name = "Bentley-Vega"
     cmd = ["schtasks", "/query", "/tn", task_name, "/fo", "LIST", "/v"]
     try:
         result = subprocess.run(
@@ -720,13 +1754,101 @@ def get_last_bot_mode_event() -> dict | None:
         return None
 
     try:
-        with latest_path.open("r", encoding="utf-8") as handle:
+        with latest_path.open("r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
             if isinstance(payload, dict):
                 return payload
     except Exception:
         return None
     return None
+
+
+@st.cache_data(ttl=15)
+def get_all_bot_mode_events() -> dict:
+    """Return {bot_name_lower: latest_event} by scanning bot_mode_events.jsonl.
+
+    Falls back to last_bot_mode_event.json when the append log doesn't exist.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    events_path = repo_root / "logs" / "bot_mode_events.jsonl"
+    per_bot: dict = {}
+
+    if events_path.exists():
+        try:
+            with events_path.open("r", encoding="utf-8-sig") as fh:
+                for raw in fh:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        ev = json.loads(raw)
+                        if isinstance(ev, dict) and ev.get("bot"):
+                            per_bot[str(ev["bot"]).lower()] = ev
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+    else:
+        ev = get_last_bot_mode_event()
+        if ev and ev.get("bot"):
+            per_bot[str(ev["bot"]).lower()] = ev
+
+    return per_bot
+
+
+def build_deployed_bots_df() -> pd.DataFrame:
+    """Build the Deployed Bots table by merging catalog and live launcher state."""
+    catalog = get_bot_catalog_rows()
+    all_events = get_all_bot_mode_events()
+    config = get_broker_mode_config() if get_broker_mode_config is not None else None
+
+    rows = []
+    for entry in catalog:
+        display_bot_name = str(entry.get("bot", ""))
+        bot_name = _normalize_bot_name(display_bot_name)
+        bot_key = bot_name.lower()
+        ev = all_events.get(bot_key, {})
+        mode_raw = str(ev.get("mode", "")).lower()
+        status_raw = str(ev.get("status", "")).lower()
+
+        active_flag = None
+        trading_mode = "paper"
+        broker_name = ""
+        if config is not None:
+            try:
+                active_flag = config.is_bot_active(bot_name)
+                trading_mode = config.get_bot_mode(bot_name)
+                broker_name = str(config.get_bot_broker(bot_name) or "")
+            except Exception:
+                active_flag = None
+
+        if mode_raw == "off":
+            status_label = "🔴 OFF"
+        elif mode_raw == "on":
+            if status_raw in ("failed", "failure", "error"):
+                status_label = "🔴 ERROR"
+            else:
+                status_label = "🟢 RUNNING"
+        elif active_flag is True:
+            status_label = "🟢 RUNNING"
+        elif active_flag is False:
+            status_label = "🔴 OFF"
+        else:
+            status_label = "🟡 UNKNOWN"
+
+        rows.append(
+            {
+                "Bot": bot_name,
+                "Fund": entry.get("fund", ""),
+                "Strategy": entry.get("strategy", ""),
+                "Status": status_label,
+                "Mode": str(ev.get("trading_mode") or trading_mode or "paper").upper(),
+                "Broker": str(ev.get("broker") or broker_name or "").upper(),
+                "Last Updated": ev.get("timestamp", "")[:19].replace("T", " ") if ev.get("timestamp") else "",
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 def get_bot_launch_mode(bot_name: str, fallback_broker: str) -> str:
@@ -757,8 +1879,47 @@ def persist_bot_launch_mode(
         config.set_bot_active(bot_name, active)
 
 
-def run_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
+def refresh_bot_mode_views() -> None:
+    get_all_bot_mode_events.clear()
+
+
+def _normalize_bot_name(bot_name: str) -> str:
+    raw = str(bot_name or "").strip()
+    if not raw:
+        return raw
+
+    compact = raw.replace("_", "").replace("-", "").replace(" ", "").upper()
+    if compact.endswith("BOT"):
+        compact = compact[:-3]
+
+    alias_map = {
+        "TITAN": "Titan",
+        "VEGA": "Vega",
+        "RIGEL": "Rigel",
+        "DOGON": "Dogon",
+        "ORION": "Orion",
+        "DRACO": "Draco",
+        "ALTAIR": "Altair",
+        "PROCRYON": "Procryon",
+        "HYDRA": "Hydra",
+        "TRITON": "Triton",
+        "DIONE": "Dione",
+        "CEPHEI": "Cephei",
+        "RHEA": "Rhea",
+        "JUPICITA": "Jupicita",
+        "CYGNUS": "Cygnus",
+    }
+    return alias_map.get(compact, raw)
+
+
+def run_bot_mode(
+    bot_name: str,
+    mode: str,
+    trading_mode: str = "paper",
+    broker: str | None = None,
+) -> dict:
     """Run start_bot_mode.ps1 and return execution result."""
+    canonical_bot = _normalize_bot_name(bot_name)
     repo_root = Path(__file__).resolve().parents[1]
     launcher = repo_root / "start_bot_mode.ps1"
 
@@ -768,19 +1929,29 @@ def run_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
             "output": f"Launcher not found: {launcher}",
         }
 
+    shell_exe = _resolve_powershell_executable()
+    if not shell_exe:
+        return {
+            "ok": False,
+            "output": (
+                "No PowerShell executable found in PATH. "
+                "Install PowerShell or add `powershell.exe` / `pwsh.exe` to PATH."
+            ),
+        }
+
     cmd = [
-        "powershell",
+        shell_exe,
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
         "-File",
         str(launcher),
         "-Bot",
-        bot_name,
+        canonical_bot,
         "-Mode",
         mode,
         "-Broker",
-        "IBKR",
+        broker or get_bot_default_broker(canonical_bot),
         "-TradingMode",
         trading_mode,
     ]
@@ -828,11 +1999,12 @@ def main():
         st.markdown(f"[MLflow UI]({resolved_mlflow_url})")
         st.markdown("[Airflow](http://localhost:8080)")
         st.markdown("[Airbyte](http://localhost:8000)")
-        st.markdown("[Service Dashboard](../sites/Mansa_Bentley_Platform/service_dashboard.html)")
+        st.caption("Service Dashboard is available in the Services tab.")
     
     # Navigation Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 Overview",
+        "🖥️ Services",
         "🤖 Bot Manager",
         "🔌 Broker Health",
         "🏢 Prop Firms",
@@ -840,22 +2012,45 @@ def main():
         "🧠 MLflow",
         "📈 System Logs"
     ])
+    local_services = get_local_docker_services_status()
     
     # TAB 1: Overview Dashboard
     with tab1:
         st.markdown('<div class="section-header"><h2>System Overview</h2></div>', unsafe_allow_html=True)
+        platform_health = api_request("/platform/health", show_notice=False) or {}
+        platform_architecture = api_request(
+            "/platform/architecture",
+            show_notice=False,
+        ) or {}
+        overview_services = platform_health.get("services", {})
+        healthy_services = sum(
+            1
+            for service in overview_services.values()
+            if service.get("status") == "healthy"
+        )
+        catalog_rows = get_bot_catalog_rows()
+        overview_deployed_df = build_deployed_bots_df()
+        active_bots = len(
+            overview_deployed_df[
+                overview_deployed_df["Status"].astype(str).str.startswith("🟢")
+            ]
+        )
         
         # Health metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Active Bots", "3 / 13", "+1")
+            st.metric("Configured Bots", str(len(catalog_rows)))
         with col2:
-            st.metric("Broker Connections", "2 / 5", "")
+            st.metric("Active Bots", str(active_bots))
         with col3:
-            st.metric("Daily P&L", "$1,245.67", "+$345.21")
+            mysql_provider = resolve_mysql_provider(
+                platform_architecture,
+                platform_health,
+            )
+            st.metric("MySQL Provider", str(mysql_provider).upper())
         with col4:
-            st.metric("API Health", "98.5%", "-1.2%")
+            st.metric("Healthy Services", str(healthy_services))
         
         st.markdown("---")
         
@@ -864,8 +2059,6 @@ def main():
         
         with col1:
             st.subheader("Docker Services")
-            local_services = get_local_docker_services_status()
-
             if local_services:
                 for service in local_services:
                     st.markdown(
@@ -894,14 +2087,22 @@ def main():
         
         with col2:
             st.subheader("Recent Activity")
-            st.text("15:23 - Bot 3 deployed to production")
-            st.text("14:45 - Alpaca session refreshed")
-            st.text("13:12 - FTMO trade executed (EURUSD)")
-            st.text("11:30 - Risk limit updated (max drawdown)")
-            st.text("09:15 - Daily reconciliation completed")
-    
-    # TAB 2: Bot Manager
+            st.text("FastAPI is the unified backend entrypoint")
+            st.text("Railway/local MySQL is resolved via environment-aware secrets")
+            st.text("MLflow and Appwrite are exposed through platform health probes")
+            st.text("Docker hosts Airflow, Airbyte, and optional MLflow services")
+            st.text("Streamlit pages are Bentley UI clients over the control-center API")
+
+        if platform_architecture:
+            with st.expander("Platform Architecture Snapshot", expanded=False):
+                st.json(platform_architecture)
+
+    # TAB 2: Service Dashboard
     with tab2:
+        render_service_dashboard()
+    
+    # TAB 3: Bot Manager
+    with tab3:
         st.markdown('<div class="section-header"><h2>AI/ML Bot Orchestration</h2></div>', unsafe_allow_html=True)
 
         catalog_rows = get_bot_catalog_rows()
@@ -911,12 +2112,17 @@ def main():
         )
 
         c1, c2, c3 = st.columns(3)
+        unique_funds = {
+            str(row.get("fund", "")).strip()
+            for row in catalog_rows
+            if str(row.get("fund", "")).strip()
+        }
         with c1:
-            st.metric("Mansa Funds", str(len(catalog_rows)))
+            st.metric("Mansa Funds", str(len(unique_funds)))
         with c2:
-            st.metric("Configured Bots", str(len(catalog_rows)))
+            st.metric("Mansa Bots", str(len(catalog_rows)))
         with c3:
-            st.metric("Orchestration Scope", "Forecast + Rebalance")
+            st.metric("Orchestration Scope", "Unified Start/Stop")
 
         st.markdown("**Mansa Capital Fund/Bot Strategy Catalog**")
         catalog_df = pd.DataFrame(catalog_rows).rename(columns={
@@ -927,87 +2133,69 @@ def main():
         st.dataframe(catalog_df, use_container_width=True, hide_index=True)
         st.markdown("---")
 
-        st.subheader("Vega IBKR 9:30 Automation")
-        schedule = get_vega_ibkr_schedule_status()
-        last_event = get_last_bot_mode_event()
-        vega_launch_mode = st.radio(
-            "Vega trading mode",
-            options=["paper", "live"],
-            horizontal=True,
-            key="vega_trading_mode",
-            index=0 if get_bot_launch_mode("Vega", "ibkr") == "paper" else 1,
-        )
-
-        col_a, col_b, col_c, col_d = st.columns(4)
-        with col_a:
-            st.metric("Task", "Configured" if schedule.get("exists") else "Missing")
-        with col_b:
-            st.metric("Next Run", schedule.get("next_run", "Unknown"))
-        with col_c:
-            st.metric("Last Result", schedule.get("last_result", "Unknown"))
-        with col_d:
-            event_status = (last_event or {}).get("status", "n/a")
-            st.metric("Last Vega Status", str(event_status))
-
-        st.caption(f"Selected Vega mode: {vega_launch_mode.upper()}")
-
-        btn_on, btn_off = st.columns(2)
-        with btn_on:
-            if st.button("Vega ON", type="primary", use_container_width=True):
-                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", True)
-                with st.spinner("Running Vega ON..."):
-                    execution = run_bot_mode("Vega", "ON", vega_launch_mode)
-                st.session_state["vega_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Vega ON completed.")
-                else:
-                    st.error("Vega ON failed.")
+        # ── One-click All Bots panel ──────────────────────────────────────────
+        st.subheader("⚡ One-Click Bot Controls")
+        _all_bots = [r["bot"] for r in catalog_rows]
+        _btn_all_on, _btn_all_off = st.columns(2)
+        with _btn_all_on:
+            if st.button("🚀 Start All Bots", type="primary", use_container_width=True, key="start_all_bots"):
+                _all_results = []
+                with st.spinner("Starting all bots…"):
+                    for _bn in _all_bots:
+                        _res = run_bot_mode(_bn, "ON")
+                        _all_results.append((_bn, _res["ok"], _res["output"]))
+                refresh_bot_mode_views()
+                for _bn, _ok, _out in _all_results:
+                    if _ok:
+                        st.success(f"✅ {_bn} ON")
+                    else:
+                        st.error(f"❌ {_bn} ON failed: {_out[:120]}")
                 st.rerun()
-        with btn_off:
-            if st.button("Vega OFF", use_container_width=True):
-                persist_bot_launch_mode("Vega", vega_launch_mode, "ibkr", False)
-                with st.spinner("Running Vega OFF..."):
-                    execution = run_bot_mode("Vega", "OFF", vega_launch_mode)
-                st.session_state["vega_mode_output"] = execution["output"]
-                if execution["ok"]:
-                    st.success("Vega OFF completed.")
-                else:
-                    st.error("Vega OFF failed.")
+        with _btn_all_off:
+            if st.button("🛑 Stop All Bots", use_container_width=True, key="stop_all_bots"):
+                _all_results = []
+                with st.spinner("Stopping all bots…"):
+                    for _bn in _all_bots:
+                        _res = run_bot_mode(_bn, "OFF")
+                        _all_results.append((_bn, _res["ok"], _res["output"]))
+                refresh_bot_mode_views()
+                for _bn, _ok, _out in _all_results:
+                    if _ok:
+                        st.success(f"✅ {_bn} OFF")
+                    else:
+                        st.error(f"❌ {_bn} OFF failed: {_out[:120]}")
                 st.rerun()
-
-        if schedule.get("exists"):
-            st.caption(
-                f"Task {schedule.get('task_name')} status: {schedule.get('status', 'Unknown')}"
-            )
-        else:
-            st.warning(
-                "Vega 9:30 task is not configured yet. "
-                "Run setup from terminal to register Bentley-Vega-IBKR-930."
-            )
-
-        if last_event:
-            st.caption("Latest launcher event (from logs/last_bot_mode_event.json)")
-            st.json(last_event)
-
-        vega_output = st.session_state.get("vega_mode_output")
-        if vega_output:
-            with st.expander("Last Vega Command Output", expanded=False):
-                st.code(vega_output, language="text")
 
         st.markdown("---")
-        
+
+        st.info(
+            "Bot-specific automation panels were removed from this page to avoid redundant controls. "
+            "Use unified One-Click controls and the Deployed Bots table below."
+        )
+
+        st.markdown("---")
+
         # Bot deployment controls
         col1, col2 = st.columns([3, 1])
-        
+
         with col1:
             st.subheader("Deployed Bots")
         with col2:
             if st.button("➕ Deploy New Bot", type="primary"):
                 st.session_state.show_deploy_modal = True
-        
-        # Bot list
+
+        # ── Live launcher status (always shown) ──────────────────────────
+        deployed_df = build_deployed_bots_df()
+        st.dataframe(deployed_df, use_container_width=True, hide_index=True)
+
+        col_run, col_cnt = st.columns(2)
+        n_running = len(deployed_df[deployed_df["Status"].str.startswith("🟢")])
+        n_off = len(deployed_df[deployed_df["Status"].str.startswith("🔴")])
+        col_run.metric("🟢 Running", n_running)
+        col_cnt.metric("🔴 Off", n_off)
+
+        # ── API-sourced data overlay (if available) ───────────────────────
         bots_data = api_request("/api/admin/bots/list")
-        
         if bots_data:
             bots_df = pd.DataFrame(bots_data.get("bots", []))
             if not bots_df.empty:
@@ -1016,7 +2204,6 @@ def main():
                 if "mansa_fund" not in bots_df.columns:
                     bots_df["mansa_fund"] = "Mansa Fund"
 
-                # Normalize displayed bot names for known Mansa fund strategies.
                 fund_to_bot = {
                     "mansa minerals - gold strategy": "Orion",
                     "mansa_minerals": "Orion",
@@ -1030,14 +2217,10 @@ def main():
                     return row.get("bot_name", "")
 
                 bots_df["bot_name"] = bots_df.apply(normalize_bot_name, axis=1)
+                if "display_bot" in bots_df.columns:
+                    bots_df = bots_df.drop(columns=["display_bot"])
 
-                display_cols = [
-                    "bot_name",
-                    "mansa_fund",
-                    "status",
-                    "broker",
-                    "uptime",
-                ]
+                display_cols = ["bot_name", "mansa_fund", "status", "broker", "uptime"]
                 available_cols = [col for col in display_cols if col in bots_df.columns]
                 display_df = bots_df[available_cols].copy()
                 display_df = display_df.rename(columns={
@@ -1047,55 +2230,17 @@ def main():
                     "broker": "Broker",
                     "uptime": "Uptime",
                 })
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("No bots returned from API.")
-        else:
-            # Sample bot data
-            bots = [
-                {"id": 1, "bot_name": "Orion", "mansa_fund": "Mansa Minerals - Gold Strategy", "status": "running", "broker": "Alpaca", "uptime": "3d 5h"},
-                {"id": 2, "bot_name": "Portfolio Optimizer", "mansa_fund": "Mansa Fund", "status": "running", "broker": "Multi", "uptime": "7d 12h"},
-            ]
-            st.dataframe(
-                pd.DataFrame(bots).rename(columns={
-                    "bot_name": "Bot Name",
-                    "mansa_fund": "Mansa Fund",
-                    "status": "Status",
-                    "broker": "Broker",
-                    "uptime": "Uptime",
-                })[["Bot Name", "Mansa Fund", "Status", "Broker", "Uptime"]],
-                use_container_width=True,
-                hide_index=True,
-            )
-            
-            for idx, bot in enumerate(bots):
-                col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 1, 1])
-                
-                with col1:
-                    st.markdown(f"**{bot['bot_name']}**")
-                with col2:
-                    st.markdown(get_status_badge(bot['status']), unsafe_allow_html=True)
-                with col3:
-                    st.text(f"Broker: {bot['broker']}")
-                with col4:
-                    st.text(f"Uptime: {bot['uptime']}")
-                with col5:
-                    if st.button("⏸️", key=f"stop_{idx}"):
-                        st.info(f"Stopping {bot['bot_name']}...")
-                with col6:
-                    if st.button("📊", key=f"metrics_{idx}"):
-                        st.info(f"Loading metrics for {bot['bot_name']}...")
-                
-                st.markdown("---")
-        
+                with st.expander("API Bot List (supplemental)", expanded=False):
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
         # Deploy modal
         if st.session_state.get("show_deploy_modal", False):
             with st.expander("Deploy New Bot", expanded=True):
                 _catalog = get_bot_catalog_rows()
                 bot_select = st.selectbox("Select Bot", [row["bot"] for row in _catalog])
-                broker_select = st.selectbox("Select Broker", ["Alpaca", "IBKR", "Binance", "MT5 (FTMO)", "MT5 (Axi)"])
+                broker_select = st.selectbox("Select Broker", ["Alpaca", "IBKR", "MT5 (FTMO)", "MT5 (Axi)", "Prop Connector (Zenit)"])
                 environment = st.radio("Environment", ["Sandbox", "Live"], horizontal=True)
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("Deploy", type="primary", use_container_width=True):
@@ -1107,9 +2252,13 @@ def main():
                         st.session_state.show_deploy_modal = False
                         st.rerun()
     
-    # TAB 3: Broker Health
-    with tab3:
+    # TAB 4: Broker Health
+    with tab4:
         st.markdown('<div class="section-header"><h2>Multi-Broker Orchestration</h2></div>', unsafe_allow_html=True)
+
+        st.warning(
+            "Alpaca credentials were reported as compromised. Rotate keys now and update both local `.env` and Streamlit secrets."
+        )
         
         # Refresh button
         if st.button("🔄 Refresh All Sessions"):
@@ -1124,10 +2273,9 @@ def main():
             # Sample broker data
             brokers = [
                 {"name": "Alpaca", "status": "healthy", "latency": "45ms", "orders_today": 12, "last_sync": "2 min ago"},
-                {"name": "Schwab", "status": "warning", "latency": "120ms", "orders_today": 0, "last_sync": "15 min ago"},
-                {"name": "IBKR", "status": "error", "latency": "N/A", "orders_today": 0, "last_sync": "Never"},
-                {"name": "Binance", "status": "healthy", "latency": "35ms", "orders_today": 8, "last_sync": "1 min ago"},
-                {"name": "Coinbase", "status": "idle", "latency": "N/A", "orders_today": 0, "last_sync": "Never"},
+                {"name": "IBKR", "status": "warning", "latency": "120ms", "orders_today": 3, "last_sync": "6 min ago"},
+                {"name": "MT5", "status": "healthy", "latency": "35ms", "orders_today": 8, "last_sync": "1 min ago"},
+                {"name": "Prop Connectors", "status": "idle", "latency": "N/A", "orders_today": 0, "last_sync": "10 min ago"},
             ]
         else:
             brokers = brokers_data.get("brokers", [])
@@ -1189,15 +2337,15 @@ def main():
             
             st.markdown("---")
     
-    # TAB 4: Prop Firms
-    with tab4:
+    # TAB 5: Prop Firms
+    with tab5:
         st.markdown('<div class="section-header"><h2>Prop Firm Execution Management</h2></div>', unsafe_allow_html=True)
         
         # Prop firm status
         prop_firms = [
             {"name": "FTMO", "platform": "MT5", "accounts": 2, "status": "active", "daily_pnl": "$234.56"},
             {"name": "Axi Select", "platform": "MT5", "accounts": 1, "status": "active", "daily_pnl": "$89.12"},
-            {"name": "Zenit", "platform": "NinjaTrader", "accounts": 0, "status": "planned", "daily_pnl": "$0.00"},
+            {"name": "Zenit", "platform": "Prop Connector", "accounts": 0, "status": "planned", "daily_pnl": "$0.00"},
         ]
         
         for firm in prop_firms:
@@ -1229,8 +2377,8 @@ def main():
             
             st.markdown("---")
     
-    # TAB 5: Risk Engine
-    with tab5:
+    # TAB 6: Risk Engine
+    with tab6:
         st.markdown('<div class="section-header"><h2>Risk Management & Compliance</h2></div>', unsafe_allow_html=True)
         st.caption(
             "Portfolio optimization lens: monitor liquidity, drawdown, and concentration "
@@ -1368,8 +2516,8 @@ def main():
         st.subheader("Recent Risk Events")
         st.text("No violations in the last 24 hours ✓")
     
-    # TAB 6: MLflow Integration
-    with tab6:
+    # TAB 7: MLflow Integration
+    with tab7:
         st.markdown('<div class="section-header"><h2>🧠 MLflow Experiment Tracking</h2></div>', unsafe_allow_html=True)
 
         col1, col2 = st.columns([2, 1])
@@ -1419,18 +2567,159 @@ def main():
                         f"❌ Cannot connect to MLflow server at {configured_mlflow_url}"
                     )
                     backend_store_uri = get_mlflow_backend_store_uri()
-                    st.info(
-                        "Start MLflow: "
-                        f"`python -m mlflow server --backend-store-uri "
-                        f"\"{backend_store_uri}\" --host 0.0.0.0 --port 5000`"
+                    mlflow_start_cmd = (
+                        f'python -m mlflow server --backend-store-uri '
+                        f'"{backend_store_uri}" --host 0.0.0.0 --port 5000'
                     )
+                    st.code(mlflow_start_cmd, language="bash")
+                    if st.button("▶️ Start MLflow Server", type="primary", key="start_mlflow_btn"):
+                        ok, msg = start_mlflow_server(backend_store_uri)
+                        if ok:
+                            st.success(msg)
+                            st.session_state.pop("resolved_mlflow_server_url", None)
+                            st.session_state.pop("resolved_mlflow_server_note", None)
+                        else:
+                            st.error(msg)
 
         with col2:
             st.subheader("🔗 Quick Actions")
-            if st.button("🔄 Refresh MLflow Data", type="primary", use_container_width=True):
+            airflow_ok, airflow_note = probe_local_service([
+                "http://127.0.0.1:8080/health",
+                "http://localhost:8080/health",
+                "http://127.0.0.1:8080/",
+                "http://localhost:8080/",
+            ])
+            airbyte_ok, airbyte_note = probe_local_service([
+                "http://127.0.0.1:8001/api/v1/health",
+                "http://localhost:8001/api/v1/health",
+                "http://127.0.0.1:8000/",
+                "http://localhost:8000/",
+            ])
+
+            docker_cmd, docker_cli_note = get_docker_cli_command()
+            docker_ready = docker_cmd is not None
+            docker_engine_ok, docker_engine_note = probe_docker_engine(docker_cmd)
+            if not docker_ready:
+                st.warning(
+                    "Docker CLI not detected in PATH or default Docker Desktop locations. "
+                    "Airflow/Airbyte stack start buttons are disabled."
+                )
+            elif not docker_engine_ok:
+                st.info("Docker CLI found, but engine is not reachable yet. Start Docker Desktop and retry.")
+
+            st.caption(("✅" if airflow_ok else "❌") + f" Airflow: {airflow_note}")
+            st.caption(("✅" if airbyte_ok else "❌") + f" Airbyte: {airbyte_note}")
+            st.caption(("✅" if docker_engine_ok else "⚠️") + f" Docker: {docker_engine_note if docker_ready else docker_cli_note}")
+
+            no_pull_mode = st.checkbox(
+                "No-pull mode (use local images only)",
+                value=True,
+                key="quick_actions_no_pull_mode",
+                help=(
+                    "Skips `docker compose pull` and starts stacks with `--no-build`. "
+                    "Use this when registry access is failing or working offline."
+                ),
+            )
+
+            if st.button("🚀 Start All Local Services", type="primary", use_container_width=True, key="start_all_services"):
+                results = []
+                with st.spinner("Starting MLflow…"):
+                    _bsu = get_mlflow_backend_store_uri()
+                    _ok, _msg = start_mlflow_server(_bsu)
+                    results.append(("MLflow", _ok, _msg))
+                if docker_ready:
+                    with st.spinner("Starting Airflow stack…"):
+                        _ok, _msg = start_docker_compose_services(
+                            "docker/docker-compose-airflow.yml",
+                            pull_before=not no_pull_mode,
+                            no_build=no_pull_mode,
+                        )
+                        results.append(("Airflow", _ok, _msg))
+                    with st.spinner("Starting Airbyte stack…"):
+                        _airbyte_compose = next(
+                            (
+                                p for p in [
+                                    "docker/docker-compose-airbyte-fixed.yml",
+                                    "docker/docker-compose-airbyte-simple.yml",
+                                    "docker/docker-compose-airbyte.yml",
+                                ]
+                                if (REPO_ROOT / p).exists()
+                            ),
+                            "docker/docker-compose-airbyte.yml",
+                        )
+                        _ok, _msg = start_docker_compose_services(
+                            _airbyte_compose,
+                            pull_before=not no_pull_mode,
+                            no_build=no_pull_mode,
+                        )
+                        results.append(("Airbyte", _ok, _msg))
+                else:
+                    results.append(("Airflow", False, "Skipped: Docker CLI unavailable."))
+                    results.append(("Airbyte", False, "Skipped: Docker CLI unavailable."))
+                for _svc, _ok, _msg in results:
+                    if _ok:
+                        st.success(f"✅ {_svc}: {_msg}")
+                    else:
+                        st.error(f"❌ {_svc}: {_msg}")
+                st.session_state.pop("resolved_mlflow_server_url", None)
+                st.session_state.pop("resolved_mlflow_server_note", None)
+
+            if st.button("🔄 Refresh MLflow Status", use_container_width=True, key="refresh_mlflow_status"):
                 st.session_state.pop("resolved_mlflow_server_url", None)
                 st.session_state.pop("resolved_mlflow_server_note", None)
                 st.rerun()
+            if st.button("▶️ Start MLflow Server", use_container_width=True, key="start_mlflow_quick"):
+                backend_store_uri = get_mlflow_backend_store_uri()
+                ok, msg = start_mlflow_server(backend_store_uri)
+                if ok:
+                    st.success(msg)
+                    st.session_state.pop("resolved_mlflow_server_url", None)
+                    st.session_state.pop("resolved_mlflow_server_note", None)
+                else:
+                    st.error(msg)
+            if st.button(
+                "▶️ Start Airflow Stack",
+                use_container_width=True,
+                key="start_airflow_stack",
+                disabled=not docker_ready,
+            ):
+                ok, msg = start_docker_compose_services(
+                    "docker/docker-compose-airflow.yml",
+                    pull_before=not no_pull_mode,
+                    no_build=no_pull_mode,
+                )
+                if ok:
+                    st.success("Airflow stack start command completed.")
+                    st.caption(msg)
+                else:
+                    st.error(f"Failed to start Airflow stack: {msg}")
+            if st.button(
+                "▶️ Start Airbyte Stack",
+                use_container_width=True,
+                key="start_airbyte_stack",
+                disabled=not docker_ready,
+            ):
+                _airbyte_compose = next(
+                    (
+                        p for p in [
+                            "docker/docker-compose-airbyte-fixed.yml",
+                            "docker/docker-compose-airbyte-simple.yml",
+                            "docker/docker-compose-airbyte.yml",
+                        ]
+                        if (REPO_ROOT / p).exists()
+                    ),
+                    "docker/docker-compose-airbyte.yml",
+                )
+                ok, msg = start_docker_compose_services(
+                    _airbyte_compose,
+                    pull_before=not no_pull_mode,
+                    no_build=no_pull_mode,
+                )
+                if ok:
+                    st.success("Airbyte stack start command completed.")
+                    st.caption(msg)
+                else:
+                    st.error(f"Failed to start Airbyte stack: {msg}")
             if st.button("🌐 Open MLflow UI", use_container_width=True):
                 st.markdown(f"[Open MLflow UI]({resolved_mlflow_url})")
 
@@ -1449,13 +2738,21 @@ def main():
             exp_rows = []
             total_runs = 0
             finished_runs = 0
+            run_frames = []
 
             for exp in experiments[:25]:
-                runs = mlflow.search_runs(experiment_ids=[exp.experiment_id], max_results=200)
+                runs = mlflow.search_runs(
+                    experiment_ids=[exp.experiment_id],
+                    max_results=200,
+                )
                 run_count = len(runs)
                 total_runs += run_count
                 if not runs.empty and "status" in runs.columns:
                     finished_runs += len(runs[runs["status"] == "FINISHED"])
+                    annotated = runs.copy()
+                    annotated["experiment_name"] = exp.name
+                    annotated["experiment_id"] = exp.experiment_id
+                    run_frames.append(annotated)
 
                 last_updated = "N/A"
                 if not runs.empty and "start_time" in runs.columns:
@@ -1488,6 +2785,167 @@ def main():
             else:
                 st.info("No experiments found.")
 
+            all_runs_df = (
+                pd.concat(run_frames, ignore_index=True)
+                if run_frames
+                else pd.DataFrame()
+            )
+
+            st.markdown("---")
+            st.subheader("📈 Recent Runs (Model, Metrics, Parameters, Timestamp)")
+            if not all_runs_df.empty:
+                runs_view = all_runs_df.copy()
+                if "start_time" in runs_view.columns:
+                    runs_view["start_time"] = pd.to_datetime(
+                        runs_view["start_time"], errors="coerce"
+                    )
+                    runs_view = runs_view.sort_values("start_time", ascending=False)
+
+                display_rows = []
+                for _, row in runs_view.head(100).iterrows():
+                    timestamp_value = _first_present(row, ["end_time", "start_time"])
+                    timestamp_dt = pd.to_datetime(timestamp_value, errors="coerce")
+                    timestamp_text = (
+                        timestamp_dt.strftime("%Y-%m-%d %H:%M:%S")
+                        if pd.notna(timestamp_dt)
+                        else "N/A"
+                    )
+
+                    model_name = _first_present(
+                        row,
+                        [
+                            "tags.model_name",
+                            "params.model_name",
+                            "tags.registered_model_name",
+                            "params.model",
+                            "tags.mlflow.runName",
+                        ],
+                    ) or "N/A"
+
+                    run_name = _first_present(row, ["tags.mlflow.runName", "run_name"]) or "N/A"
+
+                    display_rows.append(
+                        {
+                            "Experiment": row.get("experiment_name", "N/A"),
+                            "Run Name": run_name,
+                            "Model": str(model_name),
+                            "Status": row.get("status", "N/A"),
+                            "Timestamp": timestamp_text,
+                            "Metrics": format_run_payload(row, "metrics."),
+                            "Parameters": format_run_payload(row, "params."),
+                        }
+                    )
+
+                st.dataframe(
+                    pd.DataFrame(display_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No run records found yet. Start a bot cycle to populate metrics and parameters.")
+
+            st.markdown("---")
+            st.subheader("🧭 Titan MLflow Blueprint")
+            st.caption(
+                "Titan runs now carry feature-level discipline context, "
+                "registry lineage, and benchmark metadata for Orion, Rigel, and Dogon comparisons."
+            )
+            st.dataframe(
+                pd.DataFrame(TITAN_MLFLOW_SCHEMA_ROWS),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("---")
+            st.subheader("🗂️ Model Registry")
+            registry_df = build_model_registry_frame(client)
+            if not registry_df.empty:
+                st.dataframe(
+                    registry_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No registered models found in MLflow registry.")
+
+            st.markdown("---")
+            st.subheader("⚖️ Cross-Bot Benchmarking")
+            benchmark_df = build_mlflow_benchmark_frame(all_runs_df)
+            if not benchmark_df.empty:
+                st.dataframe(
+                    benchmark_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                missing_bots = benchmark_df[benchmark_df["Runs"] == 0]["Bot"].tolist()
+                if missing_bots:
+                    st.info(
+                        "MLflow has no benchmark runs yet for: "
+                        + ", ".join(missing_bots)
+                    )
+            else:
+                st.info("No MLflow run data available for Titan/Orion/Rigel/Dogon benchmarking.")
+
+            st.markdown("---")
+            st.subheader("🧠 Optuna Benchmark Surface")
+            st.caption(
+                "Interactive tuning stays in Gradio. This tab is the polished reporting layer "
+                "for Streamlit/Vercel visibility across Titan, Orion, Rigel, and Dogon."
+            )
+
+            (
+                optuna_summary_df,
+                optuna_best_params_df,
+                optuna_performance_df,
+            ) = build_optuna_benchmark_frames(all_runs_df)
+
+            if not optuna_summary_df.empty:
+                st.dataframe(
+                    optuna_summary_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No Optuna benchmark summary is available yet.")
+
+            if not optuna_performance_df.empty:
+                trend_df = (
+                    optuna_performance_df.pivot_table(
+                        index="Timestamp",
+                        columns="Bot",
+                        values="Objective",
+                        aggfunc="last",
+                    )
+                    .sort_index()
+                )
+                st.line_chart(trend_df, use_container_width=True)
+            else:
+                st.info("No Optuna performance points found yet.")
+
+            if not optuna_best_params_df.empty:
+                st.dataframe(
+                    optuna_best_params_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No Optuna best-trial parameter payloads found in MLflow runs.")
+
+            st.markdown("---")
+            st.subheader("🧪 Titan Forensic Runs")
+            titan_forensic_df = build_titan_forensic_frame(all_runs_df)
+            if not titan_forensic_df.empty:
+                st.dataframe(
+                    titan_forensic_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info(
+                    "No Titan run metrics with forensic feature snapshots were found yet. "
+                    "Run Titan once with the updated logging to populate this view."
+                )
+
         except Exception as e:
             error_text = str(e)
             st.error(f"❌ Failed to load experiments: {error_text}")
@@ -1515,8 +2973,8 @@ BACKEND_STORE_URI: {get_mlflow_backend_store_uri()}
 - Use BACKEND_STORE_URI for `mlflow db upgrade`.
             """, language="text")
     
-    # TAB 7: System Logs
-    with tab7:
+    # TAB 8: System Logs
+    with tab8:
         st.markdown('<div class="section-header"><h2>Execution Logs & Monitoring</h2></div>', unsafe_allow_html=True)
         
         # Log filters
@@ -1534,7 +2992,7 @@ BACKEND_STORE_URI: {get_mlflow_backend_store_uri()}
 [2026-02-15 15:23:45] [INFO] [Bot3] Successfully deployed to Alpaca (sandbox)
 [2026-02-15 14:45:12] [INFO] [Alpaca] Session token refreshed successfully
 [2026-02-15 13:12:34] [INFO] [FTMO-MT5] Trade executed: EURUSD BUY 0.1 lots @ 1.0945
-[2026-02-15 11:30:22] [WARNING] [Schwab] High latency detected: 180ms
+[2026-02-15 11:30:22] [WARNING] [IBKR] High latency detected: 180ms
 [2026-02-15 09:15:11] [INFO] [System] Daily reconciliation completed successfully
 [2026-02-15 08:00:05] [INFO] [Risk] All systems within risk parameters
         """, height=400)

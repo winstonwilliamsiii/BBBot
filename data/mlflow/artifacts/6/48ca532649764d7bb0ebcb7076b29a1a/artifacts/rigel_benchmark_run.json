@@ -1,0 +1,10 @@
+{
+  "bot": "Rigel",
+  "fund": "Mansa_FOREX",
+  "timestamp": "2026-04-18T18:06:34.589360+00:00",
+  "signals_generated": 0.0,
+  "executed_signals": 0.0,
+  "avg_signal_confidence": 0.0,
+  "status": "account_error",
+  "detail": "Failed to get account info: HTTPSConnectionPool(host='paper-api.alpaca.markets', port=443): Max retries exceeded with url: /v2/account (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000002B3FED432C0>: Failed to establish a new connection: [Errno 11001] getaddrinfo failed'))"
+}

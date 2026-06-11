@@ -83,6 +83,7 @@ services:
       - ../data:/opt/airflow/data
       - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
       - ..:/opt/bentley
+      - ../data/mlflow:/mlflow  # Shared MLflow artifacts volume
     command: webserver
     restart: unless-stopped
     healthcheck:
@@ -136,6 +137,7 @@ services:
       - ../data:/opt/airflow/data
       - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
       - ..:/opt/bentley
+      - ../data/mlflow:/mlflow  # Shared MLflow artifacts volume
     command: scheduler
     restart: unless-stopped
 
@@ -183,6 +185,7 @@ services:
       - ../data:/opt/airflow/data
       - ../airbyte/sources/stocktwits:/opt/airflow/airbyte-source-stocktwits
       - ..:/opt/bentley
+      - ../data/mlflow:/mlflow  # Shared MLflow artifacts volume
     command: celery worker
     restart: unless-stopped
 

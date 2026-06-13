@@ -109,5 +109,9 @@
     "sqltools.useNodeRuntime": true,
     "sqltools.autoOpenSessionFiles": false,
     "sqltools.results.limit": 1000,
-    "chat.viewProgressBadge.enabled": true
+    "chat.viewProgressBadge.enabled": true,
+    "git.ignoreLimitWarning": true,
+    "yaml.schemas": {
+        "https://www.schemastore.org/github-action.json": "file:///c%3A/Users/winst/BentleyBudgetBot/%23reorganize%20repository%20GIT%20commands.yml"
+    }
 }

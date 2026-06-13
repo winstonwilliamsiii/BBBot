@@ -4,11 +4,11 @@
 
 This project has been organized into component-specific requirement files:
 
-### 1. **Streamlit Application** (`requirements-streamlit.txt`)
+### 1. **Streamlit Application** (`../../requirements-streamlit.txt`)
 For running the main web dashboard locally.
 
 ```bash
-pip install -r requirements-streamlit.txt
+pip install -r ../../requirements-streamlit.txt
 ```
 
 **Includes:**
@@ -67,7 +67,7 @@ pip install -r requirements.txt
 ### For Streamlit Dashboard Only:
 ```bash
 # Install Streamlit app dependencies
-pip install -r requirements-streamlit.txt
+pip install -r ../../requirements-streamlit.txt
 
 # Run the dashboard
 streamlit run streamlit_app.py
@@ -91,7 +91,7 @@ The `api/requirements.txt` is automatically used by Vercel for serverless functi
 
 | Component | Requirements File | Purpose |
 |-----------|------------------|---------|
-| **Streamlit App** | `requirements-streamlit.txt` | Web dashboard |
+| **Streamlit App** | `../../requirements-streamlit.txt` | Web dashboard |
 | **MLFlow Pipeline** | `bbbot1_pipeline/requirements.txt` | Data pipeline & ML tracking |
 | **Vercel API** | `api/requirements.txt` | Serverless functions |
 | **Complete Install** | `requirements.txt` | Full development environment |
@@ -163,7 +163,7 @@ pip install -r requirements.txt --upgrade
 
 To update specific component:
 ```bash
-pip install -r requirements-streamlit.txt --upgrade
+pip install -r ../../requirements-streamlit.txt --upgrade
 pip install -r bbbot1_pipeline/requirements.txt --upgrade
 pip install -r api/requirements.txt --upgrade
 ```

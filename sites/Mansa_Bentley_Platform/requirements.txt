@@ -1,6 +1,6 @@
 # Bentley Budget Bot - Streamlit Cloud Requirements
 # Optimized for Streamlit Cloud deployment at bbbot305.streamlit.app
-# For local development with full features, see requirements-local.txt
+# For local development with full features, see ../../requirements-local.txt
 
 # ============================================
 # CORE STREAMLIT APPLICATION
@@ -52,7 +52,7 @@ pymysql>=1.1.0
 # NOTE: Heavy packages excluded for Streamlit Cloud
 # ============================================
 # For local development with full pipeline features, use:
-# pip install -r requirements-local.txt
+# pip install -r ../../requirements-local.txt
 #
 # Excluded from cloud deployment:
 # - apache-airflow (too large, conflicts)

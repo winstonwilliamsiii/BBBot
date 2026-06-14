@@ -1,0 +1,21 @@
+# Rigel Forex Bot Requirements
+# Install with: pip install -r requirements-rigel.txt
+
+# Core trading
+alpaca-trade-api>=3.0.0
+pandas>=1.5.0
+numpy>=1.24.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-mock>=3.11.0
+
+# ML/AI (optional - for future ML integration)
+scikit-learn>=1.3.0
+joblib>=1.3.0
+
+# Monitoring (optional)
+prometheus-client>=0.17.0

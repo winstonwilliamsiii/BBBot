@@ -1,0 +1,19 @@
+# ============================================
+# MT5 Trading Requirements (WINDOWS ONLY)
+# ============================================
+# These packages are required for MetaTrader 5 integration
+# Only install on Windows machines that will run MT5 trading
+#
+# Installation:
+#   pip install -r requirements-mt5.txt
+#
+# DO NOT add these to main requirements.txt as they will
+# break Linux/Mac deployments (Streamlit Cloud, Vercel, Railway)
+# ============================================
+
+# MetaTrader 5 Python connector (Windows-only)
+MetaTrader5>=5.0.45
+
+# Already in main requirements.txt:
+# - flask>=2.3.0
+# - gunicorn>=21.2.0

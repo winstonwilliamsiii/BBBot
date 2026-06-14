@@ -1,0 +1,11 @@
+fastapi[standard]>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.8.0
+numpy>=1.26.0,<2.0.0
+torch>=2.3.0
+lightgbm>=4.3.0
+optuna>=3.6.0
+statsmodels>=0.14.0
+arch>=7.0.0
+mysql-connector-python>=8.4.0
+requests>=2.32.0

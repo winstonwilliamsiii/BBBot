@@ -78,7 +78,7 @@ git clone https://github.com/winstonwilliamsiii/BBBot.git
 cd BentleyBudgetBot
 
 # Install dependencies
-pip install -r requirements-local.txt
+pip install -r ../../requirements-local.txt
 
 # Configure environment
 cp .env.example .env

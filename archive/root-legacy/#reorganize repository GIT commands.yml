@@ -1,0 +1,89 @@
+#reorganize repository GIT commands
+
+# Ensure script stops on errors
+$ErrorActionPreference = "Stop"
+
+Write-Host "Starting BentleyBudgetBot reorganization..."
+
+# === Backend ===
+git mv api/* Backend/api/
+git mv services/* Backend/services/
+git mv bentleybot/* Backend/bentleybot/
+git mv appwrite-functions/* Backend/appwrite-functions/
+
+# === Database ===
+git mv schema.sql Database/schema.sql
+git mv "MySQL for UNIFIED BROKER Schema.sql" Database/unified_broker_schema.sql
+git mv migrations/* Database/migrations/
+git mv mysql_config/* Database/mysql_config/
+
+# === Integrations ===
+git mv integrations/alpaca/* Integrations/alpaca/
+git mv integrations/plaid/* Integrations/plaid/
+git mv integrations/binance/* Integrations/binance/
+git mv sdk/* Integrations/sdk/
+
+# === Data Pipelines ===
+git mv workflows/airflow/* DataPipelines/workflows/airflow/
+git mv workflows/airbyte/* DataPipelines/workflows/airbyte/
+git mv workflows/mlflow/* DataPipelines/workflows/mlflow/
+git mv dbt_project/* DataPipelines/dbt_project/
+git mv bbbot1_pipeline/* DataPipelines/bbbot1_pipeline/
+
+# === Testing & Scripts ===
+git mv tests/* TestingScripts/tests/
+git mv scripts/* TestingScripts/scripts/
+git mv test_*.py TestingScripts/
+
+# === Documentation ===
+git mv PROJECT_STRUCTURE.md Documentation/
+git mv UNIFIED_BROKER_SCHEMA_GUIDE.md Documentation/
+git mv MYSQL_CONSOLIDATION_REPORT.md Documentation/
+git mv BROKER_SETUP_GUIDE.md Documentation/
+
+# === DevOps ===
+git mv docker-compose.yml DevOps/
+git mv Dockerfile DevOps/
+git mv railway.json DevOps/
+git mv .github/workflows/* DevOps/.github/workflows/
+
+# === Enterprise Agent Platform ===
+git mv "Enterprise agent Platform" EnterpriseAgentPlatform/
+git mv Copilot.md EnterpriseAgentPlatform/
+git mv .env.example EnterpriseAgentPlatform/
+git mv Agents/* EnterpriseAgentPlatform/Agents/
+git mv Tools/* EnterpriseAgentPlatform/Tools/
+git mv Prompts/* EnterpriseAgentPlatform/Prompts/
+git mv api/* EnterpriseAgentPlatform/api/
+git mv governance/* EnterpriseAgentPlatform/governance/
+git mv evals/* EnterpriseAgentPlatform/evals/
+
+# === MT5 Module ===
+git mv README.md MT5/README.md
+git mv QUICK_REFERENCE.txt MT5/QUICK_REFERENCE.txt
+git mv .gitignore MT5/.gitignore
+
+git mv BentleyBot_GBP_JPY_EA.mq5 MT5/experts/
+git mv BentleyBot_XAU_USD_EA.mq5 MT5/experts/
+
+git mv BentleyBot.mqh MT5/libraries/
+git mv CustomIndicators.mqh MT5/libraries/
+
+git mv mt5_alpaca_bridge.py MT5/scripts/
+git mv discord_notifier.py MT5/scripts/
+
+git mv trading_config.json MT5/config/
+git mv trading_symbols.conf MT5/config/
+
+git mv BACKTEST_TEMPLATE.txt MT5/tests/
+
+git mv SETUP.md MT5/docs/
+git mv ARCHITECTURE.md MT5/docs/
+git mv API_INTEGRATION.md MT5/docs/
+git mv COMPILER_API_REQUIREMENTS.md MT5/docs/
+git mv DEPLOYMENT.md MT5/docs/
+git mv TROUBLESHOOTING.md MT5/docs/
+git mv README_INDEX.md MT5/docs/
+git mv README_INITIAL_COMMIT.md MT5/docs/
+
+Write-Host "Reorganization complete. Ready to commit."

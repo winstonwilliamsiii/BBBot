@@ -248,3 +248,6 @@ settings.local.json
 
 # Runtime broker mode config (auto-generated at runtime, not for version control)
 config/broker_modes.json
+# Docker volume mounts (locked by running containers - not for version control)
+airbyte-temporal-dynamicconfig/
+airbyte-temporal-dynamicconfig

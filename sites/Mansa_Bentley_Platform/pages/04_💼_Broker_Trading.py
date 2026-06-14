@@ -179,7 +179,7 @@ def main():
         st.info("""
         This feature requires local installation with broker API packages:
         ```bash
-        pip install -r requirements-local.txt
+        pip install -r ../../requirements-local.txt
         ```
         
         **Available locally:**

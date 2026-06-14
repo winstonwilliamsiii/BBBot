@@ -36,7 +36,7 @@ switch ($choice) {
     "2" {
         Write-Host ""
         Write-Host "Installing Streamlit Dashboard..." -ForegroundColor Cyan
-        pip install -r requirements-streamlit.txt
+        pip install -r ..\..\requirements-streamlit.txt
     }
     "3" {
         Write-Host ""

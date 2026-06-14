@@ -1,0 +1,11 @@
+# Flask + Streamlit requirements (add to existing requirements.txt)
+# Control Center API dependencies
+
+# Flask backend
+Flask==3.0.0
+flask-cors==4.0.0
+
+# Already have these (just listing for reference):
+# streamlit (existing)
+# requests (existing)
+# pandas (existing)

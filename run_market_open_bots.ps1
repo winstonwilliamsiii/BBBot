@@ -11,7 +11,9 @@ Set-Location $repoRoot
 
 $pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $pythonExe)) {
-    $pythonExe = "python"
+    Write-Error "Required interpreter not found: $pythonExe"
+    Write-Host "Create or restore the project virtual environment at .venv before launching bots." -ForegroundColor Yellow
+    exit 1
 }
 
 $logDir = Join-Path $repoRoot "logs"

@@ -1,5 +1,3 @@
-name: bentley-consolidated
-
 services:
   mysql:
     image: mysql:8
@@ -10,6 +8,8 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    networks:
+      - bentley_net
 
   airflow-webserver:
     image: apache/airflow:2.7.1
@@ -22,32 +22,72 @@ services:
       - ./dags:/opt/airflow/dags
     depends_on:
       - mysql
+    networks:
+      - bentley_net
 
   airflow-scheduler:
     image: apache/airflow:2.7.1
     command: scheduler
     depends_on:
       - airflow-webserver
+    networks:
+      - bentley_net
 
   airbyte-webapp:
-    image: airbyte/webapp:latest
+    image: airbyte/webapp:0.50.47   # use a specific version tag
     ports:
-      - "8000:80"
+      - "8002:80"
     depends_on:
       - airbyte-server
+    networks:
+      - bentley_net
 
   airbyte-server:
-    image: airbyte/server:latest
+    image: airbyte/server:0.50.47   # use a specific version tag
     ports:
       - "8001:8001"
+    networks:
+      - bentley_net
 
   mlflow:
-    image: mlflow/mlflow
+    build: ./mlflow
     ports:
       - "5000:5000"
     volumes:
-      - ./mlruns:/mlflow/mlruns
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow/mlruns
+      - ./mlruns:/mlruns
+      - ./mlflow.db:/mlflow.db
+    networks:
+      - bentley_net
+
+  fastapi:
+    build: ./fastapi
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mysql
+      - mlflow
+    environment:
+      DATABASE_URL: mysql://root:rootpass@mysql:3306/mansa_bot
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    networks:
+      - bentley_net
+
+  gradio:
+    build: ./gradio
+    ports:
+      - "7860:7860"
+    depends_on:
+      - fastapi
+      - mlflow
+    environment:
+      API_URL: http://fastapi:8000
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    networks:
+      - bentley_net
 
 volumes:
   mysql_data:
+
+networks:
+  bentley_net:
+    driver: bridge

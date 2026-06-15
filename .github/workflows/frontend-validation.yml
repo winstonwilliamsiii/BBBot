@@ -6,6 +6,8 @@ on:
     paths:
       - 'frontend/**'
       - 'requirements.txt'
+      - 'package.json'
+      - 'package-lock.json'
 
 jobs:
   validate-frontend:
@@ -17,6 +19,16 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install Node dependencies (lockfile)
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: npm ci
       
       - name: Install dependencies
         run: |

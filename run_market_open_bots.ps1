@@ -9,10 +9,16 @@ param(
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-$pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $pythonExe)) {
-    Write-Error "Required interpreter not found: $pythonExe"
-    Write-Host "Create or restore the project virtual environment at .venv before launching bots." -ForegroundColor Yellow
+$resolverScript = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
+if (-not (Test-Path $resolverScript)) {
+    Write-Error "Python resolver script not found: $resolverScript"
+    exit 1
+}
+
+$pythonExe = & $resolverScript -Service bots -RepoRoot $repoRoot -AllowLegacyFallback
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $pythonExe)) {
+    Write-Error "Required interpreter not found for market-open bot cycle."
+    Write-Host "Create .venv-bots (preferred) or .venv." -ForegroundColor Yellow
     exit 1
 }
 

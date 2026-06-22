@@ -11,7 +11,7 @@ Set-Location $repoRoot
 
 $launcher = Join-Path $repoRoot "start_bot_mode.ps1"
 $vegaScript = Join-Path $repoRoot "scripts\vega_bot.py"
-$pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
+$resolverScript = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
 $logDir = Join-Path $repoRoot "logs"
 $latestEventPath = Join-Path $logDir "last_bot_mode_event.json"
 $runLogPath = Join-Path $logDir "vega_last_run.log"
@@ -26,9 +26,15 @@ if (-not (Test-Path $vegaScript)) {
     exit 1
 }
 
-if (-not (Test-Path $pythonExe)) {
-    Write-Error "Required interpreter not found: $pythonExe"
-    Write-Host "Create or restore the project virtual environment at .venv before launching bots." -ForegroundColor Yellow
+if (-not (Test-Path $resolverScript)) {
+    Write-Error "Python resolver script not found: $resolverScript"
+    exit 1
+}
+
+$pythonExe = & $resolverScript -Service bots -RepoRoot $repoRoot -AllowLegacyFallback
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $pythonExe)) {
+    Write-Error "Required interpreter not found for Vega."
+    Write-Host "Create .venv-bots (preferred) or .venv." -ForegroundColor Yellow
     exit 1
 }
 

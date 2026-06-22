@@ -20,17 +20,20 @@ if (Test-Path $noDockerEnvScript) {
 }
 
 if (-not $PythonPath) {
-    $candidates = @(
-        (Join-Path $repoRoot ".venv-rhea\Scripts\python.exe"),
-        (Join-Path $repoRoot ".venv\Scripts\python.exe"),
-        (Join-Path $repoRoot "venv\Scripts\python.exe")
-    )
+    $resolverScript = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
+    if (-not (Test-Path $resolverScript)) {
+        Write-Error "Python resolver script not found: $resolverScript"
+        exit 1
+    }
 
-    $PythonPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    $PythonPath = & $resolverScript -Service rhea -RepoRoot $repoRoot -AllowLegacyFallback
+    if ($LASTEXITCODE -ne 0) {
+        exit 1
+    }
 }
 
 if (-not $PythonPath) {
-    Write-Error "No Python interpreter found. Create .venv-rhea or .venv first."
+    Write-Error "No Python interpreter found. Create .venv-rhea (recommended) or .venv."
     exit 1
 }
 

@@ -79,12 +79,33 @@ except (ImportError, OSError, RuntimeError, ValueError) as exc:
 else:
     CEPHEI_IMPORT_ERROR = None
 
-from draco_bot import app as draco_app
-from vega_bot import app as vega_app
-from frontend.components.ibkr_gateway_client import (
-    GatewayConfig,
-    IBKRGatewayClient,
-)
+try:
+    from draco_bot import app as draco_app
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    draco_app = None
+    DRACO_IMPORT_ERROR = str(exc)
+else:
+    DRACO_IMPORT_ERROR = None
+
+try:
+    from vega_bot import app as vega_app
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    vega_app = None
+    VEGA_IMPORT_ERROR = str(exc)
+else:
+    VEGA_IMPORT_ERROR = None
+
+try:
+    from frontend.components.ibkr_gateway_client import (
+        GatewayConfig,
+        IBKRGatewayClient,
+    )
+    IBKR_GATEWAY_IMPORT_ERROR = None
+except (ImportError, OSError, RuntimeError, ValueError) as exc:
+    GatewayConfig = None
+    IBKRGatewayClient = None
+    IBKR_GATEWAY_IMPORT_ERROR = str(exc)
+
 try:
     from frontend.utils.ibkr_market_data import for_bot as get_ibkr_strategy_provider
 
@@ -1470,8 +1491,10 @@ async def bot_endpoint_coverage():
 
 app.include_router(sentiment_router)
 app.include_router(mansa_ai_router)
-app.mount("/draco", draco_app)
-app.mount("/vega", vega_app)
+if draco_app is not None:
+    app.mount("/draco", draco_app)
+if vega_app is not None:
+    app.mount("/vega", vega_app)
 if altair_app is not None:
     app.mount("/altair", altair_app)
 if cygnus_app is not None:

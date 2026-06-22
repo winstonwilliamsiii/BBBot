@@ -1,0 +1,2 @@
+# Backwards-compatible alias for the FastAPI control center environment.
+-r requirements-control-center.txt

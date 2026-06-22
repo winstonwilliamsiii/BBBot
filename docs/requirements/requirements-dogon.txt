@@ -1,0 +1,2 @@
+# Backwards-compatible alias for the Dogon isolated environment.
+-r requirements-dogon-training.txt

@@ -1,0 +1,17 @@
+# Unified bot runtime requirements for the shared .venv-bots environment.
+
+alpaca-trade-api>=3.2.0,<4.0.0
+ib_insync>=0.9.86
+lightgbm>=4.3.0
+
+numpy>=1.26.0,<2.0.0
+pandas>=2.2.0,<3.0.0
+
+python-dotenv>=1.0.0
+PyYAML>=6.0.0
+requests>=2.32.0
+scikit-learn>=1.3.0
+joblib>=1.3.0
+
+# Keep the broker runtime stable on Windows where alpaca expects older websockets.
+websockets<11

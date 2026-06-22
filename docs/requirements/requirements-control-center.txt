@@ -1,11 +1,15 @@
-# Flask + Streamlit requirements (add to existing requirements.txt)
-# Control Center API dependencies
+# Bentley Budget Bot - FastAPI control center requirements
+# Install with: pip install -r requirements-api.txt
 
-# Flask backend
-Flask==3.0.0
-flask-cors==4.0.0
+# Core API runtime
+fastapi[standard]>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.8.0
 
-# Already have these (just listing for reference):
-# streamlit (existing)
-# requests (existing)
-# pandas (existing)
+# Shared integration stack
+requests>=2.32.0
+python-dotenv>=1.0.0
+
+# Database / persistence helpers
+sqlalchemy>=1.4.0
+pymysql>=1.1.0

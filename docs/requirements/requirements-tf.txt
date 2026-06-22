@@ -1,0 +1,2 @@
+# Backwards-compatible alias for the TensorFlow bot environment.
+-r requirements-titan-training.txt

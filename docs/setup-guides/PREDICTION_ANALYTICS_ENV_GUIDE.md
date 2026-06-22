@@ -10,7 +10,7 @@
 This file maps all required secrets for the prediction analytics microservices:
 - Bentley_Bot database credentials
 - Polymarket/Kalshi API keys
-- Optional: Twitter, Discord, OpenAI for sentiment analysis
+- Optional: Twitter, Discord, Anthropic for sentiment analysis
 - Alpaca broker credentials for trading
 
 **Step 1: Copy Template**
@@ -23,7 +23,7 @@ Edit `.env.railway-prediction.local` with:
 - `KALSHI_API_KEY` - Get from https://kalshi.com/api
 - `TWITTER_API_KEY` - Optional, for social sentiment
 - `DISCORD_BOT_TOKEN` - Optional, for Discord discussions
-- `OPENAI_API_KEY` - Optional, for advanced NLP
+- `ANTHROPIC_API_KEY` - Optional, for advanced NLP
 - `ALPACA_API_KEY` + `ALPACA_SECRET` - From https://alpaca.markets
 
 **Step 3: Add to Railway Dashboard**
@@ -105,7 +105,7 @@ python prediction_analytics/demo_main.py
 
 ## ✅ Pre-Deployment Checklist
 
-- [ ] Gather all API keys (Kalshi, Twitter, Discord, OpenAI, Alpaca)
+- [ ] Gather all API keys (Kalshi, Twitter, Discord, Anthropic, Alpaca)
 - [ ] Create `.env.railway-prediction.local` with actual values
 - [ ] Test locally with `python prediction_analytics/demo_main.py`
 - [ ] Add variables to Railway Dashboard

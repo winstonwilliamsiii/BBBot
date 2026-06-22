@@ -256,7 +256,7 @@ class SentimentAnalysisOrchestrator:
         """
         try:
             # Placeholder for actual NLP analysis
-            # In production, use HuggingFace transformers, OpenAI, or similar
+            # In production, use HuggingFace transformers, Anthropic, or similar
             
             # Mock sentiment calculation for demonstration
             sentiment_score = self._mock_sentiment_score(text)

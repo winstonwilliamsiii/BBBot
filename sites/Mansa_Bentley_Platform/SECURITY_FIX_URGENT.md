@@ -11,7 +11,7 @@ These files are **currently tracked in Git** and likely **pushed to GitHub**, ex
 - ✅ Alpha Vantage API Key
 - ✅ MySQL Root Password
 - ✅ DeepSeek API Key
-- ✅ OpenAI API Key
+- ✅ Anthropic API Key
 - ✅ Plaid Client ID & Secret
 - ✅ Appwrite API Key
 
@@ -39,9 +39,9 @@ git push origin main
 
 **These credentials are now PUBLIC and must be changed immediately:**
 
-#### 1. OpenAI API Key ⚠️ HIGHEST PRIORITY
-- Go to: https://platform.openai.com/api-keys
-- **Revoke** key: `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`
+#### 1. Anthropic API Key ⚠️ HIGHEST PRIORITY
+- Go to: https://console.anthropic.com/settings/keys
+- **Revoke** key: `REDACTED_EXPOSED_KEY`
 - Create new key
 - Update in `.env` file
 
@@ -132,7 +132,7 @@ git push origin main --force
 
 - [ ] Removed files from Git tracking
 - [ ] Pushed removal to GitHub
-- [ ] Rotated OpenAI API key (HIGHEST PRIORITY)
+- [ ] Rotated Anthropic API key (HIGHEST PRIORITY)
 - [ ] Rotated Appwrite API key
 - [ ] Rotated Plaid credentials
 - [ ] Rotated DeepSeek API key
@@ -171,7 +171,7 @@ git ls-files | Select-String -Pattern "(secret|password|key|credential|\.env)"
 
 # Check GitHub (after pushing fixes)
 # Go to: https://github.com/winstonwilliamsiii/BBBot
-# Search for: "OPENAI_API_KEY" or "APPWRITE_API_KEY"
+# Search for: "ANTHROPIC_API_KEY" or "APPWRITE_API_KEY"
 # Should return NO results after history is purged
 ```
 
@@ -198,7 +198,7 @@ For GitHub Actions, use repository secrets:
 2. Add secrets there instead of committing them
 
 ### Monitor API Usage
-- Check OpenAI usage: https://platform.openai.com/usage
+- Check Anthropic usage: https://console.anthropic.com/settings/usage
 - Check Appwrite logs: https://cloud.appwrite.io/console
 - Check Plaid usage: https://dashboard.plaid.com/overview/usage
 - Look for unexpected spikes or unauthorized access

@@ -104,7 +104,6 @@ services:
       NLP_MODEL_PATH: /models/sentiment-v2.1
       TWITTER_API_KEY: ${{TWITTER_API_KEY}}
       DISCORD_BOT_TOKEN: ${{DISCORD_BOT_TOKEN}}
-      OPENAI_API_KEY: ${{OPENAI_API_KEY}}  # Optional: For GPT-based sentiment
       LOG_LEVEL: INFO
     resources:
       # Higher resources for NLP model inference
@@ -172,7 +171,6 @@ services:
 # - KALSHI_API_KEY
 # - TWITTER_API_KEY
 # - DISCORD_BOT_TOKEN
-# - OPENAI_API_KEY (optional)
 # - ALPACA_API_KEY
 # - ALPACA_SECRET
 

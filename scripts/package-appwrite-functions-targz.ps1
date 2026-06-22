@@ -7,12 +7,12 @@ Write-Host "📦 APPWRITE FUNCTIONS TAR.GZ PACKAGER" -ForegroundColor Cyan
 Write-Host ("=" * 70) -ForegroundColor Cyan
 
 # Paths
-$sourcePath = ".\appwrite-functions"
+$sourcePath = ".\src\services\appwrite"
 $outputPath = ".\appwrite-deployments-targz"
 
 # Check if source exists
 if (-not (Test-Path $sourcePath)) {
-    Write-Host "`n❌ ERROR: appwrite-functions folder not found!" -ForegroundColor Red
+    Write-Host "`n❌ ERROR: src/services/appwrite folder not found!" -ForegroundColor Red
     exit 1
 }
 

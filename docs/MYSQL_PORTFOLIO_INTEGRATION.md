@@ -23,7 +23,7 @@ Returns Portfolio Data
 - Functions: `get_user_portfolio()`, `get_user_transactions()`, `get_portfolio_summary()`
 - Used for local development/testing
 
-### **2. Appwrite Function** (`appwrite-functions/get_portfolio_mysql/`)
+### **2. Appwrite Function** (`src/services/appwrite/get_portfolio_mysql/`)
 - Node.js function that queries MySQL
 - Actions: `get_holdings`, `get_summary`, `get_transactions`
 - Requires `mysql2` npm package
@@ -44,7 +44,7 @@ Returns Portfolio Data
 ### **Step 1: Deploy Appwrite Function**
 
 ```powershell
-cd C:\Users\winst\OneDrive\Documentos\GitHub\BBBot\appwrite-functions
+cd C:\Users\winst\OneDrive\Documentos\GitHub\BBBot\src\services\appwrite
 
 # Package the new function
 tar -czf get_portfolio_mysql.tar.gz -C get_portfolio_mysql .

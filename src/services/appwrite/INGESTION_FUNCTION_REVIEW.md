@@ -455,7 +455,7 @@ appwrite functions createDeployment \
     --functionId=financial_data_ingestion \
     --activate=true \
     --entrypoint=financial_data_ingestion_PRODUCTION.py \
-    --code=./appwrite-functions
+    --code=./src/services/appwrite
 
 # Test the function
 curl -X POST https://cloud.appwrite.io/v1/functions/financial_data_ingestion/executions \

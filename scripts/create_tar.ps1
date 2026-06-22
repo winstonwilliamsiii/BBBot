@@ -1,6 +1,6 @@
 # Create tar.gz for get_transactions_streamlit
 
-Set-Location "c:\Users\winst\BentleyBudgetBot\appwrite-functions\get_transactions_streamlit"
+Set-Location "c:\Users\winst\BentleyBudgetBot\src\services\appwrite\get_transactions_streamlit"
 
 Write-Host "Creating tar.gz with proper structure..." -ForegroundColor Cyan
 

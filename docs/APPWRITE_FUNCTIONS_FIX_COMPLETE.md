@@ -20,7 +20,7 @@ Require stack:
 ### 1. Removed All Nested `_shared` Folders ✅
 Deleted nested `_shared` directories from all 16 function folders:
 ```powershell
-Get-ChildItem -Path ".\appwrite-functions\*\_shared" -Directory | Remove-Item -Recurse -Force
+Get-ChildItem -Path ".\src\services\appwrite\*\_shared" -Directory | Remove-Item -Recurse -Force
 ```
 
 **Functions cleaned:**
@@ -55,7 +55,7 @@ const { createClient } = require('./_shared/appwriteClient');
 ```
 
 ### 3. Verified Packaging Script ✅
-The `package-appwrite-functions-targz.ps1` script correctly:
+The `scripts/package-appwrite-targz.ps1` script correctly:
 - Copies each function's files
 - Adds the shared `_shared` folder at the same level as `index.js`
 - Creates proper flat structure in tar.gz
@@ -69,7 +69,7 @@ All 16 functions repackaged with correct structure:
 
 ### In Repository (Source)
 ```
-appwrite-functions/
+src/services/appwrite/
 ├── _shared/                    ← Single shared folder at parent level
 │   └── appwriteClient.js
 ├── get_transactions_streamlit/
@@ -210,7 +210,7 @@ APPWRITE_DATABASE_ID=<your-database-id>
 
 ### Repackage Functions (if needed)
 ```powershell
-.\package-appwrite-functions-targz.ps1
+.\scripts\package-appwrite-targz.ps1
 ```
 
 ### Deploy All Functions

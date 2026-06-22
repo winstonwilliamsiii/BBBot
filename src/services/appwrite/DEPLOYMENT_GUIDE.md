@@ -43,7 +43,7 @@ Complete guide for deploying all 16 serverless functions to Appwrite Cloud.
 ### Step 1: Package Functions
 ```powershell
 cd C:\Users\winst\OneDrive\Documentos\GitHub\BBBot
-.\package-appwrite-functions-targz.ps1
+.\scripts\package-appwrite-targz.ps1
 ```
 
 This creates 16 tar.gz files in `appwrite-deployments-targz/` directory.
@@ -76,7 +76,7 @@ appwrite login
 ### Package Functions
 ```powershell
 # From project root
-.\package-appwrite-functions-targz.ps1
+.\scripts\package-appwrite-targz.ps1
 
 # Output: 16 tar.gz files in appwrite-deployments-targz/
 ```
@@ -299,7 +299,7 @@ APPWRITE_FUNCTION_ADD_WATCHLIST=67a5678...
 **Fix:**
 1. Verify `_shared/` folder is in tar.gz
 2. Check require path: `require('./_shared/appwriteClient')` not `require('../_shared/appwriteClient')`
-3. Repackage function: `.\package-appwrite-functions-targz.ps1`
+3. Repackage function: `.\scripts\package-appwrite-targz.ps1`
 
 ### Environment Variables Not Working
 
@@ -349,7 +349,7 @@ console.log('Project:', process.env.APPWRITE_FUNCTION_PROJECT_ID);
 ### Option 1: Redeploy via CLI
 ```powershell
 # Repackage
-.\package-appwrite-functions-targz.ps1
+.\scripts\package-appwrite-targz.ps1
 
 # Redeploy
 cd appwrite-deployments-targz

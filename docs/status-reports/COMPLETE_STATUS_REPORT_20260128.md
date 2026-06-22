@@ -200,7 +200,7 @@ Start MLFlow:
 #### 1. Appwrite Functions
 ```
 Status: ❌ INCOMPLETE
-Location: appwrite-functions/
+Location: src/services/appwrite/
 Issue: Staging deployment not finished
 Functions Defined: 30+ (in .env)
 Functions Deployed: ~70% (needs verification)

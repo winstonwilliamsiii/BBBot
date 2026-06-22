@@ -32,7 +32,7 @@ C:\Users\winst\BentleyBudgetBot\pages\
 
 ### Appwrite Functions (Serverless)
 ```
-C:\Users\winst\BentleyBudgetBot\appwrite-functions\
+C:\Users\winst\BentleyBudgetBot\src\services\appwrite\
 ├── _shared\appwriteClient.js
 ├── create_transaction\index.js
 ├── get_transactions\index.js

@@ -143,6 +143,10 @@ dist
 # Directory used by Appwrite CLI for local development
 .appwrite
 
+# Appwrite deployment build outputs
+appwrite-deployments/
+appwrite-deployments-targz/
+
 # ============================================
 # Environment-Specific Files (Dev vs Prod)
 # ============================================

@@ -18,7 +18,7 @@ streamlit_dashboard.py           # Main dashboard UI
 
 ### Step 1: Deploy Appwrite Functions
 
-First, deploy your serverless functions to Appwrite Cloud (from `appwrite-functions/` directory):
+First, deploy your serverless functions to Appwrite Cloud (from `src/services/appwrite/` directory):
 
 1. Go to https://cloud.appwrite.io → Your Project → Functions
 2. Create and deploy these functions:
@@ -148,4 +148,4 @@ else:
 
 - **Appwrite Docs**: https://appwrite.io/docs
 - **StreamLit Docs**: https://docs.streamlit.io
-- **Project README**: ../appwrite-functions/README.md
+- **Project README**: ../src/services/appwrite/README.md

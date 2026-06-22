@@ -1,7 +1,7 @@
 # 📦 Appwrite Functions Deployment Package Creator
 # This script creates ready-to-upload ZIP files for all Appwrite Functions
 
-$functionsPath = "C:\Users\winst\BentleyBudgetBot\appwrite-functions"
+$functionsPath = "C:\Users\winst\BentleyBudgetBot\src\services\appwrite"
 $outputPath = "C:\Users\winst\BentleyBudgetBot\appwrite-deployments"
 
 Write-Host "=" -NoNewline -ForegroundColor Cyan

@@ -106,7 +106,7 @@ streamlit run streamlit_app.py
 
 **To Deploy:**
 ```bash
-cd appwrite-functions
+cd src/services/appwrite
 appwrite deploy function
 
 # Or manually:

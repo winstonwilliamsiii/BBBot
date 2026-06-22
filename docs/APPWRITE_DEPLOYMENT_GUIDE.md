@@ -4,7 +4,7 @@
 
 **The functions I created are LOCAL files only!** They exist in:
 ```
-C:\Users\winst\BentleyBudgetBot\appwrite-functions\
+C:\Users\winst\BentleyBudgetBot\src\services\appwrite\
 ```
 
 **These files need to be DEPLOYED to Appwrite Cloud manually.**
@@ -75,7 +75,7 @@ C:\Users\winst\BentleyBudgetBot\appwrite-functions\
 3. **Prepare Upload:**
    ```powershell
    # Create a deployment package
-   cd C:\Users\winst\BentleyBudgetBot\appwrite-functions
+   cd C:\Users\winst\BentleyBudgetBot\src\services\appwrite
    
    # For each function, create a zip with _shared folder
    # Example for get_transactions_streamlit:
@@ -136,7 +136,7 @@ appwrite login
 
 #### Step 3: Initialize Functions
 ```powershell
-cd C:\Users\winst\BentleyBudgetBot\appwrite-functions
+cd C:\Users\winst\BentleyBudgetBot\src\services\appwrite
 appwrite init function
 ```
 
@@ -156,7 +156,7 @@ Run this PowerShell script to create deployment packages for all functions:
 
 ```powershell
 # Save as: deploy_packages.ps1
-$functionsPath = "C:\Users\winst\BentleyBudgetBot\appwrite-functions"
+$functionsPath = "C:\Users\winst\BentleyBudgetBot\src\services\appwrite"
 $outputPath = "C:\Users\winst\BentleyBudgetBot\deployments"
 
 # Create output directory

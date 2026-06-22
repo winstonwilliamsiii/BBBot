@@ -5,7 +5,7 @@ This directory contains serverless functions ready for deployment to Appwrite Cl
 ## 📁 Directory Structure
 
 ```
-appwrite-functions/
+src/services/appwrite/
 ├── _shared/
 │   └── appwriteClient.js          # Shared Appwrite SDK client
 ├── create_transaction/

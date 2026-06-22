@@ -113,7 +113,7 @@ BentleyBudgetBot/
 ├── docker/                # Airflow, MLflow, Airbyte containers
 ├── trading/               # Legacy trading scripts
 ├── mt5/                   # MT5 Expert Advisors (.ex5 compiled)
-├── appwrite-functions/    # Appwrite cloud functions
+├── src/services/appwrite/ # Appwrite cloud functions
 └── docs/                  # Architecture documentation
 ```
 

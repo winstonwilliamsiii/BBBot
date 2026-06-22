@@ -38,7 +38,7 @@ Require stack:
 
 **Step 1: Removed All Nested `_shared` Folders** ✅
 ```powershell
-Get-ChildItem -Path ".\appwrite-functions\*\_shared" -Directory | Remove-Item -Recurse -Force
+Get-ChildItem -Path ".\src\services\appwrite\*\_shared" -Directory | Remove-Item -Recurse -Force
 ```
 
 Affected all 16 functions:
@@ -73,7 +73,7 @@ const { createClient } = require('./_shared/appwriteClient');
 
 **Step 3: Repackaged Functions** ✅
 ```powershell
-.\package-appwrite-functions-targz.ps1
+.\scripts\package-appwrite-targz.ps1
 ```
 
 Result: 16 functions packaged (21.3 KB total) in `appwrite-deployments-targz/`
@@ -82,7 +82,7 @@ Result: 16 functions packaged (21.3 KB total) in `appwrite-deployments-targz/`
 
 **Repository (Source):**
 ```
-appwrite-functions/
+src/services/appwrite/
 ├── _shared/                    ← Single shared folder at parent level
 │   └── appwriteClient.js
 ├── get_transactions_streamlit/
@@ -136,15 +136,15 @@ Updated all references in:
   - APPWRITE_DEPLOYMENT_GUIDE.md
   - ISSUES_SUMMARY.md
   - MIGRATION_STATUS_EXPLAINED.md
-  - appwrite-functions/README.md
+  - src/services/appwrite/README.md
   - sites/Mansa_Bentley_Platform/APPWRITE_DEPLOYMENT_GUIDE.md
   - sites/Mansa_Bentley_Platform/ISSUES_SUMMARY.md
-  - sites/Mansa_Bentley_Platform/appwrite-functions/README.md
+  - sites/Mansa_Bentley_Platform Appwrite README
 
 - **PowerShell scripts (4 files):**
-  - package-appwrite-functions-targz.ps1
+  - scripts/package-appwrite-targz.ps1
   - deploy-to-appwrite-cli.ps1
-  - sites/Mansa_Bentley_Platform/package-appwrite-functions-targz.ps1
+  - sites/Mansa_Bentley_Platform/package-appwrite-targz.ps1
   - sites/Mansa_Bentley_Platform/deploy-to-appwrite-cli.ps1
 
 ---
@@ -232,7 +232,7 @@ APPWRITE_DATABASE_ID=<your-database-id>
 
 ### Repackage Functions
 ```powershell
-.\package-appwrite-functions-targz.ps1
+.\scripts\package-appwrite-targz.ps1
 ```
 
 ### Deploy All Functions

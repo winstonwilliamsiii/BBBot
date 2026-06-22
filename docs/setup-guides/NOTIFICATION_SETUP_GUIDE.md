@@ -108,8 +108,8 @@ VEGA_BLOCKED_LIVE_ALERT_COOLDOWN_SECONDS=300
 4. Runtime: Node.js 18
 5. Entrypoint: index.js
 6. Upload files:
-   - appwrite-functions/staging-alert/index.js
-   - appwrite-functions/staging-alert/package.json
+   - src/services/appwrite/staging-alert/index.js
+   - src/services/appwrite/staging-alert/package.json
 ```
 
 #### **3.2 Configure Environment Variables in Appwrite**

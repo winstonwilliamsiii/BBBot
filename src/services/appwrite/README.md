@@ -7,7 +7,7 @@ This directory contains 16 serverless functions for the BBBot platform, ready fo
 ## 📁 Directory Structure
 
 ```
-appwrite-functions/
+src/services/appwrite/
 ├── _shared/                       # Shared utilities (included in each deployment)
 │   └── appwriteClient.js         # Appwrite SDK client factory
 │
@@ -76,7 +76,7 @@ appwrite-functions/
 
 ```powershell
 # 1. Package functions
-.\package-appwrite-functions-targz.ps1
+.\scripts\package-appwrite-targz.ps1
 
 # 2. Login to Appwrite
 cd appwrite-deployments-targz
@@ -189,13 +189,13 @@ module.exports = { createClient };
 ### Run Test Script
 ```powershell
 # Test function logic locally
-node appwrite-functions/get_transactions_streamlit/index.js
+node src/services/appwrite/get_transactions_streamlit/index.js
 ```
 
 ### Mock Request/Response
 ```javascript
 // test-function.js
-const handler = require('./appwrite-functions/get_transactions_streamlit/index.js');
+const handler = require('./src/services/appwrite/get_transactions_streamlit/index.js');
 
 const mockReq = {
     body: JSON.stringify({ user_id: 'test123', limit: 10 })
@@ -213,7 +213,7 @@ handler(mockReq, mockRes);
 
 ## 📦 Package Structure
 
-After running `.\package-appwrite-functions-targz.ps1`, each tar.gz contains:
+After running `.\scripts\package-appwrite-targz.ps1`, each tar.gz contains:
 
 ```
 get_transactions_streamlit.tar.gz
@@ -237,7 +237,7 @@ Error: Cannot find module './_shared/appwriteClient'
 
 **Fix:**
 1. Verify require path: `require('./_shared/appwriteClient')` not `require('../_shared/appwriteClient')`
-2. Repackage: `.\package-appwrite-functions-targz.ps1`
+2. Repackage: `.\scripts\package-appwrite-targz.ps1`
 3. Check tar.gz contains `_shared/` folder
 
 ### Environment Variables Not Set

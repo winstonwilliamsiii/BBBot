@@ -226,7 +226,7 @@ Project: 68869ef500017ca73772
 
 #### Step 2: Deploy All Functions
 ```bash
-cd appwrite-functions
+cd src/services/appwrite
 
 # Deploy transactions function
 appwrite deploy function --functionId 694db02c58495b52f6e6

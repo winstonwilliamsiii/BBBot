@@ -52,7 +52,7 @@ C:\Users\winst\BentleyBudgetBot (mansa-capital)
 │   ├── sdk.test.js
 │   └── integrations.test.js
 │
-├── /appwrite-functions/          # Appwrite Cloud Functions (11 deployed)
+├── /src/services/appwrite/       # Appwrite Cloud Functions
 ├── /bentleybot/                  # Legacy budget bot modules
 ├── /pages/                       # Streamlit multi-page app pages
 ├── .env                          # Environment variables (local only)

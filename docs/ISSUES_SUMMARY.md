@@ -81,7 +81,7 @@ cd C:\Users\winst\BentleyBudgetBot
 ### Root Cause
 **The functions are LOCAL FILES only!** They exist in:
 ```
-C:\Users\winst\BentleyBudgetBot\appwrite-functions\
+C:\Users\winst\BentleyBudgetBot\src\services\appwrite\
 ```
 
 These files **need to be DEPLOYED** to Appwrite Cloud manually or via CLI.

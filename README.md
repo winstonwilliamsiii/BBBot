@@ -336,7 +336,7 @@ BentleyBudgetBot/
 │   ├── bentleybot/               # Core business logic
 │   │   ├── sql/                  # Database schemas
 │   │   └── utils/                # Helper functions
-│   └── appwrite-functions/       # 11 deployed cloud functions
+│   └── src/services/appwrite/    # Appwrite cloud functions
 │
 ├── 🗄️ Database
 │   ├── bentleybot/sql/

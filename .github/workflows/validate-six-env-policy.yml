@@ -1,0 +1,105 @@
+name: Validate Six-Env Policy
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - '.vscode/settings.json'
+      - '.vscode/launch.json'
+      - 'README.md'
+      - 'docs/setup-guides/**'
+      - 'docs/requirements/**'
+      - 'scripts/resolve_python_for_service.ps1'
+  push:
+    branches: [main, dev]
+    paths:
+      - '.vscode/settings.json'
+      - '.vscode/launch.json'
+      - 'README.md'
+      - 'docs/setup-guides/**'
+      - 'docs/requirements/**'
+      - 'scripts/resolve_python_for_service.ps1'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-policy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate six-env policy files
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+          import sys
+
+          repo = Path.cwd()
+          required_files = [
+              repo / 'docs/requirements/requirements-streamlit.txt',
+              repo / 'docs/requirements/requirements-api.txt',
+              repo / 'docs/requirements/requirements-control-center.txt',
+              repo / 'docs/requirements/requirements-rhea.txt',
+              repo / 'docs/requirements/requirements-bots.txt',
+              repo / 'docs/requirements/requirements-tf.txt',
+              repo / 'docs/requirements/requirements-dogon.txt',
+              repo / 'docs/setup-guides/SIX_ENVIRONMENT_POLICY.md',
+          ]
+          missing = [str(path.relative_to(repo)) for path in required_files if not path.exists()]
+          if missing:
+              print('Missing required policy files:')
+              for item in missing:
+                  print(f'- {item}')
+              sys.exit(1)
+
+          settings = json.loads((repo / '.vscode/settings.json').read_text(encoding='utf-8'))
+          default_interpreter = settings.get('python.defaultInterpreterPath', '')
+          if '.venv-api\\Scripts\\python.exe' not in default_interpreter:
+              raise SystemExit(f'Unexpected default interpreter path: {default_interpreter!r}')
+
+          launch = (repo / '.vscode/launch.json').read_text(encoding='utf-8')
+          expected_envs = ['.venv-streamlit', '.venv-api', '.venv-rhea', '.venv-bots', '.venv-tf', '.venv-dogon']
+          missing_envs = [env for env in expected_envs if env not in launch]
+          if missing_envs:
+              print('Missing launch.json interpreter references:')
+              for item in missing_envs:
+                  print(f'- {item}')
+              sys.exit(1)
+
+          policy = (repo / 'docs/setup-guides/SIX_ENVIRONMENT_POLICY.md').read_text(encoding='utf-8')
+          boundary_terms = ['Docker', 'MySQL', 'MLflow', 'Airflow', 'Airbyte']
+          missing_terms = [term for term in boundary_terms if term not in policy]
+          if missing_terms:
+              print('Policy doc missing boundary terms:')
+              for item in missing_terms:
+                  print(f'- {item}')
+              sys.exit(1)
+
+          resolver = (repo / 'scripts/resolve_python_for_service.ps1').read_text(encoding='utf-8')
+          resolver_terms = [
+              'streamlit = ".venv-streamlit"',
+              'api = ".venv-api"',
+              'rhea = ".venv-rhea"',
+              'bots = ".venv-bots"',
+              'tf = ".venv-tf"',
+              'dogon = ".venv-dogon"',
+          ]
+          missing_terms = [term for term in resolver_terms if term not in resolver]
+          if missing_terms:
+              print('Resolver missing expected mappings:')
+              for item in missing_terms:
+                  print(f'- {item}')
+              sys.exit(1)
+
+          print('Six-env policy validation passed.')
+          PY

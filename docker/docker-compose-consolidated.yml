@@ -50,7 +50,7 @@ services:
       - bentley_net
 
   mlflow:
-    build: ./mlflow
+    build: ../mlflow
     ports:
       - "5000:5000"
     volumes:
@@ -60,7 +60,7 @@ services:
       - bentley_net
 
   fastapi:
-    build: ./fastapi
+    build: ../fastapi
     ports:
       - "8000:8000"
     depends_on:
@@ -73,7 +73,7 @@ services:
       - bentley_net
 
   gradio:
-    build: ./gradio
+    build: ../gradio
     ports:
       - "7860:7860"
     depends_on:

@@ -18,7 +18,7 @@
 | **[PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md)** | **Master deployment guide** | ✅ Current |
 | **[PRODUCTION_FIXES_SUMMARY.md](PRODUCTION_FIXES_SUMMARY.md)** | Recent fixes summary | ✅ Current |
 | **[QUICK_FIX_GUIDE.md](QUICK_FIX_GUIDE.md)** | 3-minute production fixes | ✅ Current |
-| [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml) | Secrets configuration template | ✅ Current |
+| [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](../config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml) | Secrets configuration template | ✅ Current |
 
 ### 🧪 Testing & Validation
 | File | Purpose | Status |
@@ -88,7 +88,7 @@ test_production_integrations.py    ← Integration tests
 
 ### 🚨 "Production is broken, help!"
 1. **[QUICK_FIX_GUIDE.md](QUICK_FIX_GUIDE.md)** (3 min) ← START HERE
-2. Copy [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml)
+2. Copy [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](../config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml)
 3. Update Streamlit Cloud secrets
 4. Test with: `python test_production_integrations.py`
 

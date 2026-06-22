@@ -179,7 +179,7 @@ if all_pass:
 elif any_fail:
     print("❌ Some integrations failed. Please fix the errors above.")
     print()
-    print("📖 See STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml for configuration guide")
+    print("See config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml for configuration guide")
     sys.exit(1)
 else:
     print("⚠️  Some integrations skipped (missing packages)")

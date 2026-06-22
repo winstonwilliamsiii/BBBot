@@ -59,7 +59,7 @@ PLAID_ENV = "sandbox"
 ## ✅ How to Apply Fixes
 
 ### Step 1: Copy Template
-Open: `STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
+Open: `config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
 
 ### Step 2: Update Streamlit Cloud
 1. Visit https://share.streamlit.io/
@@ -134,7 +134,7 @@ Copy this and fill in:
 ## 📚 Full Documentation
 
 - **Complete Guide**: `PRODUCTION_DEPLOYMENT_GUIDE.md`
-- **Secrets Template**: `STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
+- **Secrets Template**: `config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
 - **Test Script**: `test_production_integrations.py`
 - **Summary**: `PRODUCTION_FIXES_SUMMARY.md`
 

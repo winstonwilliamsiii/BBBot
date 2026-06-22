@@ -16,7 +16,7 @@ All four production issues have been successfully addressed:
 - **Solution**:
   - Added `get_alpaca_config()` function in secrets_helper
   - Added visual credential status checks in Broker Trading UI
-  - Created template with clear instructions in `STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
+   - Created template with clear instructions in `config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
 
 ### 3. ✅ Plaid Link Configuration Added
 - **Problem**: Plaid Link initialization failures
@@ -35,7 +35,7 @@ All four production issues have been successfully addressed:
 ```
 ✅ frontend/utils/secrets_helper.py              # Unified secrets management
 ✅ test_production_integrations.py               # Integration test script
-✅ STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml         # Deployment configuration template
+✅ config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml  # Deployment configuration template
 ✅ PRODUCTION_DEPLOYMENT_GUIDE.md                # Comprehensive deployment guide
 ✅ PRODUCTION_FIXES_SUMMARY.md                   # This summary
 ```
@@ -67,7 +67,7 @@ branch feature/stable-development - Created from main
    ```
    1. Go to https://share.streamlit.io/
    2. Open your app → Settings (⚙️) → Secrets
-   3. Copy content from STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml
+   3. Copy content from config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml
    4. Replace these values:
       - MYSQL_HOST (from Railway)
       - MYSQL_PASSWORD (from Railway)
@@ -167,7 +167,7 @@ git push origin main
 All documentation is in place:
 
 - ✅ [PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md) - Step-by-step deployment
-- ✅ [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml) - Configuration template
+- ✅ [STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml](../../config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml) - Configuration template
 - ✅ [frontend/utils/secrets_helper.py](frontend/utils/secrets_helper.py) - API documentation in docstrings
 - ✅ [test_production_integrations.py](test_production_integrations.py) - Integration testing
 
@@ -192,7 +192,7 @@ All documentation is in place:
 
 - 📖 Deployment Guide: `PRODUCTION_DEPLOYMENT_GUIDE.md`
 - 🧪 Integration Test: `python test_production_integrations.py`
-- 🔑 Secrets Template: `STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
+- 🔑 Secrets Template: `config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
 - 💬 Streamlit Cloud Logs: Settings → Logs in dashboard
 
 ---

@@ -362,8 +362,7 @@ class RheaBot:
         }
 
     def _sanitize_ticker(self, ticker: str) -> str:
-        normalized = str(ticker or "").strip().upper()
-        if not normalized:
+        if not (normalized := str(ticker or "").strip().upper()):
             raise ValueError("Ticker is required")
         return normalized
 

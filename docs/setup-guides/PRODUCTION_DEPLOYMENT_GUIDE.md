@@ -29,7 +29,7 @@ This guide fixes three critical production issues in Streamlit Cloud:
 - **Added**: Comprehensive integration test script
 - **Files Created**:
   - `test_production_integrations.py` (test all integrations)
-  - `STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml` (deployment template)
+  - `config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml` (deployment template)
 
 ## 📋 Deployment Checklist for Streamlit Cloud
 
@@ -37,7 +37,7 @@ This guide fixes three critical production issues in Streamlit Cloud:
 
 1. Go to https://share.streamlit.io/
 2. Click on your app → **Settings** (⚙️) → **Secrets**
-3. Copy the content from `STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
+3. Copy the content from `config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml`
 4. Update these **CRITICAL** values:
 
 ```toml
@@ -196,7 +196,7 @@ After secrets are configured:
 New Files:
 ✅ frontend/utils/secrets_helper.py
 ✅ test_production_integrations.py
-✅ STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml
+✅ config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml
 ✅ PRODUCTION_DEPLOYMENT_GUIDE.md
 
 Modified Files:

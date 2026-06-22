@@ -116,7 +116,7 @@ The value `"plaid_items"` is a **hardcoded collection name** that your app expec
 ✅ PRODUCTION_DEPLOYMENT_GUIDE.md                (MASTER GUIDE - Keep!)
 ✅ PRODUCTION_FIXES_SUMMARY.md                   (Current status)
 ✅ QUICK_FIX_GUIDE.md                            (Quick reference)
-✅ STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml         (Current template)
+✅ config/streamlit/STREAMLIT_CLOUD_SECRETS_TEMPLATE.toml  (Current template)
 ✅ README.md                                     (Main readme)
 ✅ START_HERE.md                                 (Entry point)
 ```

@@ -116,11 +116,39 @@ Bentley Budget Bot is a comprehensive financial management platform that combine
 ---
 
 ## 🗂️ Folder Structure
-- src/                → Core trading logic
-- config/dev/         → Localhost configs (.env.dev, settings.json)
-- config/prod/        → Production configs (.env.prod, settings.json)
-- tests/              → Unit + integration tests
-- .github/workflows/  → CI/CD pipeline
+
+```text
+BentleyBudgetBot/
+├── api/                          # Vercel and service API entrypoints
+├── config/                       # Shared configuration and secrets templates
+│   ├── database/
+│   ├── env/
+│   ├── secrets/
+│   └── streamlit/
+├── data/                         # Local datasets and generated data assets
+├── docs/                         # Project documentation and reference material
+│   ├── guides/
+│   ├── requirements/
+│   ├── reports/
+│   ├── root/
+│   ├── setup-guides/
+│   ├── status-reports/
+│   └── summaries/
+├── docker/                       # Container definitions and compose stacks
+├── frontend/                     # Shared frontend utilities and styling
+├── pages/                        # Streamlit multipage routes
+├── scripts/                      # Automation, deployment, and repair scripts
+├── src/                          # Core source code
+│   ├── analytics/
+│   ├── bots/
+│   ├── integrations/
+│   └── services/
+│       └── appwrite/
+├── tests/                        # Automated tests and validation scripts
+├── workflows/                    # Orchestration and pipeline assets
+├── Main.py                       # FastAPI application entrypoint
+└── streamlit_app.py              # Main Streamlit dashboard
+```
 
 ---
 

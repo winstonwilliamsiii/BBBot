@@ -25,7 +25,7 @@ DEFAULT_SENTIMENT_MODEL = (
 )
 DEFAULT_SYMBOL_ALIASES: Dict[str, tuple[str, ...]] = {
     "AAPL": ("apple", "iphone", "ipad", "mac"),
-    "MSFT": ("microsoft", "azure", "xbox", "openai"),
+    "MSFT": ("microsoft", "azure", "xbox", "copilot"),
     "NVDA": ("nvidia", "geforce", "cuda"),
     "META": ("meta", "facebook", "instagram", "whatsapp"),
     "GOOGL": ("alphabet", "google", "youtube", "gemini"),

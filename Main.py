@@ -1900,3 +1900,73 @@ async def ibkr_positions(account_id: Optional[str] = Query(default=None)):
         "account_id": acct,
         "positions": result,
     }
+
+
+# ── Auth endpoints ────────────────────────────────────────────────────────────
+
+class AuthLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/auth/login")
+async def auth_login(req: AuthLoginRequest):
+    if pymysql is None:
+        raise HTTPException(status_code=503, detail="pymysql not available")
+
+    host = os.getenv("MYSQL_HOST", "127.0.0.1")
+    port = int(os.getenv("MYSQL_PORT", "3306"))
+    database = os.getenv("MYSQL_DATABASE", "bentley")
+
+    try:
+        conn = pymysql.connect(
+            host=host,
+            port=port,
+            user=req.username,
+            password=req.password,
+            database=database,
+            connect_timeout=5,
+        )
+        conn.close()
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {exc}") from exc
+
+    return {"status": "authenticated", "username": req.username}
+
+
+# ── Broker sync endpoint ──────────────────────────────────────────────────────
+
+class BrokerSyncRequest(BaseModel):
+    broker_api_key: str
+    broker_secret: str
+
+
+@app.post("/broker/sync")
+async def broker_sync(req: BrokerSyncRequest):
+    alpaca_base = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    headers = {
+        "APCA-API-KEY-ID": req.broker_api_key,
+        "APCA-API-SECRET-KEY": req.broker_secret,
+    }
+    try:
+        resp = requests.get(f"{alpaca_base}/v2/account", headers=headers, timeout=10)
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Broker unreachable: {exc}") from exc
+
+    if resp.status_code == 401:
+        raise HTTPException(status_code=401, detail="Invalid broker credentials")
+    if not resp.ok:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+    data = resp.json()
+    return {
+        "status": "synced",
+        "broker": "alpaca",
+        "account_id": data.get("id"),
+        "account_status": data.get("status"),
+        "portfolio_value": data.get("portfolio_value"),
+        "buying_power": data.get("buying_power"),
+        "cash": data.get("cash"),
+        "currency": data.get("currency"),
+        "paper_trading": alpaca_base.startswith("https://paper"),
+    }

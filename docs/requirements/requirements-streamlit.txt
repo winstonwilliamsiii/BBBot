@@ -44,3 +44,8 @@ google-generativeai>=0.3.0
 # Machine learning (for Investment Analysis page)
 scikit-learn>=1.3.0
 scipy>=1.10.0
+
+# RBAC is an in-repo module (frontend/utils/rbac.py)
+# Additional local dashboard packages
+-e ./prediction_analytics
+-e ./bbbot1_pipeline

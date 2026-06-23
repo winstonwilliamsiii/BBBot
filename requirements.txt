@@ -1,9 +1,2 @@
-streamlit
-pandas
-yfinance
-python-dotenv
-numpy
-matplotlib
-scikit-learn
-plotly
-requests
+# Streamlit Cloud install target (dashboard only)
+-r requirements-streamlit.txt

@@ -187,13 +187,13 @@ cd BentleyBudgetBot
 # Streamlit dashboard
 python -m venv .venv-streamlit
 .venv-streamlit\Scripts\activate
-pip install -r docs/requirements/requirements-streamlit.txt
+pip install -r requirements-streamlit.txt
 deactivate
 
 # FastAPI control-center/API service
 python -m venv .venv-api
 .venv-api\Scripts\activate
-pip install -r docs/requirements/requirements-api.txt
+pip install -r requirements-api.txt
 deactivate
 
 # Rhea local service
@@ -205,7 +205,7 @@ deactivate
 # Shared bot runtime
 python -m venv .venv-bots
 .venv-bots\Scripts\activate
-pip install -r docs/requirements/requirements-bots.txt
+pip install -r requirements-bots.txt
 deactivate
 
 # TensorFlow bot environment
@@ -217,7 +217,7 @@ deactivate
 # Dogon isolated runtime/training environment
 python -m venv .venv-dogon
 .venv-dogon\Scripts\activate
- pip install -r docs/requirements/requirements-dogon.txt
+pip install -r docs/requirements/requirements-dogon.txt
 deactivate
 ```
 
@@ -225,6 +225,15 @@ Use one venv per local Python project to avoid dependency drift across Dashboard
 Keep Docker for infrastructure services only (MySQL, Redis, MLflow, Airflow, Airbyte).
 Use shared bot framework envs where possible: PyTorch -> `.venv-bots`, TensorFlow -> `.venv-tf`, Dogon -> `.venv-dogon`.
 See [docs/setup-guides/SIX_ENVIRONMENT_POLICY.md](docs/setup-guides/SIX_ENVIRONMENT_POLICY.md) for the canonical six-env map.
+
+Dependency entrypoints at repo root:
+- `requirements.txt` -> minimal Streamlit Cloud-safe entrypoint (delegates to `requirements-streamlit.txt`)
+- `requirements-streamlit.txt` -> dashboard/runtime dependencies (including local editable packages)
+- `requirements-api.txt` -> FastAPI control center dependency entrypoint
+- `requirements-bots.txt` -> shared bot runtime dependency entrypoint
+
+Root cleanup note:
+- Legacy loose root artifacts were archived to `archive/root_loose_files/` to keep root startup/config files focused.
 
 #### 3. Configure Environment
 ```bash

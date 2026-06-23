@@ -3,12 +3,17 @@ BBBot1 Pipeline Package
 Data pipeline and MLFlow tracking for Bentley Budget Bot
 """
 
+from pathlib import Path
 from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-with open("requirements.txt", "r", encoding="utf-8") as fh:
+requirements_file = Path("requirements-dashboard.txt")
+if not requirements_file.exists():
+    requirements_file = Path("requirements.txt")
+
+with open(requirements_file, "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(

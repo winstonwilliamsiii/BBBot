@@ -1,0 +1,2 @@
+# FastAPI control center / API runtime
+-r docs/requirements/requirements-control-center.txt

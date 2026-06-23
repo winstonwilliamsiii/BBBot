@@ -83,6 +83,19 @@ def is_ci() -> bool:
     return config.is_ci()
 
 
+def get_mlflow_tracking_uri() -> str:
+    """Resolve MLflow tracking URI for Streamlit dashboard pages."""
+    tracking = os.getenv("MLFLOW_TRACKING_URI", "").strip()
+    if tracking:
+        return tracking
+
+    server = os.getenv("MLFLOW_SERVER_URL", "").strip()
+    if server:
+        return server
+
+    return "http://127.0.0.1:5000"
+
+
 if __name__ == '__main__':
     print(f"Environment: {config.get_environment()}")
     print(f"Is Production: {config.is_production()}")

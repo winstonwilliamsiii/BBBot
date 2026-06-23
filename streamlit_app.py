@@ -1,6 +1,5 @@
 import streamlit as st
 
-# Page config must be the first Streamlit command in this script.
 st.set_page_config(
     page_title="BBBot",
     page_icon="🤖",
@@ -28,6 +27,7 @@ except Exception:
     yf = None
     YFINANCE_AVAILABLE = False
 from datetime import date, timedelta
+import re
 
 from frontend.utils.styling import (
     apply_custom_styling,
@@ -37,7 +37,6 @@ from frontend.utils.styling import (
 )
 from frontend.styles.colors import COLOR_SCHEME
 from frontend.utils.yahoo import fetch_portfolio_list, fetch_portfolio_tickers
-from frontend.utils.bot_fund_mapping import get_bot_catalog_rows
 
 # Optional MySQL helper (for dev health checks)
 try:
@@ -343,7 +342,7 @@ def calculate_portfolio_metrics(portfolio_df):
                     info = ticker.info
                     current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
                     current_data[symbol] = current_price
-                except Exception:
+                except:
                     current_data[symbol] = 0
             
             # Calculate metrics
@@ -384,115 +383,15 @@ def calculate_portfolio_metrics(portfolio_df):
         return None, None, None, None
 
 
-import json
-
-
-def _render_bot_trades_tab():
-    """Render the Bot Trades Overview tab with paper/live dropdown."""
-    import json as _json
-
-    log_path = os.path.normpath(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "rigel_trade_log.json")
-    )
-
-    st.subheader("🤖 Rigel Bot — Trade Execution Overview")
-
-    # Load trade log
-    trades = []
-    if os.path.exists(log_path):
-        try:
-            with open(log_path, "r", encoding="utf-8") as f:
-                trades = _json.load(f)
-        except Exception as e:
-            st.warning(f"Could not load trade log: {e}")
-    
-    if not trades:
-        st.info("No trades logged yet. Run the Rigel bot to generate trade signals.")
-        st.caption(f"Log path: `{log_path}`")
-        return
-
-    trades_df = pd.DataFrame(trades)
-    trades_df["timestamp"] = pd.to_datetime(trades_df["timestamp"], errors="coerce")
-    trades_df = trades_df.sort_values("timestamp", ascending=False).reset_index(drop=True)
-
-    # Mode filter
-    all_modes = sorted(trades_df["mode"].dropna().unique().tolist())
-    col_mode, col_broker, col_refresh = st.columns([2, 2, 1])
-    with col_mode:
-        selected_modes = st.multiselect(
-            "Trading Mode",
-            options=all_modes,
-            default=all_modes,
-            key="bot_trades_mode_filter",
-        )
-    with col_broker:
-        all_brokers = sorted(trades_df["broker"].dropna().unique().tolist())
-        selected_brokers = st.multiselect(
-            "Broker",
-            options=all_brokers,
-            default=all_brokers,
-            key="bot_trades_broker_filter",
-        )
-    with col_refresh:
-        st.write("")
-        if st.button("🔄 Refresh", key="bot_trades_refresh"):
-            st.rerun()
-
-    filtered = trades_df[
-        trades_df["mode"].isin(selected_modes) & trades_df["broker"].isin(selected_brokers)
-    ]
-
-    # KPI row
-    total_trades = len(filtered)
-    submitted = (filtered["status"] == "submitted").sum()
-    simulated = (filtered["status"].isin(["simulated", "disabled"])).sum()
-    pairs = filtered["symbol"].nunique() if "symbol" in filtered.columns else 0
-
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Total Signals", total_trades)
-    kpi2.metric("Submitted Orders", int(submitted))
-    kpi3.metric("Simulated / Disabled", int(simulated))
-    kpi4.metric("Pairs Traded", pairs)
-
-    st.markdown("---")
-
-    # Per-pair signal breakdown
-    if "symbol" in filtered.columns and not filtered.empty:
-        st.markdown("#### 📊 Signals per Pair")
-        pair_counts = filtered.groupby(["symbol", "side"]).size().reset_index(name="count")
-        try:
-            import plotly.express as px
-            fig = px.bar(
-                pair_counts,
-                x="symbol",
-                y="count",
-                color="side",
-                barmode="group",
-                color_discrete_map={"BUY": "#14B8A6", "SELL": "#F59E0B"},
-                template="plotly_dark",
-                height=300,
-            )
-            fig.update_layout(margin=dict(l=0, r=0, t=30, b=0))
-            st.plotly_chart(fig, use_container_width=True)
-        except ImportError:
-            st.dataframe(pair_counts, use_container_width=True)
-
-    # Recent trades table
-    st.markdown("#### 📋 Recent Trades")
-    display_cols = [c for c in ["timestamp", "symbol", "side", "mode", "broker", "status",
-                                "qty", "entry_price", "stop_price", "target_price",
-                                "confidence", "ml_prediction", "order_id"]
-                    if c in filtered.columns]
-    st.dataframe(
-        filtered[display_cols].head(50).reset_index(drop=True),
-        use_container_width=True,
-        height=400,
-    )
-
-    st.caption(f"Showing {min(50, len(filtered))} of {len(filtered)} entries | Log: `{log_path}`")
-
-
 def main():
+    # Set page config first (Streamlit requires this before other writes)
+    st.set_page_config(
+        page_title="BBBot",
+        page_icon="🤖",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
     # Reload environment variables for cache-busting (ensures fresh values on every run)
     if ENV_RELOAD_AVAILABLE:
         reload_env()  # Override to break cache
@@ -598,7 +497,7 @@ def main():
     if APPWRITE_SERVICES_AVAILABLE:
         st.header("⚡ Quick Actions")
         
-        action_tab1, action_tab2, action_tab3 = st.tabs(["💸 Transactions", "📊 Watchlist", "🤖 Bot Trades"])
+        action_tab1, action_tab2 = st.tabs(["💸 Transactions", "📊 Watchlist"])
         
         with action_tab1:
             col_tx1, col_tx2 = st.columns(2)
@@ -669,9 +568,6 @@ def main():
                     else:
                         st.warning("Please enter a User ID")
         
-        with action_tab3:
-            _render_bot_trades_tab()
-
         st.markdown("---")
     
     # ==========================================================================
@@ -859,57 +755,45 @@ def main():
     
     st.sidebar.markdown("---")
     st.sidebar.header("Mansa Capital Funds")
-
-    bot_catalog_rows = get_bot_catalog_rows()
-    MANSA_FUNDS = {row["bot"]: row["fund"] for row in bot_catalog_rows}
-    MANSA_STRATEGIES = {row["bot"]: row["strategy"] for row in bot_catalog_rows}
-
-    # Proxy market tickers keep charts functional while the dropdown uses fund names.
-    FUND_MARKET_TICKERS = {
-        "Titan": "SOUN",
-        "Vega": "XRT",
-        "Draco": "BIL",
-        "Altair": "BOTZ",
-        "Procryon": "BTC-USD",
-        "Hydra": "XLV",
-        "Triton": "IYT",
-        "Dione": "VT",
-        "Dogon": "VTI",
-        "Cephei": "SPY",
-        "Rigel": "UUP",
-        "Orion": "GLD",
-        "Rhea": "GD",
-        "Jupicita": "IWM",
+    
+    # Mansa Capital Fund Names and tickers
+    MANSA_FUNDS = {
+        'SOUN': 'Mansa_Tech',
+        'RETAIL': 'Mansa Retail',
+        'MONEYBAG': 'Mansa Money Bag',
+        'IONQ': 'Mansa AI',
+        'CRYPTO': 'Mansa_Crypto',
+        'HEALTH': 'Mansa Health',
+        'SUPPLY': 'Mansa Supply Chain',
+        'DIVERSITY': 'Mansa Diversify Dominance',
+        'ETF': 'Mansa_ETF',
+        'SHORTS': 'Mansa Shorts (Options)',
+        'FOREX': 'Mansa_FOREX',
+        'MINERALS': 'Mansa_Minerals',
+        'REALESTATE': 'Mansa Real Estate',
+        'SMALLS': 'Mansa_Smalls'
     }
-
-    fund_bots = list(MANSA_FUNDS.keys())
-
-    if not fund_bots:
-        st.error("No Mansa fund configuration was found. Please verify bot fund mapping data.")
-        st.stop()
-
-    def format_fund_name(bot_name):
-        fund_name = MANSA_FUNDS.get(bot_name, bot_name)
-        display_fund_name = fund_name.replace("_", " ")
-        return f"{display_fund_name} ({bot_name})"
-
-    selected_fund_bot = st.sidebar.selectbox(
-        "Select a Mansa Capital Fund:",
-        fund_bots,
-        format_func=format_fund_name,
+    
+    # Create list of fund tickers
+    fund_tickers = list(MANSA_FUNDS.keys())
+    fund_names = list(MANSA_FUNDS.values())
+    
+    # Create mapping for display
+    def format_fund_name(ticker):
+        return MANSA_FUNDS.get(ticker, ticker)
+    
+    # Selectbox for Mansa Capital Funds
+    selected_fund = st.sidebar.selectbox(
+        'Select a Mansa Capital Fund:',
+        fund_tickers,
+        format_func=format_fund_name
     )
-    st.sidebar.caption(f"Strategy: {MANSA_STRATEGIES.get(selected_fund_bot, 'N/A')}")
-
-    normalized_fund_bot = selected_fund_bot.replace("_Bot", "") if isinstance(selected_fund_bot, str) else selected_fund_bot
-    selected_market_ticker = FUND_MARKET_TICKERS.get(
-        selected_fund_bot,
-        FUND_MARKET_TICKERS.get(normalized_fund_bot, selected_fund_bot),
-    )
-    selected_tickers = [selected_market_ticker] if selected_market_ticker else []
-    selected_ticker_to_fund = {selected_market_ticker: MANSA_FUNDS.get(selected_fund_bot, selected_fund_bot)}
-
-    # All available market proxies for portfolio-wide fetch compatibility.
-    portfolio_tickers = list(FUND_MARKET_TICKERS.values())
+    
+    # Convert single selection to list for compatibility with rest of code
+    selected_tickers = [selected_fund] if selected_fund else []
+    
+    # Set portfolio_tickers to all available funds
+    portfolio_tickers = fund_tickers
 
     today = date.today()
     five_years_ago = today - timedelta(days=5 * 365)
@@ -943,7 +827,7 @@ def main():
         df['Daily Change %'] = df.groupby('Ticker')['Price'].pct_change() * 100
         
         # Add Fund Name column
-        df['Fund Name'] = df['Ticker'].map(selected_ticker_to_fund).fillna(df['Ticker'])
+        df['Fund Name'] = df['Ticker'].map(MANSA_FUNDS).fillna(df['Ticker'])
 
         st.subheader('Fund Performance Over Time')
         st.line_chart(df, x='Date', y='Price', color='Fund Name')
@@ -967,10 +851,10 @@ def main():
                     else:
                         delta = 'n/a'
                     # Use fund name if available, otherwise ticker
-                    display_name = selected_ticker_to_fund.get(ticker, ticker)
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
                     create_metric_card(f'{display_name}', f'${last_price:,.2f}', delta)
                 else:
-                    display_name = selected_ticker_to_fund.get(ticker, ticker)
+                    display_name = MANSA_FUNDS.get(ticker, ticker)
                     create_metric_card(f'{display_name}', 'N/A', 'N/A')
 
         st.write("")
@@ -1028,7 +912,7 @@ def main():
                         current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
                         current_value = quantity * current_price
                         current_values.append(f"${current_value:,.2f}")
-                    except Exception:
+                    except:
                         current_values.append("N/A")
                 
                 display_df['Current Value'] = current_values

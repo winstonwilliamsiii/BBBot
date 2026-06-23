@@ -988,6 +988,10 @@ st.markdown("""
         color: #f9fafb !important;
         font-weight: 600 !important;
     }
+    .stButton > button * {
+        color: #f9fafb !important;
+        fill: #f9fafb !important;
+    }
     .stButton > button:disabled,
     .stDownloadButton > button:disabled {
         color: #d1d5db !important;
@@ -1974,6 +1978,10 @@ def run_bot_mode(
         }
     except Exception as exc:
         return {"ok": False, "output": str(exc)}
+
+    finally:
+        # Ensure Bot Manager table reads the latest launcher event/status files.
+        refresh_bot_mode_views()
 
 
 # Main App

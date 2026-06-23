@@ -10,11 +10,16 @@ st.set_page_config(
 
 import pandas as pd
 import os
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # Load environment variables FIRST before any other imports with override enabled
 # This ensures fresh values on every Streamlit reload
-load_dotenv(override=True)
+if load_dotenv is not None:
+    load_dotenv(override=True)
 
 try:
     import yfinance as yf
@@ -23,7 +28,6 @@ except Exception:
     yf = None
     YFINANCE_AVAILABLE = False
 from datetime import date, timedelta
-import re
 
 from frontend.utils.styling import (
     apply_custom_styling,
@@ -339,7 +343,7 @@ def calculate_portfolio_metrics(portfolio_df):
                     info = ticker.info
                     current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
                     current_data[symbol] = current_price
-                except:
+                except Exception:
                     current_data[symbol] = 0
             
             # Calculate metrics
@@ -880,6 +884,10 @@ def main():
 
     fund_bots = list(MANSA_FUNDS.keys())
 
+    if not fund_bots:
+        st.error("No Mansa fund configuration was found. Please verify bot fund mapping data.")
+        st.stop()
+
     def format_fund_name(bot_name):
         fund_name = MANSA_FUNDS.get(bot_name, bot_name)
         display_fund_name = fund_name.replace("_", " ")
@@ -892,7 +900,11 @@ def main():
     )
     st.sidebar.caption(f"Strategy: {MANSA_STRATEGIES.get(selected_fund_bot, 'N/A')}")
 
-    selected_market_ticker = FUND_MARKET_TICKERS.get(selected_fund_bot, selected_fund_bot)
+    normalized_fund_bot = selected_fund_bot.replace("_Bot", "") if isinstance(selected_fund_bot, str) else selected_fund_bot
+    selected_market_ticker = FUND_MARKET_TICKERS.get(
+        selected_fund_bot,
+        FUND_MARKET_TICKERS.get(normalized_fund_bot, selected_fund_bot),
+    )
     selected_tickers = [selected_market_ticker] if selected_market_ticker else []
     selected_ticker_to_fund = {selected_market_ticker: MANSA_FUNDS.get(selected_fund_bot, selected_fund_bot)}
 
@@ -1016,7 +1028,7 @@ def main():
                         current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
                         current_value = quantity * current_price
                         current_values.append(f"${current_value:,.2f}")
-                    except:
+                    except Exception:
                         current_values.append("N/A")
                 
                 display_df['Current Value'] = current_values

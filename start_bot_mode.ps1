@@ -74,10 +74,50 @@ $Bot = $resolvedBot
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-$pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $pythonExe)) {
-    Write-Error "Required interpreter not found: $pythonExe"
-    Write-Host "Create or restore the project virtual environment at .venv before launching bots." -ForegroundColor Yellow
+function Get-BotPythonService {
+    param(
+        [string]$BotName
+    )
+
+    # Isolated environment for Dogon due to distinct training/runtime dependencies.
+    if ($BotName -eq "Dogon") {
+        return "dogon"
+    }
+
+    # Classical ML bot families.
+    if ($BotName -eq "Rhea") {
+        return "rhea"
+    }
+    if ($BotName -eq "Altair") {
+        return "altair"
+    }
+
+    # Optional TensorFlow bot routing via env var list, e.g. BENTLEY_TF_BOTS="Hydra,Triton".
+    $tfBotNames = @()
+    if ($env:BENTLEY_TF_BOTS) {
+        $tfBotNames = $env:BENTLEY_TF_BOTS.Split(',') |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    }
+    if ($tfBotNames -contains $BotName) {
+        return "tf"
+    }
+
+    # Default shared environment for PyTorch/general bot runtime.
+    return "bots"
+}
+
+$resolverScript = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
+if (-not (Test-Path $resolverScript)) {
+    Write-Error "Python resolver script not found: $resolverScript"
+    exit 1
+}
+
+$pythonService = Get-BotPythonService -BotName $Bot
+$pythonExe = & $resolverScript -Service $pythonService -RepoRoot $repoRoot -AllowLegacyFallback
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $pythonExe)) {
+    Write-Error "Required interpreter not found for bot '$Bot' using service '$pythonService'."
+    Write-Host "Create the mapped venv (e.g., .venv-bots, .venv-tf, .venv-rhea, .venv-altair, .venv-dogon)." -ForegroundColor Yellow
     exit 1
 }
 

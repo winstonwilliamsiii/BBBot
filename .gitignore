@@ -179,6 +179,7 @@ venv/
 ENV/
 env/
 .venv
+.venv-*/
 .venv-dogon/
 moor_kingdom_env/
 

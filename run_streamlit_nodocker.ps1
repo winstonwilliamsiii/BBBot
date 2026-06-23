@@ -1,7 +1,8 @@
 param(
     [string]$PythonPath,
     [string]$AppPath = "streamlit_app.py",
-    [int]$Port = 8501
+    [int]$Port = 8501,
+    [string]$ServerHost = "127.0.0.1"
 )
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -39,6 +40,7 @@ if (-not (Test-Path $resolvedApp)) {
 
 Write-Host "Using Python: $PythonPath" -ForegroundColor Cyan
 Write-Host "Launching Streamlit app: $resolvedApp" -ForegroundColor Cyan
+Write-Host "Access URL: http://${ServerHost}:$Port" -ForegroundColor Cyan
 
-& $PythonPath -m streamlit run $resolvedApp --server.port $Port
+& $PythonPath -m streamlit run $resolvedApp --server.address $ServerHost --server.port $Port
 exit $LASTEXITCODE

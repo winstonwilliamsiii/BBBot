@@ -8,17 +8,66 @@
 # Navigate to project
 cd C:\Users\winst\BentleyBudgetBot
 
-# Create and activate virtual environment
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# Streamlit dashboard environment
+python -m venv .venv-streamlit
+.\.venv-streamlit\Scripts\Activate.ps1
+pip install -r docs\requirements\requirements-streamlit.txt
+deactivate
 
-# Install dependencies
-pip install -r requirements.txt
+# FastAPI control center environment
+python -m venv .venv-api
+.\.venv-api\Scripts\Activate.ps1
+pip install -r docs\requirements\requirements-api.txt
+deactivate
+
+# Rhea environment
+python -m venv .venv-rhea
+.\.venv-rhea\Scripts\Activate.ps1
+pip install -r docs\requirements\requirements-rhea.txt
+deactivate
+
+# Shared bot runtime
+python -m venv .venv-bots
+.\.venv-bots\Scripts\Activate.ps1
+pip install -r docs\requirements\requirements-bots.txt
+deactivate
+
+# TensorFlow bot environment
+python -m venv .venv-tf
+.\.venv-tf\Scripts\Activate.ps1
+pip install -r docs\requirements\requirements-tf.txt
+deactivate
+
+# Dogon isolated runtime/training environment
+python -m venv .venv-dogon
+.\.venv-dogon\Scripts\Activate.ps1
+pip install -r docs\requirements\requirements-dogon.txt
+deactivate
 
 # Create local config (GITIGNORED)
 cp .env.local.template .env.local
 # Edit .env.local with your credentials
 ```
+
+### Environment Boundary Rule
+
+- Local Python projects (Streamlit, FastAPI, notebooks, bot runtimes) should each have a dedicated virtual environment.
+- Dockerized infrastructure services (MySQL, Redis, MLflow, Airflow, Airbyte) should not use local Python venvs.
+- Manage infra with Dockerfiles and docker-compose stacks only.
+- The canonical six-env policy and file map live in [SIX_ENVIRONMENT_POLICY.md](SIX_ENVIRONMENT_POLICY.md).
+
+### Shared Venv Strategy (Project-Wide)
+
+Target a maximum of 6 primary environments across the project:
+
+- `.venv-streamlit` for Streamlit dashboard/runtime.
+- `.venv-api` for FastAPI/control center API.
+- `.venv-rhea` for classical ML bot family defaults and Altair.
+- `.venv-bots` for shared PyTorch / broker runtime.
+- `.venv-tf` for TensorFlow-based bots and training.
+- `.venv-dogon` isolated for Dogon-specific training/runtime needs.
+
+Legacy `.venv-altair` should only be used as a temporary migration path while converging Altair into `.venv-rhea`.
 
 ### 2. Environment Configuration
 
@@ -309,15 +358,16 @@ if config.get_bool('DEBUG_MODE'):
 
 ### Development (First Time)
 
-- [ ] Virtual environment created and activated
-- [ ] Requirements installed: `pip install -r requirements.txt`
+- [ ] Dedicated local venvs created (`.venv-streamlit`, `.venv-api`, `.venv-rhea`, optional `.venv-bots`)
+- [ ] Per-service requirements installed from `docs/requirements/`
 - [ ] `.env.local` created with credentials
 - [ ] MySQL running locally (Docker or native)
 - [ ] Database connection verified
 - [ ] Alpaca credentials configured (paper trading)
 - [ ] Google API credentials configured
 - [ ] Local directories created (`uploads_dev`, `logs_dev`, `data_dev`)
-- [ ] App runs without errors: `streamlit run streamlit_app.py`
+- [ ] Streamlit runs without errors: `powershell -ExecutionPolicy Bypass -File .\run_streamlit_nodocker.ps1`
+- [ ] API runs without errors: `powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1 -Reload`
 - [ ] Portfolio upload works
 - [ ] Financial data loads
 - [ ] No API key warnings in logs

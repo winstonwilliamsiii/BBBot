@@ -182,20 +182,49 @@ git clone https://github.com/yourusername/BentleyBudgetBot.git
 cd BentleyBudgetBot
 ```
 
-#### 2. Set Up Python Environment
+#### 2. Set Up Local Python Environments
 ```bash
-# Create virtual environment
-python -m venv .venv
+# Streamlit dashboard
+python -m venv .venv-streamlit
+.venv-streamlit\Scripts\activate
+pip install -r docs/requirements/requirements-streamlit.txt
+deactivate
 
-# Activate (Windows)
-.venv\Scripts\activate
+# FastAPI control-center/API service
+python -m venv .venv-api
+.venv-api\Scripts\activate
+pip install -r docs/requirements/requirements-api.txt
+deactivate
 
-# Activate (macOS/Linux)
-source .venv/bin/activate
+# Rhea local service
+python -m venv .venv-rhea
+.venv-rhea\Scripts\activate
+pip install -r docs/requirements/requirements-rhea.txt
+deactivate
 
-# Install dependencies
-pip install -r requirements.txt
+# Shared bot runtime
+python -m venv .venv-bots
+.venv-bots\Scripts\activate
+pip install -r docs/requirements/requirements-bots.txt
+deactivate
+
+# TensorFlow bot environment
+python -m venv .venv-tf
+.venv-tf\Scripts\activate
+pip install -r docs/requirements/requirements-tf.txt
+deactivate
+
+# Dogon isolated runtime/training environment
+python -m venv .venv-dogon
+.venv-dogon\Scripts\activate
+ pip install -r docs/requirements/requirements-dogon.txt
+deactivate
 ```
+
+Use one venv per local Python project to avoid dependency drift across Dashboard/API/ML workflows.
+Keep Docker for infrastructure services only (MySQL, Redis, MLflow, Airflow, Airbyte).
+Use shared bot framework envs where possible: PyTorch -> `.venv-bots`, TensorFlow -> `.venv-tf`, Dogon -> `.venv-dogon`.
+See [docs/setup-guides/SIX_ENVIRONMENT_POLICY.md](docs/setup-guides/SIX_ENVIRONMENT_POLICY.md) for the canonical six-env map.
 
 #### 3. Configure Environment
 ```bash
@@ -309,7 +338,7 @@ python -m venv .venv-dogon
 .venv-dogon\Scripts\activate
 
 # Install Dogon-only training dependencies
-pip install -r requirements-dogon-training.txt
+pip install -r docs/requirements/requirements-dogon.txt
 
 # Run a local Dogon training cycle
 python scripts/train_dogon_models.py --symbols SPY,QQQ,IWM,DIA,XLK,XLF --days 730 --min-accuracy 0.53

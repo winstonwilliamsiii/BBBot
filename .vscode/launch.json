@@ -1,0 +1,80 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: API (.venv-api)",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "backend.api.main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000",
+                "--reload"
+            ],
+            "python": "${workspaceFolder}\\.venv-api\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Streamlit (.venv-streamlit)",
+            "type": "python",
+            "request": "launch",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "streamlit_app.py"
+            ],
+            "python": "${workspaceFolder}\\.venv-streamlit\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Rhea Main (.venv-rhea)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}\\rhea_main.py",
+            "python": "${workspaceFolder}\\.venv-rhea\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Altair Main (.venv-rhea)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}\\mansa_altair_bot.py",
+            "python": "${workspaceFolder}\\.venv-rhea\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Bots Runtime (.venv-bots)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}\\scripts\\run_market_open_bots.py",
+            "python": "${workspaceFolder}\\.venv-bots\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: TF Runtime (.venv-tf)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}\\run_orion_ml_paper_both.py",
+            "python": "${workspaceFolder}\\.venv-tf\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Dogon Runtime (.venv-dogon)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}\\run_orion_ml_paper_both.py",
+            "python": "${workspaceFolder}\\.venv-dogon\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        }
+    ]
+}

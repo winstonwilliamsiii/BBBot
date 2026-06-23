@@ -3,7 +3,7 @@
     "task.allowAutomaticTasks": "on",
     
     "terminal.integrated.cwd": "C:\\Users\\winst\\BentleyBudgetBot",
-    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv-api\\Scripts\\python.exe",
     "python.terminal.activateEnvironment": true,
     "git.enabled": true,
     "git.autofetch": true,
@@ -109,5 +109,6 @@
     "sqltools.useNodeRuntime": true,
     "sqltools.autoOpenSessionFiles": false,
     "sqltools.results.limit": 1000,
-    "chat.viewProgressBadge.enabled": true
+    "chat.viewProgressBadge.enabled": true,
+    "git.ignoreLimitWarning": true
 }

@@ -8,7 +8,11 @@ param(
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-$noDockerEnvScript = Join-Path $repoRoot "set_no_docker_env.ps1"
+$noDockerEnvScript = Join-Path $repoRoot "scripts\set_no_docker_env.ps1"
+if (-not (Test-Path $noDockerEnvScript)) {
+    # fallback: legacy root location
+    $noDockerEnvScript = Join-Path $repoRoot "set_no_docker_env.ps1"
+}
 if (Test-Path $noDockerEnvScript) {
     . $noDockerEnvScript
 }

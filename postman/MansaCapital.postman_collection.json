@@ -1,14 +1,36 @@
-#Postman Collection
-#Saved set of API request from a desktop application downloaded
-
 {
   "info": {
-    "name": "BBBot Plaid Integration",
-    "description": "Test Plaid APIs - Direct Sandbox + Appwrite Function endpoints for BentleyBudgetBot",
+    "name": "BBBot - MansaCapital API Suite",
+    "description": "Bentley Budget Bot API validation suite: Plaid, Airbyte Cloud, JWT token checks, CashPro, and Appwrite endpoints. Run the JWT and Airbyte folders first to confirm credentials before bots rely on them.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_postman_id": "bbbot-plaid-integration",
-    "version": "2.0.0"
+    "_postman_id": "bbbot-mansa-capital-suite",
+    "version": "3.0.0"
   },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "var jwtToken = pm.collectionVariables.get('jwt_token');",
+          "if (jwtToken && jwtToken !== 'YOUR_JWT_TOKEN' && jwtToken.split('.').length === 3) {",
+          "    try {",
+          "        var payload = JSON.parse(atob(jwtToken.split('.')[1]));",
+          "        var nowSec = Math.floor(Date.now() / 1000);",
+          "        if (payload.exp && payload.exp < nowSec) {",
+          "            console.warn('[BBBot] JWT token is EXPIRED. Refresh jwt_token variable.');",
+          "        } else if (payload.exp) {",
+          "            var minsLeft = Math.round((payload.exp - nowSec) / 60);",
+          "            console.log('[BBBot] JWT valid. Expires in ' + minsLeft + ' min(s).');",
+          "        }",
+          "    } catch (e) {",
+          "        console.warn('[BBBot] Could not decode JWT payload: ' + e.message);",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
   "item": [
     {
       "name": "1. Appwrite Function (Production)",
@@ -43,14 +65,38 @@
               "host": ["{{appwrite_function_url}}"],
               "path": ["api", "create_link_token"]
             },
-            "description": "Create a Link token through Appwrite function (required for Plaid Link UI)"
+            "description": "Create a Link token through Appwrite function"
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "2. Docker Quickstart (Local Testing)",
+      "description": "Test against local Docker backend (localhost:5001)",
+      "item": [
         {
-          "name": "Exchange Public Token (via Appwrite)",
+          "name": "Create Link Token (Docker)",
           "request": {
             "method": "POST",
-            "he3. Plaid Direct API (Sandbox)",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"winston_test_123\"\n}"
+            },
+            "url": {
+              "raw": "{{docker_backend_url}}/api/create_link_token",
+              "host": ["{{docker_backend_url}}"],
+              "path": ["api", "create_link_token"]
+            },
+            "description": "Test link token creation locally"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Plaid Direct API (Sandbox)",
       "description": "Direct calls to Plaid API for testing/debugging",
       "item": [
         {
@@ -70,82 +116,6 @@
               "path": ["link", "token", "create"]
             },
             "description": "Direct Plaid API call to create link token"
-          }
-        },
-        {
-          "name": "Exchange Public Token (Direct)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"public_token\": \"{{plaid_public_token}}\"\n}"
-            },
-            "url": {
-              "raw": "{{plaid_base_url}}/item/public_token/exchange",
-              "host": ["{{plaid_base_url}}"],
-              "path": ["item", "public_token", "exchange"]
-            },
-            "description": "Exchange public token for permanent access token"
-          }
-        },
-        {
-          "name": "Get Account Balances (Direct)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\"\n}"
-            },
-            "url": {
-              "raw": "{{plaid_base_url}}/accounts/balance/get",
-              "host": ["{{plaid_base_url}}"],
-              "path": ["accounts", "balance", "get"]
-            },
-            "description": "Get real-time account balances"
-          }
-        },
-        {
-          "name": "Get Transactions (Direct)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\",\n  \"start_date\": \"2025-01-01\",\n  \"end_date\": \"2026-01-11\"\n}"
-            },
-            "url": {
-              "raw": "{{plaid_base_url}}/transactions/get",
-              "host": ["{{plaid_base_url}}"],
-              "path": ["transactions", "get"]
-            },
-            "description": "Fetch transactions directly from Plaid"
-          }
-        },
-        {
-          "name": "Get Item Info (Direct)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\"\n}"
-            },
-            "url": {
-              "raw": "{{plaid_base_url}}/item/get",
-              "host": ["{{plaid_base_url}}"],
-              "path": ["item", "get"]
-            },
-            "description": "Get information about the connected Item"
           }
         }
       ]
@@ -167,194 +137,439 @@
               "path": ["balances"],
               "query": [{ "key": "accountId", "value": "{{account_id}}" }]
             },
-            "description": "Get account balances from CashPro (not yet implemented)"
-          }
-        },
-        {
-          "name": "Initiate Payment",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{cashpro_access_token}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amount\": \"100.00\",\n  \"currency\": \"USD\",\n  \"recipient\": \"John Doe\"\n}"
-            },
-            "url": {
-              "raw": "{{cashpro_base_url}}/payments",
-              "host": ["{{cashpro_base_url}}"],
-              "path": ["payments"]
-            },
-            "description": "Initiate payment via CashPro (not yet implemented)"me": "Get Transactions (via Appwrite)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-     
-      "key": "appwrite_function_url",
-      "value": "https://fra.cloud.appwrite.io/v1/functions/YOUR_FUNCTION_ID/executions",
-      "description": "Appwrite function URL - replace YOUR_FUNCTION_ID after deployment",
-      "type": "string"
-    },
-    {
-      "key": "docker_backend_url",
-      "value": "http://localhost:5001",
-      "description": "Local Docker quickstart backend",
-      "type": "string"
-    },
-    {
-      "key": "plaid_base_url",
-      "value": "https://sandbox.plaid.com",
-      "description": "Plaid API base URL (sandbox environment)",
-      "type": "string"
-    },
-    {
-      "key": "plaid_client_id",
-      "value": "68b8718ec2f428002456a84c",
-      "description": "Your Plaid Client ID (from .env)",
-      "type": "string"
-    },
-    {
-      "key": "plaid_secret",
-      "value": "1849c4090173dfbce2bda5453e7048",
-      "description": "Your Plaid Secret (from .env) - KEEP SECURE",
-      "type": "string"
-    },
-    {
-      "key": "plaid_access_token",
-      "value": "",
-      "description": "Access token obtained after exchanging public_token - set this after token exchange",
-      "type": "string"
-    },
-    {
-      "key": "plaid_public_token",
-      "value": "",
-      "description": "Public token from Plaid Link UI - temporary, expires after exchange",
-      "type": "string"
-    },
-    {
-      "key": "cashpro_base_url",
-      "value": "https://sandbox.cashpro.bankofamerica.com/api",
-      "description": "CashPro API (future integration)",
-      "type": "string"
-    },
-    {
-      "key": "cashpro_access_token",
-      "value": "",
-      "description": "CashPro OAuth token (not yet implemented)",
-      "type": "string"
-    },
-    {
-      "key": "account_id",
-      "value": "123456789",
-      "description": "Bank account ID (for CashPro testing)",
-      "type": "string"
-   
-            },
-            "description": "Fetch transactions for connected accounts"
+            "description": "Get account balances from CashPro"
           }
         }
       ]
     },
     {
-      "name": "2. Docker Quickstart (Local Testing)",
-      "description": "Test against local Docker quickstart backend (localhost:5001)",
+      "name": "5. JWT Token Validation",
+      "description": "Validate JWT tokens used by BBBot services (Control Center API on port 5001). Run these before bots start to confirm tokens are fresh. Set jwt_token in collection variables first.",
       "item": [
         {
-          "name": "Create Link Token (Docker)",
+          "name": "Decode JWT + Assert Not Expired",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var token = pm.collectionVariables.get('jwt_token');",
+                  "if (!token || token === 'YOUR_JWT_TOKEN') {",
+                  "    throw new Error('[BBBot] Set jwt_token collection variable first.');",
+                  "}",
+                  "var parts = token.split('.');",
+                  "if (parts.length !== 3) {",
+                  "    throw new Error('[BBBot] jwt_token is not a valid JWT (expected 3 parts).');",
+                  "}",
+                  "try {",
+                  "    var payload = JSON.parse(atob(parts[1]));",
+                  "    pm.collectionVariables.set('jwt_decoded_sub',  payload.sub  || '');",
+                  "    pm.collectionVariables.set('jwt_decoded_exp',  payload.exp  || '');",
+                  "    console.log('[BBBot] JWT payload:', JSON.stringify(payload));",
+                  "} catch(e) {",
+                  "    throw new Error('[BBBot] Failed to decode JWT: ' + e.message);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var exp = parseInt(pm.collectionVariables.get('jwt_decoded_exp'), 10);",
+                  "var nowSec = Math.floor(Date.now() / 1000);",
+                  "pm.test('JWT: token is not expired', function() {",
+                  "    pm.expect(exp).to.be.above(nowSec, 'Token is expired!');",
+                  "});",
+                  "pm.test('JWT: more than 5 minutes remaining', function() {",
+                  "    pm.expect(exp - nowSec).to.be.above(300);",
+                  "});",
+                  "pm.test('Control Center: health returns 200', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
-            "method": "POST",
+            "method": "GET",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"user_id\": \"winston_test_123\"\n}"
-            },
             "url": {
-              "raw": "{{docker_backend_url}}/api/create_link_token",
-              "host": ["{{docker_backend_url}}"],
-              "path": ["api", "create_link_token"]
+              "raw": "{{control_center_url}}/health",
+              "host": ["{{control_center_url}}"],
+              "path": ["health"]
             },
-            "description": "Test link token creation locally"
+            "description": "Decode jwt_token, assert not expired, and hit /health to confirm server accepts it."
           }
         },
         {
-          "name": "Exchange Token (Docker)",
+          "name": "Control Center - Health (No Auth)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Control Center reachable', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
-            ],
-            "body": {
-              "mode": "urlencoded",
-              "urlencoded": [
-                { "key": "public_token", "value": "{{plaid_public_token}}", "type": "text" }
-              ]
-            },
+            "method": "GET",
+            "header": [],
             "url": {
-              "raw": "{{docker_backend_url}}/api/set_access_token",
-              "host": ["{{docker_backend_url}}"],
-              "path": ["api", "set_access_token"]
+              "raw": "{{control_center_url}}/health",
+              "host": ["{{control_center_url}}"],
+              "path": ["health"]
             },
-            "description": "Exchange token using form-encoded format (matches frontend)"
+            "description": "Unauthenticated health check on FastAPI Control Center (Main.py on port 5001)."
           }
         }
       ]
     },
     {
-      "name": "Plaid",
+      "name": "6. Airbyte Cloud API",
+      "description": "Validate Airbyte Cloud credentials before bots trigger syncs. Auth: Bearer {{airbyte_api_key}}. Maps to AIRBYTE_API_KEY / AIRBYTE_CONNECTION_ID env vars in airflow/dags/Airbyt_sync_DAG_3.py.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          { "key": "token", "value": "{{airbyte_api_key}}", "type": "string" }
+        ]
+      },
       "item": [
         {
-          "name": "Create Link Token",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"user\": {\"client_user_id\": \"user123\"},\n  \"client_name\": \"BentleyBudgetBot\",\n  \"products\": [\"transactions\"],\n  \"country_codes\": [\"US\"],\n  \"language\": \"en\"\n}"
-            },
-            "url": {
-              "raw": "{{plaid_base_url}}/link/token/create",
-              "host": ["{{plaid_base_url}}"],
-              "path": ["link", "token", "create"]
+          "name": "Health Check (No Auth Required)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Airbyte Cloud reachable', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
             }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": { "type": "noauth" },
+            "url": {
+              "raw": "{{airbyte_api_url}}/health",
+              "host": ["{{airbyte_api_url}}"],
+              "path": ["health"]
+            },
+            "description": "Unauthenticated health check. Run first to confirm network connectivity before testing API key."
           }
         },
         {
-          "name": "Get Transactions",
+          "name": "List Workspaces (Validates API Key)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API key accepted (200)', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('No 401 - API key is valid', function() {",
+                  "    pm.expect(pm.response.code).to.not.equal(401);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    var body = pm.response.json();",
+                  "    var workspaces = body.data || body.workspaces || [];",
+                  "    console.log('[BBBot] Airbyte workspaces found:', workspaces.length);",
+                  "    if (workspaces.length > 0) {",
+                  "        pm.collectionVariables.set('airbyte_workspace_id', workspaces[0].workspaceId || workspaces[0].id);",
+                  "        console.log('[BBBot] Auto-set airbyte_workspace_id:', pm.collectionVariables.get('airbyte_workspace_id'));",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{airbyte_api_url}}/workspaces",
+              "host": ["{{airbyte_api_url}}"],
+              "path": ["workspaces"]
+            },
+            "description": "Lists all workspaces. 200 = API key valid; 401 = key is wrong/expired. Test script auto-sets airbyte_workspace_id."
+          }
+        },
+        {
+          "name": "List Connections",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Connections listed successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    var body = pm.response.json();",
+                  "    var conns = body.data || body.connections || [];",
+                  "    console.log('[BBBot] Connections found:', conns.length);",
+                  "    conns.forEach(function(c) {",
+                  "        console.log('  Connection:', c.connectionId || c.id, '|', c.name, '| status:', c.status);",
+                  "    });",
+                  "    if (conns.length > 0) {",
+                  "        pm.collectionVariables.set('airbyte_connection_id', conns[0].connectionId || conns[0].id);",
+                  "        console.log('[BBBot] Auto-set airbyte_connection_id:', pm.collectionVariables.get('airbyte_connection_id'));",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{airbyte_api_url}}/connections?workspaceId={{airbyte_workspace_id}}",
+              "host": ["{{airbyte_api_url}}"],
+              "path": ["connections"],
+              "query": [{ "key": "workspaceId", "value": "{{airbyte_workspace_id}}" }]
+            },
+            "description": "List all connections in the workspace. Test script logs each and auto-sets airbyte_connection_id."
+          }
+        },
+        {
+          "name": "Trigger Sync (Manual Job)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var connId = pm.collectionVariables.get('airbyte_connection_id');",
+                  "if (!connId || connId === 'YOUR_CONNECTION_ID') {",
+                  "    throw new Error('[BBBot] Set airbyte_connection_id before triggering a sync.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sync job created (200)', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    var job = pm.response.json();",
+                  "    var jobId = (job.job && job.job.id) || job.jobId || job.id;",
+                  "    if (jobId) {",
+                  "        pm.collectionVariables.set('airbyte_job_id', String(jobId));",
+                  "        console.log('[BBBot] Sync job started. jobId:', jobId);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"client_id\": \"{{plaid_client_id}}\",\n  \"secret\": \"{{plaid_secret}}\",\n  \"access_token\": \"{{plaid_access_token}}\",\n  \"start_date\": \"2024-01-01\",\n  \"end_date\": \"2024-12-31\"\n}"
+              "raw": "{\n  \"connectionId\": \"{{airbyte_connection_id}}\",\n  \"jobType\": \"sync\"\n}"
             },
             "url": {
-              "raw": "{{plaid_base_url}}/transactions/get",
-              "host": ["{{plaid_base_url}}"],
-              "path": ["transactions", "get"]
+              "raw": "{{airbyte_api_url}}/jobs",
+              "host": ["{{airbyte_api_url}}"],
+              "path": ["jobs"]
+            },
+            "description": "Trigger a manual sync. Mirrors what Airbyt_sync_DAG_3.py does. Test script captures jobId."
+          }
+        },
+        {
+          "name": "Get Job Status",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jobId = pm.collectionVariables.get('airbyte_job_id');",
+                  "if (!jobId || jobId === '') {",
+                  "    throw new Error('[BBBot] Run Trigger Sync first to get a job ID.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Job status retrieved (200)', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    var body = pm.response.json();",
+                  "    var status = (body.job && body.job.status) || body.status;",
+                  "    console.log('[BBBot] Job', pm.collectionVariables.get('airbyte_job_id'), 'status:', status);",
+                  "    pm.test('Job not failed', function() {",
+                  "        pm.expect(status).to.not.equal('failed');",
+                  "    });",
+                  "}"
+                ]
+              }
             }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{airbyte_api_url}}/jobs/{{airbyte_job_id}}",
+              "host": ["{{airbyte_api_url}}"],
+              "path": ["jobs", "{{airbyte_job_id}}"]
+            },
+            "description": "Poll this after triggering a sync. Status cycles: pending → running → succeeded (or failed)."
           }
         }
       ]
     }
   ],
   "variable": [
-    { "key": "cashpro_base_url", "value": "https://sandbox.cashpro.bankofamerica.com/api" },
-    { "key": "cashpro_access_token", "value": "YOUR_SANDBOX_TOKEN" },
-    { "key": "account_id", "value": "123456789" },
-    { "key": "plaid_base_url", "value": "https://sandbox.plaid.com" },
-    { "key": "plaid_client_id", "value": "YOUR_PLAID_CLIENT_ID" },
-    { "key": "plaid_secret", "value": "YOUR_PLAID_SECRET" },
-    { "key": "plaid_access_token", "value": "YOUR_PLAID_ACCESS_TOKEN" }
+    {
+      "key": "appwrite_function_url",
+      "value": "https://fra.cloud.appwrite.io/v1/functions/YOUR_FUNCTION_ID/executions",
+      "description": "Appwrite function base URL - replace YOUR_FUNCTION_ID after deployment",
+      "type": "string"
+    },
+    {
+      "key": "docker_backend_url",
+      "value": "http://localhost:5001",
+      "description": "Local Docker backend / FastAPI Control Center",
+      "type": "string"
+    },
+    {
+      "key": "control_center_url",
+      "value": "http://localhost:5001",
+      "description": "FastAPI Control Center URL (Main.py via uvicorn)",
+      "type": "string"
+    },
+    {
+      "key": "plaid_base_url",
+      "value": "https://sandbox.plaid.com",
+      "description": "Plaid API base URL (sandbox)",
+      "type": "string"
+    },
+    {
+      "key": "plaid_client_id",
+      "value": "YOUR_PLAID_CLIENT_ID",
+      "description": "Your Plaid Client ID",
+      "type": "string"
+    },
+    {
+      "key": "plaid_secret",
+      "value": "YOUR_PLAID_SECRET",
+      "description": "Your Plaid Secret - NEVER commit real value",
+      "type": "string"
+    },
+    {
+      "key": "plaid_access_token",
+      "value": "",
+      "description": "Access token obtained after exchanging public_token",
+      "type": "string"
+    },
+    {
+      "key": "plaid_public_token",
+      "value": "",
+      "description": "Public token from Plaid Link UI",
+      "type": "string"
+    },
+    {
+      "key": "cashpro_base_url",
+      "value": "https://sandbox.cashpro.bankofamerica.com/api",
+      "description": "CashPro API base URL",
+      "type": "string"
+    },
+    {
+      "key": "cashpro_access_token",
+      "value": "",
+      "description": "CashPro OAuth token",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "123456789",
+      "description": "Bank account ID for testing",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "YOUR_JWT_TOKEN",
+      "description": "JWT Bearer token for Control Center API. Set to your actual token before running folder 5.",
+      "type": "string"
+    },
+    {
+      "key": "jwt_decoded_sub",
+      "value": "",
+      "description": "Auto-populated: token subject (user/bot ID)",
+      "type": "string"
+    },
+    {
+      "key": "jwt_decoded_exp",
+      "value": "",
+      "description": "Auto-populated: token expiry (Unix epoch seconds)",
+      "type": "string"
+    },
+    {
+      "key": "airbyte_api_url",
+      "value": "https://api.airbyte.com/v1",
+      "description": "Airbyte Cloud API base URL. Matches AIRBYTE_API_URL env var.",
+      "type": "string"
+    },
+    {
+      "key": "airbyte_api_key",
+      "value": "YOUR_AIRBYTE_API_KEY",
+      "description": "Airbyte Cloud API key (get from cloud.airbyte.com > Settings > API Keys). Maps to AIRBYTE_API_KEY env var.",
+      "type": "string"
+    },
+    {
+      "key": "airbyte_workspace_id",
+      "value": "YOUR_WORKSPACE_ID",
+      "description": "Airbyte workspace ID. Auto-set by List Workspaces test script.",
+      "type": "string"
+    },
+    {
+      "key": "airbyte_connection_id",
+      "value": "YOUR_CONNECTION_ID",
+      "description": "Airbyte connection ID. Auto-set by List Connections test script. Maps to AIRBYTE_CONNECTION_ID env var.",
+      "type": "string"
+    },
+    {
+      "key": "airbyte_job_id",
+      "value": "",
+      "description": "Auto-populated by Trigger Sync test script. Used by Get Job Status.",
+      "type": "string"
+    }
   ]
 }

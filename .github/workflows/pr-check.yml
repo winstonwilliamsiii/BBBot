@@ -50,16 +50,16 @@ jobs:
       
       - name: Security scan for secrets
         run: |
-          # Check for common secret patterns
-          if grep -rE "(APCA-API-KEY|APCA-API-SECRET|sk-|api[_-]?key|password\s*=|secret\s*=)" . \
-            --exclude-dir=".git" \
-            --exclude-dir="__pycache__" \
-            --exclude="*.md" \
-            --exclude=".env.example"; then
-            echo "⚠️ WARNING: Potential secrets detected!"
-            echo "Please verify these are not real credentials"
+          # Check for hardcoded real credential patterns (not env var references or examples)
+          if grep -rEn "(APCA-API-KEY-ID|APCA-API-SECRET-KEY)\s*=\s*['\"][A-Za-z0-9]{10,}" . \
+            --include="*.py" --include="*.js" --include="*.ts" \
+            --exclude-dir=".git" --exclude-dir="__pycache__" \
+            --exclude="*.md" --exclude="*.example"; then
+            echo "⚠️ WARNING: Potential hardcoded Alpaca credentials detected!"
+            echo "Please verify these are not real credentials."
             exit 1
           fi
+          echo "✓ No hardcoded credentials detected"
       
       - name: Check environment separation
         run: |

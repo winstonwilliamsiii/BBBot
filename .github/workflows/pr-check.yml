@@ -23,28 +23,18 @@ jobs:
           cache: 'pip'
 
       - name: Enforce root structure guardrail
+        shell: bash
         run: |
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.sha }}"
 
-          ADDED_PATHS=$(git diff --name-status "$BASE_SHA" "$HEAD_SHA" | awk '$1=="A"{print $2}')
+          NEW_ROOT_ENTRIES=$(comm -13 <(git ls-tree --name-only "$BASE_SHA" | sort) <(git ls-tree --name-only "$HEAD_SHA" | sort))
 
-          ROOT_ADDED_FILES=$(printf '%s\n' "$ADDED_PATHS" | awk -F/ 'NF==1 && length($0)>0')
-          CANDIDATE_DIRS=$(printf '%s\n' "$ADDED_PATHS" | awk -F/ 'NF>1 {print $1}' | sort -u)
-
-          NEW_TOP_LEVEL_DIRS=""
-          while IFS= read -r DIR; do
-            [ -z "$DIR" ] && continue
-            if ! git ls-tree --name-only "$BASE_SHA" -- "$DIR" | grep -qx "$DIR"; then
-              NEW_TOP_LEVEL_DIRS="${NEW_TOP_LEVEL_DIRS}${DIR}\n"
-            fi
-          done <<< "$CANDIDATE_DIRS"
-
-          if [ -n "$ROOT_ADDED_FILES$NEW_TOP_LEVEL_DIRS" ]; then
+          if [ -n "$NEW_ROOT_ENTRIES" ]; then
             if ! git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -qx "README.md"; then
-              echo "❌ New root-level file/folder additions require updating README.md (Folder Structure)."
-              [ -n "$ROOT_ADDED_FILES" ] && echo "Root files added:" && printf '%s\n' "$ROOT_ADDED_FILES"
-              [ -n "$NEW_TOP_LEVEL_DIRS" ] && echo "Top-level folders added:" && printf '%b' "$NEW_TOP_LEVEL_DIRS"
+              echo "❌ New root-level file/folder additions require updating README.md (Folder Structure section)."
+              echo "New root entries:"
+              printf '%s\n' "$NEW_ROOT_ENTRIES"
               exit 1
             fi
           fi

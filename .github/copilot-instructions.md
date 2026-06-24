@@ -95,6 +95,20 @@ Critical: Use `@st.cache_data` for expensive operations:
 - `docker-compose.yml` + `Dockerfile` - Container deployment configuration
 - `requirements.txt` - Core dependencies (note: yfinance is optional with fallbacks)
 
+## Root Directory Placement Rules (Mandatory)
+
+Do not leave loose files or one-off folders in the repository root.
+
+- Follow the root structure documented in `README.md` (`## 🗂️ Folder Structure`).
+- Place docs in `docs/` (and the correct docs subfolder).
+- Place scripts (`.py`, `.ps1`, `.sh`, `.bat`) in `scripts/`.
+- Place config templates/settings in `config/`.
+- Place generated/log/run output in `logs/` or `archive/root_loose_files/` as appropriate.
+- Do not move or rename existing files/folders unless the user explicitly requests it for the task.
+- Keep root focused on entrypoints and core project manifests (e.g. `README.md`, `streamlit_app.py`, `Main.py`, dependency/deploy manifests).
+
+If a change requires adding a new root-level file/folder, explicitly justify it in the PR summary and update `README.md` folder structure in the same change.
+
 ## Common Debugging Areas
 
 1. **Yahoo Finance failures** - Check `YFINANCE_AVAILABLE` flag and error handling

@@ -5,6 +5,7 @@ $script:DockerMode = if ($env:BENTLEY_DOCKER_MODE) { $env:BENTLEY_DOCKER_MODE.To
 $script:WslDistro = if ($env:BENTLEY_WSL_DISTRO) { $env:BENTLEY_WSL_DISTRO } else { "Ubuntu" }
 $script:UseWslDocker = $false
 $script:LastDockerExitCode = 0
+$repoRoot = Split-Path -Parent $PSScriptRoot
 
 Write-Host "`nMySQL Connection Diagnostic and Repair Tool" -ForegroundColor Cyan
 Write-Host "=" * 70 -ForegroundColor Gray
@@ -146,7 +147,7 @@ if ($script:UseWslDocker) {
 Write-Host "Step 1: Checking Docker status..." -ForegroundColor White
 if (-not (Test-DockerRunning)) {
     Write-Host "Docker is not running. Running startup helper..." -ForegroundColor Red
-    & "$PSScriptRoot\start_mysql_docker.ps1"
+    & "$repoRoot\start_mysql_docker.ps1"
     Start-Sleep -Seconds 5
 }
 Write-Host "Docker is running." -ForegroundColor Green
@@ -157,15 +158,15 @@ $container = Get-MySqlContainerName
 
 if (-not $container) {
     Write-Host "MySQL container is not running. Starting..." -ForegroundColor Red
-    Set-Location "$PSScriptRoot\docker"
+    Set-Location "$repoRoot\docker"
     $composeOk = Invoke-Compose -DockerArgs @("-f", "docker-compose-airflow.yml", "up", "-d", "mysql")
     if (-not $composeOk) {
         Write-Host "Failed to start MySQL container via Docker Compose." -ForegroundColor Red
-        Set-Location $PSScriptRoot
+        Set-Location $repoRoot
         exit 1
     }
     Start-Sleep -Seconds 5
-    Set-Location $PSScriptRoot
+    Set-Location $repoRoot
     $container = Get-MySqlContainerName
 } else {
     Write-Host "Container '$container' is running." -ForegroundColor Green
@@ -214,7 +215,7 @@ Write-Host "Config file permissions fixed." -ForegroundColor Green
 
 # Step 6: Verify all databases are accessible
 Write-Host "`nStep 6: Verifying database access..." -ForegroundColor White
-$verifyScript = Join-Path $PSScriptRoot "scripts\verify_mysql_architecture.py"
+$verifyScript = Join-Path $PSScriptRoot "verify_mysql_architecture.py"
 if (Test-Path $verifyScript) {
     & python $verifyScript
     if ($LASTEXITCODE -eq 0) {
@@ -290,6 +291,6 @@ Write-Host "   3. Right-click -> 'Connect'" -ForegroundColor Gray
 Write-Host "   4. Or restart VS Code to refresh all connections" -ForegroundColor Gray
 
 Write-Host "`nTo run this diagnostic again:" -ForegroundColor Cyan
-Write-Host "   .\fix_mysql_connections.ps1" -ForegroundColor Gray
+Write-Host "   .\scripts\fix_mysql_connections.ps1" -ForegroundColor Gray
 
 Write-Host "`n"

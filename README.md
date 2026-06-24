@@ -119,6 +119,7 @@ Bentley Budget Bot is a comprehensive financial management platform that combine
 
 ```text
 BentleyBudgetBot/
+├── archive/                      # Archived legacy artifacts and root cleanup history
 ├── api/                          # Vercel and service API entrypoints
 ├── config/                       # Shared configuration and secrets templates
 │   ├── database/

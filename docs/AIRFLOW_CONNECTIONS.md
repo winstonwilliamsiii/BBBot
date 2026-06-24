@@ -73,7 +73,7 @@ If you run Docker Engine directly inside WSL2 (instead of relying on Docker Desk
 ### Supported scripts
 
 - `start_mysql_docker.ps1`
-- `fix_mysql_connections.ps1`
+- `scripts/fix_mysql_connections.ps1`
 
 Both scripts automatically route Docker and Compose commands through WSL when `BENTLEY_DOCKER_MODE=wsl` is set.
 

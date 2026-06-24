@@ -19,7 +19,7 @@ The project's `tests/` directory contains **30+ integration test scripts**, NOT 
 - `test_plaid_api.py` - Requires real Plaid credentials
 - `test_mysql_connection.py` - Expects running MySQL database
 - `test_all_sources.py` - Calls external APIs with API keys
-- `test_streamlit_secrets.py` - Uses Streamlit runtime
+- `scripts/test_streamlit_secrets.py` - Uses Streamlit runtime
 - ...and 25+ more similar files
 
 ### Why They Fail in CI

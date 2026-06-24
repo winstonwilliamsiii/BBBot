@@ -151,75 +151,75 @@ The value `"plaid_items"` is a **hardcoded collection name** that your app expec
 cd C:\Users\winst\BentleyBudgetBot
 
 # Create backup folder
-mkdir .archive\outdated_$(Get-Date -Format 'yyyyMMdd')
+mkdir archive\.archive\outdated_$(Get-Date -Format 'yyyyMMdd')
 
 # Move outdated docs to archive (safer than delete)
-Move-Item CONNECTION_FIX_SUMMARY.md .archive\outdated_20260124\
-Move-Item CONNECTION_FIXES_QUICK_REFERENCE.md .archive\outdated_20260124\
-Move-Item CONNECTION_RESOLUTION_REPORT.md .archive\outdated_20260124\
-Move-Item COMPLETION_SUMMARY.txt .archive\outdated_20260124\
-Move-Item FIXES_APPLIED.md .archive\outdated_20260124\
-Move-Item FIX_STREAMLIT_SECRETS.md .archive\outdated_20260124\
-Move-Item IMPLEMENTATION_COMPLETE.md .archive\outdated_20260124\
-Move-Item IMPLEMENTATION_SUMMARY.md .archive\outdated_20260124\
-Move-Item IMPORT_PATH_FIXES.md .archive\outdated_20260124\
-Move-Item LOCALHOST_VS_CLOUD_ISSUES.md .archive\outdated_20260124\
+Move-Item CONNECTION_FIX_SUMMARY.md archive\.archive\outdated_20260124\
+Move-Item CONNECTION_FIXES_QUICK_REFERENCE.md archive\.archive\outdated_20260124\
+Move-Item CONNECTION_RESOLUTION_REPORT.md archive\.archive\outdated_20260124\
+Move-Item COMPLETION_SUMMARY.txt archive\.archive\outdated_20260124\
+Move-Item FIXES_APPLIED.md archive\.archive\outdated_20260124\
+Move-Item FIX_STREAMLIT_SECRETS.md archive\.archive\outdated_20260124\
+Move-Item IMPLEMENTATION_COMPLETE.md archive\.archive\outdated_20260124\
+Move-Item IMPLEMENTATION_SUMMARY.md archive\.archive\outdated_20260124\
+Move-Item IMPORT_PATH_FIXES.md archive\.archive\outdated_20260124\
+Move-Item LOCALHOST_VS_CLOUD_ISSUES.md archive\.archive\outdated_20260124\
 
 # Plaid outdated files
-Move-Item PLAID_BACKEND_STARTUP_GUIDE.md .archive\outdated_20260124\
-Move-Item PLAID_BUTTON_TECHNICAL_ANALYSIS.md .archive\outdated_20260124\
-Move-Item PLAID_CREDENTIALS_FIX.md .archive\outdated_20260124\
-Move-Item PLAID_ERROR_RESOLUTION.md .archive\outdated_20260124\
-Move-Item PLAID_ERROR_SOLUTION.md .archive\outdated_20260124\
-Move-Item PLAID_FIX_SUMMARY.md .archive\outdated_20260124\
-Move-Item PLAID_LINK_INITIALIZATION_FIX.md .archive\outdated_20260124\
-Move-Item PLAID_QUICK_FIX.txt .archive\outdated_20260124\
-Move-Item PLAID_STATUS_REPORT.md .archive\outdated_20260124\
-Move-Item PLAID_WORK_COMPLETED.md .archive\outdated_20260124\
-Move-Item TODAY_PLAID_FIX_SUMMARY.md .archive\outdated_20260124\
+Move-Item PLAID_BACKEND_STARTUP_GUIDE.md archive\.archive\outdated_20260124\
+Move-Item PLAID_BUTTON_TECHNICAL_ANALYSIS.md archive\.archive\outdated_20260124\
+Move-Item PLAID_CREDENTIALS_FIX.md archive\.archive\outdated_20260124\
+Move-Item PLAID_ERROR_RESOLUTION.md archive\.archive\outdated_20260124\
+Move-Item PLAID_ERROR_SOLUTION.md archive\.archive\outdated_20260124\
+Move-Item PLAID_FIX_SUMMARY.md archive\.archive\outdated_20260124\
+Move-Item PLAID_LINK_INITIALIZATION_FIX.md archive\.archive\outdated_20260124\
+Move-Item PLAID_QUICK_FIX.txt archive\.archive\outdated_20260124\
+Move-Item PLAID_STATUS_REPORT.md archive\.archive\outdated_20260124\
+Move-Item PLAID_WORK_COMPLETED.md archive\.archive\outdated_20260124\
+Move-Item TODAY_PLAID_FIX_SUMMARY.md archive\.archive\outdated_20260124\
 
 # RBAC duplicates
-Move-Item RBAC_COMPLETE_SUMMARY.md .archive\outdated_20260124\
-Move-Item RBAC_IMPLEMENTATION_SUMMARY.md .archive\outdated_20260124\
+Move-Item RBAC_COMPLETE_SUMMARY.md archive\.archive\outdated_20260124\
+Move-Item RBAC_IMPLEMENTATION_SUMMARY.md archive\.archive\outdated_20260124\
 
 # Economic data completed checklists
-Move-Item ECONOMIC_DATA_IMPLEMENTATION_CHECKLIST.md .archive\outdated_20260124\
-Move-Item ECONOMIC_DATA_SETUP_COMPLETE.md .archive\outdated_20260124\
+Move-Item ECONOMIC_DATA_IMPLEMENTATION_CHECKLIST.md archive\.archive\outdated_20260124\
+Move-Item ECONOMIC_DATA_SETUP_COMPLETE.md archive\.archive\outdated_20260124\
 
 # Other outdated
-Move-Item WORK_COMPLETION_SUMMARY.md .archive\outdated_20260124\
-Move-Item WHAT_WAS_DELIVERED.md .archive\outdated_20260124\
-Move-Item STREAMLIT_CLOUD_FIX.md .archive\outdated_20260124\
-Move-Item STREAMLIT_CLOUD_REQUIREMENTS_FIX.md .archive\outdated_20260124\
+Move-Item WORK_COMPLETION_SUMMARY.md archive\.archive\outdated_20260124\
+Move-Item WHAT_WAS_DELIVERED.md archive\.archive\outdated_20260124\
+Move-Item STREAMLIT_CLOUD_FIX.md archive\.archive\outdated_20260124\
+Move-Item STREAMLIT_CLOUD_REQUIREMENTS_FIX.md archive\.archive\outdated_20260124\
 
 # Test files
-Move-Item test_economic_integration.py .archive\outdated_20260124\
-Move-Item test_local_fixes.py .archive\outdated_20260124\
-Move-Item test_plaid_credentials.py .archive\outdated_20260124\
-Move-Item test_plaid_link_init.py .archive\outdated_20260124\
-Move-Item test_plaid_streamlit.py .archive\outdated_20260124\
-Move-Item test_strategy_abstraction.py .archive\outdated_20260124\
+Move-Item test_economic_integration.py archive\.archive\outdated_20260124\
+Move-Item test_local_fixes.py archive\.archive\outdated_20260124\
+Move-Item test_plaid_credentials.py archive\.archive\outdated_20260124\
+Move-Item test_plaid_link_init.py archive\.archive\outdated_20260124\
+Move-Item test_plaid_streamlit.py archive\.archive\outdated_20260124\
+Move-Item test_strategy_abstraction.py archive\.archive\outdated_20260124\
 
 # Diagnostic scripts
-Move-Item diagnose_integration_errors.py .archive\outdated_20260124\
-Move-Item diagnose_plaid.py .archive\outdated_20260124\
-Move-Item diagnose_plaid_env.py .archive\outdated_20260124\
-Move-Item verify_env_loading.py .archive\outdated_20260124\
-Move-Item verify_mysql_status.py .archive\outdated_20260124\
-Move-Item update_plaid_credentials.py .archive\outdated_20260124\
+Move-Item diagnose_integration_errors.py archive\.archive\outdated_20260124\
+Move-Item diagnose_plaid.py archive\.archive\outdated_20260124\
+Move-Item diagnose_plaid_env.py archive\.archive\outdated_20260124\
+Move-Item verify_env_loading.py archive\.archive\outdated_20260124\
+Move-Item verify_mysql_status.py archive\.archive\outdated_20260124\
+Move-Item update_plaid_credentials.py archive\.archive\outdated_20260124\
 
 # HTML/Text files
-Move-Item test_plaid_link.html .archive\outdated_20260124\
-Move-Item diagnostic_output.txt .archive\outdated_20260124\
-Move-Item dialog_transcript.txt .archive\outdated_20260124\
+Move-Item test_plaid_link.html archive\.archive\outdated_20260124\
+Move-Item diagnostic_output.txt archive\.archive\outdated_20260124\
+Move-Item dialog_transcript.txt archive\.archive\outdated_20260124\
 
 # Tests folder cleanup
-Move-Item tests\test_crypto_plaid_fix.py .archive\outdated_20260124\
-Move-Item tests\test_dual_mysql_connections.py .archive\outdated_20260124\
-Move-Item tests\test_rbac_fix.py .archive\outdated_20260124\
-Move-Item tests\test_streamlit_env.py .archive\outdated_20260124\
+Move-Item tests\test_crypto_plaid_fix.py archive\.archive\outdated_20260124\
+Move-Item tests\test_dual_mysql_connections.py archive\.archive\outdated_20260124\
+Move-Item tests\test_rbac_fix.py archive\.archive\outdated_20260124\
+Move-Item tests\test_streamlit_env.py archive\.archive\outdated_20260124\
 
-Write-Host "✅ All outdated files moved to .archive\outdated_20260124\"
+Write-Host "✅ All outdated files moved to archive\.archive\outdated_20260124\"
 Write-Host "Review the archive before permanent deletion"
 ```
 

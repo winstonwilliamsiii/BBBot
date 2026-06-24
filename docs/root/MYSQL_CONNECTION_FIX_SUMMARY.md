@@ -14,7 +14,7 @@
 ## ✅ Solutions Implemented
 
 ### 1. **Created Diagnostic & Repair Script**
-   - **File**: `fix_mysql_connections.ps1`
+  - **File**: `scripts/fix_mysql_connections.ps1`
    - **Features**:
      - Auto-starts Docker if not running
      - Kills stale connections (idle > 1 hour)
@@ -92,7 +92,7 @@
 ### Regular Use
 ```powershell
 # Run diagnostic & repair
-.\fix_mysql_connections.ps1
+.\scripts\fix_mysql_connections.ps1
 
 # Start MySQL if stopped
 .\start_mysql_docker.ps1
@@ -161,7 +161,7 @@ docker exec bentley-mysql mysql -uroot -proot -e "SHOW PROCESSLIST;"
 ## 📚 Related Files
 
 - **Scripts**:
-  - `fix_mysql_connections.ps1` - Diagnostic & repair tool
+  - `scripts/fix_mysql_connections.ps1` - Diagnostic & repair tool
   - `start_mysql_docker.ps1` - Auto-start Docker & MySQL
   
 - **Configuration**:
@@ -185,7 +185,7 @@ The issue was caused by stale connections and configuration problems. The diagno
 **Next Steps:**
 1. Restart VS Code to refresh connections
 2. Test connecting to any database from SQLTools
-3. Run `.\fix_mysql_connections.ps1` anytime you have connection issues
+3. Run `\.\scripts\fix_mysql_connections.ps1` anytime you have connection issues
 
 ---
 

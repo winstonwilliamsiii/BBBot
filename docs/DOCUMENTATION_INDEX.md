@@ -73,7 +73,7 @@ CLEANUP_PLAN.md                     ← File cleanup plan
 test_production_integrations.py    ← Integration tests
 ```
 
-### Archive (.archive/outdated_20260124/)
+### Archive (archive/.archive/outdated_20260124/)
 ```
 📦 44 outdated files archived on 2026-01-24:
    - Old fix summaries (CONNECTION_FIX_SUMMARY.md, etc.)

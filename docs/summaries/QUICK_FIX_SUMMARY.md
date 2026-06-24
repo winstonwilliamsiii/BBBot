@@ -80,7 +80,7 @@ Your paper trading works. For production, get `AK` keys from Alpaca dashboard.
 
 | File | Purpose |
 |------|---------|
-| `diagnose_credentials.py` | Shows credential status |
+| `scripts/diagnose_credentials.py` | Shows credential status |
 | `fix_credentials.py` | Interactive credential updater |
 | `test_plaid_direct.py` | Tests Plaid API (proven working) |
 | `verify_credentials.py` | Streamlit dashboard to test both |

@@ -92,7 +92,7 @@ python test_plaid_direct.py
 # ✅ Result: SUCCESS! Plaid credentials work
 
 # Test 2: Test with Streamlit secrets loading
-streamlit run test_streamlit_secrets.py
+streamlit run scripts/test_streamlit_secrets.py
 # This will verify nested secrets.toml structure
 
 # Test 3: Full integration test
@@ -166,10 +166,10 @@ python tests/test_alpaca_connection.py
 
 | Tool | Purpose |
 |------|---------|
-| `diagnose_credentials.py` | Check all credential status |
+| `scripts/diagnose_credentials.py` | Check all credential status |
 | `fix_credentials.py` | Interactive credential update |
 | `test_plaid_direct.py` | Test Plaid API directly |
-| `test_streamlit_secrets.py` | Test Streamlit secrets loading |
+| `scripts/test_streamlit_secrets.py` | Test Streamlit secrets loading |
 | `FIX_PLAID_AND_ALPACA.md` | Full troubleshooting guide |
 
 ---

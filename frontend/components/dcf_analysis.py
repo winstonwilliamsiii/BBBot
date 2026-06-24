@@ -104,6 +104,7 @@ DEFAULT_PERP_GROWTH = 0.02  # 2% terminal growth
 DEFAULT_MARGIN_OF_SAFETY = 0.15  # 15% buffer for "undervalued" flag
 
 DCF_REQUIRED_TABLES = ("fundamentals_annual", "prices_latest")
+TRANSIENT_MYSQL_ERRORS = {2006, 2013, 2055}
 
 
 # ---------- DB LAYER ----------
@@ -629,26 +630,45 @@ def fetch_historical_fundamentals(
         ORDER BY fiscal_year DESC
         LIMIT %s
     """
-    
-    try:
-        df = pd.read_sql(query, conn, params=(ticker, min_years))
-        if df.empty:
+
+    def _load_df() -> pd.DataFrame:
+        conn.ping(reconnect=True, attempts=2, delay=0)
+        data = pd.read_sql(query, conn, params=(ticker, min_years))
+        if data.empty:
             inserted = _fetch_and_store_missing_fundamentals(
                 ticker=ticker,
                 conn=conn,
                 min_years=min_years,
             )
             if inserted > 0:
-                df = pd.read_sql(query, conn, params=(ticker, min_years))
+                conn.ping(reconnect=True, attempts=2, delay=0)
+                data = pd.read_sql(query, conn, params=(ticker, min_years))
+        return data
+    
+    try:
+        df = _load_df()
 
         if df.empty:
             raise ValueError(
                 f"No fundamentals found for {ticker}. "
                 "API backfill from Alpha Vantage/yfinance also returned no usable annual cash flow data."
             )
-        
+
         # Sort oldest to newest for analysis
         return df.sort_values("fiscal_year")
+    except mysql.connector.Error as e:
+        if getattr(e, "errno", None) in TRANSIENT_MYSQL_ERRORS:
+            logger.warning("Transient MySQL error for %s fundamentals; retrying once: %s", ticker, e)
+            df = _load_df()
+            if df.empty:
+                raise ValueError(
+                    f"No fundamentals found for {ticker}. "
+                    "API backfill from Alpha Vantage/yfinance also returned no usable annual cash flow data."
+                )
+            return df.sort_values("fiscal_year")
+        logger.error(f"Error fetching fundamentals for {ticker}: {e}")
+        raise
+
     except Exception as e:
         logger.error(f"Error fetching fundamentals for {ticker}: {e}")
         raise
@@ -683,6 +703,7 @@ def fetch_current_price(ticker: str, conn) -> float:
     """
     
     try:
+        conn.ping(reconnect=True, attempts=2, delay=0)
         cursor = conn.cursor()
         cursor.execute(query, (ticker,))
         row = cursor.fetchone()
@@ -703,6 +724,18 @@ def fetch_current_price(ticker: str, conn) -> float:
             )
         
         return float(row[0])
+    except mysql.connector.Error as e:
+        if getattr(e, "errno", None) in TRANSIENT_MYSQL_ERRORS:
+            logger.warning("Transient MySQL error for %s price; retrying once: %s", ticker, e)
+            conn.ping(reconnect=True, attempts=2, delay=0)
+            cursor = conn.cursor()
+            cursor.execute(query, (ticker,))
+            row = cursor.fetchone()
+            cursor.close()
+            if row:
+                return float(row[0])
+        logger.error(f"Error fetching price for {ticker}: {e}")
+        raise
     except Exception as e:
         logger.error(f"Error fetching price for {ticker}: {e}")
         raise

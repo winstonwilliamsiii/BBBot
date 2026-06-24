@@ -28,6 +28,10 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 
+TRANSIENT_MYSQL_ERRORS = {2006, 2013, 2055}
+MAX_QUERY_RETRIES = 2
+
+
 def get_secret(key: str, default: str = None) -> str:
     """
     Get a secret value from Streamlit secrets (cloud) or environment variables (local).
@@ -64,8 +68,8 @@ class BudgetAnalyzer:
         host = get_secret('BUDGET_MYSQL_HOST', get_secret('MYSQL_HOST', get_secret('DB_HOST', '127.0.0.1')))
         is_railway = any(x in host for x in ('railway', 'nozomi'))
         
-        # Smart default port: Railway uses 54537, local uses 3307
-        default_port = '54537' if is_railway else '3307'
+        # Smart default port: Railway uses 54537, local uses 3306
+        default_port = '54537' if is_railway else '3306'
         
         self.db_config = {
             'host': host,
@@ -74,7 +78,9 @@ class BudgetAnalyzer:
             'password': get_secret('BUDGET_MYSQL_PASSWORD', get_secret('MYSQL_PASSWORD', get_secret('DB_PASSWORD', ''))),
             'database': get_secret('BUDGET_MYSQL_DATABASE', get_secret('MYSQL_DATABASE', get_secret('DB_NAME', 'mansa_bot' if is_railway else 'mydb'))),
             'charset': 'utf8mb4',
-            'collation': 'utf8mb4_unicode_ci'
+            'collation': 'utf8mb4_unicode_ci',
+            'connection_timeout': 10,
+            'autocommit': True,
         }
         
         # DEBUG: Show what port is being used
@@ -86,15 +92,12 @@ class BudgetAnalyzer:
         try:
             for attempt in range(2):
                 try:
-                    conn = mysql.connector.connect(
-                        **self.db_config,
-                        connection_timeout=10,
-                    )
+                    conn = mysql.connector.connect(**self.db_config)
                     conn.ping(reconnect=True, attempts=1, delay=0)
                     return conn
                 except mysql.connector.Error as err:
                     last_error = err
-                    if getattr(err, 'errno', None) in (2006, 2013) and attempt == 0:
+                    if self._is_transient_disconnect(err) and attempt == 0:
                         continue
                     break
 
@@ -168,6 +171,40 @@ class BudgetAnalyzer:
         except Exception as err:
             st.error(f"❌ Database connection error: {err}")
             return None
+
+    @staticmethod
+    def _is_transient_disconnect(err: Exception) -> bool:
+        """Detect MySQL transient disconnect errors that are safe to retry."""
+        return getattr(err, 'errno', None) in TRANSIENT_MYSQL_ERRORS
+
+    def _execute_dataframe_query(self, query: str, params: Optional[List] = None) -> pd.DataFrame:
+        """Execute a read query with reconnect+retry for transient MySQL disconnects."""
+        params = params or []
+        last_error: Optional[Exception] = None
+
+        for attempt in range(MAX_QUERY_RETRIES):
+            conn = self._get_connection()
+            if not conn:
+                return pd.DataFrame()
+
+            try:
+                conn.ping(reconnect=True, attempts=1, delay=0)
+                return pd.read_sql(query, conn, params=params)
+            except mysql.connector.Error as err:
+                last_error = err
+                if self._is_transient_disconnect(err) and attempt < (MAX_QUERY_RETRIES - 1):
+                    continue
+                st.error(f"Database query failed: {err}")
+                return pd.DataFrame()
+            except Exception as err:
+                st.error(f"Database query failed: {err}")
+                return pd.DataFrame()
+            finally:
+                conn.close()
+
+        if last_error is not None:
+            st.error(f"Database query failed after retries: {last_error}")
+        return pd.DataFrame()
     
     # ==========================================================================
     # Transaction Fetching
@@ -188,10 +225,6 @@ class BudgetAnalyzer:
         Returns:
             DataFrame with transactions
         """
-        conn = _self._get_connection()
-        if not conn:
-            return pd.DataFrame()
-        
         try:
             query = """
                 SELECT 
@@ -227,8 +260,8 @@ class BudgetAnalyzer:
                 params.append(category)
             
             query += " ORDER BY t.date DESC"
-            
-            df = pd.read_sql(query, conn, params=params)
+
+            df = _self._execute_dataframe_query(query, params)
             
             # Convert date to datetime
             if not df.empty:
@@ -244,8 +277,6 @@ class BudgetAnalyzer:
         except Exception as e:
             st.error(f"Error fetching transactions: {e}")
             return pd.DataFrame()
-        finally:
-            conn.close()
     
     # ==========================================================================
     # Cash Flow Calculations
@@ -379,10 +410,6 @@ class BudgetAnalyzer:
         Returns:
             DataFrame with budget, actual, variance, status
         """
-        conn = self._get_connection()
-        if not conn:
-            return pd.DataFrame()
-        
         if month is None:
             month = datetime.now().strftime('%Y-%m')
         
@@ -414,14 +441,11 @@ class BudgetAnalyzer:
                 ORDER BY bt.actual DESC
             """
             
-            df = pd.read_sql(query, conn, params=[user_id, month_start])
-            return df
+            return self._execute_dataframe_query(query, [user_id, month_start])
             
         except Exception as e:
             st.error(f"Error fetching budget status: {e}")
             return pd.DataFrame()
-        finally:
-            conn.close()
     
     def update_budget_tracking(self, user_id: int, month: str = None):
         """
@@ -544,10 +568,6 @@ class BudgetAnalyzer:
         Returns:
             DataFrame with monthly income, expenses, net_flow
         """
-        conn = self._get_connection()
-        if not conn:
-            return pd.DataFrame()
-        
         try:
             query = """
                 SELECT 
@@ -562,7 +582,9 @@ class BudgetAnalyzer:
                 LIMIT %s
             """
             
-            df = pd.read_sql(query, conn, params=[user_id, months])
+            df = self._execute_dataframe_query(query, [user_id, months])
+            if df.empty:
+                return pd.DataFrame()
             
             # Reverse to chronological order
             df = df.iloc[::-1].reset_index(drop=True)
@@ -572,8 +594,6 @@ class BudgetAnalyzer:
         except Exception as e:
             st.error(f"Error fetching monthly trends: {e}")
             return pd.DataFrame()
-        finally:
-            conn.close()
     
     # ==========================================================================
     # Plaid Integration Helpers

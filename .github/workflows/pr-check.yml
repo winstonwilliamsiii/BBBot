@@ -50,11 +50,13 @@ jobs:
       
       - name: Security scan for secrets
         run: |
-          # Check for hardcoded real credential patterns (not env var references or examples)
-          if grep -rEn "(APCA-API-KEY-ID|APCA-API-SECRET-KEY)\s*=\s*['\"][A-Za-z0-9]{10,}" . \
+          # Check for hardcoded real Alpaca credential values across all common file types.
+          # Pattern matches: key = "VALUE", key: VALUE, key = VALUE (quoted or unquoted, 10+ chars).
+          if grep -rEn "(APCA-API-KEY-ID|APCA-API-SECRET-KEY)\s*[=:]\s*['\"`]?[A-Za-z0-9_\-]{10,}['\"`]?" . \
             --include="*.py" --include="*.js" --include="*.ts" \
+            --include="*.yml" --include="*.yaml" --include="*.json" \
             --exclude-dir=".git" --exclude-dir="__pycache__" \
-            --exclude="*.md" --exclude="*.example"; then
+            --exclude="*.md" --exclude="*.example" --exclude="*.template"; then
             echo "⚠️ WARNING: Potential hardcoded Alpaca credentials detected!"
             echo "Please verify these are not real credentials."
             exit 1

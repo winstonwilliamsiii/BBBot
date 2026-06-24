@@ -11,16 +11,19 @@ load_dotenv()
 # MySQL Configuration from .env (Docker container on port 3307)
 MYSQL_CONFIG = {
     'host': os.getenv('MYSQL_HOST', '127.0.0.1'),
-    'port': int(os.getenv('MYSQL_PORT', 3307)),
+    'port': int(os.getenv('MYSQL_PORT', '3306')),
     'user': os.getenv('MYSQL_USER', 'root'),
     'password': os.getenv('MYSQL_PASSWORD', 'root'),
-    'database': os.getenv('MYSQL_DATABASE', 'mansa_bot')
+    'database': os.getenv('MYSQL_DATABASE', 'mansa_bot'),
+    'connection_timeout': 10,
+    'autocommit': True,
 }
 
 def get_mysql_connection():
     """Create MySQL database connection"""
     try:
         conn = mysql.connector.connect(**MYSQL_CONFIG)
+        conn.ping(reconnect=True, attempts=1, delay=0)
         return conn
     except mysql.connector.Error as e:
         print(f"MySQL Connection Error: {e}")

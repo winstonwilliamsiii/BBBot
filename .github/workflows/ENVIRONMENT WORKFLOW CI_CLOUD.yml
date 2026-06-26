@@ -26,9 +26,9 @@ jobs:
           
       - name: Run tests
         run: |
-          if [ -f pytest.ini ]; then
+          if [ -f config/pytest.ini ]; then
             pip install pytest
-            pytest || echo "Tests completed"
+            pytest -c config/pytest.ini || echo "Tests completed"
           fi
           
       - name: Deploy to Streamlit Cloud

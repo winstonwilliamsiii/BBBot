@@ -36,4 +36,4 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=venv,.venv,.venv-dogon,env,.env,.git,__pycache__,.pytest_cache,.mypy_cache,.tox,dist,build,*.egg-info,node_modules,.github,sites,.vscode,.conda,src/services/appwrite,integrations,logs,bbbot1_pipeline,archive/disabled_pages,pages/#RIGEL*.py
     - name: Test with pytest
       run: |
-        pytest
+        pytest -c config/pytest.ini

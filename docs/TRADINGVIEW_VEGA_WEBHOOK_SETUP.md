@@ -106,24 +106,24 @@ Control Center check for `Bentley-Vega`.
 Create the task:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action Create
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_vega_task.ps1 -Action Create
 ```
 
 List the task:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action List
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_vega_task.ps1 -Action List
 ```
 
 Test the task:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action Test
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_vega_task.ps1 -Action Test
 ```
 
 Execution path:
 
-- `setup_vega_task.ps1` registers the scheduled task.
+- `scripts/setup_vega_task.ps1` registers the scheduled task.
 - `run_vega.ps1` performs the 9:30 launch sequence.
 - `start_bot_mode.ps1 -Bot Vega -Mode ON -Broker IBKR` checks IBKR connectivity.
 - `scripts/vega_bot.py` runs the dedicated Vega_Bot fundamentals runtime.

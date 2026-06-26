@@ -443,7 +443,7 @@ BentleyBudgetBot/
     ├── docker-compose.yml        # Docker orchestration
     ├── Dockerfile                # Container definition
     ├── .github/workflows/        # CI/CD pipelines
-    └── railway.json              # Railway deployment
+   └── railway/railway.json      # Railway deployment
 ```
 
 ---

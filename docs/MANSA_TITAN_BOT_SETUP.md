@@ -76,7 +76,7 @@ bots:
 Register the task expected by Admin Control Center:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_vega_task.ps1 -Action Create
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_vega_task.ps1 -Action Create
 ```
 
 This creates the weekday `Bentley-Vega` task and runs:

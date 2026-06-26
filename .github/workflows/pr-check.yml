@@ -41,7 +41,7 @@ jobs:
           ENVIRONMENT: staging
         run: |
           if [ -d "tests" ]; then
-            pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+            pytest -c config/pytest.ini tests/ -v --cov=. --cov-report=xml --cov-report=term
           fi
       
       - name: Check code quality

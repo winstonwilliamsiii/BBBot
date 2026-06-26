@@ -65,7 +65,7 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest --tb=short --verbose 2>&1 || true
+        pytest -c config/pytest.ini --tb=short --verbose 2>&1 || true
     
     - name: Upload coverage reports
       if: always()

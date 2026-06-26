@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 # Add project root and src directory to sys.path
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent
 src_dir = project_root / "src"
 
 if str(project_root) not in sys.path:

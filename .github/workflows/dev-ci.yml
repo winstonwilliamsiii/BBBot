@@ -46,7 +46,7 @@ jobs:
         run: |
           # Run pytest if tests exist
           if [ -d "tests" ]; then
-            pytest tests/ -v --cov=. --cov-report=term-missing
+            pytest -c config/pytest.ini tests/ -v --cov=. --cov-report=term-missing
           else
             echo "No tests directory found, skipping tests"
           fi

@@ -58,7 +58,7 @@ jobs:
           DB_STAGING_USER: ${{ secrets.DB_STAGING_USER }}
           DB_STAGING_PASSWORD: ${{ secrets.DB_STAGING_PASSWORD }}
         run: |
-          python -m pytest tests/integration/ -v
+          python -m pytest -c config/pytest.ini tests/integration/ -v
       
       - name: Trigger Appwrite Function for Gmail Alert (Success)
         if: success()

@@ -41,7 +41,7 @@ jobs:
     
     - name: Run full test suite
       run: |
-        pytest --tb=short --verbose --cov=. || exit 1
+          pytest -c config/pytest.ini --tb=short --verbose --cov=. || exit 1
     
     - name: Lint check
       run: |

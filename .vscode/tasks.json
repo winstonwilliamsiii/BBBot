@@ -357,7 +357,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"${workspaceFolder}/scripts/setup_market_open_tasks.ps1",
 				"-Action",
 				"Create",
 				"-MorningTime",
@@ -380,7 +380,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"${workspaceFolder}/scripts/setup_market_open_tasks.ps1",
 				"-Action",
 				"List"
 			],
@@ -399,7 +399,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"${workspaceFolder}/scripts/setup_market_open_tasks.ps1",
 				"-Action",
 				"Test"
 			],
@@ -418,7 +418,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"${workspaceFolder}/scripts/setup_market_open_tasks.ps1",
 				"-Action",
 				"Delete"
 			],
@@ -437,7 +437,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_vega_task.ps1",
+				"${workspaceFolder}/scripts/setup_vega_task.ps1",
 				"-Action",
 				"Create"
 			],
@@ -456,7 +456,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_vega_task.ps1",
+				"${workspaceFolder}/scripts/setup_vega_task.ps1",
 				"-Action",
 				"List"
 			],
@@ -475,7 +475,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_vega_task.ps1",
+				"${workspaceFolder}/scripts/setup_vega_task.ps1",
 				"-Action",
 				"Test"
 			],
@@ -494,7 +494,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-File",
-				"${workspaceFolder}/setup_vega_task.ps1",
+				"${workspaceFolder}/scripts/setup_vega_task.ps1",
 				"-Action",
 				"Delete"
 			],

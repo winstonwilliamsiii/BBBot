@@ -119,7 +119,7 @@ jobs:
           DB_PROD_USER: ${{ secrets.DB_PROD_USER }}
           DB_PROD_PASSWORD: ${{ secrets.DB_PROD_PASSWORD }}
         run: |
-          python -m pytest tests/smoke/ -v
+          python -m pytest -c config/pytest.ini tests/smoke/ -v
       
       - name: Send Production Migration Email
         if: always()

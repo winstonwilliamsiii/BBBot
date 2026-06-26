@@ -12,9 +12,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir "fastapi[standard]>=0.115.0" "uvicorn[standard]>=0.30.0"
+RUN pip install --no-cache-dir \
+    "fastapi[standard]>=0.115.0" \
+    "uvicorn[standard]>=0.30.0" \
+    "requests>=2.31.0" \
+    "python-dotenv>=1.0.0"
 
 # ── Application code ─────────────────────────────────────────────────────────
 COPY scripts/mt5_rest.py ./scripts/

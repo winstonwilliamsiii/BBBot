@@ -327,4 +327,11 @@ def execute_trade(req: TradeRequest):
         ib = connect_ibkr()
         contract = ib_insync.Stock(req.ticker, 'SMART', 'USD')
         if req.side.lower() == "buy":
-            order = ib_insync.MarketOrder("BUY"
+            order = ib_insync.MarketOrder("BUY", req.qty)
+        else:
+            order = ib_insync.MarketOrder("SELL", req.qty)
+
+        trade = ib.placeOrder(contract, order)
+        return {"status": "submitted", "broker": "ibkr", "order": str(trade)}
+
+    return {"status": "error", "message": "Unsupported broker"}

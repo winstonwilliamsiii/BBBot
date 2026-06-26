@@ -42,7 +42,7 @@ logger = logging.getLogger("altair_ftmo_paper")
 DEFAULT_SYMBOL = None
 DEFAULT_ACTION = "BUY"
 DEFAULT_VOLUME = 100  # shares for paper trading
-BROKER = "alpaca"  # Alpaca for paper trading
+DEFAULT_BROKER = "auto"
 FUND_NAME = "Mansa AI Fund"
 STRATEGY_NAME = "News Trading"
 
@@ -183,6 +183,7 @@ def notify_trade_execution(
 def run_altair_paper_trade(
     symbol: Optional[str] = DEFAULT_SYMBOL,
     headlines: Optional[list[str]] = None,
+    broker: str = DEFAULT_BROKER,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -269,8 +270,14 @@ def run_altair_paper_trade(
 
         # Override dry_run based on environment if not explicitly disabled
         effective_dry_run = dry_run or not bot.config.enable_trading
+        requested_broker = (
+            str(broker or "").strip().lower()
+            or str(os.getenv("ALTAIR_BROKER", "")).strip().lower()
+            or str(getattr(bot.config, "primary_broker", "auto")).strip().lower()
+            or DEFAULT_BROKER
+        )
         trade_result = bot.execute_trade(
-            broker=BROKER,
+            broker=requested_broker,
             ticker=symbol,
             action=analysis["action"],
             qty=DEFAULT_VOLUME,
@@ -282,6 +289,7 @@ def run_altair_paper_trade(
         print(f"   Ticker: {trade_result.get('ticker')}")
         print(f"   Action: {trade_result.get('action')}")
         print(f"   Qty: {trade_result.get('qty')}")
+        print(f"   Requested Broker: {requested_broker}")
         print(f"   Status: {trade_result.get('status')}")
         print(f"   Order ID: {trade_result.get('order_id', 'N/A')}")
 
@@ -357,6 +365,12 @@ def main():
         default=None,
         help="Custom news headlines for sentiment analysis",
     )
+    parser.add_argument(
+        "--broker",
+        type=str,
+        default=DEFAULT_BROKER,
+        help="Broker route: auto|alpaca|ibkr|mt5|ftmo (default: auto)",
+    )
 
     args = parser.parse_args()
 
@@ -366,6 +380,7 @@ def main():
     result = run_altair_paper_trade(
         symbol=args.symbol.upper() if args.symbol else None,
         headlines=headlines,
+        broker=args.broker,
         dry_run=args.dry_run,
     )
 

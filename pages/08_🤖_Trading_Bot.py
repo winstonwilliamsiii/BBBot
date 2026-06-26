@@ -820,14 +820,13 @@ def load_recent_trades(days=7, refresh_token=None):
     if not DB_AVAILABLE:
         return pd.DataFrame()
 
-    query = f"""
-        SELECT ticker, action, shares, price, value, timestamp, status, strategy, trade_mode, source_table
-        FROM ({_trade_events_union_sql()}) unified
-        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
-        ORDER BY timestamp DESC
-    """
-
     try:
+        query = f"""
+            SELECT ticker, action, shares, price, value, timestamp, status, strategy, trade_mode, source_table
+            FROM ({_trade_events_union_sql()}) unified
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            ORDER BY timestamp DESC
+        """
         return pd.read_sql(query, engine, parse_dates=['timestamp'])
     except Exception as _e:
         import logging as _logging
@@ -840,24 +839,25 @@ def load_performance_metrics(days=30, refresh_token=None):
     """Load performance metrics"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
-    
-    query = f"""
-        SELECT
-            DATE(timestamp) AS date,
-            strategy,
-            COUNT(*) AS total_trades,
-            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY' THEN 1 ELSE 0 END) AS buy_trades,
-            SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_trades,
-            SUM(COALESCE(value, 0)) AS total_value
-        FROM ({_trade_events_union_sql()}) unified
-        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
-        GROUP BY DATE(timestamp), strategy
-        ORDER BY date DESC
-    """
-    
+
     try:
+        query = f"""
+            SELECT
+                DATE(timestamp) AS date,
+                strategy,
+                COUNT(*) AS total_trades,
+                SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'BUY' THEN 1 ELSE 0 END) AS buy_trades,
+                SUM(CASE WHEN UPPER(COALESCE(action, '')) = 'SELL' THEN 1 ELSE 0 END) AS sell_trades,
+                SUM(COALESCE(value, 0)) AS total_value
+            FROM ({_trade_events_union_sql()}) unified
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            GROUP BY DATE(timestamp), strategy
+            ORDER BY date DESC
+        """
         return pd.read_sql(query, engine, parse_dates=['date'])
-    except:
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).error("load_performance_metrics failed: %s", _e)
         return pd.DataFrame()
 
 
@@ -897,8 +897,22 @@ def load_active_signals():
         return df
     except Exception as _e:
         import logging as _logging
-        _logging.getLogger(__name__).error("load_recent_trades failed: %s", _e)
+        _logging.getLogger(__name__).error("load_active_signals failed: %s", _e)
         return pd.DataFrame()
+
+
+def _safe_load_or_default(loader, fallback, label: str):
+    """Run a data loader safely so a single SQL issue cannot crash tab rendering."""
+    try:
+        return loader()
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).error("%s failed: %s", label, exc)
+        st.warning(
+            f"{label} is temporarily unavailable due to a database query issue. "
+            "Showing fallback data so the page remains usable."
+        )
+        return fallback
 
 
 # ── Calendar & Analytics Helpers ─────────────────────────────────────────────
@@ -1807,8 +1821,16 @@ days_map = {
 selected_days = days_map[date_range]
 
 # Load trade / performance data before tabs so all tabs see fresh values
-trades_df = load_recent_trades(selected_days, refresh_token=_data_refresh_token)
-perf_df = load_performance_metrics(selected_days, refresh_token=_data_refresh_token)
+trades_df = _safe_load_or_default(
+    lambda: load_recent_trades(selected_days, refresh_token=_data_refresh_token),
+    pd.DataFrame(),
+    "Recent trades",
+)
+perf_df = _safe_load_or_default(
+    lambda: load_performance_metrics(selected_days, refresh_token=_data_refresh_token),
+    pd.DataFrame(),
+    "Performance metrics",
+)
 
 # Main dashboard
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -1846,18 +1868,37 @@ with tab1:
         )
 
     # ── Load data ──────────────────────────────────────────────────────────
-    _daily_pnl = load_daily_pnl(
-        cal_year,
-        cal_month,
-        _ov_trade_mode,
-        refresh_token=_data_refresh_token,
+    _daily_pnl = _safe_load_or_default(
+        lambda: load_daily_pnl(
+            cal_year,
+            cal_month,
+            _ov_trade_mode,
+            refresh_token=_data_refresh_token,
+        ),
+        {},
+        "Overview daily P&L",
     )
-    _ov = load_overview_metrics(
-        cal_year,
-        cal_month,
-        _daily_pnl,
-        _ov_trade_mode,
-        refresh_token=_data_refresh_token,
+    _ov = _safe_load_or_default(
+        lambda: load_overview_metrics(
+            cal_year,
+            cal_month,
+            _daily_pnl,
+            _ov_trade_mode,
+            refresh_token=_data_refresh_token,
+        ),
+        {
+            "avg_daily_pnl": 0.0,
+            "avg_win_hold": "N/A",
+            "avg_loss_hold": "N/A",
+            "monthly_pnl": 0.0,
+            "monthly_pnl_rate": 0.0,
+            "avg_gain": 0.0,
+            "biggest_win": 0.0,
+            "consec_losses": 0,
+            "best_day_label": "N/A",
+            "best_day_pnl": 0.0,
+        },
+        "Overview aggregate metrics",
     )
 
     _ov_mode_tag = (
@@ -2062,11 +2103,44 @@ with tab2:
             unsafe_allow_html=True,
         )
 
-    _analytics = load_bot_analytics(
-        bot_filter,
-        selected_days,
-        _perf_mode,
-        refresh_token=_data_refresh_token,
+    _analytics = _safe_load_or_default(
+        lambda: load_bot_analytics(
+            bot_filter,
+            selected_days,
+            _perf_mode,
+            refresh_token=_data_refresh_token,
+        ),
+        {
+            "bots": [
+                {
+                    "bot": bot_filter if bot_filter != "All Bots" else "No Data",
+                    "total_trades": 0,
+                    "win_trades": 0,
+                    "loss_trades": 0,
+                    "win_rate": 0.0,
+                    "avg_entry_price": 0.0,
+                    "avg_exit_price": 0.0,
+                    "avg_qty": 0.0,
+                    "entry_slippage_bps": 0.0,
+                    "exit_slippage_bps": 0.0,
+                    "total_slippage_bps": 0.0,
+                    "entry_fill_price": 0.0,
+                    "exit_fill_price": 0.0,
+                    "exit_limit_price": 0.0,
+                    "total_pnl": 0.0,
+                    "roi_pct": 0.0,
+                    "sharpe_ratio": 0.0,
+                    "best_trade": 0.0,
+                    "worst_trade": 0.0,
+                    "avg_pnl_per_trade": 0.0,
+                    "avg_entry_time": "N/A",
+                    "avg_exit_time": "N/A",
+                    "avg_hold_time": "N/A",
+                }
+            ],
+            "has_real_data": False,
+        },
+        "Bot analytics",
     )
     _bots = _analytics["bots"]
     if not _analytics.get("has_real_data"):
@@ -2449,7 +2523,11 @@ with tab3:
 
     st.markdown("---")
     st.markdown("### 🤖 Recent ML Trading Signals")
-    signals_df = load_active_signals()
+    signals_df = _safe_load_or_default(
+        load_active_signals,
+        pd.DataFrame(),
+        "Active signals",
+    )
 
     if not signals_df.empty:
         latest_timestamp = signals_df["timestamp"].max()

@@ -1,0 +1,42 @@
+{
+    "global_mode":  "paper",
+    "broker_modes":  {
+                         "alpaca":  "live",
+                         "mt5":  "paper",
+                         "ftmo":  "live",
+                         "axi":  "live",
+                         "ibkr":  "paper"
+                     },
+    "active_bots":  {
+                        "Titan":  true,
+                        "Vega":  true,
+                        "Draco":  false,
+                        "Altair":  false,
+                        "Procryon":  false,
+                        "Hydra":  true,
+                        "Triton":  false,
+                        "Dione":  false,
+                        "Dogon":  true,
+                        "Rigel":  true,
+                        "Orion":  true,
+                        "Rhea":  true,
+                        "Jupicita":  false,
+                        "Cygnus":  false
+                    },
+    "bot_broker_mapping":  {
+                               "Titan":  "alpaca",
+                               "Vega":  "ibkr",
+                               "Draco":  "alpaca",
+                               "Altair":  "alpaca",
+                               "Procryon":  "alpaca",
+                               "Hydra":  "alpaca",
+                               "Triton":  "alpaca",
+                               "Dione":  "ibkr",
+                               "Dogon":  "alpaca",
+                               "Rigel":  "ftmo",
+                               "Orion":  "alpaca",
+                               "Rhea":  "ibkr",
+                               "Jupicita":  "alpaca",
+                               "Cygnus":  "ibkr"
+                           }
+}

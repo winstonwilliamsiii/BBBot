@@ -6,9 +6,13 @@
 Write-Host "🚀 Starting Bentley Bot (PRODUCTION MODE)" -ForegroundColor Cyan
 Write-Host ""
 
-# Activate virtual environment
-Write-Host "📦 Activating virtual environment..." -ForegroundColor Yellow
-& .\.venv\Scripts\Activate.ps1
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$resolver = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
+$pythonExe = & $resolver -Service streamlit -RepoRoot $repoRoot -AllowLegacyFallback
+
+# Resolve virtual environment interpreter
+Write-Host "📦 Resolving Python environment..." -ForegroundColor Yellow
+Write-Host "   $pythonExe" -ForegroundColor Gray
 
 # Set encoding for Unicode emoji support
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -30,4 +34,4 @@ Write-Host "   Press Ctrl+C to stop" -ForegroundColor Gray
 Write-Host ""
 
 # Start Streamlit
-streamlit run streamlit_app.py --server.port=8501
+& $pythonExe -m streamlit run streamlit_app.py --server.port=8501

@@ -21,6 +21,10 @@ Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "   MT5 Paper Trading Server Setup" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
 
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$resolver = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
+$pythonExe = & $resolver -Service api -RepoRoot $repoRoot -AllowLegacyFallback
+
 # Step 1: Check if MT5 is running
 Write-Host "[1/5] Checking MetaTrader 5 status..." -ForegroundColor Yellow
 $mt5Process = Get-Process -Name "terminal64" -ErrorAction SilentlyContinue
@@ -37,7 +41,7 @@ if ($mt5Process) {
 
 # Step 2: Test MT5 connection
 Write-Host "`n[2/5] Testing MT5 connection..." -ForegroundColor Yellow
-$testResult = python test_mt5_connection.py 2>&1
+$testResult = & $pythonExe test_mt5_connection.py 2>&1
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  ✅ MT5 connected and logged in" -ForegroundColor Green
@@ -55,26 +59,16 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 # Step 3: Activate virtual environment
-Write-Host "`n[3/5] Activating Python environment..." -ForegroundColor Yellow
-$venvPath = ".\.venv\Scripts\Activate.ps1"
-
-if (Test-Path $venvPath) {
-    & $venvPath
-    Write-Host "  ✅ Virtual environment activated" -ForegroundColor Green
-} else {
-    Write-Host "  ❌ Virtual environment not found at .venv" -ForegroundColor Red
-    Write-Host "  Creating virtual environment..." -ForegroundColor Yellow
-    python -m venv .venv
-    & $venvPath
-}
+Write-Host "`n[3/5] Resolving Python environment..." -ForegroundColor Yellow
+Write-Host "  ✅ Using: $pythonExe" -ForegroundColor Green
 
 # Step 4: Install MetaTrader5 package if missing
 Write-Host "`n[4/5] Checking dependencies..." -ForegroundColor Yellow
-$mt5Installed = pip show MetaTrader5 2>$null
+$mt5Installed = & $pythonExe -m pip show MetaTrader5 2>$null
 
 if (-not $mt5Installed) {
     Write-Host "  📦 Installing MetaTrader5 package (Windows-only)..." -ForegroundColor Yellow
-    pip install -r requirements-mt5.txt --quiet
+    & $pythonExe -m pip install -r requirements-mt5.txt --quiet
     Write-Host "  ✅ MetaTrader5 package installed" -ForegroundColor Green
 } else {
     Write-Host "  ✅ MetaTrader5 package already installed" -ForegroundColor Green
@@ -108,7 +102,7 @@ Write-Host "========================================`n" -ForegroundColor Green
 
 # Start the server (mt5_rest.py in root directory)
 try {
-    python mt5_rest.py
+    & $pythonExe mt5_rest.py
 } catch {
     Write-Host "`n❌ Server failed to start: $_" -ForegroundColor Red
     Read-Host "Press Enter to exit"

@@ -43,11 +43,9 @@ Write-Host "`n5. Starting Streamlit (clean environment)..."
 Write-Host "   URL: http://localhost:8501"
 Write-Host "   Press Ctrl+C to stop`n"
 
-# Activate virtual environment if it exists
-$venv = ".\.venv\Scripts\Activate.ps1"
-if (Test-Path $venv) {
-    & $venv
-}
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$resolver = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
+$pythonExe = & $resolver -Service streamlit -RepoRoot $repoRoot -AllowLegacyFallback
 
 # Start Streamlit
-streamlit run streamlit_app.py
+& $pythonExe -m streamlit run streamlit_app.py

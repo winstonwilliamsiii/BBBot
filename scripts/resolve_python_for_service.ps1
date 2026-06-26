@@ -12,6 +12,8 @@ if (-not $RepoRoot) {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 }
 
+$externalVenvRoot = Join-Path $env:USERPROFILE ".venvs\BentleyBudgetBot"
+
 $preferredEnvByService = @{
     streamlit = ".venv-streamlit"
     api = ".venv-api"
@@ -26,21 +28,26 @@ $preferredEnvByService = @{
 $candidates = New-Object System.Collections.Generic.List[string]
 
 if ($preferredEnvByService.ContainsKey($Service)) {
-    $candidates.Add((Join-Path $RepoRoot ("{0}\\Scripts\\python.exe" -f $preferredEnvByService[$Service])))
+    $envName = $preferredEnvByService[$Service]
+    $candidates.Add((Join-Path $externalVenvRoot ("{0}\\Scripts\\python.exe" -f $envName)))
+    $candidates.Add((Join-Path $RepoRoot ("{0}\\Scripts\\python.exe" -f $envName)))
 }
 
 # Allow classical bots to use Altair env as secondary option.
 if ($Service -eq "classical-bots") {
+    $candidates.Add((Join-Path $externalVenvRoot ".venv-altair\\Scripts\\python.exe"))
     $candidates.Add((Join-Path $RepoRoot ".venv-altair\\Scripts\\python.exe"))
 }
 
 # Backward compatibility if an Altair-specific venv still exists.
 if ($Service -eq "altair") {
+    $candidates.Add((Join-Path $externalVenvRoot ".venv-altair\\Scripts\\python.exe"))
     $candidates.Add((Join-Path $RepoRoot ".venv-altair\\Scripts\\python.exe"))
 }
 
 # Keep Dogon isolated first, then allow shared bot env.
 if ($Service -eq "dogon") {
+    $candidates.Add((Join-Path $externalVenvRoot ".venv-bots\\Scripts\\python.exe"))
     $candidates.Add((Join-Path $RepoRoot ".venv-bots\\Scripts\\python.exe"))
 }
 

@@ -6,7 +6,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONIOENCODING = "utf-8"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$pythonExe = Join-Path $repoRoot ".venv-airflow\Scripts\python.exe"
+$externalPythonExe = Join-Path $env:USERPROFILE ".venvs\BentleyBudgetBot\.venv-airflow\Scripts\python.exe"
+$repoPythonExe = Join-Path $repoRoot ".venv-airflow\Scripts\python.exe"
+$pythonExe = if (Test-Path $externalPythonExe) { $externalPythonExe } else { $repoPythonExe }
 $wrapper = Join-Path $repoRoot "airflow\scripts\airflow_windows.py"
 
 if (-not (Test-Path $pythonExe)) {

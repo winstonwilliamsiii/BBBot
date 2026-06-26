@@ -7,17 +7,13 @@ Write-Host "Plaid Budget Integration Setup" -ForegroundColor Cyan
 Write-Host "=================================" -ForegroundColor Cyan
 Write-Host ""
 
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$resolver = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
+$pythonExe = & $resolver -Service streamlit -RepoRoot $repoRoot -AllowLegacyFallback
+
 # Check if virtual environment is activated
 if (-not $env:VIRTUAL_ENV) {
-    Write-Host "⚠️  Virtual environment not detected. Activating..." -ForegroundColor Yellow
-    if (Test-Path ".venv\Scripts\Activate.ps1") {
-        & .\.venv\Scripts\Activate.ps1
-        Write-Host "✅ Virtual environment activated" -ForegroundColor Green
-    } else {
-        Write-Host "❌ Virtual environment not found at .venv\" -ForegroundColor Red
-        Write-Host "   Run: python -m venv .venv" -ForegroundColor Yellow
-        exit 1
-    }
+    Write-Host "⚠️  Virtual environment not detected. Using resolved Python: $pythonExe" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -25,37 +21,37 @@ Write-Host "Step 1: Installing Python Dependencies" -ForegroundColor Cyan
 Write-Host "---------------------------------------" -ForegroundColor Cyan
 
 # Check if plaid-python is installed
-$plaidInstalled = pip list | Select-String "plaid-python"
+$plaidInstalled = & $pythonExe -m pip list | Select-String "plaid-python"
 if (-not $plaidInstalled) {
     Write-Host "📦 Installing plaid-python..." -ForegroundColor Yellow
-    pip install plaid-python
+    & $pythonExe -m pip install plaid-python
 } else {
     Write-Host "✅ plaid-python already installed" -ForegroundColor Green
 }
 
 # Check if cryptography is installed
-$cryptoInstalled = pip list | Select-String "cryptography"
+$cryptoInstalled = & $pythonExe -m pip list | Select-String "cryptography"
 if (-not $cryptoInstalled) {
     Write-Host "📦 Installing cryptography..." -ForegroundColor Yellow
-    pip install cryptography
+    & $pythonExe -m pip install cryptography
 } else {
     Write-Host "✅ cryptography already installed" -ForegroundColor Green
 }
 
 # Check if python-dateutil is installed
-$dateutilInstalled = pip list | Select-String "python-dateutil"
+$dateutilInstalled = & $pythonExe -m pip list | Select-String "python-dateutil"
 if (-not $dateutilInstalled) {
     Write-Host "📦 Installing python-dateutil..." -ForegroundColor Yellow
-    pip install python-dateutil
+    & $pythonExe -m pip install python-dateutil
 } else {
     Write-Host "✅ python-dateutil already installed" -ForegroundColor Green
 }
 
 # Check if plotly is installed
-$plotlyInstalled = pip list | Select-String "plotly"
+$plotlyInstalled = & $pythonExe -m pip list | Select-String "plotly"
 if (-not $plotlyInstalled) {
     Write-Host "📦 Installing plotly..." -ForegroundColor Yellow
-    pip install plotly
+    & $pythonExe -m pip install plotly
 } else {
     Write-Host "✅ plotly already installed" -ForegroundColor Green
 }

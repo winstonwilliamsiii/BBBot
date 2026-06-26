@@ -4,7 +4,9 @@ REM Uses the dedicated .venv-airflow environment at the repo root.
 
 set SCRIPT_DIR=%~dp0
 for %%I in ("%SCRIPT_DIR%..\..") do set REPO_ROOT=%%~fI
+set EXTERNAL_PYTHON_EXE=%USERPROFILE%\.venvs\BentleyBudgetBot\.venv-airflow\Scripts\python.exe
 set PYTHON_EXE=%REPO_ROOT%\.venv-airflow\Scripts\python.exe
+if exist "%EXTERNAL_PYTHON_EXE%" set PYTHON_EXE=%EXTERNAL_PYTHON_EXE%
 set WRAPPER=%REPO_ROOT%\airflow\scripts\airflow_windows.py
 
 if not exist "%PYTHON_EXE%" (

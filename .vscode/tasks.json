@@ -1,0 +1,1166 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "🚀 Start MySQL Docker Environment",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_mysql_docker.ps1"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": [],
+			"runOptions": {
+				"runOn": "folderOpen"
+			},
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			}
+		},
+		{
+			"label": "🐧 Start MySQL (WSL Docker Engine)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$env:BENTLEY_DOCKER_MODE='wsl'; if (-not $env:BENTLEY_WSL_DISTRO) { $env:BENTLEY_WSL_DISTRO='Ubuntu' }; & '${workspaceFolder}/start_mysql_docker.ps1'"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🧬 Verify MySQL Architecture",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"scripts/verify_mysql_architecture.py"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared",
+				"echo": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🚀 Start Bentley Full Stack",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/START_ALL_ENGINES.ps1"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			}
+		},
+		{
+			"label": "🚀 Start Bentley Full Stack (No Pull)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/START_ALL_ENGINES.ps1",
+				"-NoPull",
+				"-NoBuild"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			}
+		},
+		{
+			"label": "🛑 Stop MySQL Docker Containers",
+			"type": "shell",
+			"command": "docker stop bentley-mysql bentley-mysql-mlflow *> $null; Write-Host '✅ MySQL containers stopped' -ForegroundColor Green",
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🔄 Restart MySQL Docker Containers",
+			"type": "shell",
+			"command": "docker restart bentley-mysql bentley-mysql-mlflow *> $null; Write-Host '✅ MySQL containers restarted' -ForegroundColor Green",
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "📊 View MySQL Container Logs",
+			"type": "shell",
+			"command": "docker logs bentley-mysql --tail 50 --follow",
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🔌 Test MySQL Connection",
+			"type": "shell",
+			"command": "docker exec bentley-mysql mysql -uroot -proot -e 'SHOW DATABASES; SELECT ''Connection successful!'' AS Status;'",
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🔧 Fix MySQL Connections (Diagnostic & Repair)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/scripts/fix_mysql_connections.ps1"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			}
+		},
+		{
+			"label": "🧪 Test Dev Environment MySQL Connections",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/tests/powershell/test_dev_mysql_connections.ps1"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": [],
+			"group": {
+				"kind": "test",
+				"isDefault": false
+			}
+		},
+		{
+			"label": "🚀 API Dev (FastAPI)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_control_center_api.ps1",
+				"-Reload"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "🛑 Stop API Dev (FastAPI)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$p = Get-NetTCPConnection -LocalPort 5001 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if ($p) { Stop-Process -Id $p -Force; Write-Host '✅ FastAPI stopped on port 5001' -ForegroundColor Green } else { Write-Host 'ℹ️ No FastAPI process found on port 5001' -ForegroundColor Yellow }"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🚀 Start Control Center API",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_control_center_api.ps1"
+			],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🚀 Altair Main (Gradio)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/run_altair_main.ps1"
+			],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🧪 Test Hydra API",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/test_hydra_api.ps1",
+				"-Action",
+				"Health"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🚀 Rhea Stack (MLflow + Gradio)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/run_rhea_stack.ps1"
+			],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🚫 No Docker Mode (Rhea Gradio)",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/run_rhea_nodocker.ps1"
+			],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🚀 Bootstrap Hydra Demo",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/test_hydra_api.ps1",
+				"-Action",
+				"Bootstrap"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "⏰ Create Market Morning Bot Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"-Action",
+				"Create",
+				"-MorningTime",
+				"09:20",
+				"-IntradayTime",
+				"12:15"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "📋 List Market Morning Bot Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"-Action",
+				"List"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🧪 Test Market Morning Bot Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"-Action",
+				"Test"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🗑️ Delete Market Morning Bot Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_market_open_tasks.ps1",
+				"-Action",
+				"Delete"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "⏰ Create Vega Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_vega_task.ps1",
+				"-Action",
+				"Create"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "📋 List Vega Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_vega_task.ps1",
+				"-Action",
+				"List"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🧪 Test Vega Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_vega_task.ps1",
+				"-Action",
+				"Test"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🗑️ Delete Vega Task",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/setup_vega_task.ps1",
+				"-Action",
+				"Delete"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Titan ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Titan",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Titan OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Titan",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Vega ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Vega",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Vega OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Vega",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Rigel ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Rigel",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Rigel OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Rigel",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Run Dogon Cycle (Paper Trade)",
+			"type": "shell",
+			"command": "${env:USERPROFILE}\\.venvs\\BentleyBudgetBot\\.venv-dogon\\Scripts\\python.exe",
+			"args": [
+				"scripts\\dogon_bot.py"
+			],
+			"options": {
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}"
+				},
+				"cwd": "${workspaceFolder}"
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"showReuseMessage": false,
+				"clear": true,
+				"echo": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Dogon ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Dogon",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Dogon OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Dogon",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Orion ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Orion",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Orion OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Orion",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Draco ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Draco",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Draco OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Draco",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Altair ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Altair",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Altair OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Altair",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Procryon ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Procryon",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Procryon OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Procryon",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Hydra ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Hydra",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Hydra OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Hydra",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Triton ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Triton",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Triton OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Triton",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Dione ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Dione",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Dione OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Dione",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Cephei ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Cephei",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Cephei OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Cephei",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Rhea ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Rhea",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Rhea OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Rhea",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Jupicita ON",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Jupicita",
+				"-Mode",
+				"ON"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "🤖 Jupicita OFF",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/start_bot_mode.ps1",
+				"-Bot",
+				"Jupicita",
+				"-Mode",
+				"OFF"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+		"label": "🚫 No Docker Mode (Streamlit)",
+		"type": "shell",
+		"command": "powershell.exe",
+		"args": [
+			"-NoProfile",
+			"-ExecutionPolicy",
+			"Bypass",
+			"-File",
+			"${workspaceFolder}/run_streamlit_nodocker.ps1"
+		],
+		"presentation": {
+			"echo": true,
+			"reveal": "always",
+			"focus": false,
+			"panel": "shared"
+		},
+		"problemMatcher": [],
+		"group": {
+			"kind": "build",
+			"isDefault": false
+		},
+		"detail": "Runs Streamlit app with local MySQL (no Docker required)."
+		},
+		{
+		"label": "🚫 No Docker Mode (Local MySQL)",
+		"type": "shell",
+		"command": "powershell.exe",
+		"args": [
+			"-NoProfile",
+			"-ExecutionPolicy",
+			"Bypass",
+			"-Command",
+			". ./set_no_docker_env.ps1; & ./start_control_center_api.ps1 -Reload"
+		],
+		"presentation": {
+			"echo": true,
+			"reveal": "always",
+			"focus": false,
+			"panel": "shared"
+		},
+		"problemMatcher": [],
+		"group": {
+			"kind": "build",
+			"isDefault": false
+		},
+		"detail": "Runs Bentley with local MySQL (no Docker required)."
+		}
+	]
+}

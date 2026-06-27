@@ -87,6 +87,9 @@ web_modules/
 # Block all other .env variants
 .env.*
 
+# Allow committed environment templates in config
+!config/.env.example
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

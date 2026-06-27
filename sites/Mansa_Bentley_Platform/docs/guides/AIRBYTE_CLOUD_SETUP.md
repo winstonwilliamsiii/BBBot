@@ -114,7 +114,7 @@ Your MySQL is configured for Airbyte Cloud access:
 - **Database**: mansa_bot
 - **20 whitelisted users** for Airbyte Cloud IPs (US + EU regions)
 
-See `mysql_config/airbyte_ip_whitelist.sql` for full list.
+See `config/mysql/airbyte_ip_whitelist.sql` for full list.
 
 ## Troubleshooting
 

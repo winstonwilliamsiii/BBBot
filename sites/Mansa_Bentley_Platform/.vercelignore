@@ -70,7 +70,7 @@ docs/
 *.bat
 *.sql
 scripts/
-mysql_config/
+config/mysql/
 mysql_setup.sql/
 
 # IDE and dev files

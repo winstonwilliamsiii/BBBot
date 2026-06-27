@@ -302,10 +302,10 @@ Airbyte Sync (6 PM) → Wait 30 min → dbt Pipeline (8 AM next day)
 1. **Execute SQL script**:
    ```bash
    # Using Docker (recommended)
-   Get-Content mysql_config/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1
+   Get-Content config/mysql/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1
    
    # Or using mysql CLI directly
-   mysql -h 127.0.0.1 -P 3307 -u root -proot bbbot1 < mysql_config/create_airbyte_raw_tables.sql
+   mysql -h 127.0.0.1 -P 3307 -u root -proot bbbot1 < config/mysql/create_airbyte_raw_tables.sql
    ```
 
 2. **Verify tables created**:

@@ -40,6 +40,30 @@ try:
 except ImportError:
     get_broker_mode_config = None
 
+
+def _resolve_launcher_context() -> tuple[Path, Path]:
+    """Resolve repo root and launcher path for both nested and monorepo layouts."""
+    here = Path(__file__).resolve()
+    candidate_roots = [
+        here.parents[3],  # monorepo root (BentleyBudgetBot)
+        here.parents[2],  # sites/
+        here.parents[1],  # sites/Mansa_Bentley_Platform/
+    ]
+
+    launcher_rel_paths = [
+        Path("scripts") / "launchers" / "start_bot_mode.ps1",
+        Path("start_bot_mode.ps1"),
+    ]
+
+    for root in candidate_roots:
+        for rel in launcher_rel_paths:
+            launcher_path = root / rel
+            if launcher_path.exists():
+                return root, launcher_path
+
+    fallback_root = here.parents[3]
+    return fallback_root, fallback_root / "scripts" / "launchers" / "start_bot_mode.ps1"
+
 # Database connection
 try:
     from sqlalchemy import create_engine, text
@@ -265,8 +289,7 @@ def _execute_bot_mode(
         }
         return alias_map.get(compact, raw)
 
-    repo_root = Path(__file__).resolve().parents[2]
-    launcher = repo_root / "start_bot_mode.ps1"
+    repo_root, launcher = _resolve_launcher_context()
 
     if not launcher.exists():
         return {"ok": False, "output": f"Launcher not found: {launcher}"}
@@ -304,7 +327,7 @@ def _execute_bot_mode(
 
 
 def _latest_bot_mode_event() -> dict | None:
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root, _launcher = _resolve_launcher_context()
     latest_path = repo_root / "logs" / "last_bot_mode_event.json"
     if not latest_path.exists():
         return None
@@ -375,7 +398,7 @@ def get_bot_status(bot_name: str = "Titan"):
 def _build_quick_start_command(bot_name: str, mode: str) -> str:
     return (
         "powershell -ExecutionPolicy Bypass -File "
-        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
+        f"./scripts/launchers/start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
     )
 
 

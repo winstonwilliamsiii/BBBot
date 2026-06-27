@@ -50,7 +50,7 @@ if ($tablesExist) {
     Write-Host "✅ Raw tables already exist" -ForegroundColor Green
 } else {
     Write-Host "   Creating tables..." -ForegroundColor White
-    Get-Content mysql_config/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1 2>$null
+    Get-Content config/mysql/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1 2>$null
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ Raw tables created" -ForegroundColor Green

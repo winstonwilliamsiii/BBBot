@@ -15,8 +15,8 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ../scripts/setup/mysql_setup.sql:/docker-entrypoint-initdb.d/init.sql
-      - ../mysql_config/airbyte_ip_whitelist.sql:/docker-entrypoint-initdb.d/02-airbyte-whitelist.sql
-      - ../mysql_config/my.cnf:/etc/mysql/conf.d/custom.cnf
+      - ../config/mysql/airbyte_ip_whitelist.sql:/docker-entrypoint-initdb.d/02-airbyte-whitelist.sql
+      - ../config/mysql/my.cnf:/etc/mysql/conf.d/custom.cnf
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password
 

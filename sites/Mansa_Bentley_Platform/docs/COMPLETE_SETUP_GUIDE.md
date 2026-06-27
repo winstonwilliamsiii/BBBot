@@ -75,7 +75,7 @@ Follow the steps below for detailed configuration.
 
 ```powershell
 # Execute SQL script to create tables
-Get-Content mysql_config/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1
+Get-Content config/mysql/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1
 
 # Verify tables created
 docker exec bentley-mysql mysql -uroot -proot bbbot1 -e "SHOW TABLES;"
@@ -336,7 +336,7 @@ BentleyBudgetBot/
 │   ├── AIRBYTE_RAW_TABLES.md                    # Table schemas
 │   └── DBT_ARCHITECTURE.md                      # dbt architecture
 │
-├── mysql_config/
+├── config/mysql/
 │   └── create_airbyte_raw_tables.sql            # MySQL table schemas
 │
 ├── scripts/

@@ -108,7 +108,7 @@ BentleyBudgetBot/
 ├── data/                          # 📊 Data storage
 │   └── mlflow/                    # MLflow artifacts
 │
-├── mysql_config/                  # 🗄️ MySQL configuration
+├── config/mysql/                  # 🗄️ MySQL configuration
 │   ├── airbyte_ip_whitelist.sql
 │   ├── my.cnf
 │   └── plaid_transactions_schema.sql
@@ -206,7 +206,7 @@ docker-compose -f docker-compose-airflow.yml up -d
 
 ### MySQL → All Services
 - Shared database container
-- Schemas in `mysql_config/`
+- Schemas in `config/mysql/`
 - Port: 3307 (mapped to avoid conflicts)
 
 ### Streamlit → MySQL + MLflow

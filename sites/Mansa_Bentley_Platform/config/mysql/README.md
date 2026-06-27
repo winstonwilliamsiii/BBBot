@@ -57,7 +57,7 @@ If you need to manually configure MySQL:
 
 ```bash
 # Copy SQL script into running container
-docker cp mysql_config/airbyte_ip_whitelist.sql bentley-mysql:/tmp/
+docker cp config/mysql/airbyte_ip_whitelist.sql bentley-mysql:/tmp/
 
 # Execute the script
 docker exec -it bentley-mysql mysql -uroot -proot mansa_bot < /tmp/airbyte_ip_whitelist.sql

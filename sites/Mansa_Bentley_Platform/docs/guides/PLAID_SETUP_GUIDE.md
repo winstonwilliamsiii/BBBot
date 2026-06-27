@@ -25,7 +25,7 @@
 ## 📁 Files Created
 
 1. **`plaid_client.py`** - Refactored and debugged Plaid client
-2. **`mysql_config/plaid_transactions_schema.sql`** - Database schema
+2. **`config/mysql/plaid_transactions_schema.sql`** - Database schema
 3. **`.env.example`** - Added Plaid configuration section
 
 ## 🚀 Setup Instructions
@@ -76,10 +76,10 @@ cd quickstart
 
 ```powershell
 # Run the schema SQL file
-docker exec -i bentley-mysql mysql -uroot -proot mansa_bot < mysql_config/plaid_transactions_schema.sql
+docker exec -i bentley-mysql mysql -uroot -proot mansa_bot < config/mysql/plaid_transactions_schema.sql
 
 # Or copy and paste into MySQL client
-Get-Content mysql_config/plaid_transactions_schema.sql | docker exec -i bentley-mysql mysql -uroot -proot mansa_bot
+Get-Content config/mysql/plaid_transactions_schema.sql | docker exec -i bentley-mysql mysql -uroot -proot mansa_bot
 ```
 
 ### Step 5: Test the Client
@@ -217,7 +217,7 @@ client.store_transactions(transactions, {
 ### Error: "Table 'transactions' doesn't exist"
 **Solution**: Run the SQL schema file:
 ```powershell
-docker exec -i bentley-mysql mysql -uroot -proot mansa_bot < mysql_config/plaid_transactions_schema.sql
+docker exec -i bentley-mysql mysql -uroot -proot mansa_bot < config/mysql/plaid_transactions_schema.sql
 ```
 
 ### Error: "Connection refused to MySQL"

@@ -80,7 +80,7 @@
 ## Key Files
 
 ### MySQL Setup
-- **Schema**: `mysql_config/create_airbyte_raw_tables.sql`
+- **Schema**: `config/mysql/create_airbyte_raw_tables.sql`
 - **Setup Script**: `scripts/setup/setup_airbyte_tables.ps1`
 - **Documentation**: `docs/AIRBYTE_RAW_TABLES.md`
 
@@ -167,7 +167,7 @@ dbt docs serve --profiles-dir .
 .\scripts\setup\setup_airbyte_tables.ps1
 
 # Or manually execute SQL
-Get-Content mysql_config/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1
+Get-Content config/mysql/create_airbyte_raw_tables.sql | docker exec -i bentley-mysql mysql -uroot -proot bbbot1
 ```
 
 ### Issue: dbt can't find tables

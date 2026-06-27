@@ -17,7 +17,7 @@ $mysqlPort = 3307
 $mysqlUser = "root"
 $mysqlPassword = "root"
 $mysqlDatabase = "bbbot1"
-$mysqlScript = "mysql_config/create_airbyte_raw_tables.sql"
+$mysqlScript = "config/mysql/create_airbyte_raw_tables.sql"
 
 # Check if MySQL script exists
 if (-not (Test-Path $mysqlScript)) {

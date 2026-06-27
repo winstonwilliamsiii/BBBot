@@ -907,7 +907,7 @@ def show_control_center_api_notice_once(reason: str = "unavailable"):
     )
     st.info(
         "Start the API with: `powershell -ExecutionPolicy Bypass "
-        "-File .\\start_control_center_api.ps1`"
+        "-File .\\scripts/launchers/start_control_center_api.ps1`"
     )
     st.session_state.control_center_api_notice_shown = True
 
@@ -1751,7 +1751,7 @@ def get_vega_ibkr_schedule_status() -> dict:
 
 
 def get_last_bot_mode_event() -> dict | None:
-    """Load latest launcher event produced by start_bot_mode.ps1."""
+    """Load latest launcher event produced by scripts/launchers/start_bot_mode.ps1."""
     repo_root = Path(__file__).resolve().parents[1]
     latest_path = repo_root / "logs" / "last_bot_mode_event.json"
     if not latest_path.exists():
@@ -1922,10 +1922,10 @@ def run_bot_mode(
     trading_mode: str = "paper",
     broker: str | None = None,
 ) -> dict:
-    """Run start_bot_mode.ps1 and return execution result."""
+    """Run scripts/launchers/start_bot_mode.ps1 and return execution result."""
     canonical_bot = _normalize_bot_name(bot_name)
     repo_root = Path(__file__).resolve().parents[1]
-    launcher = repo_root / "start_bot_mode.ps1"
+    launcher = repo_root / "scripts/launchers/start_bot_mode.ps1"
 
     if not launcher.exists():
         return {

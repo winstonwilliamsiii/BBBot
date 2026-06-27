@@ -9,9 +9,9 @@ param(
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-$mysqlScript = Join-Path $repoRoot "start_mysql_docker.ps1"
-$apiScript = Join-Path $repoRoot "start_control_center_api.ps1"
-$botModeScript = Join-Path $repoRoot "start_bot_mode.ps1"
+$mysqlScript = Join-Path $repoRoot "scripts/launchers/start_mysql_docker.ps1"
+$apiScript = Join-Path $repoRoot "scripts/launchers/start_control_center_api.ps1"
+$botModeScript = Join-Path $repoRoot "scripts/launchers/start_bot_mode.ps1"
 $marketOpenScript = Join-Path $repoRoot "run_market_open_bots.ps1"
 $signalScript = Join-Path $repoRoot "run_bot_signal_broadcast.ps1"
 

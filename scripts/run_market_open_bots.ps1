@@ -93,7 +93,7 @@ $mysqlContainerName = "bentley-mysql"
 $runningNames = docker ps --format "{{.Names}}"
 if ($runningNames -notcontains $mysqlContainerName) {
     Write-Host "MySQL container not running, starting Docker stack..." -ForegroundColor Yellow
-    $startScript = Join-Path $repoRoot "start_mysql_docker.ps1"
+    $startScript = Join-Path $repoRoot "scripts/launchers/start_mysql_docker.ps1"
     if (Test-Path $startScript) {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript | Out-Null
     }

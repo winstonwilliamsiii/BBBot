@@ -9,7 +9,7 @@ param(
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-$launcher = Join-Path $repoRoot "start_bot_mode.ps1"
+$launcher = Join-Path $repoRoot "scripts/launchers/start_bot_mode.ps1"
 $vegaScript = Join-Path $repoRoot "scripts\vega_bot.py"
 $resolverScript = Join-Path $repoRoot "scripts\resolve_python_for_service.ps1"
 $logDir = Join-Path $repoRoot "logs"

@@ -1321,7 +1321,7 @@ def _get_bot_trading_mode(bot_name: str) -> str:
 def _build_quick_start_command(bot_name: str, mode: str) -> str:
     return (
         "powershell -ExecutionPolicy Bypass -File "
-        f"./start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
+        f"./scripts/launchers/start_bot_mode.ps1 -Bot {bot_name} -Mode {mode.upper()}"
     )
 
 
@@ -1450,7 +1450,7 @@ def _normalize_bot_name(bot_name: str) -> str:
 
 def _execute_bot_mode(bot_name: str, mode: str, trading_mode: str = "paper") -> dict:
     repo_root = Path(__file__).resolve().parents[1]
-    launcher = repo_root / "start_bot_mode.ps1"
+    launcher = repo_root / "scripts/launchers/start_bot_mode.ps1"
 
     if not launcher.exists():
         return {

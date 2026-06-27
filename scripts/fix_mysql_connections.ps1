@@ -147,7 +147,7 @@ if ($script:UseWslDocker) {
 Write-Host "Step 1: Checking Docker status..." -ForegroundColor White
 if (-not (Test-DockerRunning)) {
     Write-Host "Docker is not running. Running startup helper..." -ForegroundColor Red
-    & "$repoRoot\start_mysql_docker.ps1"
+    & "$repoRoot\scripts/launchers/start_mysql_docker.ps1"
     Start-Sleep -Seconds 5
 }
 Write-Host "Docker is running." -ForegroundColor Green

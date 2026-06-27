@@ -265,7 +265,7 @@ streamlit run streamlit_app.py
 #### 5b. Start Control Center API (Admin Dashboard Backend)
 ```bash
 # Windows PowerShell helper script for the unified FastAPI app
-powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts/launchers/start_control_center_api.ps1
 
 # Health check
 curl http://localhost:5001/health
@@ -295,7 +295,7 @@ Hydra is the Mansa Health momentum bot with FastAPI endpoints, Airbyte feed conf
 
 ```bash
 # Start the shared FastAPI control center app
-powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts/launchers/start_control_center_api.ps1
 
 # Bootstrap Hydra demo state
 curl http://localhost:5001/hydra/bootstrap
@@ -316,7 +316,7 @@ Triton is the Mansa Transportation swing bot. It runs through the shared FastAPI
 
 ```bash
 # Start the shared FastAPI control center app
-powershell -ExecutionPolicy Bypass -File .\start_control_center_api.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts/launchers/start_control_center_api.ps1
 
 # Bootstrap Triton demo state
 curl -X POST http://localhost:5001/triton/bootstrap
@@ -327,7 +327,7 @@ curl -X POST http://localhost:5001/triton/analyze \
    -d '{"ticker":"IYT","news_headlines":["Freight demand rebounds across major rail and parcel names"]}'
 
 # Toggle Triton from the launcher contract
-powershell -ExecutionPolicy Bypass -File .\start_bot_mode.ps1 -Bot Triton -Mode ON -Broker Alpaca -TradingMode paper
+powershell -ExecutionPolicy Bypass -File .\scripts/launchers/start_bot_mode.ps1 -Bot Triton -Mode ON -Broker Alpaca -TradingMode paper
 ```
 
 Triton architecture alignment:
@@ -410,7 +410,7 @@ BentleyBudgetBot/
 │   │   ├── schema.sql            # Main database schema
 │   │   └── #MySQL for UNIFIED BROKER Schema.sql
 │   ├── migrations/               # Database migrations
-│   └── mysql_config/             # MySQL configurations
+│   └── config/mysql/             # MySQL configurations
 │
 ├── 🔌 Integrations
 │   ├── integrations/

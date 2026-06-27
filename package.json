@@ -11,8 +11,8 @@
     "start": "npm run setup:node && npm run api:dev",
     "format": "prettier --config config/.prettierrc.json --write .",
     "build": "echo 'No build step required for static/Streamlit deployment'",
-    "api:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./start_control_center_api.ps1 -ApiHost 0.0.0.0 -Port 5001",
-    "api:dev:ibkr": "powershell -NoProfile -ExecutionPolicy Bypass -File ./start_control_center_api.ps1 -ApiHost 127.0.0.1 -Port 8011"
+    "api:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/launchers/start_control_center_api.ps1 -ApiHost 0.0.0.0 -Port 5001",
+    "api:dev:ibkr": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/launchers/start_control_center_api.ps1 -ApiHost 127.0.0.1 -Port 8011"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",

@@ -26,6 +26,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-api.txt
           pip install pytest flake8 pytest-cov
       
       - name: Check for merge conflicts
@@ -55,7 +56,8 @@ jobs:
             --exclude-dir=".git" \
             --exclude-dir="__pycache__" \
             --exclude="*.md" \
-            --exclude=".env.example"; then
+            --exclude=".env.example" \
+            --exclude="config/.env.example"; then
             echo "⚠️ WARNING: Potential secrets detected!"
             echo "Please verify these are not real credentials"
             exit 1
@@ -69,9 +71,9 @@ jobs:
             exit 1
           fi
           
-          # Ensure .env.example exists
-          if [ ! -f ".env.example" ]; then
-            echo "⚠️ WARNING: .env.example should exist as template"
+          # Ensure the tracked env template exists
+          if [ ! -f ".env.example" ] && [ ! -f "config/.env.example" ]; then
+            echo "⚠️ WARNING: .env.example or config/.env.example should exist as template"
           fi
       
       - name: Validate Docker configuration

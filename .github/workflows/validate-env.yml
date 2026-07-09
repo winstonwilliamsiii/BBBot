@@ -9,6 +9,7 @@ on:
     branches: [main, dev]
     paths:
       - '.env.example'
+      - 'config/.env.example'
       - '.env.development'
       - '.env.production'
       - 'config_env.py'
@@ -17,6 +18,7 @@ on:
     branches: [main, dev]
     paths:
       - '.env.example'
+      - 'config/.env.example'
       - 'config_env.py'
 
 jobs:
@@ -33,9 +35,14 @@ jobs:
       with:
         python-version: '3.10'
     
-    - name: Validate .env.example has all required variables
+    - name: Validate env template has all required variables
       run: |
-        echo "🔍 Checking .env.example for required variables..."
+        TEMPLATE_FILE="config/.env.example"
+        if [ ! -f "$TEMPLATE_FILE" ]; then
+          TEMPLATE_FILE=".env.example"
+        fi
+
+        echo "🔍 Checking ${TEMPLATE_FILE} for required variables..."
         
         REQUIRED_VARS=(
           "MYSQL_HOST"
@@ -58,20 +65,20 @@ jobs:
         
         MISSING=()
         for var in "${REQUIRED_VARS[@]}"; do
-          if ! grep -q "^${var}=" .env.example; then
+          if ! grep -q "^${var}=" "$TEMPLATE_FILE"; then
             MISSING+=("$var")
           fi
         done
         
         if [ ${#MISSING[@]} -gt 0 ]; then
-          echo "❌ Missing required variables in .env.example:"
+          echo "❌ Missing required variables in ${TEMPLATE_FILE}:"
           printf '  - %s\n' "${MISSING[@]}"
           echo ""
-          echo "💡 Add these variables to .env.example before merging"
+          echo "💡 Add these variables to ${TEMPLATE_FILE} before merging"
           exit 1
         fi
         
-        echo "✅ All required variables present in .env.example"
+        echo "✅ All required variables present in ${TEMPLATE_FILE}"
     
     - name: Validate config_env.py structure
       run: |

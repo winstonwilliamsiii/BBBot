@@ -5,9 +5,13 @@ Logs experiments, metrics, parameters, and artifacts to MLFlow
 
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
+
+import requests
 
 # Optional MLFlow imports with graceful fallback
 try:
@@ -297,10 +301,64 @@ class BentleyBotMLFlowTracker:
 
 # Global tracker instance (lazy initialization)
 _tracker_instance = None
+_tracker_last_reconnect_attempt = 0.0
 
 
-def get_tracker(tracking_uri: str = None, experiment_name: str = "bentley_bot_analysis") -> BentleyBotMLFlowTracker:
-    """Get or create the global MLFlow tracker instance"""
+def _is_http_tracking_uri(tracking_uri: Optional[str]) -> bool:
+    if not tracking_uri:
+        return False
+    try:
+        scheme = urlparse(str(tracking_uri)).scheme.lower()
+        return scheme in {"http", "https"}
+    except Exception:
+        return False
+
+
+def _is_tracking_server_reachable(tracking_uri: Optional[str], timeout: float = 1.5) -> bool:
+    if not _is_http_tracking_uri(tracking_uri):
+        return False
+
+    base = str(tracking_uri).rstrip("/")
+    probes = (
+        ("GET", f"{base}/health", None),
+        ("GET", f"{base}/version", None),
+        ("POST", f"{base}/api/2.0/mlflow/experiments/search", {"max_results": 1}),
+    )
+
+    for method, url, payload in probes:
+        try:
+            if method == "POST":
+                response = requests.post(url, json=payload, timeout=timeout)
+            else:
+                response = requests.get(url, timeout=timeout)
+
+            if response.status_code in (200, 400, 401, 403):
+                return True
+        except requests.RequestException:
+            continue
+
+    return False
+
+
+def _can_attempt_reconnect(cooldown_seconds: float = 30.0) -> bool:
+    global _tracker_last_reconnect_attempt
+    now = time.time()
+    if (now - _tracker_last_reconnect_attempt) < cooldown_seconds:
+        return False
+    _tracker_last_reconnect_attempt = now
+    return True
+
+
+def get_tracker(
+    tracking_uri: str = None,
+    experiment_name: str = "bentley_bot_analysis",
+    force_reconnect: bool = False,
+) -> BentleyBotMLFlowTracker:
+    """Get or create the global MLFlow tracker instance.
+
+    Automatically reconnects to a reachable remote MLflow server if the
+    current singleton is in local-file fallback mode.
+    """
     global _tracker_instance
     
     if _tracker_instance is None:
@@ -309,8 +367,44 @@ def get_tracker(tracking_uri: str = None, experiment_name: str = "bentley_bot_an
             _tracker_instance = BentleyBotMLFlowTracker(tracking_uri, experiment_name)
         else:
             _tracker_instance = BentleyBotMLFlowTracker(experiment_name=experiment_name)
+
+    # If we are currently on local fallback, periodically retry remote reconnect
+    # so pages recover automatically after MLflow server restarts.
+    should_reconnect = force_reconnect
+    if not should_reconnect:
+        should_reconnect = (
+            getattr(_tracker_instance, "tracking_mode", "") == "local_file_fallback"
+            and _can_attempt_reconnect()
+        )
+
+    if should_reconnect and MLFLOW_CONFIG_AVAILABLE:
+        try:
+            configured_uri = tracking_uri or get_mlflow_tracking_uri()
+            if _is_tracking_server_reachable(configured_uri):
+                _tracker_instance = BentleyBotMLFlowTracker(
+                    tracking_uri=configured_uri,
+                    experiment_name=experiment_name,
+                )
+        except Exception:
+            # Keep existing tracker if reconnect fails.
+            pass
     
     return _tracker_instance
+
+
+def serialize_run(run: Any) -> Dict[str, Any]:
+    """Convert an MLflow run object to a compact JSON-friendly dict."""
+    return {
+        "run_id": getattr(getattr(run, "info", None), "run_id", None),
+        "experiment_id": getattr(getattr(run, "info", None), "experiment_id", None),
+        "run_name": getattr(getattr(run, "info", None), "run_name", None),
+        "status": getattr(getattr(run, "info", None), "status", None),
+        "start_time": getattr(getattr(run, "info", None), "start_time", None),
+        "end_time": getattr(getattr(run, "info", None), "end_time", None),
+        "metrics": dict(getattr(getattr(run, "data", None), "metrics", {}) or {}),
+        "params": dict(getattr(getattr(run, "data", None), "params", {}) or {}),
+        "tags": dict(getattr(getattr(run, "data", None), "tags", {}) or {}),
+    }
 
 
 # Convenience functions for quick logging

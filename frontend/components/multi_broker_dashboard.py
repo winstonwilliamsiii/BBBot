@@ -1361,21 +1361,19 @@ def render_ml_trading_signals():
         st.markdown("---")
         st.subheader("🧠 Experiment Output Indicator")
         try:
-            import mlflow
-            from mlflow.tracking import MlflowClient
-            from bbbot1_pipeline.mlflow_config import get_mlflow_tracking_uri
+            from bbbot1_pipeline.mlflow_tracker import get_tracker
 
-            mlflow.set_tracking_uri(get_mlflow_tracking_uri())
-            client = MlflowClient()
-            experiments = client.search_experiments(max_results=1)
-            if experiments:
-                runs = mlflow.search_runs(experiment_ids=[experiments[0].experiment_id], max_results=1)
-                if not runs.empty:
-                    st.success("✅ ML Trading Signals synced to MLflow experiment outputs (latest run detected)")
-                else:
-                    st.warning("⚠️ MLflow is reachable, but no runs found yet for latest experiment")
+            tracker = get_tracker(force_reconnect=True)
+            recent_runs = tracker.get_recent_runs(max_results=1)
+            mode = getattr(tracker, "tracking_mode", "unknown")
+            uri = getattr(tracker, "tracking_uri", "unknown")
+
+            if recent_runs:
+                st.success("✅ ML Trading Signals synced to MLflow experiment outputs (latest run detected)")
+                st.caption(f"Tracker mode: {mode} | URI: {uri}")
             else:
-                st.warning("⚠️ MLflow reachable, but no experiments found")
+                st.warning("⚠️ MLflow is reachable, but no runs found yet for latest experiment")
+                st.caption(f"Tracker mode: {mode} | URI: {uri}")
         except Exception as mlflow_error:
             st.warning(f"⚠️ MLflow linkage check unavailable: {mlflow_error}")
 

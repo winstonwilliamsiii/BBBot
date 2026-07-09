@@ -589,6 +589,54 @@ def fetch_stock_data(ticker, start_date, end_date):
     return None
 
 
+def _fetch_mlflow_runs_via_api(max_results=20):
+    """Fallback path: load MLflow recent runs through FastAPI endpoints."""
+    base_url = os.getenv("CONTROL_CENTER_API_URL", "http://127.0.0.1:5001").strip() or "http://127.0.0.1:5001"
+    candidates = [base_url]
+    if base_url.startswith("http://127.0.0.1"):
+        candidates.append(base_url.replace("127.0.0.1", "localhost"))
+    elif base_url.startswith("http://localhost"):
+        candidates.append(base_url.replace("localhost", "127.0.0.1"))
+
+    paths = [
+        "/api/admin/mlflow/runs/recent",
+        "/mlflow/runs/recent",
+    ]
+
+    last_error = "MLflow API fallback unavailable"
+    for candidate in candidates:
+        for path in paths:
+            try:
+                response = requests.get(
+                    f"{candidate.rstrip('/')}{path}",
+                    params={"max_results": max_results},
+                    timeout=8,
+                )
+                if response.status_code != 200:
+                    last_error = f"{candidate}{path} -> HTTP {response.status_code}"
+                    continue
+
+                payload = response.json() or {}
+                runs = payload.get("runs") or []
+                return {
+                    "ok": True,
+                    "base_url": candidate,
+                    "path": path,
+                    "tracker_mode": payload.get("tracker_mode"),
+                    "resolved_tracking_uri": payload.get("resolved_tracking_uri"),
+                    "runs": runs,
+                }
+            except Exception as exc:
+                last_error = str(exc)
+                continue
+
+    return {
+        "ok": False,
+        "error": last_error,
+        "runs": [],
+    }
+
+
 def display_portfolio_overview(tickers, start_date, end_date, enable_logging, fund_names=None):
     """Display portfolio performance overview
     
@@ -809,7 +857,35 @@ def display_mlflow_experiments(tickers):
     st.header("🔬 MLFlow Experiment Tracking")
     
     if not MLFLOW_AVAILABLE:
-        st.error("MLFlow tracker not available. Install bbbot1_pipeline package.")
+        fallback = _fetch_mlflow_runs_via_api(max_results=20)
+        if not fallback.get("ok"):
+            st.error("MLFlow tracker not available. Install bbbot1_pipeline package.")
+            st.caption(f"API fallback error: {fallback.get('error', 'unknown error')}")
+            return
+
+        st.warning("Using FastAPI/Postman MLflow fallback because local tracker import is unavailable.")
+        runs = fallback.get("runs", [])
+        if not runs:
+            st.info("No MLflow runs returned by API fallback yet.")
+            return
+
+        rows = []
+        for run in runs:
+            start_time = run.get("start_time")
+            if isinstance(start_time, (int, float)):
+                start_time = datetime.fromtimestamp(start_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            rows.append({
+                "Experiment ID": run.get("experiment_id"),
+                "Run Name": run.get("run_name"),
+                "Status": run.get("status"),
+                "Start Time": start_time,
+            })
+
+        st.caption(
+            f"Source: {fallback.get('base_url')}{fallback.get('path')} | "
+            f"Mode: {fallback.get('tracker_mode')} | URI: {fallback.get('resolved_tracking_uri')}"
+        )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         return
     
     try:
@@ -951,7 +1027,28 @@ def display_mlflow_experiments(tickers):
         
     except Exception as e:
         st.error(f"Error loading MLFlow experiments: {e}")
-        st.exception(e)
+        fallback = _fetch_mlflow_runs_via_api(max_results=max_results if 'max_results' in locals() else 20)
+        if fallback.get("ok") and fallback.get("runs"):
+            st.warning("Displaying FastAPI/Postman MLflow fallback data.")
+            rows = []
+            for run in fallback.get("runs", []):
+                start_time = run.get("start_time")
+                if isinstance(start_time, (int, float)):
+                    start_time = datetime.fromtimestamp(start_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                rows.append({
+                    "Experiment ID": run.get("experiment_id"),
+                    "Run Name": run.get("run_name"),
+                    "Status": run.get("status"),
+                    "Start Time": start_time,
+                })
+
+            st.caption(
+                f"Source: {fallback.get('base_url')}{fallback.get('path')} | "
+                f"Mode: {fallback.get('tracker_mode')} | URI: {fallback.get('resolved_tracking_uri')}"
+            )
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        else:
+            st.caption(f"API fallback error: {fallback.get('error', 'unknown error')}")
 
 
 def display_technical_analysis(tickers, start_date, end_date, fund_names=None):

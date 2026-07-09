@@ -11,6 +11,14 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 import requests
 
+try:
+    from bbbot1_pipeline.mlflow_tracker import get_tracker, serialize_run
+    MLFLOW_TRACKER_AVAILABLE = True
+except Exception:
+    get_tracker = None
+    serialize_run = None
+    MLFLOW_TRACKER_AVAILABLE = False
+
 from backend.api.admin.liquidity_manager import LiquidityManager
 from backend.api.hydra_persistence import (
     persist_hydra_analysis,
@@ -871,6 +879,70 @@ async def platform_architecture():
 @app.get("/api/admin/platform/health")
 async def platform_health():
     return _build_platform_health()
+
+
+def _mlflow_tracker_snapshot(max_results: int = 10) -> dict[str, Any]:
+    """Collect tracker-level MLflow metadata and optional recent runs."""
+    payload: dict[str, Any] = {
+        "tracker_available": MLFLOW_TRACKER_AVAILABLE,
+        "tracker_mode": None,
+        "resolved_tracking_uri": None,
+        "runs": [],
+        "error": None,
+    }
+
+    if not MLFLOW_TRACKER_AVAILABLE:
+        payload["error"] = "bbbot1_pipeline.mlflow_tracker import unavailable"
+        return payload
+
+    try:
+        tracker = get_tracker(force_reconnect=True)
+        payload["tracker_mode"] = getattr(tracker, "tracking_mode", None)
+        payload["resolved_tracking_uri"] = getattr(tracker, "tracking_uri", None)
+
+        runs = tracker.get_recent_runs(max_results=max_results)
+        if serialize_run is not None:
+            payload["runs"] = [serialize_run(run) for run in runs]
+        else:
+            payload["runs"] = []
+        return payload
+    except Exception as exc:
+        payload["error"] = str(exc)
+        return payload
+
+
+@app.get("/mlflow/status")
+@app.get("/api/admin/mlflow/status")
+async def mlflow_status():
+    health = _mlflow_health()
+    snapshot = _mlflow_tracker_snapshot(max_results=1)
+    latest_run = snapshot["runs"][0] if snapshot.get("runs") else None
+    return {
+        "status": health.get("status", "unknown"),
+        "health": health,
+        "tracker": {
+            "available": snapshot.get("tracker_available", False),
+            "mode": snapshot.get("tracker_mode"),
+            "resolved_tracking_uri": snapshot.get("resolved_tracking_uri"),
+            "error": snapshot.get("error"),
+        },
+        "latest_run": latest_run,
+    }
+
+
+@app.get("/mlflow/runs/recent")
+@app.get("/api/admin/mlflow/runs/recent")
+async def mlflow_recent_runs(max_results: int = Query(default=20, ge=1, le=200)):
+    snapshot = _mlflow_tracker_snapshot(max_results=max_results)
+    return {
+        "status": "success" if snapshot.get("error") is None else "partial",
+        "tracker_available": snapshot.get("tracker_available", False),
+        "tracker_mode": snapshot.get("tracker_mode"),
+        "resolved_tracking_uri": snapshot.get("resolved_tracking_uri"),
+        "count": len(snapshot.get("runs") or []),
+        "runs": snapshot.get("runs") or [],
+        "error": snapshot.get("error"),
+    }
 
 
 @app.get("/admin/liquidity")

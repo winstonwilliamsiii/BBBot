@@ -28,6 +28,7 @@ jobs:
         # Install Flask API dependencies
         pip install flask flask-cors
         if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+        if [ -f requirements-api.txt ]; then pip install -r requirements-api.txt || true; fi
     
     - name: Start FastAPI (Port 5001)
       run: |

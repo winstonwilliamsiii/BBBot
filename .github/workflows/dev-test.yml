@@ -47,6 +47,7 @@ jobs:
         python -m pip install --upgrade pip setuptools wheel
         pip install flake8 pytest pytest-cov black isort
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements-api.txt ]; then pip install -r requirements-api.txt; fi
     
     - name: Lint with flake8
       run: |

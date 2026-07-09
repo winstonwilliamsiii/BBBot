@@ -2963,6 +2963,43 @@ def main():
             else:
                 st.info("Make sure MLflow server is running and tracking URI points to the server URL.")
 
+            fallback = api_request(
+                "/api/admin/mlflow/runs/recent?max_results=50",
+                show_notice=False,
+            ) or api_request(
+                "/mlflow/runs/recent?max_results=50",
+                show_notice=False,
+            )
+
+            if isinstance(fallback, dict) and fallback.get("runs"):
+                st.warning("Using FastAPI/Postman MLflow fallback data.")
+                fallback_rows = []
+                for run in fallback.get("runs", []):
+                    timestamp = run.get("end_time") or run.get("start_time")
+                    if isinstance(timestamp, (int, float)):
+                        timestamp = datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
+                    fallback_rows.append(
+                        {
+                            "Experiment ID": run.get("experiment_id"),
+                            "Run Name": run.get("run_name"),
+                            "Status": run.get("status"),
+                            "Timestamp": timestamp,
+                            "Metrics": json.dumps(run.get("metrics", {}), default=str)[:240],
+                            "Parameters": json.dumps(run.get("params", {}), default=str)[:240],
+                        }
+                    )
+
+                st.dataframe(
+                    pd.DataFrame(fallback_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.caption(
+                    f"Fallback tracker mode: {fallback.get('tracker_mode', 'unknown')} | "
+                    f"URI: {fallback.get('resolved_tracking_uri', 'unknown')}"
+                )
+
         st.markdown("---")
         with st.expander("⚙️ MLflow Configuration"):
             resolved_mlflow_url, _ = resolve_mlflow_server_url()

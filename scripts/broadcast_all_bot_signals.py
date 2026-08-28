@@ -151,12 +151,19 @@ def broadcast(mode: str, symbol: str, active_only: bool) -> int:
                 symbol_source,
                 universe_size,
             )
+            from frontend.utils.huggingface_inference import compute_hf_features
+
+            hf_features = compute_hf_features(chosen_symbol)
+            context = _base_context()
+            context.update(hf_features)
+            context["sentiment_score"] = hf_features["hf_sentiment"]
             snap = compute_cosmic_score(
-                _base_context(),
+                context,
                 symbol=chosen_symbol,
                 bot_name=bot,
                 mode=mode,
             )
+
             notify_signal(
                 bot_name=bot,
                 symbol=chosen_symbol,

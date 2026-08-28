@@ -1,4 +1,4 @@
-Huffingface inference_mode FastAPI
+# Hugging Face inference-mode FastAPI
 
 from fastapi import FastAPI
 from pydantic import BaseModel

@@ -11,13 +11,12 @@ Individual DAGs are connected via Airflow Datasets.
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.sensors.time_delta import TimeDeltaSensor
 from datetime import datetime, timedelta
-from airflow.datasets import Dataset
+import os
 
-# Define datasets for orchestration
-airbyte_dataset = Dataset("mysql://mansa_bot/binance_ohlcv")
-knime_dataset = Dataset("mysql://mansa_bot/knime_processed")
+from frontend.utils.cosmic_signal import run_cosmic_engine_for_bot
+from frontend.utils.discord_notify import notify_signal
 
 
 def print_pipeline_status(**context):
@@ -82,6 +81,21 @@ def generate_pipeline_report(**context):
     print("=" * 60 + "\n")
 
 
+def run_cosmic_bot(bot_name: str) -> None:
+    """Run one Cosmic Signal Engine bot and publish its signal."""
+    mode = "live" if os.getenv("LIVE_MODE", "false").strip().lower() == "true" else "paper"
+    result = run_cosmic_engine_for_bot(bot_name, mode=mode)
+    notify_signal(
+        bot_name=bot_name,
+        symbol=result["symbol"],
+        decision=result["decision"],
+        cosmic_score=result["cosmic_score"],
+        heads=result.get("heads", []),
+        mode=mode,
+        extra_fields=result.get("extra_fields", []),
+    )
+
+
 # DAG default arguments
 default_args = {
     'owner': 'bentley-bot',
@@ -96,8 +110,8 @@ default_args = {
 with DAG(
     'bentley_master_orchestration',
     default_args=default_args,
-    description='Master DAG showing Airbyte → KNIME → MLflow pipeline',
-    schedule_interval='@daily',  # Run daily, coordinates other DAGs
+    description='Master DAG for the Airbyte → KNIME → MLflow and Cosmic Signal pipelines',
+    schedule_interval='0 9 * * 1-5',  # Start the weekday Cosmic schedule at 09:00
     catchup=False,
     tags=['master', 'orchestration', 'bentley-bot', 'pipeline'],
     doc_md=__doc__
@@ -175,4 +189,70 @@ with DAG(
         >> check_knime
         >> check_mlflow
         >> generate_report
+    )
+
+    # Run the Cosmic Signal Engine at the staggered times from the scheduler
+    # specification: 09:45, 09:45:20, 09:45:40, 10:00, and 10:00:20.
+    wait_for_vega = TimeDeltaSensor(
+        task_id="wait_for_vega_slot",
+        delta=timedelta(minutes=45),
+        mode="reschedule",
+    )
+    run_vega = PythonOperator(
+        task_id="run_vega",
+        python_callable=run_cosmic_bot,
+        op_kwargs={"bot_name": "Vega"},
+    )
+    wait_for_titan = TimeDeltaSensor(
+        task_id="wait_for_titan_slot",
+        delta=timedelta(minutes=45, seconds=20),
+        mode="reschedule",
+    )
+    run_titan = PythonOperator(
+        task_id="run_titan",
+        python_callable=run_cosmic_bot,
+        op_kwargs={"bot_name": "Titan"},
+    )
+    wait_for_rhea = TimeDeltaSensor(
+        task_id="wait_for_rhea_slot",
+        delta=timedelta(minutes=45, seconds=40),
+        mode="reschedule",
+    )
+    run_rhea = PythonOperator(
+        task_id="run_rhea",
+        python_callable=run_cosmic_bot,
+        op_kwargs={"bot_name": "Rhea"},
+    )
+    wait_for_rigel = TimeDeltaSensor(
+        task_id="wait_for_rigel_slot",
+        delta=timedelta(hours=1),
+        mode="reschedule",
+    )
+    run_rigel = PythonOperator(
+        task_id="run_rigel",
+        python_callable=run_cosmic_bot,
+        op_kwargs={"bot_name": "Rigel"},
+    )
+    wait_for_altair = TimeDeltaSensor(
+        task_id="wait_for_altair_slot",
+        delta=timedelta(hours=1, seconds=20),
+        mode="reschedule",
+    )
+    run_altair = PythonOperator(
+        task_id="run_altair",
+        python_callable=run_cosmic_bot,
+        op_kwargs={"bot_name": "Altair"},
+    )
+
+    (
+        wait_for_vega
+        >> run_vega
+        >> wait_for_titan
+        >> run_titan
+        >> wait_for_rhea
+        >> run_rhea
+        >> wait_for_rigel
+        >> run_rigel
+        >> wait_for_altair
+        >> run_altair
     )

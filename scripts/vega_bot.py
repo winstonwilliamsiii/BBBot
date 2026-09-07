@@ -4,8 +4,18 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
 
-from scripts.mansa_titan_bot import TitanBot, TitanConfig
+if __package__ is None or __package__ == "":
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+try:
+    from scripts.mansa_titan_bot import TitanBot, TitanConfig
+except ModuleNotFoundError:
+    from mansa_titan_bot import TitanBot, TitanConfig
 
 
 DEFAULT_ACTIVE_BOT = "Vega_Bot"

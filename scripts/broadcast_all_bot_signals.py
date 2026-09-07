@@ -3,13 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 from pathlib import Path
 import sys
 from datetime import datetime
 from typing import Any
-
-import requests
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -17,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from frontend.utils.cosmic_signal import compute_cosmic_score
 from frontend.utils.discord_notify import notify_signal, notify_status
+from frontend.utils.hf_client import fetch_hf_sentiment
 from scripts.load_screener_csv import (
     load_bot_config,
     load_screener_csv,
@@ -44,11 +42,6 @@ ALL_BOTS = [
 ]
 
 BOT_CONFIG_PATH = REPO_ROOT / "bentley-bot" / "config" / "bots"
-HF_INFERENCE_URL = os.getenv(
-    "HF_INFERENCE_URL",
-    "http://127.0.0.1:8000/hf/sentiment",
-).rstrip("/")
-HF_INFERENCE_TIMEOUT_SECONDS = 30
 
 
 def _load_active_bots(repo_root: Path) -> set[str]:
@@ -113,25 +106,6 @@ def _pick_symbol(bot_name: str, symbols: list[str], fallback_symbol: str) -> tup
     return symbols[index], len(symbols), "universe"
 
 
-def _call_hf_endpoint(symbol: str) -> dict[str, float]:
-    response = requests.post(
-        HF_INFERENCE_URL,
-        json={"symbol": symbol, "text": symbol},
-        timeout=HF_INFERENCE_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    required_fields = ("hf_sentiment", "positive", "negative", "neutral")
-    if not isinstance(payload, dict) or any(field not in payload for field in required_fields):
-        raise ValueError("HF endpoint returned an incomplete sentiment response")
-    return {
-        "hf_sentiment": float(payload["hf_sentiment"]),
-        "hf_positive": float(payload["positive"]),
-        "hf_negative": float(payload["negative"]),
-        "hf_neutral": float(payload["neutral"]),
-    }
-
-
 def broadcast(mode: str, symbol: str, active_only: bool) -> int:
     repo_root = REPO_ROOT
     selected_bots = list(ALL_BOTS)
@@ -178,7 +152,8 @@ def broadcast(mode: str, symbol: str, active_only: bool) -> int:
                 symbol_source,
                 universe_size,
             )
-            hf_features = _call_hf_endpoint(chosen_symbol)
+            news_text = f"Latest financial update for {chosen_symbol}"
+            hf_features = fetch_hf_sentiment(chosen_symbol, news_text)
             context = _base_context()
             context.update(hf_features)
             context["sentiment_score"] = hf_features["hf_sentiment"]

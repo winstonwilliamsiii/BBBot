@@ -338,6 +338,96 @@ def compute_cosmic_score(
     )
 
 
+def run_cosmic_engine_for_bot(
+    bot_name: str,
+    mode: str = "paper",
+    *,
+    symbol: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Evaluate one bot and return the payload needed by ``notify_signal``.
+
+    This is the shared integration boundary for scheduled jobs and other
+    callers that need a bot-level Cosmic Signal Engine result. Inputs may be
+    supplied per bot through environment variables until bot-specific ML
+    adapters are wired in.
+    """
+    normalized_mode = str(mode).strip().lower()
+    if normalized_mode not in {"paper", "live"}:
+        raise ValueError("mode must be 'paper' or 'live'")
+
+    symbol = (
+        symbol
+        or os.getenv(f"COSMIC_SYMBOL_{bot_name.upper()}")
+        or os.getenv("COSMIC_DEFAULT_SYMBOL")
+        or "SPY"
+    ).strip() or "SPY"
+    probability = float(
+        os.getenv(
+            f"COSMIC_ML_PROBABILITY_{bot_name.upper()}",
+            os.getenv("COSMIC_ML_PROBABILITY", "0.5"),
+        )
+    )
+    probability = max(0.0, min(1.0, probability))
+    side = os.getenv(
+        f"COSMIC_ML_SIDE_{bot_name.upper()}",
+        os.getenv("COSMIC_ML_SIDE", "buy"),
+    ).strip().lower()
+    if side not in {"buy", "sell", "long", "short"}:
+        side = "buy"
+
+    context = {
+        "execution_probability": probability,
+        "predicted_side": side,
+        "sentiment_score": float(
+            os.getenv(f"COSMIC_SENTIMENT_{bot_name.upper()}", "0.0")
+        ),
+        "rsi": float(os.getenv(f"COSMIC_RSI_{bot_name.upper()}", "50.0")),
+        "momentum": float(os.getenv(f"COSMIC_MOMENTUM_{bot_name.upper()}", "0.0")),
+        "average_spread_bps": float(
+            os.getenv(f"COSMIC_SPREAD_BPS_{bot_name.upper()}", "12.0")
+        ),
+        "liquidity_ratio": float(
+            os.getenv(f"COSMIC_LIQUIDITY_{bot_name.upper()}", "0.5")
+        ),
+        "timeframe_signals": [0.0],
+    }
+    snapshot = compute_cosmic_score(
+        context,
+        symbol=symbol,
+        bot_name=bot_name,
+        mode=normalized_mode,
+    )
+    analytic_heads = {
+        "NS": max(-1.0, min(1.0, context["sentiment_score"])),
+        "SD": (
+            1.0 if side in {"buy", "long"} else -1.0
+        ) * max(0.0, min(1.0, abs(probability - 0.5) * 2.0)),
+        "CS": snapshot.cosmic_score,
+        "MRC": probability,
+        "RP": max(0.0, min(1.0, (snapshot.cosmic_score + 1.0) / 2.0)),
+    }
+    return {
+        "bot_name": bot_name,
+        "symbol": symbol,
+        "decision": snapshot.decision,
+        "cosmic_score": snapshot.cosmic_score,
+        "heads": snapshot.to_dict()["heads"],
+        "extra_fields": [
+            {
+                "name": "Scheduler Heads",
+                "value": " | ".join(
+                    f"{name}={value:+.3f}" for name, value in analytic_heads.items()
+                ),
+                "inline": False,
+            },
+            {"name": "ML Head", "value": f"{side} p={probability:.3f}", "inline": True},
+        ],
+        "mode": normalized_mode,
+        "snapshot": snapshot,
+        "trades": [],
+    }
+
+
 # ─── Engine class (stateful caching) ─────────────────────────────────────────
 
 class CosmicSignalEngine:

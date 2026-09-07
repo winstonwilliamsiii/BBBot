@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -36,8 +37,26 @@ DEFAULT_QTY = 100.0
 DEFAULT_BROKER = "auto"
 
 
+def _ensure_utf8_stdout() -> None:
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+
+
+_ensure_utf8_stdout()
+
+
 def _to_lines(raw: str) -> list[str]:
     return [line.strip() for line in str(raw or "").splitlines() if line.strip()]
+
+
+def _safe_mlflow_text(value: Any) -> str:
+    text = str(value if value is not None else "")
+    return text.encode("ascii", errors="ignore").decode("ascii")
 
 
 def _ensure_mlflow(bot: AltairBot) -> None:
@@ -164,16 +183,17 @@ def execute_trade(
 def _log_analysis_to_mlflow(bot: AltairBot, analysis: dict[str, Any], broker: str, qty: float, dry_run: bool) -> dict[str, Any]:
     try:
         _ensure_mlflow(bot)
-        with mlflow.start_run(run_name=f"altair_analysis_{analysis['ticker'].lower()}") as run:
+        run_name = _safe_mlflow_text(f"altair_analysis_{analysis['ticker'].lower()}")
+        with mlflow.start_run(run_name=run_name) as run:
             mlflow.log_params(
                 {
-                    "ticker": analysis["ticker"],
-                    "broker_requested": broker,
+                    "ticker": _safe_mlflow_text(analysis["ticker"]),
+                    "broker_requested": _safe_mlflow_text(broker),
                     "qty": float(qty),
                     "dry_run": bool(dry_run),
-                    "action": analysis["action"],
-                    "fund": bot.config.fund,
-                    "strategy": bot.config.strategy,
+                    "action": _safe_mlflow_text(analysis["action"]),
+                    "fund": _safe_mlflow_text(bot.config.fund),
+                    "strategy": _safe_mlflow_text(bot.config.strategy),
                 }
             )
             mlflow.log_metrics(
@@ -193,14 +213,15 @@ def _log_analysis_to_mlflow(bot: AltairBot, analysis: dict[str, Any], broker: st
 def _log_trade_to_mlflow(bot: AltairBot, trade: dict[str, Any]) -> dict[str, Any]:
     try:
         _ensure_mlflow(bot)
-        with mlflow.start_run(run_name=f"altair_trade_{str(trade.get('ticker', 'na')).lower()}") as run:
+        run_name = _safe_mlflow_text(f"altair_trade_{str(trade.get('ticker', 'na')).lower()}")
+        with mlflow.start_run(run_name=run_name) as run:
             mlflow.log_params(
                 {
-                    "broker": str(trade.get("broker", "")),
-                    "ticker": str(trade.get("ticker", "")),
-                    "action": str(trade.get("action", "")),
-                    "mode": str(trade.get("mode", bot.config.execution_mode)),
-                    "status": str(trade.get("status", "")),
+                    "broker": _safe_mlflow_text(trade.get("broker", "")),
+                    "ticker": _safe_mlflow_text(trade.get("ticker", "")),
+                    "action": _safe_mlflow_text(trade.get("action", "")),
+                    "mode": _safe_mlflow_text(trade.get("mode", bot.config.execution_mode)),
+                    "status": _safe_mlflow_text(trade.get("status", "")),
                 }
             )
             mlflow.log_metrics(

@@ -13,10 +13,14 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sensors.time_delta import TimeDeltaSensor
 from datetime import datetime, timedelta
+import logging
 import os
 
 from frontend.utils.cosmic_signal import run_cosmic_engine_for_bot
 from frontend.utils.discord_notify import notify_signal
+from backend.signal_delivery import publish_signal
+
+logger = logging.getLogger("bentley.master_orchestration")
 
 
 def print_pipeline_status(**context):
@@ -84,16 +88,28 @@ def generate_pipeline_report(**context):
 def run_cosmic_bot(bot_name: str) -> None:
     """Run one Cosmic Signal Engine bot and publish its signal."""
     mode = "live" if os.getenv("LIVE_MODE", "false").strip().lower() == "true" else "paper"
-    result = run_cosmic_engine_for_bot(bot_name, mode=mode)
-    notify_signal(
-        bot_name=bot_name,
-        symbol=result["symbol"],
-        decision=result["decision"],
-        cosmic_score=result["cosmic_score"],
-        heads=result.get("heads", []),
-        mode=mode,
-        extra_fields=result.get("extra_fields", []),
-    )
+    try:
+        result = run_cosmic_engine_for_bot(bot_name, mode=mode)
+        notify_signal(
+            bot_name=bot_name,
+            symbol=result["symbol"],
+            decision=result["decision"],
+            cosmic_score=result["cosmic_score"],
+            heads=result.get("heads", []),
+            mode=mode,
+            extra_fields=result.get("extra_fields", []),
+        )
+        publish_signal(result)
+        logger.info(
+            "Cosmic signal completed for %s: decision=%s score=%+.4f mode=%s",
+            bot_name,
+            result["decision"],
+            result["cosmic_score"],
+            mode,
+        )
+    except Exception:
+        logger.exception("Cosmic signal failed for %s in %s mode", bot_name, mode)
+        raise
 
 
 # DAG default arguments
@@ -244,15 +260,17 @@ with DAG(
         op_kwargs={"bot_name": "Altair"},
     )
 
-    (
-        wait_for_vega
-        >> run_vega
-        >> wait_for_titan
-        >> run_titan
-        >> wait_for_rhea
-        >> run_rhea
-        >> wait_for_rigel
-        >> run_rigel
-        >> wait_for_altair
-        >> run_altair
-    )
+    # Keep each bot branch independent: one failed engine run must not prevent
+    # the other scheduled bots from producing their signals.
+    check_mlflow >> [
+        wait_for_vega,
+        wait_for_titan,
+        wait_for_rhea,
+        wait_for_rigel,
+        wait_for_altair,
+    ]
+    wait_for_vega >> run_vega
+    wait_for_titan >> run_titan
+    wait_for_rhea >> run_rhea
+    wait_for_rigel >> run_rigel
+    wait_for_altair >> run_altair

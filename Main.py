@@ -7,7 +7,7 @@ from typing import Literal, Optional, Any
 
 import json
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 import requests
 
@@ -25,6 +25,7 @@ from backend.api.hydra_persistence import (
     persist_hydra_trade_decision,
 )
 from backend.api.mansa_ai_router import router as mansa_ai_router
+from backend.signal_delivery.db import fetch_latest_signal
 
 try:
     import pymysql
@@ -136,6 +137,23 @@ app = FastAPI(
 )
 
 API_VERSION = "0.2.0"
+
+
+async def auth(
+    api_key: Optional[str] = Query(default=None),
+    header_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+) -> str:
+    """Authenticate signal consumers with the configured read-only API key."""
+    configured_key = os.getenv("BENTLEY_SIGNAL_API_KEY", "").strip()
+    supplied_key = (api_key or header_api_key or "").strip()
+    if not configured_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Signal API authentication is not configured",
+        )
+    if not supplied_key or supplied_key != configured_key:
+        raise HTTPException(status_code=401, detail="Invalid signal API key")
+    return supplied_key
 
 _BROKER_MODES_PATH = os.path.join(
     os.path.abspath(os.path.dirname(__file__) or "."), "config", "broker_modes.json"
@@ -1710,15 +1728,13 @@ async def signals_evaluate(payload: CosmicEvaluateRequest):
 async def signals_for_bot(
     bot_name: str,
     mode: str = Query(default="paper"),
+    api_key: str = Depends(auth),
 ):
-    """Return the last cached Cosmic Signal snapshot for a specific bot.
+    """Return the latest authenticated signal for a specific bot.
 
     If no evaluation has been cached yet, returns a neutral demo snapshot
     using each bot's live telemetry where available.
     """
-    if not COSMIC_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Cosmic signal engine unavailable")
-
     canonical = next(
         (b for b in _VALID_BOTS if b.lower() == bot_name.lower()), None
     )
@@ -1727,6 +1743,14 @@ async def signals_for_bot(
             status_code=404,
             detail=f"Unknown bot '{bot_name}'. Valid bots: {_VALID_BOTS}",
         )
+
+    stored_signal = fetch_latest_signal(canonical)
+    if stored_signal is not None:
+        stored_signal["bot_meta"] = _BOT_SIGNAL_META.get(canonical, {})
+        return stored_signal
+
+    if not COSMIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Cosmic signal engine unavailable")
 
     engine = _get_cosmic_engine()
     snap = engine.last_snapshot(bot_name=canonical)
@@ -1760,9 +1784,17 @@ async def signals_for_bot(
         snap = engine.evaluate(ctx, symbol=None, bot_name=canonical, mode=mode, force=True)
 
     meta = _BOT_SIGNAL_META.get(canonical, {})
-    result = snap.to_dict()
-    result["bot_meta"] = meta
-    return result
+    signal = snap.to_dict()
+    return {
+        "bot": canonical,
+        "symbol": signal["symbol"],
+        "cosmic_score": signal["cosmic_score"],
+        "decision": signal["decision"],
+        "heads": signal["heads"],
+        "timestamp": signal["timestamp"],
+        "mode": signal["mode"],
+        "bot_meta": meta,
+    }
 
 
 @app.get("/signals")

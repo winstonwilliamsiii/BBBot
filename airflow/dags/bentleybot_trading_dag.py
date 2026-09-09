@@ -1,356 +1,228 @@
+"""Simulation-only ML trading pipeline.
+
+This DAG deliberately does not import or invoke broker execution code. Its output is
+limited to local artifacts, Airflow XComs, and an optional simulated report log.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from datetime import datetime, timedelta
-import requests
-import pandas as pd
-import mlflow
-from sqlalchemy import create_engine
-import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+from bbbot1_pipeline.trading_strategies import MeanReversionStrategy
+
 logger = logging.getLogger(__name__)
 
-# === CONFIG ===
-AIRBYTE_API = "http://localhost:8001"
-AIRBYTE_CONNECTION_ID = "your-airbyte-connection-id"
-MYSQL_CONFIG = {
-    "host": "mysql",  # Docker container name
-    "user": "airflow",
-    "password": "airflow",
-    "database": "mansa_bot"
-}
-MYSQL_URL = (
-    f"mysql+pymysql://{MYSQL_CONFIG['user']}:{MYSQL_CONFIG['password']}"
-    f"@{MYSQL_CONFIG['host']}/{MYSQL_CONFIG['database']}"
-)
-BROKER = "binance"
-SYMBOL = "BTCUSDT"
-QUANTITY = 0.01
+DEFAULT_TICKERS = ("BTC-USD", "ETH-USD")
+DEFAULT_QUANTITY = 0.01
 
-# === DAG ===
+
+def _simulation_enabled() -> bool:
+    return os.getenv("TRADING_SIMULATION_MODE", "true").strip().lower() == "true"
+
+
+def _require_simulation_mode() -> None:
+    if not _simulation_enabled():
+        raise RuntimeError(
+            "This DAG is simulation-only. Set TRADING_SIMULATION_MODE=true to run it."
+        )
+
+
+def _work_dir() -> Path:
+    path = Path(os.getenv("BENTLEY_TRADING_WORK_DIR", "/tmp/bentley_trading"))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _tickers() -> tuple[str, ...]:
+    configured = os.getenv("TRADING_TICKERS", ",".join(DEFAULT_TICKERS))
+    tickers = tuple(ticker.strip().upper() for ticker in configured.split(",") if ticker.strip())
+    if not tickers:
+        raise ValueError("TRADING_TICKERS must include at least one ticker.")
+    return tickers
+
+
+def _xcom_push(context: dict[str, Any], key: str, value: Any) -> None:
+    task_instance = context.get("task_instance")
+    if task_instance is not None:
+        task_instance.xcom_push(key=key, value=value)
+
+
+def _xcom_pull(context: dict[str, Any], task_id: str, key: str) -> Any:
+    task_instance = context.get("task_instance")
+    if task_instance is None:
+        return None
+    return task_instance.xcom_pull(task_ids=task_id, key=key)
+
+
+def fetch_market_data(**context: Any) -> dict[str, Any]:
+    """Fetch and persist daily close prices for the configured simulation tickers."""
+    _require_simulation_mode()
+    logger.info("SIMULATION MODE: fetching market data for %s", ", ".join(_tickers()))
+
+    import yfinance as yf
+
+    frames: list[pd.DataFrame] = []
+    for ticker in _tickers():
+        history = yf.download(
+            ticker,
+            period="3mo",
+            interval="1d",
+            auto_adjust=True,
+            progress=False,
+        )
+        if history.empty:
+            raise ValueError(f"No market data returned for {ticker}.")
+        close_column = "Close" if "Close" in history.columns else "close"
+        if close_column not in history.columns:
+            raise ValueError(f"Market data for {ticker} did not include a close price.")
+        frame = history[[close_column]].rename(columns={close_column: "Close"}).copy()
+        frame["ticker"] = ticker
+        frame.index.name = "timestamp"
+        frames.append(frame.reset_index())
+
+    market_data = pd.concat(frames, ignore_index=True)
+    output_path = _work_dir() / "market_data.csv"
+    market_data.to_csv(output_path, index=False)
+    result = {"path": str(output_path), "rows": len(market_data), "tickers": list(_tickers())}
+    _xcom_push(context, "market_data", result)
+    logger.info("Fetched %s market-data rows in SIMULATION MODE", result["rows"])
+    return result
+
+
+def generate_signals(**context: Any) -> dict[str, Any]:
+    """Generate strategy signals from persisted simulation market data."""
+    _require_simulation_mode()
+    market_data = _xcom_pull(context, "fetch_market_data", "market_data")
+    path = Path(market_data["path"]) if market_data else _work_dir() / "market_data.csv"
+    data = pd.read_csv(path, parse_dates=["timestamp"])
+    strategy = MeanReversionStrategy()
+    signal_frames: list[pd.DataFrame] = []
+
+    for ticker, ticker_data in data.groupby("ticker", sort=True):
+        prices = ticker_data.set_index("timestamp")[["Close"]]
+        signals = strategy.generate_signals(prices).reset_index()
+        signals["ticker"] = ticker
+        signal_frames.append(signals)
+
+    signals = pd.concat(signal_frames, ignore_index=True)
+    output_path = _work_dir() / "signals.csv"
+    signals.to_csv(output_path, index=False)
+    result = {"path": str(output_path), "signals": int((signals["signal"] != 0).sum())}
+    _xcom_push(context, "signals", result)
+    logger.info("Generated %s actionable signals in SIMULATION MODE", result["signals"])
+    return result
+
+
+def execute_trades(**context: Any) -> dict[str, Any]:
+    """Record simulated trades for the latest strategy decision per ticker."""
+    _require_simulation_mode()
+    signal_data = _xcom_pull(context, "generate_signals", "signals")
+    path = Path(signal_data["path"]) if signal_data else _work_dir() / "signals.csv"
+    signals = pd.read_csv(path, parse_dates=["timestamp"])
+    latest = signals.sort_values("timestamp").groupby("ticker", as_index=False).tail(1)
+    action_map = {1: "BUY", -1: "SELL", 0: "HOLD"}
+    trades = latest.loc[:, ["timestamp", "ticker", "price", "signal"]].copy()
+    trades.rename(columns={"price": "close_price"}, inplace=True)
+    trades["action"] = trades["signal"].map(action_map).fillna("HOLD")
+    trades["quantity"] = DEFAULT_QUANTITY
+    trades["status"] = "simulated"
+    trades["execution_mode"] = "SIMULATION MODE"
+
+    output_path = _work_dir() / "simulated_trades.csv"
+    trades.to_csv(output_path, index=False)
+    result = {"path": str(output_path), "trades": len(trades), "executed": 0}
+    _xcom_push(context, "trades", result)
+    logger.info(
+        "SIMULATION MODE: recorded %s simulated trade decisions; real executions=0",
+        result["trades"],
+    )
+    return result
+
+
+def calculate_performance(**context: Any) -> dict[str, Any]:
+    """Calculate simulation metrics and log them to the Airflow task log."""
+    _require_simulation_mode()
+    trade_data = _xcom_pull(context, "execute_trades", "trades")
+    path = Path(trade_data["path"]) if trade_data else _work_dir() / "simulated_trades.csv"
+    trades = pd.read_csv(path)
+    metrics = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "mode": "SIMULATION MODE",
+        "trade_decisions": int(len(trades)),
+        "buy_signals": int((trades["action"] == "BUY").sum()),
+        "sell_signals": int((trades["action"] == "SELL").sum()),
+        "hold_signals": int((trades["action"] == "HOLD").sum()),
+        "real_executions": 0,
+    }
+    output_path = _work_dir() / "performance_metrics.json"
+    output_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    metrics["path"] = str(output_path)
+    _xcom_push(context, "performance", metrics)
+    logger.info("SIMULATION MODE: performance metrics logged: %s", metrics)
+    return metrics
+
+
+def send_daily_report(**context: Any) -> dict[str, Any]:
+    """Publish the simulation report to the Airflow log without external delivery."""
+    _require_simulation_mode()
+    performance = _xcom_pull(context, "calculate_performance", "performance")
+    if performance is None:
+        performance_path = _work_dir() / "performance_metrics.json"
+        performance = json.loads(performance_path.read_text(encoding="utf-8"))
+
+    report = {"status": "sent", "delivery": "Airflow task log", "metrics": performance}
+    _xcom_push(context, "daily_report", report)
+    logger.info("SIMULATION MODE: daily report sent to Airflow task log: %s", report)
+    return report
+
+
 default_args = {
     "owner": "bentleybot",
-    "start_date": datetime(2024, 12, 1),
+    "depends_on_past": False,
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
     "email_on_failure": False,
-    "email_on_retry": False
+    "email_on_retry": False,
 }
-dag = DAG(
-    "bentleybot_dag",
-    schedule_interval="@hourly",
-    catchup=False,
+
+with DAG(
+    dag_id="bentleybot_dag",
+    description="Simulation-only ML trading pipeline",
     default_args=default_args,
-    description="BentleyBot automated trading pipeline",
-    tags=["trading", "crypto", "ml"]
-)
+    start_date=datetime(2024, 12, 1),
+    schedule="@daily",
+    catchup=False,
+    tags=["trading", "ml", "simulation"],
+) as dag:
+    fetch_market_data_task = PythonOperator(
+        task_id="fetch_market_data", python_callable=fetch_market_data
+    )
+    generate_signals_task = PythonOperator(
+        task_id="generate_signals", python_callable=generate_signals
+    )
+    execute_trades_task = PythonOperator(
+        task_id="execute_trades", python_callable=execute_trades
+    )
+    calculate_performance_task = PythonOperator(
+        task_id="calculate_performance", python_callable=calculate_performance
+    )
+    send_daily_report_task = PythonOperator(
+        task_id="send_daily_report", python_callable=send_daily_report
+    )
 
-
-# === 1. Trigger Airbyte Sync ===
-def trigger_airbyte_sync():
-    try:
-        url = f"{AIRBYTE_API}/v1/connections/sync"
-        r = requests.post(
-            url,
-            json={"connectionId": AIRBYTE_CONNECTION_ID},
-            timeout=30
-        )
-        r.raise_for_status()
-        logger.info(f"✅ Airbyte sync triggered successfully: {r.status_code}")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Failed to trigger Airbyte sync: {e}")
-        raise
-
-
-# === 2. Read MySQL Data ===
-def read_mysql_data():
-    engine = None
-    try:
-        engine = create_engine(MYSQL_URL)
-        query = ("SELECT * FROM binance_ohlcv "
-                "ORDER BY timestamp DESC LIMIT 100")
-        df = pd.read_sql(query, engine)
-        
-        if df.empty:
-            logger.warning("⚠️ No data retrieved from MySQL")
-            # Create empty CSV with expected columns
-            df = pd.DataFrame(columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        
-        df.to_csv("/tmp/latest_data.csv", index=False)
-        logger.info(f"✅ Retrieved {len(df)} rows from MySQL")
-    except Exception as e:
-        logger.error(f"❌ Failed to read MySQL data: {e}")
-        raise
-    finally:
-        if engine:
-            engine.dispose()
-
-
-# === 3. RSI/MACD + Trigger Logic ===
-
-
-def compute_indicators():
-    try:
-        df = pd.read_csv("/tmp/latest_data.csv")
-        
-        if df.empty or len(df) < 26:
-            logger.warning("⚠️ Insufficient data for indicators calculation")
-            df['RSI'] = None
-            df['MACD'] = None
-            df['Signal'] = None
-            df['trigger'] = 'HOLD'
-            df.to_csv("/tmp/indicators.csv", index=False)
-            return
-            
-        closes = df['close'].fillna(method='ffill').tolist()
-
-        def ema(values, period):
-            if len(values) < period:
-                return [None] * len(values)
-            k = 2 / (period + 1)
-            ema_vals = [values[0]]
-            for i in range(1, len(values)):
-                ema_vals.append(values[i] * k + ema_vals[i - 1] * (1 - k))
-            return ema_vals
-
-        def rsi(values, period=14):
-            if len(values) <= period:
-                return [None] * len(values)
-            rsi_vals = [None] * period
-            for i in range(period, len(values)):
-                gains = losses = 0
-                for j in range(i - period + 1, i + 1):
-                    if j > 0:  # Avoid index error
-                        delta = values[j] - values[j - 1]
-                        if delta > 0:
-                            gains += delta
-                        else:
-                            losses -= delta
-                avg_gain = gains / period
-                avg_loss = losses / period
-                rs = avg_gain / (avg_loss if avg_loss > 0 else 1e-10)
-                rsi_vals.append(100 - 100 / (1 + rs))
-            return rsi_vals
-
-        # Calculate MACD
-        ema12 = ema(closes, 12)
-        ema26 = ema(closes, 26)
-        
-        # Ensure both EMAs have the same length
-        min_len = min(len(ema12), len(ema26))
-        ema12 = ema12[-min_len:]
-        ema26 = ema26[-min_len:]
-        
-        macd_line = []
-        for i in range(len(ema12)):
-            if ema12[i] is not None and ema26[i] is not None:
-                macd_line.append(ema12[i] - ema26[i])
-            else:
-                macd_line.append(None)
-        
-        # Calculate signal line
-        signal_line = ema([x for x in macd_line if x is not None], 9)
-        
-        # Pad arrays to match DataFrame length
-        df['RSI'] = rsi(closes)
-        df['MACD'] = [None] * (len(df) - len(macd_line)) + macd_line
-        df['Signal'] = [None] * (len(df) - len(signal_line)) + signal_line
-        df['trigger'] = 'HOLD'
-        
-        # Apply trading logic with null checks
-        buy_condition = (
-            (df['RSI'].notna()) & (df['RSI'] < 30) & 
-            (df['MACD'].notna()) & (df['Signal'].notna()) & 
-            (df['MACD'] > df['Signal'])
-        )
-        sell_condition = (
-            (df['RSI'].notna()) & (df['RSI'] > 70) & 
-            (df['MACD'].notna()) & (df['Signal'].notna()) & 
-            (df['MACD'] < df['Signal'])
-        )
-        
-        df.loc[buy_condition, 'trigger'] = 'BUY'
-        df.loc[sell_condition, 'trigger'] = 'SELL'
-        
-        df.to_csv("/tmp/indicators.csv", index=False)
-        logger.info(f"✅ Indicators computed for {len(df)} data points")
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to compute indicators: {e}")
-        raise
-
-
-# === 4. Execute Trade ===
-
-
-def execute_trade():
-    """
-    Execute trades based on signals using real broker APIs
-    Routes to appropriate broker based on symbol type
-    """
-    try:
-        df = pd.read_csv("/tmp/indicators.csv")
-        
-        if df.empty:
-            logger.warning("⚠️ No indicator data available for trading")
-            return
-            
-        latest = df.iloc[-1]
-        action = latest.get("trigger", "HOLD")
-        
-        result = {
-            "timestamp": pd.Timestamp.now().isoformat(),
-            "symbol": SYMBOL,
-            "action": action,
-            "quantity": QUANTITY,
-            "status": "simulated"
-        }
-        
-        if action in ["BUY", "SELL"]:
-            try:
-                # Import broker API with fallback
-                try:
-                    from bbbot1_pipeline.broker_api import execute_trade as place_order
-                    
-                    # Determine broker based on symbol
-                    if SYMBOL.endswith("USDT"):
-                        # Crypto -> Binance
-                        result = place_order("binance", SYMBOL, action, QUANTITY)
-                    elif "." in SYMBOL or len(SYMBOL) <= 3:
-                        # Forex or Futures -> IBKR
-                        result = place_order("ibkr", SYMBOL, action, QUANTITY, sec_type="FUT", exchange="CME")
-                    else:
-                        # Equities/ETFs -> IBKR
-                        result = place_order("ibkr", SYMBOL, action, QUANTITY, sec_type="STK", exchange="SMART")
-                    
-                    result["status"] = "executed"
-                    
-                except ImportError:
-                    logger.warning("⚠️ Broker API not available, running in simulation mode")
-                    result["status"] = "simulated"
-                    result["message"] = f"Would {action} {QUANTITY} of {SYMBOL}"
-                
-                logger.info(f"Trade {result['status']}: {action} {QUANTITY} {SYMBOL}")
-                
-            except Exception as trade_error:
-                logger.error(f"❌ Trade execution failed: {trade_error}")
-                result["status"] = "failed"
-                result["error"] = str(trade_error)
-        else:
-            logger.info(f"No trade triggered. Current signal: {action}")
-            result["message"] = f"No action required. Signal: {action}"
-        
-        # Save trade result
-        import json
-        with open("/tmp/trade_result.json", "w") as f:
-            json.dump(result, f, indent=2)
-            
-    except Exception as e:
-        logger.error(f"❌ Failed to execute trade: {e}")
-        raise
-
-
-# === 5. Log to MLFlow ===
-
-
-def log_to_mlflow():
-    try:
-        df = pd.read_csv("/tmp/indicators.csv")
-        
-        # Set MLflow tracking URI (accessible within Docker network)
-        mlflow.set_tracking_uri("http://mlflow:5000")
-        mlflow.set_experiment("BentleyBudgetBot-Trading")
-        
-        with mlflow.start_run() as run:
-            # Log parameters
-            mlflow.log_param("data_points", len(df))
-            mlflow.log_param("broker", BROKER)
-            mlflow.log_param("symbol", SYMBOL)
-            mlflow.log_param("quantity", QUANTITY)
-            
-            # Log metrics
-            buy_signals = (df['trigger'] == 'BUY').sum()
-            sell_signals = (df['trigger'] == 'SELL').sum()
-            
-            mlflow.log_metric("buy_signals", buy_signals)
-            mlflow.log_metric("sell_signals", sell_signals)
-            mlflow.log_metric("total_signals", buy_signals + sell_signals)
-            
-            # Log latest market data
-            if len(df) > 0:
-                latest = df.iloc[-1]
-                mlflow.log_metric("latest_rsi", latest.get('RSI', 0))
-                mlflow.log_metric("latest_macd", latest.get('MACD', 0))
-                mlflow.log_metric("latest_close", latest.get('close', 0))
-            
-            # Save and log artifacts
-            import os
-            artifact_path = "/tmp/mlflow_artifacts"
-            os.makedirs(artifact_path, exist_ok=True)
-            
-            # Save trading signals
-            signals_file = f"{artifact_path}/trade_signals.csv"
-            df.to_csv(signals_file, index=False)
-            mlflow.log_artifact(signals_file)
-            
-            # Save trading summary
-            summary = {
-                "run_id": run.info.run_id,
-                "timestamp": pd.Timestamp.now().isoformat(),
-                "total_data_points": len(df),
-                "buy_signals": int(buy_signals),
-                "sell_signals": int(sell_signals),
-                "last_action": (
-                    latest.get('trigger', 'HOLD') if len(df) > 0 else 'HOLD'
-                )
-            }
-            
-            summary_file = f"{artifact_path}/trading_summary.json"
-            import json
-            with open(summary_file, 'w') as f:
-                json.dump(summary, f, indent=2)
-            mlflow.log_artifact(summary_file)
-            
-            print(f"✅ MLflow run completed: {run.info.run_id}")
-            print(f"📊 Logged {buy_signals} BUY and {sell_signals} SELL signals")
-    except Exception as e:
-        print(f"❌ MLflow logging failed: {str(e)}")
-        raise
-
-
-# === Airflow Tasks ===
-
-
-t1 = PythonOperator(
-    task_id="trigger_airbyte",
-    python_callable=trigger_airbyte_sync,
-    dag=dag
-)
-
-t2 = PythonOperator(
-    task_id="read_mysql",
-    python_callable=read_mysql_data,
-    dag=dag
-)
-
-t3 = PythonOperator(
-    task_id="compute_indicators",
-    python_callable=compute_indicators,
-    dag=dag
-)
-
-t4 = PythonOperator(
-    task_id="execute_trade",
-    python_callable=execute_trade,
-    dag=dag
-)
-
-t5 = PythonOperator(
-    task_id="log_mlflow",
-    python_callable=log_to_mlflow,
-    dag=dag
-)
-
-t1 >> t2 >> t3 >> t4 >> t5
-
+    (
+        fetch_market_data_task
+        >> generate_signals_task
+        >> execute_trades_task
+        >> calculate_performance_task
+        >> send_daily_report_task
+    )

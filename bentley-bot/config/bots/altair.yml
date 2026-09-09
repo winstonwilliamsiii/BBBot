@@ -11,7 +11,7 @@ execution:
   primary_client: alpaca
   fallback_client: ibkr
   mode: paper
-  enabled: false
+  enabled: true
   order_type: market
 
 strategy:

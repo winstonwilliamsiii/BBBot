@@ -25,7 +25,7 @@ bots:
     execution:
       broker: "alpaca"
       mode: "paper"               # paper | live
-      enabled: false
+      enabled: true
       order_type: "market"
 
     market_data:

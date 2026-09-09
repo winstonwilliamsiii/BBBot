@@ -84,13 +84,22 @@ try:
     except Exception:
         pass
 
+    preferred_candidates = [
+        "mysql+pymysql://root:root@mysql:3306/mansa_bot",
+        "mysql+pymysql://root:root@host.docker.internal:3307/mansa_bot",
+    ]
+    for preferred in reversed(preferred_candidates):
+        if preferred in candidates:
+            candidates.remove(preferred)
+        candidates.insert(0, preferred)
+
     last_db_error = None
     DB_AVAILABLE = False
     engine = None
     connection_string = ""
     for candidate in candidates:
         try:
-            trial_engine = create_engine(candidate)
+            trial_engine = create_engine(candidate, pool_pre_ping=True)
             with trial_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             engine = trial_engine
@@ -104,11 +113,50 @@ try:
         raise RuntimeError(f"DB connect failed for all candidates: {last_db_error}")
 except Exception as e:
     DB_AVAILABLE = False
-    st.error(f"Database connection failed: {e}")
-    st.caption(
-        "Titan launcher controls can still run without the legacy "
-        "bot_status table."
-    )
+
+
+def _ensure_database_connection() -> bool:
+    global DB_AVAILABLE, engine, connection_string
+
+    if DB_AVAILABLE and engine is not None:
+        return True
+
+    try:
+        candidates = [
+            "******127.0.0.1:3307/mansa_bot",
+            "******127.0.0.1:3307/bentleybot",
+        ]
+        secret_url = get_mysql_url()
+        if secret_url and secret_url not in candidates:
+            candidates.append(secret_url)
+    except Exception:
+        candidates = [
+            "******127.0.0.1:3307/mansa_bot",
+            "******127.0.0.1:3307/bentleybot",
+        ]
+
+    preferred_candidates = [
+        "mysql+pymysql://root:root@mysql:3306/mansa_bot",
+        "mysql+pymysql://root:root@host.docker.internal:3307/mansa_bot",
+    ]
+    for preferred in reversed(preferred_candidates):
+        if preferred in candidates:
+            candidates.remove(preferred)
+        candidates.insert(0, preferred)
+
+    for candidate in candidates:
+        try:
+            trial_engine = create_engine(candidate, pool_pre_ping=True)
+            with trial_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            engine = trial_engine
+            connection_string = candidate
+            DB_AVAILABLE = True
+            return True
+        except Exception:
+            continue
+
+    return False
 
 # Apply custom styling
 if STYLING_AVAILABLE:
@@ -703,6 +751,13 @@ days_map = {
     "All Time": 365
 }
 selected_days = days_map[date_range]
+
+if not _ensure_database_connection():
+    st.warning("💾 **Database Connection Not Available**")
+    st.info(
+        "Titan launch controls can still run from the launcher, but trade history "
+        "and performance data require MySQL."
+    )
 
 trades_df = load_recent_trades(selected_days, refresh_token=_data_refresh_token)
 perf_df = load_performance_metrics(selected_days, refresh_token=_data_refresh_token)

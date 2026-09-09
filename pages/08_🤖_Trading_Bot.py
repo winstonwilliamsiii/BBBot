@@ -213,13 +213,22 @@ try:
     except Exception:
         pass
 
+    preferred_candidates = [
+        "mysql+pymysql://root:root@mysql:3306/mansa_bot",
+        "mysql+pymysql://root:root@host.docker.internal:3307/mansa_bot",
+    ]
+    for preferred in reversed(preferred_candidates):
+        if preferred in candidates:
+            candidates.remove(preferred)
+        candidates.insert(0, preferred)
+
     last_db_error = None
     DB_AVAILABLE = False
     engine = None
     connection_string = ""
     for candidate in candidates:
         try:
-            trial_engine = create_engine(candidate)
+            trial_engine = create_engine(candidate, pool_pre_ping=True)
             with trial_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             engine = trial_engine
@@ -233,55 +242,45 @@ try:
         raise RuntimeError(f"DB connect failed for all candidates: {last_db_error}")
 except Exception as e:
     DB_AVAILABLE = False
-    # Show helpful setup message instead of raw error
-    st.warning("💾 **Database Connection Not Available**")
-    st.caption(
-        "Titan launch controls can still run from the launcher even when "
-        "trade-history tables are unavailable."
-    )
-    with st.expander("🔧 Setup Instructions"):
-        st.markdown(f"""
-        **MySQL Connection Failed**
 
-        The trading bot requires MySQL for storing signals and trade history.
 
-        **Local Development Setup:**
-        ```bash
-        # 1. Install MySQL (if not installed)
-        # 2. Create database:
-        mysql -u root -p -e "CREATE DATABASE bentleybot;"
+def _ensure_database_connection() -> bool:
+    """Retry the database connection after dependent containers finish starting."""
+    global DB_AVAILABLE, engine, connection_string
 
-        # 3. Run schema setup:
-        mysql -u root -p bentleybot < scripts/setup/trading_bot_schema.sql
+    if DB_AVAILABLE and engine is not None:
+        return True
 
-        # 4. Update .env file:
-        MYSQL_HOST=localhost
-        MYSQL_PORT=3306
-        MYSQL_USER=root
-        MYSQL_PASSWORD=your_password
-        MYSQL_DATABASE=bentleybot
-        ```
+    try:
+        candidates = ["mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot"]
+        secret_url = get_mysql_url()
+        if secret_url and secret_url not in candidates:
+            candidates.append(secret_url)
+    except Exception:
+        candidates = ["mysql+pymysql://root:root@127.0.0.1:3307/mansa_bot"]
 
-        **For Railway MySQL (Cloud):**
-        ```bash
-        MYSQL_HOST=nozomi.proxy.rlwy.net
-        MYSQL_PORT=54537
-        MYSQL_USER=root
-        MYSQL_PASSWORD=your_railway_password
-        MYSQL_DATABASE=railway  # auto-maps to bbbot1
-        ```
+    preferred_candidates = [
+        "mysql+pymysql://root:root@mysql:3306/mansa_bot",
+        "mysql+pymysql://root:root@host.docker.internal:3307/mansa_bot",
+    ]
+    for preferred in reversed(preferred_candidates):
+        if preferred in candidates:
+            candidates.remove(preferred)
+        candidates.insert(0, preferred)
 
-        **Current Configuration:**
-        - Host: `{MYSQL_CONFIG.get('host', 'unknown')}:{MYSQL_CONFIG.get('port', 'unknown')}`
-        - Database: `{MYSQL_CONFIG.get('database', 'unknown')}`
-        - User: `{MYSQL_CONFIG.get('user', 'unknown')}`
+    for candidate in candidates:
+        try:
+            trial_engine = create_engine(candidate, pool_pre_ping=True)
+            with trial_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            engine = trial_engine
+            connection_string = candidate
+            DB_AVAILABLE = True
+            return True
+        except Exception:
+            continue
 
-        **Error Details:**
-        ```
-        {str(e)}
-        ```
-        """)
-    st.info("📊 The page will show limited functionality without database access.")
+    return False
 
 
 def _record_bot_action(bot_name: str, mode: str, trading_mode: str, execution: dict) -> None:
@@ -1821,6 +1820,12 @@ days_map = {
 selected_days = days_map[date_range]
 
 # Load trade / performance data before tabs so all tabs see fresh values
+if not _ensure_database_connection():
+    st.warning("💾 **Database Connection Not Available**")
+    st.info(
+        "Titan launch controls can still run from the launcher, but trade history "
+        "and performance data require MySQL."
+    )
 trades_df = _safe_load_or_default(
     lambda: load_recent_trades(selected_days, refresh_token=_data_refresh_token),
     pd.DataFrame(),

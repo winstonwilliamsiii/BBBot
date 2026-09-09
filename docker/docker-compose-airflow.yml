@@ -227,6 +227,8 @@ services:
       - mlflow
     ports:
       - "8501:8501"
+    env_file:
+      - ../.env
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=mysql
@@ -235,6 +237,8 @@ services:
       - DB_PASSWORD=airflow
       - DB_NAME=mansa_bot
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
     volumes:
       - ../data:/app/data
     restart: unless-stopped

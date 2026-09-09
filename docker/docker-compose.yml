@@ -3,8 +3,8 @@ name: bentley-app
 services:
   bentley-budget-bot:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: bentley-budget-bot
     ports:
       - "8501:8501"

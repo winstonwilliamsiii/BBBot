@@ -21,12 +21,14 @@ Usage (as FastAPI dependency):
 
 from __future__ import annotations
 
+import csv
 import logging
 import math
 import os
 import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -181,6 +183,38 @@ def _fetch_bars_yfinance(symbol: str, lookback: int) -> Optional[Dict[str, List[
 # once per bot for the same symbol.
 _MARKET_DATA_CACHE: Dict[str, tuple] = {}
 _MARKET_DATA_TTL_SECS = float(os.getenv("COSMIC_MARKET_DATA_TTL", "60"))
+
+
+def _configured_bot_symbol(bot_name: str) -> Optional[str]:
+    """Return the first configured screener symbol for a scheduled bot."""
+    screener_files = {
+        "VEGA": Path(__file__).resolve().parents[2]
+        / "bentley-bot"
+        / "config"
+        / "vega_retail_breakout.csv",
+    }
+    screener_file = screener_files.get(bot_name.upper())
+    if screener_file is None:
+        return None
+
+    try:
+        with screener_file.open(newline="", encoding="utf-8") as csv_file:
+            row = next(csv.DictReader(csv_file), None)
+    except (OSError, csv.Error) as exc:
+        logger.warning(
+            "Cosmic Signal Engine: unable to read %s screener %s (%s)",
+            bot_name,
+            screener_file,
+            exc,
+        )
+        return None
+
+    if row is None:
+        logger.warning(
+            "Cosmic Signal Engine: configured screener for %s is empty", bot_name
+        )
+        return None
+    return str(row.get("Symbol") or row.get("symbol") or "").strip().upper() or None
 
 
 def fetch_market_series(symbol: str, lookback: int = 30) -> Optional[Dict[str, List[float]]]:
@@ -697,6 +731,7 @@ def run_cosmic_engine_for_bot(
         symbol
         or os.getenv(f"COSMIC_SYMBOL_{bot_name.upper()}")
         or os.getenv("COSMIC_DEFAULT_SYMBOL")
+        or _configured_bot_symbol(bot_name)
         or "SPY"
     ).strip() or "SPY"
     bot_key = bot_name.upper()

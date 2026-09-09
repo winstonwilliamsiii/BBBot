@@ -1,3 +1,4 @@
+-- Active: 1763499046791@@127.0.0.1@3306@bentley_bot
 # Bentley Budget Bot - Master Engine Startup
 # Starts the full local service stack: MySQL, Redis, Airflow, Airbyte, MLflow, Streamlit.
 

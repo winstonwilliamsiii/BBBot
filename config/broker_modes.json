@@ -8,35 +8,37 @@
                          "ibkr":  "paper"
                      },
     "active_bots":  {
-                        "Titan":  true,
-                        "Vega":  true,
+                        "Titan":  false,
+                        "Vega":  false,
                         "Draco":  false,
                         "Altair":  false,
                         "Procryon":  false,
-                        "Hydra":  true,
+                        "Hydra":  false,
                         "Triton":  false,
                         "Dione":  false,
-                        "Dogon":  true,
-                        "Rigel":  true,
-                        "Orion":  true,
-                        "Rhea":  true,
+                        "Dogon":  false,
+                        "Rigel":  false,
+                        "Orion":  false,
+                        "Rhea":  false,
                         "Jupicita":  false,
-                        "Cygnus":  false
+                        "Cygnus":  false,
+                        "Cephei":  false
                     },
     "bot_broker_mapping":  {
                                "Titan":  "alpaca",
-                               "Vega":  "ibkr",
+                               "Vega":  "axi",
                                "Draco":  "alpaca",
                                "Altair":  "alpaca",
                                "Procryon":  "alpaca",
                                "Hydra":  "alpaca",
                                "Triton":  "alpaca",
-                               "Dione":  "ibkr",
+                               "Dione":  "alpaca",
                                "Dogon":  "alpaca",
                                "Rigel":  "ftmo",
                                "Orion":  "alpaca",
-                               "Rhea":  "ibkr",
+                               "Rhea":  "alpaca",
                                "Jupicita":  "alpaca",
-                               "Cygnus":  "ibkr"
+                               "Cygnus":  "ibkr",
+                               "Cephei":  "alpaca"
                            }
 }

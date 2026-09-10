@@ -71,7 +71,7 @@ if (-not $resolvedBot) {
 
 $Bot = $resolvedBot
 
-$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
 Set-Location $repoRoot
 
 function Get-BotPythonService {

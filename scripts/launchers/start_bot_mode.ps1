@@ -308,7 +308,9 @@ if ($Bot -eq "Rigel" -and $resolvedBroker -eq "FTMO" -and $Mode -eq "ON") {
 }
 
 if ($Bot -eq "Triton" -and $Mode -eq "ON") {
-    $probe = & $pythonExe -c "from triton_bot import TritonBot; bot=TritonBot(); result=bot.bootstrap_demo_state(); print('TRITON_BOOTSTRAP_OK=True'); print('TRITON_ACTION=' + str(result.get('action', 'unknown'))); print('TRITON_SCORE=' + str(result.get('composite_score', 'unknown')))" 2>&1
+    $tritonBotsDir = Join-Path $repoRoot "src\bots"
+    $tritonProbeScript = "import sys; sys.path.insert(0, r'$tritonBotsDir'); from triton_bot import TritonBot; bot=TritonBot(); result=bot.bootstrap_demo_state(); print('TRITON_BOOTSTRAP_OK=True'); print('TRITON_ACTION=' + str(result.get('action', 'unknown'))); print('TRITON_SCORE=' + str(result.get('composite_score', 'unknown')))"
+    $probe = & $pythonExe -c $tritonProbeScript 2>&1
     $tritonProbeOutput = ($probe | Out-String).Trim()
 
     if ($tritonProbeOutput -match "TRITON_BOOTSTRAP_OK=True") {

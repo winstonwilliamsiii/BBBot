@@ -72,6 +72,16 @@ BOT_CATALOG: List[Dict[str, str]] = [
         "fund": "Mansa_Smalls",
         "strategy": "Pairs Trading",
     },
+    {
+        "bot": "Cephei",
+        "fund": "Mansa Functions Options",
+        "strategy": "Options / CFD",
+    },
+    {
+        "bot": "Cygnus",
+        "fund": "Mansa Short Fund",
+        "strategy": "Cygnus Relative Value Arb",
+    },
 ]
 
 

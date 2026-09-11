@@ -826,7 +826,7 @@ def load_recent_trades(days=7, refresh_token=None):
             WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
             ORDER BY timestamp DESC
         """
-        return pd.read_sql(query, engine, parse_dates=['timestamp'])
+        return pd.read_sql(text(query), engine, parse_dates=['timestamp'])
     except Exception as _e:
         import logging as _logging
         _logging.getLogger(__name__).error("load_recent_trades failed: %s", _e)
@@ -853,11 +853,29 @@ def load_performance_metrics(days=30, refresh_token=None):
             GROUP BY DATE(timestamp), strategy
             ORDER BY date DESC
         """
-        return pd.read_sql(query, engine, parse_dates=['date'])
+        return pd.read_sql(text(query), engine, parse_dates=['date'])
     except Exception as _e:
         import logging as _logging
         _logging.getLogger(__name__).error("load_performance_metrics failed: %s", _e)
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=120)
+def _has_table(table_name: str) -> bool:
+    if not DB_AVAILABLE:
+        return False
+    try:
+        q = text(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = :table_name
+            LIMIT 1
+            """
+        )
+        with engine.connect() as conn:
+            return conn.execute(q, {"table_name": table_name}).fetchone() is not None
+    except Exception:
+        return False
 
 
 @st.cache_data(ttl=300)
@@ -865,17 +883,36 @@ def load_active_signals():
     """Load active trading signals"""
     if not DB_AVAILABLE:
         return pd.DataFrame()
-    
-    query = """
-        SELECT ticker, signal, price, timestamp, strategy
-        FROM trading_signals
-        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        ORDER BY timestamp DESC
-        LIMIT 200
-    """
-    
+
+    # Prefer a dedicated trading_signals table when it exists, otherwise fall
+    # back to the prediction columns captured on titan_trades so this tab
+    # still shows real (non-empty) data.
+    if _has_table("trading_signals"):
+        query = """
+            SELECT ticker, `signal`, price, timestamp, strategy
+            FROM trading_signals
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ORDER BY timestamp DESC
+            LIMIT 200
+        """
+    elif _has_table("titan_trades"):
+        query = """
+            SELECT
+                symbol AS ticker,
+                COALESCE(prediction_label, side) AS `signal`,
+                NULL AS price,
+                timestamp,
+                strategy
+            FROM titan_trades
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ORDER BY timestamp DESC
+            LIMIT 200
+        """
+    else:
+        return pd.DataFrame()
+
     try:
-        df = pd.read_sql(query, engine, parse_dates=['timestamp'])
+        df = pd.read_sql(text(query), engine, parse_dates=['timestamp'])
         if df.empty:
             return df
 

@@ -477,7 +477,8 @@ class AlpacaConnector:
         timeframe: str = "1Day",
         start: Optional[str] = None,
         end: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
+        feed: Optional[str] = None
     ) -> Optional[Dict]:
         """
         Get historical bars (OHLCV data)
@@ -485,22 +486,35 @@ class AlpacaConnector:
         Args:
             symbol: Stock symbol
             timeframe: "1Min", "5Min", "15Min", "1Hour", "1Day"
-            start: Start date (ISO format)
-            end: End date (ISO format)
+            start: Start date (ISO format). Auto-computed from ``limit`` when omitted.
+            end: End date (ISO format). Defaults to ~15 minutes ago (SIP feed delay).
             limit: Number of bars
+            feed: Market data feed ("iex" for free/paper accounts, "sip" for
+                paid subscriptions). Defaults to ``ALPACA_DATA_FEED`` env var
+                or "iex" — free-tier Alpaca accounts return an empty payload
+                for daily bars without an explicit feed and date window.
             
         Returns:
             Dictionary with bar data
         """
         try:
+            from datetime import timedelta, timezone
+
+            if end is None:
+                end = (datetime.now(timezone.utc) - timedelta(minutes=16)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            if start is None:
+                # Pad generously so daily-bar lookbacks always have enough
+                # trading days even across weekends/holidays.
+                lookback_days = max(limit * 3, 30)
+                start = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
             params = {
                 'timeframe': timeframe,
-                'limit': limit
+                'limit': limit,
+                'start': start,
+                'end': end,
+                'feed': feed or os.getenv("ALPACA_DATA_FEED", "iex"),
             }
-            if start:
-                params['start'] = start
-            if end:
-                params['end'] = end
             
             response = self._request(
                 'GET',
@@ -520,6 +534,7 @@ class AlpacaConnector:
             response = self._request(
                 'GET',
                 f"{self.data_url}/v2/stocks/{symbol}/quotes/latest",
+                params={'feed': os.getenv("ALPACA_DATA_FEED", "iex")},
                 timeout=5
             )
             response.raise_for_status()

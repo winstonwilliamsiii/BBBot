@@ -6,15 +6,13 @@ import logging
 from pathlib import Path
 import sys
 from datetime import datetime
-from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from frontend.utils.cosmic_signal import compute_cosmic_score
+from frontend.utils.cosmic_signal import run_cosmic_engine_for_bot
 from frontend.utils.discord_notify import notify_signal, notify_status
-from frontend.utils.hf_client import fetch_hf_sentiment
 from scripts.load_screener_csv import (
     load_bot_config,
     load_screener_csv,
@@ -59,20 +57,6 @@ def _load_active_bots(repo_root: Path) -> set[str]:
     except (OSError, ValueError, TypeError) as exc:
         logger.warning("Could not read active_bots from config: %s", exc)
         return set()
-
-
-def _base_context() -> dict[str, Any]:
-    # Neutral baseline context; per-bot engine rules still shape final decision.
-    return {
-        "rsi": 50.0,
-        "momentum_1d": 0.0,
-        "sentiment_score": 0.0,
-        "execution_probability": 0.5,
-        "average_spread_bps": 12.0,
-        "cash_ratio": 0.5,
-        "is_multi_tf_aligned": True,
-        "predicted_side": "buy",
-    }
 
 
 def _load_bot_symbols(bot_name: str) -> list[str]:
@@ -152,27 +136,17 @@ def broadcast(mode: str, symbol: str, active_only: bool) -> int:
                 symbol_source,
                 universe_size,
             )
-            news_text = f"Latest financial update for {chosen_symbol}"
-            hf_features = fetch_hf_sentiment(chosen_symbol, news_text)
-            context = _base_context()
-            context.update(hf_features)
-            context["sentiment_score"] = hf_features["hf_sentiment"]
-            snap = compute_cosmic_score(
-                context,
-                symbol=chosen_symbol,
-                bot_name=bot,
-                mode=mode,
-            )
+            result = run_cosmic_engine_for_bot(bot, mode=mode, symbol=chosen_symbol)
 
             notify_signal(
                 bot_name=bot,
-                symbol=chosen_symbol,
-                decision=snap.decision,
-                cosmic_score=snap.cosmic_score,
-                heads=snap.to_dict().get("heads"),
+                symbol=result["symbol"],
+                decision=result["decision"],
+                cosmic_score=result["cosmic_score"],
+                heads=result["heads"],
                 mode=mode,
                 post_to_bot_talk_on_hold=True,
-                extra_fields=[
+                extra_fields=result["extra_fields"] + [
                     {
                         "name": "Schedule",
                         "value": "All-bot pulse (3x/day)",

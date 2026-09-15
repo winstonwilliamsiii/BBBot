@@ -35,7 +35,7 @@ Write-Host "[4/5] Verifying Streamlit..." -ForegroundColor Yellow
 $venvStreamlit = & $pythonExe -m streamlit --version 2>&1
 if ($venvStreamlit -match "Streamlit") {
     Write-Host "  ✓ Virtual env Streamlit: $venvStreamlit" -ForegroundColor Green
-} else {
+} else
     Write-Host "  ❌ Streamlit not found in venv!" -ForegroundColor Red
     Write-Host "  Installing Streamlit..." -ForegroundColor Yellow
     & $pythonExe -m pip install streamlit

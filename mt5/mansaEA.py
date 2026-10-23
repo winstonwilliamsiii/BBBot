@@ -3,7 +3,7 @@
 
 #property strict
 
-string api_url = "http://YOUR_SERVER_IP:8000/notify/signal";
+string api_url = "http://127.0.0.1:8000/notify/signal";
 string bot_name = "Titan";   // Change per bot instance
 
 int OnInit()

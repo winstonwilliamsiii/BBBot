@@ -25,6 +25,7 @@ from backend.api.hydra_persistence import (
     persist_hydra_trade_decision,
 )
 from backend.api.mansa_ai_router import router as mansa_ai_router
+from backend.api.notifier import router as notifier_router
 from backend.signal_delivery.db import fetch_latest_signal
 
 try:
@@ -1581,6 +1582,7 @@ async def bot_endpoint_coverage():
 
 app.include_router(sentiment_router)
 app.include_router(mansa_ai_router)
+app.include_router(notifier_router)
 if draco_app is not None:
     app.mount("/draco", draco_app)
 if vega_app is not None:

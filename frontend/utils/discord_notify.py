@@ -33,6 +33,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from frontend.utils.webhook_router import get_webhook
+
 logger = logging.getLogger("bentley.discord")
 
 # ─── Colour palette ───────────────────────────────────────────────────────────
@@ -92,6 +94,16 @@ def _now_utc() -> str:
 
 def _mode_tag(mode: str) -> str:
     return "🔴 LIVE" if str(mode).lower() == "live" else "📄 PAPER"
+
+
+def notify_signal_payload(bot_name: str, payload: Dict[str, Any]) -> None:
+    """Post a signal payload to the named bot's Discord webhook."""
+    webhook_url = get_webhook(bot_name)
+    if not webhook_url:
+        logger.error("No webhook found for bot: %s", bot_name)
+        return
+
+    _post(webhook_url, payload)
 
 
 # ─── Signal notification (Cosmic Score format) ────────────────────────────────

@@ -6,38 +6,7 @@ Usage:
     from frontend import is_appwrite_connected, test_appwrite_connection
 """
 
-# Core exports
-from .frontend_package_initializer import (
-    # Version info
-    get_version,
-    VERSION,
-    PACKAGE_NAME,
-    
-    # Appwrite client and status
-    appwrite_client,
-    is_appwrite_connected,
-    test_appwrite_connection,
-    APPWRITE_SDK_AVAILABLE,
-    
-    # Service functions
-    get_transactions,
-    create_transaction,
-    get_watchlist,
-    add_to_watchlist,
-    get_user_profile,
-    get_bot_metrics,
-    
-    # Function IDs for reference
-    FUNCTION_IDS,
-)
-
-# Optional SDK exports (may be None if SDK not installed)
-try:
-    from .frontend_package_initializer import database, account, client
-except ImportError:
-    database = None
-    account = None
-    client = None
+from importlib import import_module
 
 __all__ = [
     "get_version",
@@ -58,3 +27,21 @@ __all__ = [
     "account",
     "client",
 ]
+
+_OPTIONAL_EXPORTS = {"database", "account", "client"}
+
+
+def __getattr__(name: str):
+    if name not in __all__:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    try:
+        initializer = import_module(".frontend_package_initializer", __name__)
+        value = getattr(initializer, name)
+    except (ImportError, AttributeError):
+        if name not in _OPTIONAL_EXPORTS:
+            raise
+        value = None
+
+    globals()[name] = value
+    return value

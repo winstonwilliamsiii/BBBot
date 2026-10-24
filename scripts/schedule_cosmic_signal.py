@@ -31,8 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-# Keep these module imports explicit: the scheduler is the integration point
-# between the Cosmic Signal Engine and Discord notifications.
+# Keep the scheduler independent of frontend UI modules.
 from frontend.utils import cosmic_signal, discord_notify
 
 logger = logging.getLogger("schedule_cosmic_signal")

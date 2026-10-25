@@ -185,36 +185,36 @@ _MARKET_DATA_CACHE: Dict[str, tuple] = {}
 _MARKET_DATA_TTL_SECS = float(os.getenv("COSMIC_MARKET_DATA_TTL", "60"))
 
 
-def _configured_bot_symbol(bot_name: str) -> Optional[str]:
-    """Return the first configured screener symbol for a scheduled bot."""
-    screener_files = {
-        "VEGA": Path(__file__).resolve().parents[2]
-        / "bentley-bot"
-        / "config"
-        / "vega_retail_breakout.csv",
-    }
-    screener_file = screener_files.get(bot_name.upper())
-    if screener_file is None:
-        return None
+_BOT_PROFILE_DIR = Path(__file__).resolve().parents[2] / "bentley-bot" / "config" / "bots"
+
+
+def get_bot_universe(bot_name: str) -> List[str]:
+    """Return the bot's stock universe from its profile's screener CSV.
+
+    Profiles live in ``bentley-bot/config/bots/<bot>.yml``. Returns an empty
+    list (never a placeholder ticker) when the universe cannot be loaded.
+    """
+    from scripts.load_screener_csv import (
+        load_bot_config,
+        load_screener_csv,
+        resolve_screener_path,
+    )
 
     try:
-        with screener_file.open(newline="", encoding="utf-8") as csv_file:
-            row = next(csv.DictReader(csv_file), None)
-    except (OSError, csv.Error) as exc:
-        logger.warning(
-            "Cosmic Signal Engine: unable to read %s screener %s (%s)",
-            bot_name,
-            screener_file,
-            exc,
+        config = load_bot_config(bot_name, config_path=_BOT_PROFILE_DIR)
+        symbols = load_screener_csv(
+            resolve_screener_path(config, config_path=_BOT_PROFILE_DIR)
         )
-        return None
+    except (FileNotFoundError, OSError, ValueError, csv.Error) as exc:
+        logger.warning("Cosmic Signal Engine: no universe for %s (%s)", bot_name, exc)
+        return []
+    return [str(s).strip().upper() for s in symbols if str(s).strip()]
 
-    if row is None:
-        logger.warning(
-            "Cosmic Signal Engine: configured screener for %s is empty", bot_name
-        )
-        return None
-    return str(row.get("Symbol") or row.get("symbol") or "").strip().upper() or None
+
+def _configured_bot_symbol(bot_name: str) -> Optional[str]:
+    """Return the first symbol in the bot's configured universe."""
+    universe = get_bot_universe(bot_name)
+    return universe[0] if universe else None
 
 
 # RSI(14) needs 15 closes; fewer bars make the heads return neutral noise.
@@ -762,10 +762,15 @@ def run_cosmic_engine_for_bot(
     symbol = (
         symbol
         or os.getenv(f"COSMIC_SYMBOL_{bot_name.upper()}")
-        or os.getenv("COSMIC_DEFAULT_SYMBOL")
         or _configured_bot_symbol(bot_name)
-        or "SPY"
-    ).strip() or "SPY"
+        or os.getenv("COSMIC_DEFAULT_SYMBOL")
+        or ""
+    ).strip().upper()
+    if not symbol:
+        raise ValueError(
+            f"No symbol universe configured for {bot_name}; "
+            "check its screener_file in bentley-bot/config/bots/"
+        )
     bot_key = bot_name.upper()
 
     # --- Live market data ingestion (Alpaca primary, yfinance fallback) ----

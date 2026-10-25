@@ -217,6 +217,34 @@ def _configured_bot_symbol(bot_name: str) -> Optional[str]:
     return str(row.get("Symbol") or row.get("symbol") or "").strip().upper() or None
 
 
+# RSI(14) needs 15 closes; fewer bars make the heads return neutral noise.
+MIN_BARS = int(os.getenv("COSMIC_MIN_BARS", "15"))
+
+
+def _has_min_bars(
+    data: Optional[Dict[str, List[float]]], symbol: str, min_bars: int = MIN_BARS
+) -> bool:
+    """Return True if ``data`` has at least ``min_bars`` usable close prices.
+
+    A provider that answers with too few bars (e.g. Alpaca free/IEX feed) is
+    treated as a failed fetch so the next provider gets a chance.
+    """
+    if not data:
+        return False
+    closes = data.get("close") or []
+    count = sum(1 for v in closes if not _is_bad_number(v))
+    if count < min_bars:
+        logger.warning(
+            "Cosmic Signal Engine: %s returned %d/%d required bars for %s — trying next source",
+            data.get("source", "provider"),
+            count,
+            min_bars,
+            symbol,
+        )
+        return False
+    return True
+
+
 def fetch_market_series(symbol: str, lookback: int = 30) -> Optional[Dict[str, List[float]]]:
     """Fetch OHLCV series for ``symbol`` trying Alpaca first, then yfinance.
 
@@ -233,7 +261,11 @@ def fetch_market_series(symbol: str, lookback: int = 30) -> Optional[Dict[str, L
     if cached and (time.time() - cached[0]) < _MARKET_DATA_TTL_SECS:
         return cached[1]
 
-    data = _fetch_bars_alpaca(symbol, lookback) or _fetch_bars_yfinance(symbol, lookback)
+    data = _fetch_bars_alpaca(symbol, lookback)
+    if not _has_min_bars(data, symbol):
+        data = _fetch_bars_yfinance(symbol, lookback)
+        if not _has_min_bars(data, symbol):
+            data = None
     if data is None:
         logger.warning(
             "Cosmic Signal Engine: no market data available for %s from any source (Alpaca/yfinance)",

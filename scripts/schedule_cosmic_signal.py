@@ -32,7 +32,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # Keep the scheduler independent of frontend UI modules.
-from frontend.utils import cosmic_signal, discord_notify
+import requests
+
+from frontend.utils import cosmic_signal
+from frontend.utils.webhook_router import get_webhook
 
 logger = logging.getLogger("schedule_cosmic_signal")
 
@@ -73,37 +76,90 @@ def _timezone():
         raise ValueError(f"Unknown COSMIC_SCHEDULE_TIMEZONE: {name}") from exc
 
 
+def send_discord(bot_name, payload):
+    """Post a payload to the bot's own channel via the webhook routing map."""
+    webhook = get_webhook(bot_name)
+    if webhook:
+        try:
+            requests.post(webhook, json=payload, timeout=8)
+        except requests.RequestException as exc:
+            logger.warning("Discord post failed for %s: %s", bot_name, exc)
+    else:
+        print(f"No webhook for {bot_name}")
+
+
+def _mode_tag(mode: str) -> str:
+    return "🔴 LIVE" if mode == "live" else "📄 PAPER"
+
+
+def _signal_payload(bot_name: str, result: dict, mode: str, schedule_label: str) -> dict:
+    score = float(result["cosmic_score"])
+    decision = str(result["decision"]).upper()
+    color = {"BUY": 3066993, "SELL": 15158332, "HOLD": 10181046}.get(decision, 5592575)
+    filled = round((score + 1) / 2 * 12)
+    bar = "█" * filled + "░" * (12 - filled)
+    fields = []
+    if result.get("heads"):
+        lines = "\n".join(
+            f"`{h.get('head', '?'):20s}` {h.get('score', 0):+.3f} "
+            f"× w={h.get('weight', 0):.2f} → `{h.get('score', 0) * h.get('weight', 0):+.4f}`"
+            for h in result["heads"]
+        )
+        fields.append({"name": "🧠 Analytic Heads", "value": lines[:1024], "inline": False})
+    fields.extend((result.get("extra_fields") or [])[:4])
+    fields.append({"name": "Scheduled", "value": schedule_label, "inline": True})
+    return {
+        "embeds": [{
+            "title": f"🤖 {bot_name} | Signal — {_mode_tag(mode)}",
+            "description": (
+                f"**Time:** {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M %Z')}\n"
+                f"**Symbol:** `{result['symbol']}` │ **Mode:** {_mode_tag(mode)}\n"
+                f"**Cosmic Score:** `{score:+.4f}`\n"
+                f"```\n[{bar}] {score:+.2f}\n```\n"
+                f"**Decision:** {decision}"
+            ),
+            "color": color,
+            "fields": fields,
+            "footer": {"text": f"{bot_name} Cosmic Signal Engine | Bentley Budget Bot"},
+            "timestamp": datetime.now().astimezone().isoformat(),
+        }]
+    }
+
+
+def _trade_payload(bot_name: str, result: dict, trade: dict, mode: str) -> dict:
+    side = str(trade["side"]).upper()
+    symbol = str(trade.get("symbol", result["symbol"]))
+    status = str(trade.get("status", "simulated"))
+    broker = str(trade.get("broker", ""))
+    ticket = trade.get("ticket")
+    description = f"**{side} {symbol}** — {float(trade['qty'])} lot(s)"
+    if broker:
+        description += f" via **{broker.upper()}**"
+    description += f"\nStatus: {status}" + (f" │ Ticket: `{ticket}`" if ticket else "")
+    return {
+        "embeds": [{
+            "title": f"🤖 {bot_name} | Trade — {_mode_tag(mode)}",
+            "description": description,
+            "color": 3447003,
+            "fields": [{"name": "Cosmic Score", "value": f"{float(result['cosmic_score']):+.4f}", "inline": True}],
+            "footer": {"text": f"{bot_name} | Bentley Budget Bot"},
+            "timestamp": datetime.now().astimezone().isoformat(),
+        }]
+    }
+
+
 def run_bot(bot_name: str, scheduled_at: datetime | None = None) -> None:
     """Run one bot; exceptions are contained so later bots still start."""
     mode = _mode()
     result = cosmic_signal.run_cosmic_engine_for_bot(bot_name, mode=mode)
     schedule_label = scheduled_at.isoformat() if scheduled_at else "manual"
-    discord_notify.notify_signal(
-        bot_name=bot_name,
-        symbol=result["symbol"],
-        decision=result["decision"],
-        cosmic_score=result["cosmic_score"],
-        heads=result["heads"],
-        mode=mode,
-        extra_fields=result["extra_fields"] + [
-            {"name": "Scheduled", "value": schedule_label, "inline": True},
-        ],
-    )
+    payload = _signal_payload(bot_name, result, mode, schedule_label)
+    send_discord(bot_name, payload)
 
     # Trade notifications are emitted only for trade records returned by a
     # bot's ML/execution adapter; a signal alone is never reported as a trade.
     for trade in result.get("trades", []):
-        discord_notify.notify_trade(
-            bot_name=bot_name,
-            symbol=str(trade.get("symbol", result["symbol"])),
-            side=str(trade["side"]),
-            qty=float(trade["qty"]),
-            status=str(trade.get("status", "simulated")),
-            mode=mode,
-            ticket=trade.get("ticket"),
-            broker=str(trade.get("broker", "")),
-            cosmic_score=result["cosmic_score"],
-        )
+        send_discord(bot_name, _trade_payload(bot_name, result, trade, mode))
     logger.info("%s completed: %s %+.4f (%s)", bot_name, result["decision"], result["cosmic_score"], mode)
 
 
